@@ -1,0 +1,12 @@
+{
+	"id": "lapse-tracker",
+	"name": "Lapse",
+	"version": "0.0.1",
+	"minAppVersion": "0.15.0",
+	"description": "Lapse (obsidian-suite monorepo)",
+	"author": "Jimmy Little",
+	"isDesktopOnly": false,
+	"styles": [
+		"styles.css"
+	]
+}

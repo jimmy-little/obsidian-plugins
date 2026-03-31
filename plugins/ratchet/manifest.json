@@ -1,0 +1,12 @@
+{
+	"id": "ratchet",
+	"name": "Ratchet",
+	"version": "0.0.1",
+	"minAppVersion": "0.15.0",
+	"description": "Ratchet (obsidian-suite monorepo)",
+	"author": "Jimmy Little",
+	"isDesktopOnly": false,
+	"styles": [
+		"styles.css"
+	]
+}

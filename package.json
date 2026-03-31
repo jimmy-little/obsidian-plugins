@@ -1,0 +1,21 @@
+{
+	"name": "obsidian-plugins",
+	"private": true,
+	"version": "0.0.0",
+	"description": "Monorepo: Pulse, Lapse, Ratchet, Fulcrum, CRM — shared Svelte shell and tooling",
+	"workspaces": [
+		"packages/*",
+		"plugins/*"
+	],
+	"scripts": {
+		"build": "npm run build --workspaces --if-present",
+		"build:pulse": "npm run build -w obsidian-plugin-pulse",
+		"build:lapse": "npm run build -w obsidian-plugin-lapse",
+		"build:ratchet": "npm run build -w obsidian-plugin-ratchet",
+		"build:fulcrum": "npm run build -w obsidian-plugin-fulcrum",
+		"build:crm": "npm run build -w obsidian-plugin-crm"
+	},
+	"engines": {
+		"node": ">=18"
+	}
+}

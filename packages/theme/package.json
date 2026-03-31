@@ -1,0 +1,6 @@
+{
+	"name": "@obsidian-suite/theme",
+	"version": "0.0.1",
+	"private": true,
+	"description": "Shared CSS tokens for Obsidian suite plugins"
+}

@@ -1,0 +1,7 @@
+/* @obsidian-suite/theme — shared tokens (merged into each plugin styles.css at build) */
+:root {
+	--suite-radius-s: 4px;
+	--suite-radius-m: 6px;
+	--suite-gap: 0.75rem;
+	--suite-card-border: 1px solid var(--background-modifier-border);
+}

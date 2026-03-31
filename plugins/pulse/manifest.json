@@ -1,0 +1,12 @@
+{
+	"id": "pulse",
+	"name": "Pulse",
+	"version": "0.0.1",
+	"minAppVersion": "0.15.0",
+	"description": "Pulse (obsidian-suite monorepo)",
+	"author": "Jimmy Little",
+	"isDesktopOnly": false,
+	"styles": [
+		"styles.css"
+	]
+}
