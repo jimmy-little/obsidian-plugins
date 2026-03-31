@@ -1,13 +1,9 @@
 {
 	"extends": "../../tsconfig.base.json",
-	"include": [
-		"src/**/*.ts",
-		"src/**/*.svelte"
-	],
 	"compilerOptions": {
-		"types": [
-			"node",
-			"svelte"
-		]
-	}
+		"baseUrl": "src",
+		"lib": ["DOM", "ES2018", "ES2022"],
+		"types": ["node", "svelte"]
+	},
+	"include": ["src/**/*.ts", "src/**/*.svelte", "src/**/*.d.ts"]
 }

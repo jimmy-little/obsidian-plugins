@@ -1,0 +1,63 @@
+/*
+ * Shared “suite shell” UI — loaded after each plugin’s src/plugin.css.
+ * Fulcrum + future plugins: use the same variables from tokens.css for icon rows.
+ */
+
+/* Generic: optional class for non-Fulcrum plugins */
+.suite-glyph-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--suite-glyph-btn-size);
+	height: var(--suite-glyph-btn-size);
+	min-width: var(--suite-glyph-btn-size);
+	min-height: var(--suite-glyph-btn-size);
+	padding: 0;
+	box-sizing: border-box;
+}
+
+.suite-glyph-btn svg {
+	width: var(--suite-glyph-icon-size);
+	height: var(--suite-glyph-icon-size);
+	display: block;
+	flex-shrink: 0;
+}
+
+/* Fulcrum ProjectManager — top icon row + collapse */
+.fulcrum-pm__glyph-bar {
+	gap: var(--suite-glyph-bar-gap);
+	padding: var(--suite-glyph-bar-padding-y) var(--suite-glyph-bar-padding-x);
+}
+
+.fulcrum-pm-left-collapsed .fulcrum-pm__glyph-bar {
+	gap: 0.35rem;
+	padding: 0.45rem 0.2rem;
+}
+
+.fulcrum-pm__glyph-btn {
+	width: var(--suite-glyph-btn-size);
+	height: var(--suite-glyph-btn-size);
+	min-width: var(--suite-glyph-btn-size);
+	min-height: var(--suite-glyph-btn-size);
+	font-size: var(--suite-glyph-collapse-font-size);
+	font-weight: 600;
+	line-height: 1;
+}
+
+.fulcrum-pm__glyph-btn svg {
+	width: var(--suite-glyph-icon-size);
+	height: var(--suite-glyph-icon-size);
+	display: block;
+	flex-shrink: 0;
+}
+
+/* Right sidebar collapse / expand — match glyph row */
+.fulcrum-pm__sidebar-edge-btn {
+	flex: 0 0 var(--suite-glyph-edge-size);
+	width: var(--suite-glyph-edge-size);
+	min-width: var(--suite-glyph-edge-size);
+	min-height: var(--suite-glyph-btn-size);
+	font-size: var(--suite-glyph-collapse-font-size);
+	font-weight: 600;
+	line-height: 1;
+}

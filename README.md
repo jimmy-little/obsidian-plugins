@@ -58,3 +58,24 @@ git commit -m "chore: initial monorepo scaffold"
 ```
 
 Connect your remote as usual (`git remote add origin …`).
+
+## Fulcrum
+
+The **Fulcrum** plugin is ported from the standalone `obsidian-fulcrum` repo: full `src/` (views, Svelte UI, `VaultIndex`, settings, modals). Styles live in `plugins/fulcrum/src/plugin.css` and are merged with shared tokens into `styles.css` at build.
+
+`src/fulcrum/openViews.ts` uses `claimLeaf` from `@obsidian-suite/core`.
+
+Build / install:
+
+```bash
+npm run build -w obsidian-plugin-fulcrum
+export OBSIDIAN_VAULT_PATH="/path/to/vault"
+npm run build:install -w obsidian-plugin-fulcrum
+```
+
+### Shared theme (`packages/theme`)
+
+- **`tokens.css`** — CSS variables (spacing, **sidebar glyph touch targets** `--suite-glyph-*`).
+- **`shell.css`** — Shared layout helpers (e.g. `.suite-glyph-btn`, Fulcrum ProjectManager glyph row). Merged **after** each plugin’s `src/plugin.css` so suite rules win.
+
+Tune icon row size globally by editing `--suite-glyph-btn-size` and `--suite-glyph-icon-size` in `tokens.css`.

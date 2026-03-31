@@ -17,9 +17,12 @@
 	"author": "Jimmy Little",
 	"license": "MIT",
 	"dependencies": {
-		"@obsidian-suite/core": "*"
+		"@obsidian-suite/core": "*",
+		"monkey-around": "^3.0.0"
 	},
 	"devDependencies": {
+		"@codemirror/state": "^6.6.0",
+		"@codemirror/view": "^6.40.0",
 		"@types/node": "^16.18.0",
 		"esbuild": "^0.27.0",
 		"esbuild-svelte": "^0.9.0",
