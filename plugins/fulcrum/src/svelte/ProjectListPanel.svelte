@@ -36,7 +36,12 @@
 	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
 	$: doneTask = (void sRev, new Set(parseList(plugin.settings.taskDoneStatuses)));
 
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas);
+	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+		projects: snapshot.projects,
+		app: plugin.app,
+		typeField: plugin.settings.typeField,
+		areaTypeValue: plugin.settings.areaTypeValue,
+	});
 	$: onlyWork = $workRelatedOnly;
 
 	/** Per-project counts for sidebar notifications. */

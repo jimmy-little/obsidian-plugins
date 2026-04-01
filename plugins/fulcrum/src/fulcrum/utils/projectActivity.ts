@@ -345,7 +345,7 @@ export type ProjectActivityInput = {
 };
 
 /**
- * Build activity rows from all projects, sorted by time (newest first), limited to last 7 days.
+ * Build activity rows from all projects, sorted by time (newest first), limited by `lastNDaysMs`.
  * Each row includes project name chip (+ProjectName) and accent color for the timeline.
  */
 export function buildAggregatedActivityRows(

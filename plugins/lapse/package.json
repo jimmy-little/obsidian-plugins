@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-plugin-lapse",
-	"version": "0.0.1",
-	"description": "Lapse (obsidian-suite monorepo)",
+	"version": "0.1.11",
+	"description": "Compact time tracker with code block integration, frontmatter updates, and Fulcrum interop",
 	"main": "main.js",
 	"scripts": {
 		"prebuild": "node ../../tooling/merge-css.mjs",
@@ -17,8 +17,7 @@
 	"author": "Jimmy Little",
 	"license": "MIT",
 	"dependencies": {
-		"@obsidian-suite/core": "*",
-		"@obsidian-suite/svelte-shell": "*"
+		"@obsidian-suite/interop": "*"
 	},
 	"devDependencies": {
 		"@types/node": "^16.18.0",

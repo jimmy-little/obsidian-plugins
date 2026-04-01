@@ -10,7 +10,11 @@
 		meetingPassesWorkFilter,
 		taskPassesWorkFilter,
 	} from "../fulcrum/utils/workRelatedProjectFilter";
-	import {parseList} from "../fulcrum/settingsDefaults";
+	import {
+		parseList,
+		DASHBOARD_ACTIVITY_MAX_DAYS,
+		DASHBOARD_ACTIVITY_MAX_ROWS,
+	} from "../fulcrum/settingsDefaults";
 	import type {IndexedProject} from "../fulcrum/types";
 	import {buildProjectSidebarCounts, projectReviewIsOverdue} from "../fulcrum/utils/projectSidebarCounts";
 	import {
@@ -46,7 +50,12 @@
 	$: doneTask = new Set(parseList(plugin.settings.taskDoneStatuses));
 	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
 
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas);
+	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+		projects: snapshot.projects,
+		app: plugin.app,
+		typeField: plugin.settings.typeField,
+		areaTypeValue: plugin.settings.areaTypeValue,
+	});
 	$: onlyWork = $workRelatedOnly;
 
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
@@ -143,6 +152,7 @@
 
 	$: {
 		void rev;
+		void sRev;
 		void onlyWork;
 		void areaWorkMap;
 		const active = filterProjectsWorkRelated(
@@ -166,14 +176,18 @@
 				(x): x is {rollup: ProjectRollup; logEntries: ProjectLogActivityEntry[]} =>
 					x != null,
 			);
+			const days = Math.min(
+				DASHBOARD_ACTIVITY_MAX_DAYS,
+				Math.max(1, plugin.settings.globalActivityDisplayDays ?? DASHBOARD_ACTIVITY_MAX_DAYS),
+			);
 			aggregatedActivity = buildAggregatedActivityRows(valid, {
 				doneTask,
 				openPath: openFile,
 				openTask: (t) => plugin.openIndexedTask(t, hoverParentLeaf),
 				openProject: (path) => openFile(path),
 				formatTracked: formatTrackedMinutesShort,
-				lastNDaysMs: (plugin.settings.globalActivityDisplayDays ?? 7) * 86400000,
-			});
+				lastNDaysMs: days * 86400000,
+			}).slice(0, DASHBOARD_ACTIVITY_MAX_ROWS);
 		};
 		void load();
 	}

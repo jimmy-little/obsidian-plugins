@@ -1,5 +1,6 @@
 import type {App, TFile} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
+import {resolveAreasRoot, resolveProjectsRoot} from "./settingsDefaults";
 import {parseList} from "./settingsDefaults";
 import {readProjectPageMeta} from "./projectNote";
 import type {
@@ -187,7 +188,8 @@ export class VaultIndex {
 		const meetings: IndexedMeeting[] = [];
 
 		const typeField = s.typeField;
-		const apRoot = s.areasProjectsFolder;
+		const areasRoot = resolveAreasRoot(s);
+		const projectsRoot = resolveProjectsRoot(s);
 		const statusKey = s.projectStatusField.trim().replace(/:+$/u, "") || "status";
 
 		for (const file of this.app.vault.getMarkdownFiles()) {
@@ -195,14 +197,15 @@ export class VaultIndex {
 			const fm = cache?.frontmatter as Record<string, unknown> | undefined;
 			const path = file.path;
 
-			const inAP = isUnderFolder(path, apRoot);
+			const inArea = isUnderFolder(path, areasRoot);
+			const inProject = isUnderFolder(path, projectsRoot);
 			const inMeetings = isUnderFolder(path, s.meetingsFolder);
 
 			const tVal = fmString(fm, typeField)?.toLowerCase();
 			const areaTypeLc = s.areaTypeValue.toLowerCase();
 			const projectTypeLc = s.projectTypeValue.toLowerCase();
 
-			if (inAP && fm && tVal === areaTypeLc) {
+			if (inArea && fm && tVal === areaTypeLc) {
 				const wr = fmBooleanLoose(fm, ["work-related", "workRelated"]);
 				areas.push({
 					file,
@@ -219,7 +222,7 @@ export class VaultIndex {
 			const isExplicitProject = tVal === projectTypeLc;
 			const isInferredProject =
 				s.inferProjectsInAreasFolder && tVal !== areaTypeLc;
-			if (inAP && fm && (isExplicitProject || isInferredProject)) {
+			if (inProject && fm && (isExplicitProject || isInferredProject)) {
 				const areaFilesResolved: TFile[] = [];
 				const seenAreaPath = new Set<string>();
 				for (const link of parseAreaLinkPaths(fm[s.areaLinkField])) {
@@ -232,7 +235,7 @@ export class VaultIndex {
 				const areaFile = areaFilesResolved[0] ?? null;
 				const statusRaw =
 					s.projectStatusIndication === "subfolder"
-						? projectStatusFromSubfolderLayout(path, apRoot)
+						? projectStatusFromSubfolderLayout(path, projectsRoot)
 						: (fmString(fm, statusKey) ?? "active").toLowerCase();
 				const launchRaw = fmString(fm, s.projectLaunchDateField)?.trim();
 				const launchDate =

@@ -222,7 +222,10 @@
 		on:keydown={onSplitKeydown}
 	></button>
 
-	<main class="fulcrum-pm__main fulcrum-view-root">
+	<main
+		class="fulcrum-pm__main fulcrum-view-root"
+		class:fulcrum-pm__main--kanban-fill={mainMode === "kanban"}
+	>
 		{#if mainMode === "dashboard"}
 			<header class="fulcrum-pm__main-head">
 				<h1 class="fulcrum-pm__main-title">Dashboard</h1>

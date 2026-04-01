@@ -61,7 +61,12 @@
 	$: doneTask = new Set(parseList(plugin.settings.taskDoneStatuses));
 	$: weekStart = (void sRev, plugin.settings.calendarFirstDayOfWeek);
 
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas);
+	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+		projects: snapshot.projects,
+		app: plugin.app,
+		typeField: plugin.settings.typeField,
+		areaTypeValue: plugin.settings.areaTypeValue,
+	});
 	$: onlyWork = $workRelatedOnly;
 
 	$: dates = gridDates(focalDate, viewMode, weekStart);

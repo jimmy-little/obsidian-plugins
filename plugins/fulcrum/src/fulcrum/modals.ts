@@ -17,7 +17,7 @@ import {
 	markProjectReviewDates,
 } from "./projectNote";
 import type {FulcrumHost} from "./pluginBridge";
-import {parseList} from "./settingsDefaults";
+import {parseList, resolveProjectsRoot} from "./settingsDefaults";
 import type {IndexedProject} from "./types";
 import {getImmediateSubfolderNames} from "./utils/paths";
 
@@ -102,7 +102,7 @@ export class NewProjectModal extends Modal {
 			return;
 		}
 		const s = this.host.settings;
-		const base = s.areasProjectsFolder.replace(/\/+$/, "");
+		const base = resolveProjectsRoot(s).replace(/\/+$/, "");
 		const path = `${base}/${name}.md`;
 		if (this.app.vault.getAbstractFileByPath(path)) {
 			new Notice("A note already exists at that path.");
@@ -331,7 +331,7 @@ export class ChangeProjectStatusModal extends Modal {
 		super(app);
 		this.updateFolder =
 			host.settings.projectStatusIndication === "subfolder" &&
-			host.settings.areasProjectsFolder.trim().length > 0;
+			resolveProjectsRoot(host.settings).trim().length > 0;
 	}
 
 	onOpen(): void {
@@ -340,13 +340,14 @@ export class ChangeProjectStatusModal extends Modal {
 		contentEl.createEl("h2", {text: "Change project status"});
 
 		let statusOptions: string[];
+		const projectsRoot = resolveProjectsRoot(this.host.settings);
 		const useSubfolders =
 			this.host.settings.projectStatusIndication === "subfolder" &&
-			this.host.settings.areasProjectsFolder.trim().length > 0;
+			projectsRoot.trim().length > 0;
 		if (useSubfolders) {
 			const folderNames = getImmediateSubfolderNames(
 				this.app.vault,
-				this.host.settings.areasProjectsFolder,
+				projectsRoot,
 			);
 			const configured = parseList(this.host.settings.projectStatuses)
 				.map((s) => s.trim())
@@ -409,12 +410,12 @@ export class ChangeProjectStatusModal extends Modal {
 
 		const canUpdateFolder =
 			this.host.settings.projectStatusIndication === "subfolder" &&
-			this.host.settings.areasProjectsFolder.trim().length > 0;
+			resolveProjectsRoot(this.host.settings).trim().length > 0;
 		if (canUpdateFolder) {
 			new Setting(this.confirmSection)
 				.setName("Update folder")
 				.setDesc(
-					"Move the note into the folder for this status (under your areas & projects path).",
+					"Move the note into the folder for this status (under your projects folder).",
 				)
 				.addToggle((t) =>
 					t.setValue(this.updateFolder).onChange((v) => {

@@ -1,6 +1,6 @@
 # Obsidian plugins (monorepo)
 
-npm workspaces containing **Pulse**, **Lapse**, **Ratchet**, **Fulcrum**, **CRM**, and shared packages (`@obsidian-suite/*`).
+npm workspaces containing **Pulse**, **Lapse**, **Ratchet**, **Fulcrum**, **Orbit**, and shared packages (`@obsidian-suite/*`).
 
 ## Setup
 

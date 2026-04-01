@@ -1,7 +1,7 @@
 /*
  * Shared “suite people” UI — portrait cards + inline pills.
  * Used by Fulcrum (related people, companion chrome, markdown people links) and
- * intended for CRM and other plugins: reuse the same class names + markup shape.
+ * intended for Orbit, Fulcrum, and other plugins: reuse the same class names + markup shape.
  *
  * Markup (card): .fulcrum-person-card > .fulcrum-person-card__top > .fulcrum-person-card__avatar (+ img|svg) + .fulcrum-person-card__name
  * Markup (inline pill): .fulcrum-person-inline-pill (a or span) > .fulcrum-person-inline-pill__avatar + .fulcrum-person-inline-pill__name

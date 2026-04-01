@@ -1,9 +1,9 @@
 {
 	"id": "pulse",
 	"name": "Pulse",
-	"version": "0.0.1",
+	"version": "0.2.0",
 	"minAppVersion": "0.15.0",
-	"description": "Pulse (obsidian-suite monorepo)",
+	"description": "Workout tracker and health data importer for Obsidian",
 	"author": "Jimmy Little",
 	"isDesktopOnly": false,
 	"styles": [

@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-plugin-pulse",
-	"version": "0.0.1",
-	"description": "Pulse (obsidian-suite monorepo)",
+	"version": "0.2.0",
+	"description": "Workout tracker and health data importer for Obsidian (obsidian-suite monorepo)",
 	"main": "main.js",
 	"scripts": {
 		"prebuild": "node ../../tooling/merge-css.mjs",
@@ -17,8 +17,7 @@
 	"author": "Jimmy Little",
 	"license": "MIT",
 	"dependencies": {
-		"@obsidian-suite/core": "*",
-		"@obsidian-suite/svelte-shell": "*"
+		"jszip": "^3.10.1"
 	},
 	"devDependencies": {
 		"@types/node": "^16.18.0",

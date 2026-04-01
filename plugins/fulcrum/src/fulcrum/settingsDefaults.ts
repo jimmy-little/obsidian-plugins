@@ -9,8 +9,25 @@ export type TimeTrackerHorizon = "all" | "7d" | "30d" | "90d";
 /** Where “new note from template” saves relative to the project. */
 export type ProjectNewNoteDestinationMode = "projectFolder" | "customPath";
 
+/** Dashboard “Activity” section: maximum calendar days of history. */
+export const DASHBOARD_ACTIVITY_MAX_DAYS = 7 as const;
+
+/** After filtering by date, cap rows so the feed stays scannable. */
+export const DASHBOARD_ACTIVITY_MAX_ROWS = 80 as const;
+
 export interface FulcrumSettings {
+	/** Legacy combined root; used when optional folders below are empty. */
 	areasProjectsFolder: string;
+	/**
+	 * When set, only notes under this path are indexed as areas (type = area value).
+	 * Empty → use `areasProjectsFolder` (single-folder mode).
+	 */
+	areasFolder: string;
+	/**
+	 * When set, only notes under this path are indexed as projects.
+	 * Empty → use `areasProjectsFolder`.
+	 */
+	projectsFolder: string;
 	meetingsFolder: string;
 	completedProjectsFolder: string;
 	/** When true, markdown under the areas/projects folder is a project unless `type` is the area value. */
@@ -130,7 +147,7 @@ export interface FulcrumSettings {
 	/** Delay in ms before showing page preview on hover (0 = instant). */
 	hoverPreviewDelayMs: number;
 
-	/** Global activity feed: how many days back to include (Dashboard). */
+	/** Dashboard activity feed: days of history (1–7; see DASHBOARD_ACTIVITY_MAX_DAYS). */
 	globalActivityDisplayDays: number;
 
 	/** Time tracked view: last selected horizon. */
@@ -142,8 +159,20 @@ export interface FulcrumSettings {
 	calendarFirstDayOfWeek: number;
 }
 
+/** Root path for area notes (separate from projects when `areasFolder` is set). */
+export function resolveAreasRoot(s: FulcrumSettings): string {
+	return s.areasFolder.trim() || s.areasProjectsFolder.trim();
+}
+
+/** Root path for project notes (separate from areas when `projectsFolder` is set). */
+export function resolveProjectsRoot(s: FulcrumSettings): string {
+	return s.projectsFolder.trim() || s.areasProjectsFolder.trim();
+}
+
 export const DEFAULT_SETTINGS: FulcrumSettings = {
 	areasProjectsFolder: "40 Projects",
+	areasFolder: "",
+	projectsFolder: "",
 	meetingsFolder: "30 Work/Meetings",
 	completedProjectsFolder: "40 Projects/Completed",
 	inferProjectsInAreasFolder: true,

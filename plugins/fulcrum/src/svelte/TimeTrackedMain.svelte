@@ -39,7 +39,12 @@
 	$: wrOnly = $workRelatedOnly;
 
 	$: snapshot = plugin.vaultIndex.getSnapshot();
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas);
+	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+		projects: snapshot.projects,
+		app: plugin.app,
+		typeField: plugin.settings.typeField,
+		areaTypeValue: plugin.settings.areaTypeValue,
+	});
 	$: activeProjects = filterProjectsWorkRelated(
 		plugin.vaultIndex.getActiveProjects(plugin.settings),
 		wrOnly,

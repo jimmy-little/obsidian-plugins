@@ -1,7 +1,7 @@
 import type {App, TFile, Vault} from "obsidian";
 import {normalizePath} from "obsidian";
 import {appendFulcrumProjectLog, formatFulcrumProjectLogLine} from "./projectNote";
-import {parseList, type FulcrumSettings} from "./settingsDefaults";
+import {parseList, resolveProjectsRoot, type FulcrumSettings} from "./settingsDefaults";
 
 async function ensureFolderPath(vault: Vault, folderPath: string): Promise<void> {
 	const norm = normalizePath(folderPath.trim());
@@ -77,12 +77,12 @@ export async function moveProjectToStatusFolder(
 	s: FulcrumSettings,
 	newStatus: string,
 ): Promise<string> {
-	const root = normalizePath(s.areasProjectsFolder.trim());
-	if (!root) throw new Error("Areas & projects folder is not set.");
+	const root = normalizePath(resolveProjectsRoot(s).trim());
+	if (!root) throw new Error("Projects folder is not set (configure projects folder or areas & projects fallback).");
 
 	const path = projectFile.path;
 	if (!path.startsWith(root + "/")) {
-		throw new Error("Project is not under the areas & projects folder.");
+		throw new Error("Project is not under the projects folder.");
 	}
 
 	const rel = path.slice(root.length + 1);

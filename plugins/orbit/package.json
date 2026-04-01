@@ -1,14 +1,14 @@
 {
-	"name": "obsidian-plugin-crm",
-	"version": "0.0.1",
-	"description": "CRM (obsidian-suite monorepo)",
+	"name": "obsidian-plugin-orbit",
+	"version": "0.1.0",
+	"description": "Orbit — contacts and relationships (obsidian-suite monorepo)",
 	"main": "main.js",
 	"scripts": {
 		"prebuild": "node ../../tooling/merge-css.mjs",
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -p tsconfig.json --noEmit && node esbuild.config.mjs production",
 		"build:install": "npm run build && node ../../tooling/install-to-vault.mjs .",
-		"release": "node ../../tooling/release-plugin.mjs plugins/crm"
+		"release": "node ../../tooling/release-plugin.mjs plugins/orbit"
 	},
 	"keywords": [
 		"obsidian",

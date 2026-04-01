@@ -35,7 +35,12 @@
 	$: doneTask = (void sRev, new Set(parseList(plugin.settings.taskDoneStatuses)));
 	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
 
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas);
+	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+		projects: snapshot.projects,
+		app: plugin.app,
+		typeField: plugin.settings.typeField,
+		areaTypeValue: plugin.settings.areaTypeValue,
+	});
 	$: activeProjects = filterProjectsWorkRelated(
 		snapshot.projects.filter((p) => !doneProject.has((p.status ?? "").trim().toLowerCase())),
 		$workRelatedOnly,

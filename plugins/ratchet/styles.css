@@ -24,7 +24,7 @@
 /*
  * Shared “suite people” UI — portrait cards + inline pills.
  * Used by Fulcrum (related people, companion chrome, markdown people links) and
- * intended for CRM and other plugins: reuse the same class names + markup shape.
+ * intended for Orbit, Fulcrum, and other plugins: reuse the same class names + markup shape.
  *
  * Markup (card): .fulcrum-person-card > .fulcrum-person-card__top > .fulcrum-person-card__avatar (+ img|svg) + .fulcrum-person-card__name
  * Markup (inline pill): .fulcrum-person-inline-pill (a or span) > .fulcrum-person-inline-pill__avatar + .fulcrum-person-inline-pill__name
@@ -57,7 +57,7 @@
 	margin: 0;
 	width: var(--suite-person-card-max-width, 5rem);
 	max-width: var(--suite-person-card-max-width, 5rem);
-	height: 8rem;
+	height: 7rem;
 	padding: 0;
 	gap: 0;
 	border: var(--suite-person-card-border, 1px solid color-mix(in srgb, var(--background-modifier-border) 92%, transparent));

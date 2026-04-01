@@ -28,18 +28,32 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		});
 
 		heading(containerEl, "Folders");
-		this.textSetting("areasProjectsFolder", "Areas & projects folder");
+		this.textSetting(
+			"areasProjectsFolder",
+			"Areas & projects folder (fallback)",
+			"When the optional folders below are empty, Fulcrum uses this path for both areas and projects (single-tree layout).",
+		);
+		this.textSetting(
+			"areasFolder",
+			"Areas folder (optional)",
+			"When set, only notes under this path are indexed as areas. Leave empty to use the fallback folder above. Use when areas and projects live in different directories.",
+		);
+		this.textSetting(
+			"projectsFolder",
+			"Projects folder (optional)",
+			"When set, only notes under this path are indexed as projects. Leave empty to use the fallback folder above.",
+		);
 		this.textSetting("meetingsFolder", "Meetings folder root");
 		this.textSetting("completedProjectsFolder", "Completed projects folder");
 		this.toggleSetting(
 			"inferProjectsInAreasFolder",
 			"Infer projects without type field",
-			"When on, every note under the areas & projects folder is treated as a project unless its type is the area value. Turn off to require an explicit project type in frontmatter.",
+			"When on, every note under the projects folder (see above) is treated as a project unless its type is the area value. Turn off to require an explicit project type in frontmatter.",
 		);
 		new Setting(containerEl)
 			.setName("Indicate project status by")
 			.setDesc(
-				"Whether Fulcrum reads each project’s status from frontmatter or from the folder layout under your areas & projects path.",
+				"Whether Fulcrum reads each project’s status from frontmatter or from the folder layout under your projects folder (fallback path when projects folder is empty).",
 			)
 			.addDropdown((d) =>
 				d
@@ -63,7 +77,7 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		} else {
 			containerEl.createEl("p", {
 				cls: "fulcrum-settings-lead",
-				text: "Each immediate subfolder of your areas & projects folder is a status bucket. Notes directly in that folder use status “active” until you move them.",
+				text: "Each immediate subfolder of your projects folder is a status bucket. Notes directly in that folder use status “active” until you move them.",
 			});
 		}
 
@@ -382,13 +396,13 @@ export class FulcrumSettingTab extends PluginSettingTab {
 
 		heading(containerEl, "Display");
 		new Setting(containerEl)
-			.setName("Global activity display (days)")
+			.setName("Dashboard activity (days)")
 			.setDesc(
-				"How many days back to include in the Dashboard activity feed from all projects.",
+				"How many days of history to show in the Dashboard Activity section (1–7). The list is also limited to the 80 most recent items.",
 			)
 			.addSlider((sl) =>
 				sl
-					.setLimits(1, 90, 1)
+					.setLimits(1, 7, 1)
 					.setValue(this.plugin.settings.globalActivityDisplayDays)
 					.setDynamicTooltip()
 					.onChange(async (v) => {
@@ -530,10 +544,12 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		});
 	}
 
-	private textSetting<K extends keyof FulcrumSettings>(key: K, name: string): void {
+	private textSetting<K extends keyof FulcrumSettings>(key: K, name: string, desc?: string): void {
 		const v = this.plugin.settings[key];
 		const str = typeof v === "string" ? v : String(v);
-		new Setting(this.containerEl).setName(name).addText((t) =>
+		const row = new Setting(this.containerEl).setName(name);
+		if (desc) row.setDesc(desc);
+		row.addText((t) =>
 			t.setValue(str).onChange(async (value) => {
 				(this.plugin.settings as unknown as Record<string, unknown>)[key as string] = value;
 				await this.plugin.saveSettings();

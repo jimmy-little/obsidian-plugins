@@ -35,7 +35,7 @@ import {
 	revealOrCreateTimeTracked,
 	revealOrCreateTimeline,
 } from "./fulcrum/openViews";
-import {DEFAULT_SETTINGS, type FulcrumSettings} from "./fulcrum/settingsDefaults";
+import {DEFAULT_SETTINGS, DASHBOARD_ACTIVITY_MAX_DAYS, type FulcrumSettings} from "./fulcrum/settingsDefaults";
 import {postTaskNotesToggleStatus} from "./fulcrum/taskNotesApi";
 import {toggleInlineTaskLine, toggleTaskNoteFrontmatter} from "./fulcrum/taskVaultToggle";
 import {bumpSettingsRevision} from "./fulcrum/stores";
@@ -340,6 +340,15 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 		if (typeof merged.projectNewNoteFileNamePattern !== "string") {
 			merged.projectNewNoteFileNamePattern = DEFAULT_SETTINGS.projectNewNoteFileNamePattern;
+		}
+
+		{
+			const n = merged.globalActivityDisplayDays;
+			const clamped =
+				typeof n === "number" && Number.isFinite(n)
+					? Math.min(DASHBOARD_ACTIVITY_MAX_DAYS, Math.max(1, Math.round(n)))
+					: DEFAULT_SETTINGS.globalActivityDisplayDays;
+			merged.globalActivityDisplayDays = clamped;
 		}
 
 		this.settings = merged as FulcrumSettings;

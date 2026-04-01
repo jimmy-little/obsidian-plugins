@@ -46,7 +46,12 @@
 	}
 
 	$: doneTask = (void $settingsRevision, new Set(parseList(plugin.settings.taskDoneStatuses)));
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas);
+	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+		projects: snapshot.projects,
+		app: plugin.app,
+		typeField: plugin.settings.typeField,
+		areaTypeValue: plugin.settings.areaTypeValue,
+	});
 	$: onlyWork = $workRelatedOnly;
 
 	/** Single day shown; used to keep completed tasks that still “belong” on this day. */

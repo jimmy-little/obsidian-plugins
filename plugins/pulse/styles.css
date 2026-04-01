@@ -19,12 +19,2454 @@
 	--suite-person-card-border: 1px solid color-mix(in srgb, var(--background-modifier-border) 92%, transparent);
 }
 
-/* Plugin-specific overrides: pulse */
+/* ============================================================
+   Pulse — Workout Tracker Styles
+   Uses Obsidian CSS variables for theme compatibility
+   ============================================================ */
+
+/* ===========================================================
+   Full-Leaf View — 2-pane layout (mirrors Fulcrum pattern)
+   ============================================================ */
+
+/* Pin the shell to the leaf viewport */
+.workspace-leaf[data-type="pulse-workout-manager"] .workspace-leaf-content {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.workspace-leaf[data-type="pulse-workout-manager"] .view-content {
+	flex: 1 1 0%;
+	min-height: 0;
+	overflow: hidden;
+	position: relative;
+	box-sizing: border-box;
+}
+
+.workspace-leaf-content .view-content:has(.pulse-pm) {
+	position: relative;
+	height: 100%;
+	max-height: 100%;
+	min-height: 0;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.workspace-leaf-content .view-content .pulse-pm {
+	position: absolute;
+	inset: 0;
+	width: auto;
+	height: auto;
+	min-height: 0;
+	min-width: 0;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+/* ── Grid shell ── */
+.pulse-pm {
+	--pulse-pm-left-w: 20rem;
+	--pulse-pm-split-w: 5px;
+	display: grid;
+	grid-template-columns: var(--pulse-pm-left-w) var(--pulse-pm-split-w) minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr);
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	align-items: stretch;
+	background: var(--background-primary);
+	box-sizing: border-box;
+}
+
+.pulse-pm > .pulse-pm__sidebar,
+.pulse-pm > .pulse-pm__main {
+	min-height: 0;
+}
+
+.pulse-pm.pulse-pm-left-collapsed {
+	--pulse-pm-left-w: 2.35rem;
+	--pulse-pm-split-w: 0px;
+}
+
+/* ── Left sidebar ── */
+.pulse-pm__sidebar {
+	min-height: 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.pulse-pm__sidebar--left {
+	border-right: none;
+	background: var(--background-secondary);
+	overflow: hidden;
+}
+
+.pulse-pm-left-collapsed .pulse-pm__sidebar--left {
+	border-right: 1px solid var(--background-modifier-border);
+}
+
+/* ── Glyph bar (top toolbar) ── */
+.pulse-pm__glyph-bar {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 0.35rem;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.45rem 0.4rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
+}
+
+.pulse-pm-left-collapsed .pulse-pm__glyph-bar {
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 0.35rem;
+	padding: 0.5rem 0.2rem;
+}
+
+.pulse-pm__glyph-spacer {
+	flex: 1 1 auto;
+	min-width: 0.2rem;
+}
+
+.pulse-pm-left-collapsed .pulse-pm__glyph-spacer {
+	display: none;
+}
+
+.pulse-pm__glyph-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* Mobile: ≥48px touch targets (Apple HIG) */
+	width: 48px;
+	height: 48px;
+	min-width: 48px;
+	min-height: 48px;
+	padding: 0;
+	margin: 0;
+	border: none;
+	border-radius: var(--radius-m, 10px);
+	background: transparent;
+	color: var(--text-muted);
+	font-size: 1.25rem;
+	line-height: 1;
+	cursor: pointer;
+	box-shadow: none;
+	touch-action: manipulation;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.pulse-pm__glyph-btn svg {
+	width: 24px;
+	height: 24px;
+	stroke-width: 2px;
+	flex-shrink: 0;
+}
+
+.pulse-pm__glyph-btn:hover:not(:disabled) {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.pulse-pm__glyph-btn--active {
+	color: var(--text-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+}
+
+/* ── Splitter ── */
+.pulse-pm__split {
+	--input-shadow: none !important;
+	--shadow-s: none !important;
+	--shadow-l: none !important;
+	display: block;
+	min-width: 0;
+	width: 100%;
+	min-height: 0;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	border-left: 1px solid var(--background-modifier-border);
+	background: transparent;
+	box-shadow: none !important;
+	font-size: 0;
+	line-height: 0;
+	color: transparent;
+	cursor: col-resize;
+	touch-action: none;
+	box-sizing: border-box;
+	align-self: stretch;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.pulse-pm__split:hover:not(:disabled),
+.pulse-pm__split:focus-visible:not(:disabled) {
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+.pulse-pm__split:focus-visible:not(:disabled) {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+	z-index: 1;
+}
+
+.pulse-pm__split:disabled {
+	cursor: default;
+	border-left: none;
+	background: transparent;
+	opacity: 1;
+}
+
+/* ── Left scroll area ── */
+.pulse-pm__left-scroll {
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
+	overflow: auto;
+	padding: 0 0 0.75rem 0;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.pulse-pm-left-collapsed .pulse-pm__left-scroll {
+	display: none;
+}
+
+/* ── Main content area ── */
+.pulse-pm__main {
+	min-width: 0;
+	min-height: 0;
+	overflow: auto;
+	-webkit-overflow-scrolling: touch;
+	padding: 0.75rem 1.25rem 1.25rem;
+}
+
+.pulse-pm__main-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem 1rem;
+	margin-bottom: 0.65rem;
+}
+
+.pulse-pm__main-title {
+	margin: 0;
+	font-size: var(--font-ui-large, 1.25rem);
+	font-weight: 700;
+}
+
+.pulse-pm__main-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+	align-items: center;
+}
+
+.pulse-pm__tag {
+	display: inline-block;
+	padding: 0.15rem 0.5rem;
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	font-size: var(--font-ui-smaller, 0.8rem);
+	color: var(--text-muted);
+}
+
+.pulse-pm__tag--accent {
+	background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+	color: var(--interactive-accent);
+	font-weight: 600;
+}
+
+.pulse-pm__main-body {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.pulse-pm__workout-edit-fm {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 0.75rem 1.25rem;
+}
+
+.pulse-pm__workout-edit-field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+}
+
+.pulse-pm__workout-edit-notes {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.pulse-pm__workout-edit-notes-area {
+	width: 100%;
+	min-height: 4rem;
+	resize: vertical;
+}
+
+.pulse-pm__workout-edit-actions {
+	margin-top: 0.25rem;
+}
+
+.pulse-pm__workout-edit .pulse-pm__table .pulse-builder__inline-input {
+	width: 100%;
+	max-width: 7rem;
+	box-sizing: border-box;
+}
+
+/* ── Sections / blocks inside main ── */
+.pulse-pm__section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.pulse-pm__section-title {
+	margin: 0;
+	font-size: var(--font-ui-small, 0.9rem);
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.pulse-pm__chart-wrap {
+	border-radius: var(--radius-s);
+	overflow: hidden;
+}
+
+.pulse-pm__chart-wrap canvas {
+	width: 100% !important;
+	height: auto !important;
+	max-height: 240px;
+}
+
+.pulse-pm__highlight-card {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	padding: 0.65rem 0.85rem;
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	border-left: 3px solid var(--interactive-accent);
+}
+
+.pulse-pm__highlight-label {
+	font-size: var(--font-ui-smaller, 0.8rem);
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+}
+
+.pulse-pm__highlight-value {
+	font-size: 1.15rem;
+	font-weight: 700;
+	color: var(--interactive-accent);
+}
+
+.pulse-pm__highlight-sub {
+	font-size: var(--font-ui-smaller, 0.8rem);
+	color: var(--text-muted);
+}
+
+.pulse-pm__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--font-ui-small, 0.875rem);
+}
+
+.pulse-pm__table th {
+	text-align: left;
+	padding: 0.4rem 0.5rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller, 0.8rem);
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+.pulse-pm__table td {
+	padding: 0.35rem 0.5rem;
+	border-bottom: 1px solid var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+.pulse-pm__link {
+	color: var(--text-accent);
+	cursor: pointer;
+}
+
+.pulse-pm__link:hover {
+	text-decoration: underline;
+}
+
+.pulse-pm__exercise-block {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.pulse-pm__exercise-block-head h4 {
+	margin: 0;
+	color: var(--text-accent);
+}
+
+.pulse-pm__day-block {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	padding-bottom: 0.5rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.pulse-pm__day-block:last-child {
+	border-bottom: none;
+}
+
+/* ===========================================================
+   Sidebar — section list (mirrors Fulcrum sidebar rows)
+   ============================================================ */
+
+.pulse-sidebar-panel {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.pulse-sidebar__section {
+	width: 100%;
+}
+
+.pulse-sidebar__section-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.4rem 0.45rem 0.35rem;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+	background: color-mix(in srgb, var(--background-secondary) 65%, var(--background-primary));
+}
+
+.pulse-sidebar__section-title {
+	font-size: var(--font-ui-smaller, 0.78rem);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+}
+
+.pulse-sidebar__section-action {
+	flex-shrink: 0;
+}
+
+.pulse-sidebar__empty {
+	padding: 0.5rem 0.65rem;
+	font-size: var(--font-ui-smaller, 0.78rem);
+	color: var(--text-faint);
+}
+
+/* ── Sidebar lists ── */
+.pulse-sidebar__list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	width: 100%;
+}
+
+.pulse-sidebar__list > li {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+}
+
+.pulse-sidebar__day-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	width: 100%;
+}
+
+.pulse-sidebar__day-list > li {
+	margin: 0;
+	padding: 0;
+}
+
+/* ── Sidebar rows (mail-style, like Fulcrum) ── */
+.pulse-sidebar__row {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	width: 100%;
+	text-align: left;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+	background: transparent;
+	font: inherit;
+	color: var(--text-normal);
+	cursor: pointer;
+	box-sizing: border-box;
+	outline: none;
+}
+
+.pulse-sidebar__row:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+.pulse-sidebar__row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.pulse-sidebar__row--active {
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
+}
+
+.pulse-sidebar__row--active:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary));
+}
+
+.pulse-sidebar__row--group {
+	border-left: 4px solid var(--interactive-accent);
+}
+
+.pulse-sidebar__row--day {
+	padding-left: 1rem;
+	border-left: 4px solid transparent;
+}
+
+.pulse-sidebar__row-inner {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	padding: 0.4rem 0.45rem 0.45rem 0.55rem;
+	box-sizing: border-box;
+}
+
+.pulse-sidebar__row-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.25rem 0.5rem;
+	width: 100%;
+}
+
+.pulse-sidebar__row-name {
+	font-size: var(--font-ui-small, 0.875rem);
+	font-weight: 600;
+	line-height: 1.35;
+	color: var(--text-normal);
+}
+
+.pulse-sidebar__row-name--day {
+	font-weight: 500;
+	font-size: var(--font-ui-smaller, 0.8rem);
+}
+
+.pulse-sidebar__row-meta {
+	font-size: var(--font-ui-smaller, 0.78rem);
+	color: var(--text-muted);
+	line-height: 1.4;
+}
+
+.pulse-sidebar__meta-sep {
+	color: var(--text-faint);
+}
+
+.pulse-sidebar__badge {
+	display: inline-block;
+	padding: 0.05rem 0.4rem;
+	border-radius: var(--radius-s);
+	background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+	color: var(--interactive-accent);
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 1px);
+	font-weight: 600;
+}
+
+/* ── Exercise groups in sidebar ── */
+.pulse-sidebar__group {
+	width: 100%;
+}
+
+.pulse-sidebar__group-title {
+	padding: 0.35rem 0.45rem 0.25rem;
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 1px);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-faint);
+	background: color-mix(in srgb, var(--background-secondary) 65%, var(--background-primary));
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+}
+
+/* ── Sidebar search ── */
+.pulse-sidebar__search-wrap {
+	padding: 0.35rem 0.45rem;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+}
+
+.pulse-sidebar__search {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.3rem 0.45rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller, 0.78rem);
+}
+
+.pulse-sidebar__search:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
+.pulse-sidebar__exercise-container {
+	width: 100%;
+}
+
+/* --- Modal (kept for backward compat / mobile) --- */
+.pulse-workout-modal {
+	width: 90vw;
+	max-width: 640px;
+	height: 85vh;
+	max-height: 900px;
+}
+
+.pulse-workout-modal .modal-content {
+	padding: 0;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.pulse-workout-modal-mobile {
+	width: 100vw;
+	max-width: 100vw;
+	height: 100vh;
+	max-height: 100vh;
+	border-radius: 0;
+}
+
+/* --- App Shell --- */
+.pulse-workout-app {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+}
+
+/* --- Tab Bar --- */
+.pulse-workout-tab-bar {
+	display: flex;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	flex-shrink: 0;
+	z-index: 10;
+}
+
+.pulse-workout-modal-mobile .pulse-workout-tab-bar {
+	border-bottom: none;
+	border-top: 1px solid var(--background-modifier-border);
+	padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.pulse-workout-tab {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 8px 4px;
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 11px;
+	gap: 2px;
+	transition: color 0.15s ease;
+}
+
+.pulse-workout-tab:hover {
+	color: var(--text-normal);
+}
+
+.pulse-workout-tab-active {
+	color: var(--interactive-accent);
+}
+
+.pulse-workout-tab-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.pulse-workout-tab-icon svg {
+	width: 20px;
+	height: 20px;
+}
+
+.pulse-workout-tab-label {
+	font-weight: 500;
+}
+
+/* --- Content Area --- */
+.pulse-workout-content {
+	flex: 1;
+	overflow-y: auto;
+	padding: 16px;
+	-webkit-overflow-scrolling: touch;
+}
+
+/* --- Loading --- */
+.pulse-workout-loading {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	color: var(--text-muted);
+}
+
+/* --- Muted / Error Text --- */
+.pulse-workout-muted {
+	color: var(--text-muted);
+	font-size: 0.85em;
+}
+
+.pulse-workout-error {
+	color: var(--text-error);
+}
+
+/* --- Buttons --- */
+.pulse-workout-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 10px 20px;
+	border-radius: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	border: none;
+	transition: all 0.15s ease;
+	min-height: 44px;
+	min-width: 44px;
+}
+
+.pulse-workout-btn-primary {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.pulse-workout-btn-primary:hover {
+	filter: brightness(1.1);
+}
+
+.pulse-workout-btn-secondary {
+	background: var(--background-modifier-border);
+	color: var(--text-normal);
+}
+
+.pulse-workout-btn-secondary:hover {
+	background: var(--background-modifier-hover);
+}
+
+.pulse-workout-btn-link {
+	background: transparent;
+	color: var(--interactive-accent);
+	padding: 8px 12px;
+}
+
+.pulse-workout-btn-small {
+	padding: 6px 12px;
+	font-size: 12px;
+	min-height: 32px;
+}
+
+.pulse-workout-btn-finish {
+	background: #28a745;
+	color: white;
+	flex: 1;
+}
+
+.pulse-workout-btn-finish:hover {
+	background: #218838;
+}
+
+/* --- Action bar (save / finish): in document flow only — do not stick above mobile keyboard --- */
+.pulse-workout-action-bar {
+	display: flex;
+	gap: 10px;
+	padding: 16px 0 max(20px, env(safe-area-inset-bottom));
+	position: static;
+	bottom: auto;
+	inset: auto;
+	z-index: auto;
+	flex-shrink: 0;
+	background: transparent;
+	border-top: none;
+}
+
+.pulse-workout-action-bar .pulse-workout-btn {
+	flex: 1;
+}
+
+/* --- Resume cards --- */
+.pulse-workout-resume-section {
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.pulse-workout-resume-section h3 {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.pulse-workout-resume-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 10px 12px;
+	background: var(--background-secondary);
+	border-radius: 8px;
+	border-left: 3px solid var(--interactive-accent);
+}
+
+.pulse-workout-resume-info {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.pulse-workout-resume-name {
+	font-weight: 600;
+	font-size: 14px;
+	color: var(--text-normal);
+}
+
+.pulse-workout-resume-actions {
+	display: flex;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+/* --- Idle / Preview --- */
+.pulse-workout-idle {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	padding-top: 24px;
+}
+
+.pulse-workout-preview {
+	width: 100%;
+	background: var(--background-secondary);
+	border-radius: 12px;
+	padding: 16px;
+	margin-bottom: 8px;
+}
+
+.pulse-workout-preview h3 {
+	margin: 0 0 4px 0;
+	font-size: 18px;
+}
+
+.pulse-workout-preview-list {
+	margin-top: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.pulse-workout-preview-item {
+	display: flex;
+	justify-content: space-between;
+	padding: 4px 0;
+}
+
+/* --- Active Workout (mobile-first: narrow column, large type) --- */
+.pulse-workout-active {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	width: 100%;
+	max-width: 26rem;
+	margin: 0 auto;
+	box-sizing: border-box;
+	padding: 0 2px;
+}
+
+.pulse-workout-timer-bar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 10px 4px 12px;
+	position: sticky;
+	top: 0;
+	background: var(--background-primary);
+	z-index: 5;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+}
+
+.pulse-workout-session-name {
+	font-weight: 800;
+	font-size: 1.05rem;
+	letter-spacing: -0.02em;
+}
+
+.pulse-workout-elapsed {
+	font-family: var(--font-monospace);
+	font-size: 1.35rem;
+	font-weight: 800;
+	font-variant-numeric: tabular-nums;
+	color: var(--interactive-accent);
+}
+
+/* --- Rest Timer --- */
+.pulse-workout-rest-timer-container {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 1rem;
+	background: var(--background-secondary);
+	border-radius: 14px;
+	padding: 14px 18px;
+}
+
+.pulse-workout-rest-display {
+	font-family: var(--font-monospace);
+	font-size: 1.5rem;
+	font-weight: 800;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-accent);
+}
+
+/* --- Exercise Cards --- */
+.pulse-workout-exercise-card {
+	background: var(--background-secondary);
+	border-radius: 16px;
+	padding: 14px 14px 16px;
+}
+
+.pulse-workout-exercise-header {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	margin-bottom: 12px;
+}
+
+.pulse-workout-exercise-title {
+	margin: 0;
+	font-size: 1.35rem;
+	font-weight: 800;
+	line-height: 1.2;
+	letter-spacing: -0.03em;
+	color: var(--text-normal);
+}
+
+.pulse-workout-exercise-last {
+	font-size: 0.95rem;
+	font-weight: 600;
+}
+
+.pulse-workout-exercise-list {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+/* --- Set Rows --- */
+.pulse-workout-set-header {
+	display: grid;
+	grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr) 52px;
+	gap: 10px;
+	align-items: end;
+	padding: 0 0 8px 0;
+}
+
+.pulse-workout-set-header-label {
+	font-size: 0.72rem;
+	font-weight: 800;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	line-height: 1.2;
+}
+
+.pulse-workout-set-header-spacer {
+	min-width: 0;
+}
+
+.pulse-workout-sets {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.pulse-workout-set-row {
+	display: grid;
+	grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr) 52px;
+	gap: 10px;
+	align-items: center;
+}
+
+.pulse-workout-set-time {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	min-width: 0;
+}
+
+.pulse-workout-input--time {
+	min-width: 0;
+	max-width: 72px;
+	padding-left: 6px;
+	padding-right: 6px;
+}
+
+.pulse-workout-set-time-sep {
+	font-weight: 800;
+	opacity: 0.45;
+	user-select: none;
+}
+
+.pulse-workout-set-distance {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.pulse-workout-distance-unit {
+	font-size: 0.72rem;
+	font-weight: 800;
+	color: var(--text-muted);
+	white-space: nowrap;
+	letter-spacing: 0.04em;
+}
+
+.pulse-workout-set-completed {
+	opacity: 0.55;
+}
+
+.pulse-workout-set-completed .pulse-workout-input--log {
+	font-weight: 800;
+	opacity: 0.92;
+	color: var(--text-muted) !important;
+	-webkit-text-fill-color: var(--text-muted);
+}
+
+.pulse-workout-set-num {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	margin: 0 auto;
+	font-weight: 800;
+	font-size: 1rem;
+	text-align: center;
+	color: var(--text-normal);
+	border: 2px solid var(--background-modifier-border);
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--background-primary) 60%, transparent);
+}
+
+.pulse-workout-input {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 8px 10px;
+	font-size: 14px;
+	color: var(--text-normal);
+	text-align: center;
+	min-height: 36px;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+/* Large logging fields (in-progress workout): max legibility on phone */
+.pulse-workout-input--log {
+	-webkit-appearance: none;
+	appearance: none;
+	font-size: clamp(1.65rem, 5.5vw, 2rem);
+	font-weight: 900;
+	font-variant-numeric: tabular-nums;
+	min-height: 58px;
+	padding: 14px 12px;
+	border-radius: 14px;
+	border-width: 2px;
+	line-height: 1.05;
+	letter-spacing: -0.02em;
+	touch-action: manipulation;
+	/* High contrast: avoid washed-out gray text in WebKit */
+	color: var(--text-normal) !important;
+	-webkit-text-fill-color: var(--text-normal);
+	caret-color: var(--interactive-accent);
+	opacity: 1;
+	background: var(--background-modifier-form-field, var(--background-primary));
+	border-color: color-mix(in srgb, var(--text-normal) 22%, var(--background-modifier-border));
+}
+
+.pulse-workout-input:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
+.pulse-workout-input--log:focus {
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+	border-color: var(--interactive-accent);
+}
+
+.pulse-workout-input--log::placeholder {
+	color: var(--text-faint);
+	opacity: 1;
+	-webkit-text-fill-color: var(--text-faint);
+}
+
+.pulse-workout-input-full {
+	width: 100%;
+}
+
+.pulse-workout-check {
+	width: 52px;
+	height: 52px;
+	min-width: 52px;
+	min-height: 52px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	border: 2px solid var(--background-modifier-border);
+	background: transparent;
+	cursor: pointer;
+	color: var(--text-muted);
+	transition: all 0.15s ease;
+}
+
+.pulse-workout-check svg {
+	width: 22px;
+	height: 22px;
+	stroke-width: 2.5px;
+}
+
+.pulse-workout-check-done {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+/* Larger CTAs during active workout */
+.pulse-workout-active .pulse-workout-btn {
+	font-size: 1rem;
+	font-weight: 800;
+	min-height: 52px;
+	padding: 14px 18px;
+	border-radius: 12px;
+	letter-spacing: -0.01em;
+}
+
+.pulse-workout-active .pulse-workout-btn-small {
+	font-size: 0.95rem;
+	font-weight: 700;
+	min-height: 46px;
+	padding: 10px 16px;
+	border-radius: 10px;
+}
+
+.pulse-workout-active .pulse-workout-action-bar {
+	padding: 18px 0 max(24px, env(safe-area-inset-bottom));
+	margin-top: 0.5rem;
+	border-top: 1px solid var(--background-modifier-border);
+	background: transparent;
+}
+
+.pulse-workout-active .pulse-workout-btn-finish {
+	font-size: 1.05rem;
+}
+
+/* --- Completion Screen --- */
+.pulse-workout-complete {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	padding-top: 32px;
+	gap: 16px;
+}
+
+.pulse-workout-complete h2 {
+	margin: 0;
+}
+
+.pulse-workout-complete-stats {
+	display: flex;
+	gap: 24px;
+	flex-wrap: wrap;
+	justify-content: center;
+	margin: 12px 0;
+}
+
+.pulse-workout-stat {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+.pulse-workout-stat-value {
+	font-size: 28px;
+	font-weight: 700;
+	color: var(--interactive-accent);
+}
+
+.pulse-workout-stat-label {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.pulse-workout-new-prs {
+	background: var(--background-secondary);
+	border-radius: 12px;
+	padding: 12px 20px;
+	width: 100%;
+	max-width: 300px;
+}
+
+.pulse-workout-new-prs h3 {
+	margin: 0 0 8px 0;
+	font-size: 14px;
+}
+
+.pulse-workout-pr-item {
+	padding: 4px 0;
+	font-size: 14px;
+}
+
+/* --- History --- */
+.pulse-workout-history {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.pulse-workout-history-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 12px 8px;
+	border-radius: 8px;
+	cursor: pointer;
+	transition: background 0.1s ease;
+}
+
+.pulse-workout-history-row:hover {
+	background: var(--background-secondary);
+}
+
+.pulse-workout-history-info {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.pulse-workout-history-date {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.pulse-workout-history-name {
+	font-weight: 600;
+}
+
+.pulse-workout-history-meta {
+	display: flex;
+	gap: 12px;
+	font-size: 13px;
+	color: var(--text-muted);
+}
+
+/* --- Detail Views --- */
+.pulse-workout-detail-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+.pulse-workout-detail-header h3 {
+	margin: 0;
+	flex: 1;
+}
+
+.pulse-workout-detail-exercise {
+	margin-bottom: 16px;
+}
+
+.pulse-workout-detail-exercise h4 {
+	margin: 0 0 8px 0;
+}
+
+.pulse-workout-detail-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.pulse-workout-detail-table th {
+	text-align: left;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: 11px;
+	text-transform: uppercase;
+}
+
+.pulse-workout-detail-table td {
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+
+/* --- Exercises Tab --- */
+.pulse-workout-search-bar {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 16px;
+}
+
+.pulse-workout-search {
+	flex: 1;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 8px 12px;
+	font-size: 14px;
+	color: var(--text-normal);
+	min-height: 36px;
+}
+
+.pulse-workout-search:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
+.pulse-workout-exercise-groups {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.pulse-workout-group-header {
+	margin: 12px 0 4px 0;
+	font-size: 13px;
+	color: var(--text-muted);
+	text-transform: uppercase;
+}
+
+.pulse-workout-exercise-row {
+	padding: 10px 8px;
+	border-radius: 8px;
+	cursor: pointer;
+	transition: background 0.1s ease;
+}
+
+.pulse-workout-exercise-row:hover {
+	background: var(--background-secondary);
+}
+
+.pulse-workout-exercise-info {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.pulse-workout-exercise-meta {
+	display: flex;
+	gap: 12px;
+	margin-bottom: 12px;
+	font-size: 13px;
+	color: var(--text-muted);
+}
+
+.pulse-workout-pr-badge {
+	background: var(--background-secondary);
+	border-radius: 8px;
+	padding: 8px 12px;
+	margin-bottom: 12px;
+	font-weight: 600;
+}
+
+/* --- Charts --- */
+.pulse-workout-chart-container {
+	position: relative;
+	height: 200px;
+	margin: 12px 0;
+}
+
+.pulse-workout-chart-small {
+	height: 160px;
+}
+
+/* --- Stats --- */
+.pulse-workout-stats {
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+}
+
+.pulse-workout-stats-section h3 {
+	margin: 0 0 8px 0;
+	font-size: 16px;
+}
+
+/* --- Heatmap --- */
+.pulse-workout-heatmap {
+	display: flex;
+	gap: 2px;
+	overflow-x: auto;
+}
+
+.pulse-workout-heatmap-labels {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex-shrink: 0;
+}
+
+.pulse-workout-heatmap-label {
+	width: 24px;
+	height: 12px;
+	font-size: 9px;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+}
+
+.pulse-workout-heatmap-grid {
+	display: flex;
+	gap: 2px;
+}
+
+.pulse-workout-heatmap-col {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.pulse-workout-heatmap-cell {
+	width: 12px;
+	height: 12px;
+	border-radius: 2px;
+	background: var(--background-modifier-border);
+}
+
+.pulse-workout-heatmap-active {
+	background: var(--interactive-accent);
+}
+
+/* --- PR Table --- */
+.pulse-workout-pr-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.pulse-workout-pr-table th {
+	text-align: left;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: 11px;
+	text-transform: uppercase;
+}
+
+.pulse-workout-pr-table td {
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+
+/* --- Code Block Renderers --- */
+.pulse-workout-log-block,
+.pulse-workout-session-block {
+	padding: 8px 0;
+}
+
+.pulse-workout-sparkline {
+	margin-bottom: 8px;
+}
+
+.pulse-workout-log-table,
+.pulse-workout-session-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.pulse-workout-log-table th,
+.pulse-workout-session-table th {
+	text-align: left;
+	padding: 4px 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: 11px;
+}
+
+.pulse-workout-log-table td,
+.pulse-workout-session-table td {
+	padding: 4px 8px;
+	border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+
+/* --- Forms --- */
+.pulse-workout-new-exercise {
+	max-width: 400px;
+	margin: 0 auto;
+}
+
+.pulse-workout-form-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 12px;
+}
+
+.pulse-workout-form-row label {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-muted);
+}
+
+.pulse-workout-select {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 8px 10px;
+	font-size: 14px;
+	color: var(--text-normal);
+	min-height: 36px;
+}
+
+.pulse-workout-form-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 16px;
+}
+
+/* --- Overlay / Picker --- */
+.pulse-workout-overlay {
+	position: absolute;
+	inset: 0;
+	background: var(--background-primary);
+	z-index: 20;
+	overflow-y: auto;
+	padding: 16px;
+}
+
+.pulse-workout-exercise-picker {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.pulse-workout-exercise-pick-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+.pulse-workout-exercise-pick-item {
+	display: flex;
+	justify-content: space-between;
+	padding: 10px 8px;
+	border-radius: 8px;
+	cursor: pointer;
+	transition: background 0.1s ease;
+}
+
+.pulse-workout-exercise-pick-item:hover {
+	background: var(--background-secondary);
+}
+
+/* --- Program Picker --- */
+.pulse-workout-program-picker {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.pulse-workout-program-card {
+	background: var(--background-secondary);
+	border-radius: 12px;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.pulse-workout-program-card h4 {
+	margin: 0;
+}
+
+/* ============================================================
+   Exercise Log Block (pulse-log) — rich stats dashboard
+   ============================================================ */
+
+.pulse-log-block {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 4px 0;
+}
+
+/* --- Stat cards --- */
+.pulse-log-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+	gap: 8px;
+}
+
+.pulse-log-card {
+	background: var(--background-secondary);
+	border-radius: 8px;
+	padding: 10px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.pulse-log-card-accent {
+	border-left: 3px solid var(--interactive-accent);
+}
+
+.pulse-log-card-label {
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+	font-weight: 600;
+}
+
+.pulse-log-card-value {
+	font-size: 18px;
+	font-weight: 700;
+	color: var(--text-normal);
+	line-height: 1.2;
+}
+
+.pulse-log-card-accent .pulse-log-card-value {
+	color: var(--interactive-accent);
+}
+
+.pulse-log-card-sub {
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+/* --- Section titles --- */
+.pulse-log-section {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.pulse-log-section-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+}
+
+.pulse-log-section-title {
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+}
+
+/* --- E1RM progress chart (SVG) --- */
+.pulse-log-chart-svg {
+	width: 100%;
+	height: auto;
+	max-height: 160px;
+}
+
+.pulse-log-grid-line {
+	stroke: var(--background-modifier-border);
+	stroke-width: 0.5;
+}
+
+.pulse-log-axis-label {
+	fill: var(--text-muted);
+	font-size: 9px;
+	text-anchor: end;
+	font-family: var(--font-monospace);
+}
+
+.pulse-log-date-label {
+	fill: var(--text-muted);
+	font-size: 9px;
+	text-anchor: middle;
+	font-family: var(--font-monospace);
+}
+
+.pulse-log-line {
+	fill: none;
+	stroke: var(--interactive-accent);
+	stroke-width: 2;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+}
+
+.pulse-log-area {
+	fill: url(#pulse-e1rm-gradient);
+}
+
+.pulse-log-grad-top {
+	stop-color: var(--interactive-accent);
+	stop-opacity: 0.25;
+}
+
+.pulse-log-grad-bottom {
+	stop-color: var(--interactive-accent);
+	stop-opacity: 0;
+}
+
+.pulse-log-dot {
+	fill: var(--interactive-accent);
+}
+
+/* --- Activity strip (horizontal calendar) --- */
+.pulse-log-activity {
+	position: relative;
+}
+
+.pulse-log-activity-months {
+	position: relative;
+	height: 14px;
+	margin-bottom: 2px;
+}
+
+.pulse-log-month-label {
+	position: absolute;
+	font-size: 9px;
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	transform: translateX(-50%);
+}
+
+.pulse-log-activity-strip {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px;
+}
+
+.pulse-log-activity-cell {
+	width: 9px;
+	height: 9px;
+	border-radius: 2px;
+	background: var(--background-modifier-border);
+	flex-shrink: 0;
+}
+
+.pulse-log-activity-hit {
+	background: var(--interactive-accent);
+}
+
+/* --- Recent log table --- */
+.pulse-log-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.pulse-log-table th {
+	text-align: left;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	font-weight: 600;
+}
+
+.pulse-log-table td {
+	padding: 5px 8px;
+	border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+
+.pulse-log-relative {
+	color: var(--text-muted);
+	font-size: 11px;
+}
+
+.pulse-log-more {
+	text-align: center;
+	padding: 8px 0 4px;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+/* ===========================================================
+   Workout Builder & Program Builder
+   ============================================================ */
+
+/* ── Shared builder layout ── */
+.pulse-builder__section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	margin-bottom: 0.75rem;
+}
+
+.pulse-builder__section--row {
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.pulse-builder__field-label {
+	font-size: var(--font-ui-smaller, 0.8rem);
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+}
+
+.pulse-builder__name-row {
+	margin-bottom: 0.75rem;
+}
+
+.pulse-builder__name-input {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.5rem 0.65rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium, 1rem);
+	font-weight: 600;
+}
+
+.pulse-builder__name-input:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
+.pulse-builder__exercise-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin-bottom: 0.5rem;
+}
+
+.pulse-builder__empty {
+	padding: 1.5rem 1rem;
+	text-align: center;
+	border: 2px dashed var(--background-modifier-border);
+	border-radius: var(--radius-s);
+}
+
+.pulse-builder__empty p {
+	margin: 0.25rem 0;
+}
+
+.pulse-builder__add-btn {
+	width: 100%;
+}
+
+.pulse-builder__actions {
+	display: flex;
+	gap: 0.5rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid var(--background-modifier-border);
+	margin-top: 0.5rem;
+}
+
+.pulse-builder__actions .pulse-workout-btn {
+	flex: 1;
+}
+
+/* ── Exercise card in builder ── */
+.pulse-builder__card {
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	padding: 0.65rem 0.75rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.pulse-builder__card-head {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.pulse-builder__card-name-area {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+}
+
+.pulse-builder__card-name {
+	font-weight: 600;
+	font-size: var(--font-ui-small, 0.875rem);
+	color: var(--text-normal);
+}
+
+.pulse-builder__card-meta {
+	font-size: var(--font-ui-smaller, 0.78rem);
+	color: var(--text-muted);
+}
+
+.pulse-builder__order {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	flex-shrink: 0;
+}
+
+.pulse-builder__order-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: var(--radius-s);
+}
+
+.pulse-builder__order-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.pulse-builder__remove-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: var(--radius-s);
+	flex-shrink: 0;
+}
+
+.pulse-builder__remove-btn:hover {
+	background: color-mix(in srgb, var(--text-error) 12%, transparent);
+	color: var(--text-error);
+}
+
+/* ── Stepper + inline inputs (iPhone-style) ── */
+.pulse-builder__controls {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	align-items: center;
+}
+
+.pulse-builder__control-group {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.pulse-builder__control-label {
+	font-size: var(--font-ui-smaller, 0.78rem);
+	font-weight: 600;
+	color: var(--text-muted);
+	min-width: 2.5rem;
+}
+
+.pulse-builder__stepper {
+	display: inline-flex;
+	align-items: center;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	overflow: hidden;
+	background: var(--background-primary);
+}
+
+.pulse-builder__stepper-btn {
+	width: 30px;
+	height: 30px;
+	border: none;
+	background: transparent;
+	color: var(--text-normal);
+	font-size: 1rem;
+	font-weight: 600;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+}
+
+.pulse-builder__stepper-btn:hover {
+	background: var(--background-modifier-hover);
+}
+
+.pulse-builder__stepper-btn:active {
+	background: var(--interactive-accent);
+	color: white;
+}
+
+.pulse-builder__stepper-value {
+	min-width: 2rem;
+	text-align: center;
+	font-weight: 600;
+	font-size: var(--font-ui-small, 0.875rem);
+	padding: 0 0.15rem;
+	border-left: 1px solid var(--background-modifier-border);
+	border-right: 1px solid var(--background-modifier-border);
+}
+
+.pulse-builder__inline-input {
+	width: 3.5rem;
+	padding: 0.25rem 0.35rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small, 0.875rem);
+	text-align: center;
+}
+
+.pulse-builder__inline-input:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
+/* ── Exercise picker overlay ── */
+.pulse-builder__overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	background: color-mix(in srgb, var(--background-primary) 85%, transparent);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	backdrop-filter: blur(4px);
+}
+
+.pulse-builder__picker {
+	width: 90%;
+	max-width: 480px;
+	max-height: 80vh;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	box-shadow: var(--shadow-s, 0 2px 8px rgba(0,0,0,0.15));
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.pulse-builder__picker-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.65rem 0.85rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
+}
+
+.pulse-builder__picker-head h3 {
+	margin: 0;
+	font-size: var(--font-ui-medium, 1rem);
+}
+
+.pulse-builder__picker-close {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: var(--radius-s);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.pulse-builder__picker-close:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.pulse-builder__picker-search {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.45rem 0.85rem;
+	border: none;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small, 0.875rem);
+	flex-shrink: 0;
+}
+
+.pulse-builder__picker-search:focus {
+	outline: none;
+	background: var(--background-primary);
+}
+
+.pulse-builder__picker-list {
+	flex: 1;
+	overflow-y: auto;
+	padding: 0.35rem 0;
+}
+
+.pulse-builder__picker-group-title {
+	padding: 0.3rem 0.85rem 0.2rem;
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 1px);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-faint);
+	background: var(--background-secondary);
+}
+
+.pulse-builder__picker-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.4rem 0.85rem;
+	cursor: pointer;
+}
+
+.pulse-builder__picker-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.pulse-builder__picker-row--added {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.pulse-builder__picker-row-info {
+	display: flex;
+	flex-direction: column;
+	gap: 0.05rem;
+	min-width: 0;
+}
+
+.pulse-builder__picker-row-name {
+	font-size: var(--font-ui-small, 0.875rem);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.pulse-builder__picker-row-meta {
+	font-size: var(--font-ui-smaller, 0.78rem);
+	color: var(--text-muted);
+}
+
+.pulse-builder__picker-row-badge {
+	font-size: var(--font-ui-smaller, 0.78rem);
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.pulse-builder__picker-add {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: none;
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	color: var(--interactive-accent);
+	cursor: pointer;
+	border-radius: var(--radius-s);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.pulse-builder__picker-add:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+}
+
+.pulse-builder__picker-done {
+	margin: 0.5rem 0.85rem 0.65rem;
+	flex-shrink: 0;
+}
+
+/* ── Program builder specific ── */
+.pulse-pgm__day-picker {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+
+.pulse-pgm__day-chip {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 2.75rem;
+	padding: 0.3rem 0.5rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller, 0.78rem);
+	font-weight: 600;
+	cursor: pointer;
+	user-select: none;
+	transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.pulse-pgm__day-chip:hover {
+	border-color: var(--interactive-accent);
+	color: var(--text-normal);
+}
+
+.pulse-pgm__day-chip--active {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	color: white;
+}
+
+.pulse-pgm__day-chip--active:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 85%, black);
+}
+
+.pulse-pgm__toggle-row {
+	display: flex;
+	gap: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	overflow: hidden;
+	width: fit-content;
+}
+
+.pulse-pgm__toggle-btn {
+	padding: 0.35rem 0.75rem;
+	border: none;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller, 0.78rem);
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.pulse-pgm__toggle-btn:not(:last-child) {
+	border-right: 1px solid var(--background-modifier-border);
+}
+
+.pulse-pgm__toggle-btn:hover {
+	background: var(--background-modifier-hover);
+}
+
+.pulse-pgm__toggle-btn--active {
+	background: var(--interactive-accent);
+	color: white;
+}
+
+.pulse-pgm__toggle-btn--active:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 85%, black);
+}
+
+.pulse-pgm__days-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.pulse-pgm__day-card {
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	overflow: hidden;
+}
+
+.pulse-pgm__day-card-head {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.55rem 0.65rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.pulse-pgm__day-card-name {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+}
+
+.pulse-pgm__day-card-actions {
+	display: flex;
+	gap: 0.15rem;
+	flex-shrink: 0;
+}
+
+.pulse-pgm__day-exercises {
+	padding: 0.35rem 0.65rem 0.45rem;
+}
+
+.pulse-pgm__day-exercise-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.2rem 0;
+	font-size: var(--font-ui-smaller, 0.78rem);
+}
+
+.pulse-pgm__day-exercise-row:not(:last-child) {
+	border-bottom: 1px solid var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+/* ===========================================================
+   Exercise Detail — Edit Form + Log Cards
+   ============================================================ */
+
+/* ── Edit form (toggle) ── */
+.pulse-ex__edit-form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	padding: 0.75rem;
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.pulse-ex__edit-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.pulse-ex__edit-row label {
+	min-width: 5.5rem;
+	flex-shrink: 0;
+}
+
+.pulse-ex__edit-input {
+	flex: 1;
+	min-width: 0;
+	width: auto !important;
+}
+
+.pulse-ex__edit-select {
+	flex: 1;
+	min-width: 0;
+	padding: 0.25rem 0.35rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small, 0.875rem);
+}
+
+.pulse-ex__edit-select:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
+.pulse-ex__edit-actions {
+	display: flex;
+	justify-content: flex-end;
+	padding-top: 0.25rem;
+}
+
+/* ── Log entry cards ── */
+.pulse-ex__log-card {
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	overflow: hidden;
+	border: 1px solid transparent;
+	transition: border-color 0.15s;
+}
+
+.pulse-ex__log-card--expanded {
+	border-color: var(--background-modifier-border);
+}
+
+.pulse-ex__log-card-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.5rem 0.65rem;
+	gap: 0.5rem;
+}
+
+.pulse-ex__log-card-head:hover {
+	background: var(--background-modifier-hover);
+}
+
+.pulse-ex__log-card-date {
+	font-size: var(--font-ui-small, 0.875rem);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.pulse-ex__log-card-summary {
+	font-size: var(--font-ui-smaller, 0.78rem);
+	color: var(--text-muted);
+	text-align: right;
+	flex-shrink: 0;
+}
+
+.pulse-ex__log-sets {
+	padding: 0 0.65rem 0.5rem;
+}
+
+.pulse-ex__log-session-link {
+	padding: 0.35rem 0.5rem 0;
+	font-size: var(--font-ui-smaller, 0.78rem);
+}
+
+/* Glyph button in header (re-used from glyph bar) */
+.pulse-pm__main-head .pulse-pm__glyph-btn {
+	flex-shrink: 0;
+}
 
 /*
  * Shared “suite people” UI — portrait cards + inline pills.
  * Used by Fulcrum (related people, companion chrome, markdown people links) and
- * intended for CRM and other plugins: reuse the same class names + markup shape.
+ * intended for Orbit, Fulcrum, and other plugins: reuse the same class names + markup shape.
  *
  * Markup (card): .fulcrum-person-card > .fulcrum-person-card__top > .fulcrum-person-card__avatar (+ img|svg) + .fulcrum-person-card__name
  * Markup (inline pill): .fulcrum-person-inline-pill (a or span) > .fulcrum-person-inline-pill__avatar + .fulcrum-person-inline-pill__name
@@ -57,7 +2499,7 @@
 	margin: 0;
 	width: var(--suite-person-card-max-width, 5rem);
 	max-width: var(--suite-person-card-max-width, 5rem);
-	height: 8rem;
+	height: 7rem;
 	padding: 0;
 	gap: 0;
 	border: var(--suite-person-card-border, 1px solid color-mix(in srgb, var(--background-modifier-border) 92%, transparent));

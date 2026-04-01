@@ -1363,6 +1363,17 @@ button.fulcrum-task-card__note-type:focus-visible {
 	padding: 0.75rem 1rem 1.25rem;
 }
 
+/* Kanban: fill main pane; horizontal scroll on board, vertical scroll inside each column */
+.fulcrum-pm__main--kanban-fill {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.fulcrum-pm__main--kanban-fill > .fulcrum-pm__main-head {
+	flex-shrink: 0;
+}
+
 .fulcrum-pm__main-head {
 	display: flex;
 	flex-wrap: wrap;
@@ -1733,6 +1744,8 @@ button.fulcrum-task-card__note-type:focus-visible {
 	gap: 0.45rem 0.5rem;
 	width: max(100%, 44rem);
 	min-width: min(100%, 52rem);
+	/* Not a time-scaled view: each column height follows its events only */
+	align-items: start;
 }
 
 .fulcrum-dashboard-meetings__day-col {
@@ -1781,6 +1794,8 @@ button.fulcrum-task-card__note-type:focus-visible {
 	flex-direction: column;
 	gap: 0.35rem;
 	min-height: 2rem;
+	flex: 0 0 auto;
+	overflow: visible;
 }
 
 .fulcrum-dashboard-meetings__empty {
@@ -1797,6 +1812,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	gap: 0.2rem;
 	width: 100%;
 	min-width: 0;
+	flex-shrink: 0;
 	margin: 0;
 	padding: 0.45rem 0.55rem 0.5rem 0.6rem;
 	box-sizing: border-box;
@@ -1814,6 +1830,9 @@ button.fulcrum-task-card__note-type:focus-visible {
 	overflow: visible;
 	word-break: break-word;
 	overflow-wrap: anywhere;
+	height: auto;
+	min-height: min-content;
+	max-height: none;
 }
 
 .fulcrum-dashboard-meetings__event:hover {
@@ -2195,65 +2214,91 @@ button.fulcrum-task-card__note-type:focus-visible {
 	font-size: var(--font-ui-small);
 }
 
-/* ── Kanban board ── */
+/* ── Kanban board (class names match KanbanMain.svelte) ── */
 .fulcrum-kanban {
 	display: flex;
 	flex-direction: column;
-	height: 100%;
+	flex: 1 1 0;
 	min-height: 0;
+	width: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
 }
 
 .fulcrum-kanban__toolbar {
 	display: flex;
 	align-items: center;
 	gap: 0.5rem;
-	padding: 0 0.5rem 0.6rem;
+	padding: 0 0 0.6rem;
 	flex: 0 0 auto;
 }
 
 .fulcrum-kanban__toolbar-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
 	font-size: var(--font-ui-smaller);
 	font-weight: 600;
 	color: var(--text-muted);
 }
 
-.fulcrum-kanban__toolbar-select {
+.fulcrum-kanban__toolbar-select,
+.fulcrum-kanban__column-select {
 	font-size: var(--font-ui-smaller);
 }
 
-.fulcrum-kanban__scroll {
+.fulcrum-kanban__board {
 	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: stretch;
+	align-content: flex-start;
 	gap: 0.75rem;
 	overflow-x: auto;
 	overflow-y: hidden;
 	flex: 1 1 0;
 	min-height: 0;
-	padding: 0 0.5rem 0.75rem;
-	align-items: flex-start;
+	padding: 0 0 0.25rem;
+	box-sizing: border-box;
+	-webkit-overflow-scrolling: touch;
 }
 
-.fulcrum-kanban__col {
+.fulcrum-kanban__column {
 	flex: 0 0 16rem;
+	width: 16rem;
 	min-width: 14rem;
 	max-width: 20rem;
 	display: flex;
 	flex-direction: column;
+	min-height: 0;
 	max-height: 100%;
 	border-radius: var(--radius-m, 8px);
 	background: color-mix(in srgb, var(--background-secondary) 60%, var(--background-primary));
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+	box-sizing: border-box;
 }
 
-.fulcrum-kanban__col-head {
+.fulcrum-kanban__column--dragging {
+	opacity: 0.85;
+}
+
+.fulcrum-kanban__column-head {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.35rem;
 	padding: 0.5rem 0.65rem;
 	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+	flex: 0 0 auto;
+	cursor: grab;
+	min-width: 0;
 }
 
-.fulcrum-kanban__col-title {
+.fulcrum-kanban__column-head:active {
+	cursor: grabbing;
+}
+
+.fulcrum-kanban__column-title {
 	font-size: var(--font-ui-smaller);
 	font-weight: 700;
 	text-transform: uppercase;
@@ -2262,10 +2307,17 @@ button.fulcrum-task-card__note-type:focus-visible {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	min-width: 0;
 }
 
-.fulcrum-kanban__col-count {
-	flex: 0 0 auto;
+.fulcrum-kanban__column-head-right {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	flex-shrink: 0;
+}
+
+.fulcrum-kanban__column-count {
 	font-size: calc(var(--font-ui-smaller) - 1px);
 	font-weight: 600;
 	min-width: 1.4em;
@@ -2276,59 +2328,168 @@ button.fulcrum-task-card__note-type:focus-visible {
 	color: var(--text-muted);
 }
 
-.fulcrum-kanban__col-body {
+.fulcrum-kanban__column-hide {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.15rem;
+	opacity: 0.75;
+}
+
+.fulcrum-kanban__column-hide svg {
+	width: 16px;
+	height: 16px;
+}
+
+.fulcrum-kanban__column-cards {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow-x: hidden;
 	overflow-y: auto;
 	padding: 0.4rem 0.45rem;
 	display: flex;
 	flex-direction: column;
-	gap: 0.4rem;
+	gap: 0.45rem;
+	box-sizing: border-box;
 }
 
-.fulcrum-kanban__card {
+.fulcrum-kanban-card {
+	display: block;
+	width: 100%;
+	margin: 0;
+	box-sizing: border-box;
+	text-align: left;
+	font-family: inherit;
 	border-radius: var(--radius-s, 4px);
 	background: var(--background-primary);
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
-	padding: 0.5rem 0.6rem;
+	padding: 0;
 	cursor: pointer;
-	border-left: 3px solid var(--fulcrum-kb-accent, var(--background-modifier-border));
+	border-left: 3px solid var(--fulcrum-card-accent, var(--background-modifier-border));
 	transition: box-shadow 0.12s ease, border-color 0.12s ease;
 }
 
-.fulcrum-kanban__card:hover {
+.fulcrum-kanban-card:hover {
 	box-shadow: 0 2px 8px color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
 	border-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
 }
 
-.fulcrum-kanban__card:focus-visible {
+.fulcrum-kanban-card:focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: -1px;
 }
 
-.fulcrum-kanban__card-name {
+.fulcrum-kanban-card__inner {
+	padding: 0.5rem 0.6rem;
+}
+
+.fulcrum-kanban-card__title {
+	margin: 0;
 	font-size: var(--font-ui-small);
 	font-weight: 600;
-	color: var(--text-normal);
+	color: var(--text-accent);
 	line-height: 1.35;
 }
 
-.fulcrum-kanban__card-area,
-.fulcrum-kanban__card-status {
+.fulcrum-kanban-card__area,
+.fulcrum-kanban-card__status-pill {
+	display: block;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
-	margin-top: 0.15rem;
+	margin-top: 0.2rem;
 	text-transform: capitalize;
 }
 
-.fulcrum-kanban__card-desc {
+.fulcrum-kanban-card__desc {
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
-	margin-top: 0.2rem;
+	margin: 0.25rem 0 0;
 	line-height: 1.35;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	display: -webkit-box;
-	-webkit-line-clamp: 2;
+	-webkit-line-clamp: 3;
 	-webkit-box-orient: vertical;
+}
+
+.fulcrum-kanban-card__meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.15rem 0.35rem;
+	margin-top: 0.35rem;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.fulcrum-kanban-card__meta--overdue {
+	color: var(--text-error, #c45c5c);
+	font-weight: 600;
+}
+
+.fulcrum-kanban-card--overdue {
+	border-left-color: var(--text-error, #c45c5c);
+}
+
+.fulcrum-kanban__add-col-wrap {
+	position: relative;
+	flex: 0 0 auto;
+	align-self: stretch;
+	min-width: 2.5rem;
+}
+
+.fulcrum-kanban__add-col-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 2.25rem;
+	height: 2.25rem;
+	border-radius: var(--radius-m, 8px);
+	border: 1px dashed var(--background-modifier-border);
+	background: transparent;
+}
+
+.fulcrum-kanban__add-col-btn svg {
+	width: 20px;
+	height: 20px;
+}
+
+.fulcrum-kanban__add-col-menu {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	margin-top: 0.35rem;
+	min-width: 12rem;
+	max-width: min(18rem, 70vw);
+	padding: 0.35rem 0;
+	border-radius: var(--radius-s, 6px);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	box-shadow: 0 4px 16px color-mix(in srgb, var(--background-modifier-border) 50%, transparent);
+	z-index: 20;
+}
+
+.fulcrum-kanban__add-col-item {
+	display: block;
+	width: 100%;
+	margin: 0;
+	padding: 0.4rem 0.75rem;
+	text-align: left;
+	font-size: var(--font-ui-small);
+	background: transparent;
+	border: none;
+	cursor: pointer;
+}
+
+.fulcrum-kanban__add-col-item:hover {
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-kanban__add-col-empty {
+	margin: 0;
+	padding: 0.5rem 0.75rem;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
 }
 
 /* ── Calendar ───────────────────────────────────────────── */
@@ -2934,7 +3095,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 /*
  * Shared “suite people” UI — portrait cards + inline pills.
  * Used by Fulcrum (related people, companion chrome, markdown people links) and
- * intended for CRM and other plugins: reuse the same class names + markup shape.
+ * intended for Orbit, Fulcrum, and other plugins: reuse the same class names + markup shape.
  *
  * Markup (card): .fulcrum-person-card > .fulcrum-person-card__top > .fulcrum-person-card__avatar (+ img|svg) + .fulcrum-person-card__name
  * Markup (inline pill): .fulcrum-person-inline-pill (a or span) > .fulcrum-person-inline-pill__avatar + .fulcrum-person-inline-pill__name
