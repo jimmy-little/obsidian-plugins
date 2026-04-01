@@ -11,7 +11,10 @@ export function filePathUnderDir(filePath: string, dir: string): boolean {
 	const fp = normalizeVaultPath(filePath);
 	const d = normalizeVaultPath(dir);
 	if (!d) return true;
-	return fp === d || fp.startsWith(d + "/");
+	/* Case-insensitive so settings like `people` match vault path `People/` (common on macOS). */
+	const fpL = fp.toLowerCase();
+	const dL = d.toLowerCase();
+	return fpL === dL || fpL.startsWith(dL + "/");
 }
 
 export function isFileInPeopleDirs(filePath: string, peopleDirs: string[]): boolean {

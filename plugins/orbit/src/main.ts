@@ -1,4 +1,4 @@
-import {MarkdownView, Plugin, TFile} from "obsidian";
+import {MarkdownView, Plugin, TFile, type WorkspaceLeaf} from "obsidian";
 import {revealOrCreateView} from "@obsidian-suite/core";
 import {createSuiteShellViewClass} from "@obsidian-suite/svelte-shell";
 import App from "./App.svelte";
@@ -60,13 +60,18 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 
 		this.addSettingTab(new OrbitSettingTab(this.app, this));
 
+		/* `file-open` often fires before the target leaf is a MarkdownView — defer and scan leaves. */
 		this.registerEvent(
 			this.app.workspace.on("file-open", (file) => {
 				if (!(file instanceof TFile) || file.extension !== "md") return;
 				if (!isFileInPeopleDirs(file.path, this.settings.peopleDirs)) return;
-				const active = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (!active || active.file?.path !== file.path) return;
-				void this.routeMarkdownLeafToOrbit(active.leaf, file);
+				this.scheduleRoutePersonFile(file);
+			}),
+		);
+		/* Opening from some panes / quick switcher: ensure we catch the leaf once it’s markdown. */
+		this.registerEvent(
+			this.app.workspace.on("active-leaf-change", (leaf) => {
+				this.maybeRouteLeafForPerson(leaf);
 			}),
 		);
 
@@ -86,7 +91,39 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 		this.settings = normalizeSettings(raw as Partial<OrbitSettings>);
 	}
 
-	private async routeMarkdownLeafToOrbit(leaf: import("obsidian").WorkspaceLeaf, file: TFile): Promise<void> {
+	/** Run after layout catches up: `file-open` is too early for `getActiveViewOfType(MarkdownView)`. */
+	private scheduleRoutePersonFile(file: TFile): void {
+		const run = (): void => {
+			const leaf = this.findMarkdownLeafForFile(file);
+			if (leaf) void this.routeMarkdownLeafToOrbit(leaf, file);
+		};
+		queueMicrotask(run);
+		window.setTimeout(run, 0);
+	}
+
+	private findMarkdownLeafForFile(file: TFile): WorkspaceLeaf | null {
+		let found: WorkspaceLeaf | null = null;
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const v = leaf.view;
+			if (v instanceof MarkdownView && v.file?.path === file.path) found = leaf;
+		});
+		return found;
+	}
+
+	private maybeRouteLeafForPerson(leaf: WorkspaceLeaf | null): void {
+		if (!leaf) return;
+		const v = leaf.view;
+		if (!(v instanceof MarkdownView) || !v.file) return;
+		if (!(v.file instanceof TFile) || v.file.extension !== "md") return;
+		if (!isFileInPeopleDirs(v.file.path, this.settings.peopleDirs)) return;
+		void this.routeMarkdownLeafToOrbit(leaf, v.file);
+	}
+
+	private async routeMarkdownLeafToOrbit(leaf: WorkspaceLeaf, file: TFile): Promise<void> {
+		const vs = leaf.getViewState();
+		if (vs.type === VIEW_ORBIT_PERSON && (vs.state as {path?: string} | undefined)?.path === file.path) {
+			return;
+		}
 		await leaf.setViewState({
 			type: VIEW_ORBIT_PERSON,
 			active: true,
