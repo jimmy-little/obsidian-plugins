@@ -49,14 +49,26 @@
 	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas);
 	$: onlyWork = $workRelatedOnly;
 
+	/** Single day shown; used to keep completed tasks that still “belong” on this day. */
+	$: iso = focalDateIso.slice(0, 10);
+
+	/**
+	 * Like the main calendar for open tasks, but keep done tasks when their blocks
+	 * (scheduled / due / actual time) still fall on `iso` so the day reference stays accurate.
+	 */
 	$: datedTasks = snapshot.tasks.filter((t) => {
+		if (!taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap)) return false;
 		const sched = t.scheduledDate?.slice(0, 10);
 		const due = t.dueDate?.slice(0, 10);
-		return (
-			(sched || due) &&
-			!doneTask.has(t.status) &&
-			taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap)
-		);
+		const hasSchedOrDue = !!(sched || due);
+		const hasActualBlock = !!(t.startTime?.trim() && t.endTime?.trim());
+		if (!hasSchedOrDue && !hasActualBlock) return false;
+
+		if (!doneTask.has(t.status)) {
+			return hasSchedOrDue;
+		}
+		const ev = taskToCalendarEvent(t, () => {}, new Map<string, string>());
+		return ev.some((e) => e.dateIso === iso);
 	});
 
 	$: projectColors = projectColorMap(snapshot.projects);
@@ -98,7 +110,6 @@
 		return m;
 	})();
 
-	$: iso = focalDateIso.slice(0, 10);
 	$: ({allDay, timed} = eventsByDate.get(iso) ?? {allDay: [], timed: []});
 
 	$: titleText = (() => {
@@ -156,6 +167,9 @@
 					<button
 						type="button"
 						class="fulcrum-calendar__event fulcrum-calendar__event--{e.kind}"
+						class:fulcrum-calendar__event--completed={e.kind === "task" &&
+							e.task &&
+							doneTask.has(e.task.status)}
 						style={e.accentCss ? `--fulcrum-event-accent: ${e.accentCss}` : undefined}
 						data-fulcrum-calendar-event
 						on:click={(ev) => {
@@ -197,6 +211,9 @@
 						<button
 							type="button"
 							class="fulcrum-calendar__timed-event fulcrum-calendar__timed-event--{e.kind}"
+							class:fulcrum-calendar__timed-event--completed={e.kind === "task" &&
+								e.task &&
+								doneTask.has(e.task.status)}
 							style="top: {topPct}%; height: {heightPct}%;{e.accentCss ? ` --fulcrum-event-accent: ${e.accentCss};` : ""}"
 							data-fulcrum-calendar-event
 							on:click={(ev) => {

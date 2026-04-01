@@ -1,10 +1,9 @@
-import {TFile, type App} from "obsidian";
+import {normalizePath, TFile, type App} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
 import type {AtomicNoteRow, IndexedMeeting, IndexedPerson, IndexedTask} from "./types";
 import {isUnderFolder} from "./utils/paths";
 import {parseWikiLink} from "./utils/wikilinks";
 import {resolveBannerImageSrc} from "./utils/projectVisual";
-import {normalizePath} from "obsidian";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
 
@@ -20,11 +19,100 @@ export function extractWikilinksFromText(text: string): string[] {
 	return out;
 }
 
+/** Normalize for matching `name`, `aliases`, and `alias` against wikilink text (case-fold, collapse spaces). */
+export function normalizePersonMatchKey(s: string): string {
+	return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function collectAliasStringsFromFmField(raw: unknown, into: string[]): void {
+	if (raw == null) return;
+	if (typeof raw === "string") {
+		for (const part of raw.split(/[,;\n]/)) {
+			const t = part.trim();
+			if (t) into.push(t);
+		}
+		return;
+	}
+	if (Array.isArray(raw)) {
+		for (const item of raw) {
+			if (typeof item === "string" && item.trim()) into.push(item.trim());
+		}
+	}
+}
+
+/** Display strings that identify a people note (basename, `name`, `aliases`, `alias`). */
+export function personFileMatchKeys(file: TFile, fm: Record<string, unknown> | undefined): string[] {
+	const keys: string[] = [];
+	const base = file.basename.replace(/\.md$/i, "");
+	if (base) keys.push(base);
+	if (fm && typeof fm.name === "string" && fm.name.trim()) keys.push(fm.name.trim());
+	collectAliasStringsFromFmField(fm?.aliases, keys);
+	collectAliasStringsFromFmField(fm?.alias, keys);
+	return keys;
+}
+
+/**
+ * Map normalized match keys → people note files (under `peopleFolder`).
+ * Last write wins on key collision (avoid duplicate cards for alias-equivalent names).
+ */
+export function buildPeopleFolderMatchIndex(app: App, peopleFolder: string): Map<string, TFile> {
+	const folder = normalizePath(peopleFolder.trim());
+	const index = new Map<string, TFile>();
+	if (!folder) return index;
+	for (const f of app.vault.getMarkdownFiles()) {
+		if (!isUnderFolder(f.path, folder)) continue;
+		const cache = app.metadataCache.getFileCache(f);
+		const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+		for (const k of personFileMatchKeys(f, fm)) {
+			const nk = normalizePersonMatchKey(k);
+			if (nk) index.set(nk, f);
+		}
+	}
+	return index;
+}
+
+/** Resolve link text via `name` / `aliases` / `alias` index only (normalized match). */
+export function lookupPeopleFileByAlias(matchIndex: Map<string, TFile>, linkTextRaw: string): TFile | null {
+	const trimmed = linkTextRaw.trim();
+	if (!trimmed) return null;
+	const pipe = trimmed.indexOf("|");
+	const linkCore = (pipe >= 0 ? trimmed.slice(0, pipe) : trimmed).trim();
+	const key = normalizePersonMatchKey(linkCore);
+	if (!key) return null;
+	return matchIndex.get(key) ?? null;
+}
+
+/**
+ * Resolve a wikilink to a people note under `peopleFolder`: Obsidian resolution first, then alias index.
+ * When `peopleFolder` is empty, returns null (use direct getFirstLinkpathDest for non-folder contexts).
+ */
+export function resolvePeopleFolderNote(
+	app: App,
+	linkTextRaw: string,
+	sourcePath: string,
+	peopleFolder: string,
+	matchIndex: Map<string, TFile>,
+): TFile | null {
+	const folder = normalizePath(peopleFolder.trim());
+	if (!folder) return null;
+	const stripped = linkTextRaw.trim();
+	if (!stripped) return null;
+
+	const dest = app.metadataCache.getFirstLinkpathDest(stripped, sourcePath);
+	if (dest instanceof TFile && isUnderFolder(dest.path, folder)) {
+		return dest;
+	}
+
+	return lookupPeopleFileByAlias(matchIndex, stripped);
+}
+
 function parsePeopleFromFrontmatter(
 	app: App,
 	sourcePath: string,
 	fm: Record<string, unknown> | undefined,
 	field: string,
+	peopleFolder: string,
+	matchIndex: Map<string, TFile>,
 ): TFile[] {
 	if (!fm) return [];
 	const raw = fm[field];
@@ -39,8 +127,13 @@ function parsePeopleFromFrontmatter(
 		}
 	}
 	const files: TFile[] = [];
+	const folderNorm = normalizePath(peopleFolder.trim());
 	for (const link of links) {
-		const dest = app.metadataCache.getFirstLinkpathDest(link, sourcePath);
+		const abstract = app.metadataCache.getFirstLinkpathDest(link, sourcePath);
+		let dest: TFile | null = abstract instanceof TFile ? abstract : null;
+		if (!dest && folderNorm) {
+			dest = lookupPeopleFileByAlias(matchIndex, link);
+		}
 		if (dest instanceof TFile) files.push(dest);
 	}
 	return files;
@@ -95,9 +188,18 @@ export async function collectRelatedPeople(
 		if (isUnderFolder(file.path, peopleFolder)) addPerson(file);
 	}
 
+	const matchIndex = peopleFolder ? buildPeopleFolderMatchIndex(app, peopleFolder) : new Map<string, TFile>();
+
 	const projectCache = app.metadataCache.getFileCache(projectFile);
 	const projectFm = projectCache?.frontmatter as Record<string, unknown> | undefined;
-	for (const f of parsePeopleFromFrontmatter(app, projectPath, projectFm, peopleField)) {
+	for (const f of parsePeopleFromFrontmatter(
+		app,
+		projectPath,
+		projectFm,
+		peopleField,
+		peopleFolder,
+		matchIndex,
+	)) {
 		addPerson(f);
 	}
 
@@ -106,7 +208,7 @@ export async function collectRelatedPeople(
 			try {
 				const body = await app.vault.cachedRead(file);
 				for (const link of extractWikilinksFromText(body)) {
-					const dest = app.metadataCache.getFirstLinkpathDest(link, file.path);
+					const dest = resolvePeopleFolderNote(app, link, file.path, peopleFolder, matchIndex);
 					if (dest instanceof TFile) addIfUnderPeopleFolder(dest);
 				}
 			} catch {

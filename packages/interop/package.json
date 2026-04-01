@@ -1,0 +1,8 @@
+{
+	"name": "@obsidian-suite/interop",
+	"version": "0.0.1",
+	"private": true,
+	"description": "Cross-plugin contracts (ids, events, public API types) for Obsidian suite",
+	"main": "src/index.ts",
+	"types": "src/index.ts"
+}

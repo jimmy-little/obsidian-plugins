@@ -1,7 +1,10 @@
 import {MarkdownView, normalizePath, type App, type Plugin, TFile} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
-import {getPersonNameAndAvatar} from "./projectPeople";
-import {isUnderFolder} from "./utils/paths";
+import {
+	buildPeopleFolderMatchIndex,
+	getPersonNameAndAvatar,
+	resolvePeopleFolderNote,
+} from "./projectPeople";
 
 const PILL_ATTR = "data-fulcrum-person-pill";
 
@@ -60,27 +63,37 @@ function resolveFileForPeopleLink(
 	node: HTMLElement,
 	linktextPrimary: string,
 	sourcePath: string,
+	peopleFolder: string,
+	matchIndex: Map<string, TFile>,
 ): TFile | null {
-	const tryPath = (s: string): TFile | null => {
-		if (!s.trim()) return null;
-		const dest = app.metadataCache.getFirstLinkpathDest(s.trim(), sourcePath);
-		return dest instanceof TFile ? dest : null;
-	};
+	const folder = normalizePath(peopleFolder.trim());
+	if (!folder) return null;
 
-	let f = tryPath(linktextPrimary);
-	if (f) return f;
-
-	const fromText = stripWikiLinkText(node.textContent ?? "");
-	if (fromText && fromText !== linktextPrimary) {
-		f = tryPath(fromText);
+	const candidates = [
+		linktextPrimary,
+		stripWikiLinkText(linktextPrimary),
+		stripWikiLinkText(node.textContent ?? ""),
+	].filter((c) => c.trim().length > 0);
+	const seen = new Set<string>();
+	for (const c of candidates) {
+		const key = c.trim();
+		if (seen.has(key)) continue;
+		seen.add(key);
+		const f = resolvePeopleFolderNote(app, key, sourcePath, folder, matchIndex);
 		if (f) return f;
 	}
+	return null;
+}
 
-	const stripped = stripWikiLinkText(linktextPrimary);
-	if (stripped && stripped !== linktextPrimary) {
-		f = tryPath(stripped);
+/** Keep Obsidian navigation / unresolved state correct after replacing link text with the pill. */
+function applyPeoplePillLinkTarget(app: App, node: HTMLElement, dest: TFile, sourcePath: string): void {
+	const linktext =
+		app.metadataCache.fileToLinktext(dest, sourcePath, true) ?? dest.basename.replace(/\.md$/i, "");
+	node.setAttribute("data-href", linktext);
+	if (node instanceof HTMLAnchorElement) {
+		node.setAttribute("href", linktext);
 	}
-	return f;
+	node.classList.add("internal-link");
 }
 
 function transformPeopleLinksInRoot(
@@ -93,6 +106,7 @@ function transformPeopleLinksInRoot(
 	if (!folder) return;
 
 	const avatarField = s.peopleAvatarField.trim() || "avatar";
+	const matchIndex = buildPeopleFolderMatchIndex(app, folder);
 	const anchors = collectInternalLinkNodes(root);
 
 	for (const node of anchors) {
@@ -100,14 +114,14 @@ function transformPeopleLinksInRoot(
 		if (skipLinkHost(node)) continue;
 
 		const linktext = linkpathFromInternalLinkEl(node);
-		const dest = resolveFileForPeopleLink(app, node, linktext, sourcePath);
+		const dest = resolveFileForPeopleLink(app, node, linktext, sourcePath, folder, matchIndex);
 		if (!dest) continue;
-		if (!isUnderFolder(dest.path, folder)) continue;
 
 		const {name, avatarSrc} = getPersonNameAndAvatar(app, dest, avatarField);
 
 		node.setAttribute(PILL_ATTR, "1");
 		node.classList.add("fulcrum-person-inline-pill");
+		applyPeoplePillLinkTarget(app, node, dest, sourcePath);
 		node.replaceChildren();
 
 		const av = document.createElement("span");

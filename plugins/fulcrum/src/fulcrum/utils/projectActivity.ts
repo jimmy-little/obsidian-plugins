@@ -99,7 +99,11 @@ function chipsForLog(e: ProjectLogActivityEntry): ActivityChip[] {
 
 function chipsForMeeting(m: IndexedMeeting, formatTracked: (n: number) => string): ActivityChip[] {
 	const c: ActivityChip[] = [];
-	if (m.date?.trim()) c.push({kind: "date", label: m.date.slice(0, 10)});
+	if (m.date?.trim()) {
+		const day = m.date.trim().slice(0, 10);
+		c.push({kind: "date", label: formatShortMonthDay(day) || day});
+	}
+	c.push({kind: "type", label: "Meeting"});
 	const eff = meetingEffectiveMinutes(m);
 	if (eff > 0) c.push({kind: "tracked", label: formatTracked(eff)});
 	return c;
@@ -283,7 +287,9 @@ export function buildActivityRowModels(
 	},
 ): ActivityRowModel[] {
 	const items: ActivityRowModel[] = [];
+	const meetingPaths = new Set(rollup.meetings.map((m) => m.file.path));
 	for (const n of rollup.atomicNotes) {
+		if (meetingPaths.has(n.file.path)) continue;
 		items.push({
 			id: `note:${n.file.path}`,
 			kind: "note",
@@ -360,6 +366,7 @@ export function buildAggregatedActivityRows(
 		const projectPath = rollup.project.file.path;
 		const projectName = rollup.project.name;
 		const accentColorCss = rollup.accentColorCss;
+		const meetingPaths = new Set(rollup.meetings.map((m) => m.file.path));
 
 		const addProjectChip = (chips: ActivityChip[]): ActivityChip[] => {
 			const out = [...chips];
@@ -369,6 +376,7 @@ export function buildAggregatedActivityRows(
 
 		for (const n of rollup.atomicNotes) {
 			if (n.modifiedMs < cutoffMs) continue;
+			if (meetingPaths.has(n.file.path)) continue;
 			items.push({
 				id: `note:${n.file.path}`,
 				kind: "note",

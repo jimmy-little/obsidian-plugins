@@ -43,6 +43,8 @@ export interface FulcrumSettings {
 	meetingDurationField: string;
 	meetingTotalMinutesField: string;
 	meetingTitleField: string;
+	/** Frontmatter key for meeting organizer (people link); companion chrome lists them first on meeting notes. */
+	meetingOrganizerField: string;
 
 	taskSourceMode: TaskSourceMode;
 	/** Multi-line or comma-separated; empty = whole vault. */
@@ -169,6 +171,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	meetingDurationField: "duration",
 	meetingTotalMinutesField: "totalMinutesTracked",
 	meetingTitleField: "entry",
+	meetingOrganizerField: "organizer",
 
 	taskSourceMode: "both",
 	taskNotesFolderPaths: "35 Tasks/TaskNotes",

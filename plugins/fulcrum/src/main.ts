@@ -1,4 +1,4 @@
-import {Notice, Platform, Plugin, TFile, type WorkspaceLeaf} from "obsidian";
+import {MarkdownRenderer, Notice, Platform, Plugin, TFile, type WorkspaceLeaf} from "obsidian";
 import {
 	appendFulcrumProjectLog,
 	formatFulcrumProjectLogLine,
@@ -41,6 +41,7 @@ import {toggleInlineTaskLine, toggleTaskNoteFrontmatter} from "./fulcrum/taskVau
 import {bumpSettingsRevision} from "./fulcrum/stores";
 import type {IndexedTask} from "./fulcrum/types";
 import {registerCompanionDocChrome} from "./fulcrum/companionDocChrome";
+import {runLapseTimerInOpenNote} from "./fulcrum/lapseIntegration";
 import {
 	registerInlinePeoplePills,
 	registerLivePreviewPeoplePillScan,
@@ -130,6 +131,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 				app: this.app,
 				getSettings: () => this.settings,
 				registerEvent: (r) => this.registerEvent(r),
+				startLapseInOpenNote: (file, meta) => runLapseTimerInOpenNote(this.app, file, meta),
 			},
 			this.fulcrumCompanionLeaf,
 		);
@@ -423,6 +425,15 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			linktext: path,
 			sourcePath: path,
 		});
+	}
+
+	async renderActivityBodyPreview(
+		el: HTMLElement,
+		sourcePath: string,
+		markdown: string,
+	): Promise<void> {
+		el.empty();
+		await MarkdownRenderer.render(this.app, markdown, el, sourcePath, this);
 	}
 
 	async openDashboard(): Promise<void> {

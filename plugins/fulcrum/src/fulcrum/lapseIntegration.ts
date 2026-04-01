@@ -1,24 +1,11 @@
+import {
+	LAPSE_PLUGIN_ID,
+	type LapseQuickStartItemPublic,
+	type LapsePublicApi,
+} from "@obsidian-suite/interop";
 import {Notice, TFile, type App, type Plugin} from "obsidian";
 
-/** From Lapse (`lapse-tracker`); keep in sync with their public API. */
-export interface LapseQuickStartItemPublic {
-	kind: "template" | "project";
-	templatePath: string | null;
-	templateName: string;
-	project: string | null;
-	projectColor: string | null;
-	groupValue: string | null;
-	projectSourcePath: string | null;
-	area: string | null;
-	timerDescription: string | null;
-}
-
-export interface LapsePublicApi {
-	readonly pluginId: "lapse-tracker";
-	getQuickStartItems(): Promise<LapseQuickStartItemPublic[]>;
-	executeQuickStart(item: LapseQuickStartItemPublic): Promise<void>;
-	invalidateQuickStartCache(): void;
-}
+export type {LapseQuickStartItemPublic, LapsePublicApi} from "@obsidian-suite/interop";
 
 type LapsePlugin = Plugin & {api?: LapsePublicApi};
 
@@ -27,7 +14,7 @@ type AppWithPlugins = App & {
 };
 
 export function getLapseApi(app: App): LapsePublicApi | undefined {
-	return ((app as AppWithPlugins).plugins.getPlugin("lapse-tracker") as LapsePlugin | null)?.api;
+	return ((app as AppWithPlugins).plugins.getPlugin(LAPSE_PLUGIN_ID) as LapsePlugin | null)?.api;
 }
 
 function normalizeLapseProjectRef(s: string | null | undefined): string {
@@ -99,6 +86,37 @@ export async function pickLapseQuickStartForProject(
 	if (generic) return {item: generic, matchedProject: false};
 
 	return null;
+}
+
+/**
+ * Start Lapse in the open companion note (appends lapse block, syncs frontmatter).
+ * Requires a Lapse build that exposes {@link LapsePublicApi.startTimerInNote}.
+ */
+export async function runLapseTimerInOpenNote(
+	app: App,
+	file: TFile,
+	meta: { projectLabel: string; entryTitle: string },
+): Promise<void> {
+	const api = getLapseApi(app);
+	if (!api) {
+		new Notice("Install and enable Lapse (lapse-tracker) to use timers in notes.");
+		return;
+	}
+	const start = api.startTimerInNote;
+	if (typeof start !== "function") {
+		new Notice("Update Lapse to the latest version for Fulcrum companion timers.");
+		return;
+	}
+	const projectName = meta.projectLabel.trim();
+	try {
+		await start(file.path, {
+			projectName: projectName || null,
+			noteTitle: meta.entryTitle.trim() || null,
+		});
+	} catch (e) {
+		console.error("Fulcrum → Lapse startTimerInNote", e);
+		new Notice("Lapse could not start the timer in this note.");
+	}
 }
 
 export async function runLapseQuickStartForProject(

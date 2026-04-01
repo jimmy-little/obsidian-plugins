@@ -280,7 +280,7 @@
 					{/if}
 					{#if nextUp.items.length > 0}
 						<ul
-							class="fulcrum-activity-list fulcrum-next-up-list"
+							class="fulcrum-activity-list fulcrum-activity-list--timeline fulcrum-next-up-list"
 							class:fulcrum-next-up-list--with-meetings-above={nextUp.meetings.length > 0}
 						>
 							{#each nextUp.items as item}

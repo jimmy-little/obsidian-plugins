@@ -19,9 +19,14 @@
 		incompleteProjectTasks,
 		leadingTimelineEmojiFromNoteType,
 	} from "../fulcrum/utils/projectActivity";
+	import {
+		LAPSE_PUBLIC_API_READY_EVENT,
+		LAPSE_PUBLIC_API_UNLOAD_EVENT,
+	} from "@obsidian-suite/interop";
 	import {getLapseApi, runLapseQuickStartForProject} from "../fulcrum/lapseIntegration";
 	import {preferLightForegroundOnAccentCss} from "../fulcrum/utils/projectVisual";
 	import type {ProjectLogActivityEntry} from "../fulcrum/projectNote";
+	import {loadActivityFeedPreviews} from "../fulcrum/loadActivityFeedPreviews";
 	import ActivityRow from "./ActivityRow.svelte";
 	import NextUpMeetingCard from "./NextUpMeetingCard.svelte";
 	import TaskCard from "./TaskCard.svelte";
@@ -59,7 +64,6 @@
 	let logEntries: ProjectLogActivityEntry[] = [];
 	let logBusy = false;
 	let logDraft = "";
-	let snapshotBtnEl: HTMLButtonElement | null = null;
 
 	async function loadLogActivity(): Promise<void> {
 		logEntries = await plugin.loadProjectLogActivity(projectPath);
@@ -116,8 +120,6 @@
 		await plugin.archiveProjectSnapshot(projectPath);
 	}
 
-	$: if (snapshotBtnEl) setIcon(snapshotBtnEl, "camera");
-
 	function markReviewed(): void {
 		plugin.openMarkReviewedModal(projectPath, () => void loadLogActivity());
 	}
@@ -137,6 +139,27 @@
 				formatTracked: formatTrackedMinutesShort,
 			})
 		: [];
+
+	let activityFeedPreviews: Record<string, string> = {};
+
+	/** Stable key so async preview loads don’t apply after project/activity list changes. */
+	$: activityFeedPreviewKey =
+		rollup && activityRows.length > 0
+			? `${projectPath}\u0000${activityRows.map((r) => r.id).join("\u0000")}\u0000${plugin.settings.atomicNoteEntryField}`
+			: "";
+
+	$: if (activityFeedPreviewKey) {
+		const key = activityFeedPreviewKey;
+		const rows = activityRows;
+		const vault = plugin.app.vault;
+		const entryField = plugin.settings.atomicNoteEntryField;
+		void loadActivityFeedPreviews(vault, rows, entryField, 10).then((m) => {
+			if (key !== activityFeedPreviewKey) return;
+			activityFeedPreviews = m;
+		});
+	} else {
+		activityFeedPreviews = {};
+	}
 
 	$: noteFolderHint =
 		plugin.settings.atomicNoteFolderPrefixes.trim().length === 0;
@@ -195,20 +218,17 @@
 	$: showNewNoteFromTemplateBtn = plugin.settings.projectNewNoteTemplatePath.trim().length > 0;
 
 	let lapseApiAvailable = !!getLapseApi(plugin.app);
-	let lapseBtnEl: HTMLButtonElement | null = null;
-
-	$: if (lapseBtnEl && lapseApiAvailable) setIcon(lapseBtnEl, "play");
 
 	onMount(() => {
 		const sync = (): void => {
 			lapseApiAvailable = !!getLapseApi(plugin.app);
 		};
 		sync();
-		window.addEventListener("lapse-tracker:public-api-ready", sync);
-		window.addEventListener("lapse-tracker:public-api-unload", sync);
+		window.addEventListener(LAPSE_PUBLIC_API_READY_EVENT, sync);
+		window.addEventListener(LAPSE_PUBLIC_API_UNLOAD_EVENT, sync);
 		return () => {
-			window.removeEventListener("lapse-tracker:public-api-ready", sync);
-			window.removeEventListener("lapse-tracker:public-api-unload", sync);
+			window.removeEventListener(LAPSE_PUBLIC_API_READY_EVENT, sync);
+			window.removeEventListener(LAPSE_PUBLIC_API_UNLOAD_EVENT, sync);
 		};
 	});
 
@@ -273,13 +293,23 @@
 							<div class="fulcrum-project-banner__area">{rollup.project.areaName}</div>
 						{/if}
 						<div class="fulcrum-project-banner__actions">
-							<button
-								type="button"
-								class="fulcrum-banner-btn fulcrum-banner-btn--full"
-								on:click={() => openPath(rollup.project.file.path)}
-							>
-								Open Note
-							</button>
+							<div class="fulcrum-banner-btn-row">
+								<button
+									type="button"
+									class="fulcrum-banner-btn fulcrum-banner-btn--half"
+									on:click={() => openPath(rollup.project.file.path)}
+								>
+									Open Note
+								</button>
+								<button
+									type="button"
+									class="fulcrum-banner-btn fulcrum-banner-btn--half"
+									title="Capture snapshot"
+									on:click={() => void captureSnapshot()}
+								>
+									Snapshot
+								</button>
+							</div>
 							<div class="fulcrum-banner-btn-row">
 								<button type="button" class="fulcrum-banner-btn fulcrum-banner-btn--half" on:click={markReviewed}>
 									Review
@@ -292,27 +322,63 @@
 									Complete
 								</button>
 							</div>
-							<div class="fulcrum-banner-btn-row fulcrum-banner-btn-row--icons">
-								{#if lapseApiAvailable}
-									<button
-										type="button"
-										class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-										title="Start a Lapse timer (Quick Start) for this project"
-										aria-label="Start Lapse timer for this project"
-										bind:this={lapseBtnEl}
-										on:click={startLapseTimer}
-									></button>
-								{/if}
-								<button
-									type="button"
-									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only fulcrum-snapshot-btn"
-									class:fulcrum-banner-btn--icon-solo={!lapseApiAvailable}
-									title="Capture snapshot"
-									aria-label="Capture snapshot"
-									bind:this={snapshotBtnEl}
-									on:click={() => void captureSnapshot()}
-								></button>
-							</div>
+							{#if showNewNoteFromTemplateBtn || showNewInlineTaskBtn}
+								<div class="fulcrum-banner-btn-row">
+									{#if showNewNoteFromTemplateBtn}
+										<button
+											type="button"
+											class="fulcrum-banner-btn fulcrum-banner-btn--half"
+											on:click={() =>
+												void plugin.createNewNoteFromTemplateForProject(
+													projectPath,
+													hoverParentLeaf,
+												)}
+										>
+											New note
+										</button>
+									{:else}
+										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
+									{/if}
+									{#if showNewInlineTaskBtn}
+										<button
+											type="button"
+											class="fulcrum-banner-btn fulcrum-banner-btn--half"
+											on:click={() => plugin.openNewInlineTaskForProject(projectPath)}
+										>
+											New Task
+										</button>
+									{:else}
+										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
+									{/if}
+								</div>
+							{/if}
+							{#if showNewTaskNoteBtn || lapseApiAvailable}
+								<div class="fulcrum-banner-btn-row">
+									{#if showNewTaskNoteBtn}
+										<button
+											type="button"
+											class="fulcrum-banner-btn fulcrum-banner-btn--half"
+											on:click={() => plugin.openTaskNoteCreateForProject(projectPath)}
+										>
+											New TaskNote
+										</button>
+									{:else}
+										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
+									{/if}
+									{#if lapseApiAvailable}
+										<button
+											type="button"
+											class="fulcrum-banner-btn fulcrum-banner-btn--half"
+											title="Start a Lapse timer (Quick Start) for this project"
+											on:click={startLapseTimer}
+										>
+											Lapse play
+										</button>
+									{:else}
+										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
+									{/if}
+								</div>
+							{/if}
 						</div>
 					</div>
 				</div>
@@ -406,41 +472,6 @@
 		<section class="fulcrum-section">
 			<div class="fulcrum-section-head">
 				<h2 class="fulcrum-section-head__title">Next up</h2>
-				{#if showNewInlineTaskBtn || showNewTaskNoteBtn || showNewNoteFromTemplateBtn}
-					<div class="fulcrum-section-head__actions">
-						{#if showNewNoteFromTemplateBtn}
-							<button
-								type="button"
-								class="fulcrum-text-action"
-								on:click={() =>
-									void plugin.createNewNoteFromTemplateForProject(
-										projectPath,
-										hoverParentLeaf,
-									)}
-							>
-								New note
-							</button>
-						{/if}
-						{#if showNewInlineTaskBtn}
-							<button
-								type="button"
-								class="fulcrum-text-action"
-								on:click={() => plugin.openNewInlineTaskForProject(projectPath)}
-							>
-								New Task
-							</button>
-						{/if}
-						{#if showNewTaskNoteBtn}
-							<button
-								type="button"
-								class="fulcrum-text-action"
-								on:click={() => plugin.openTaskNoteCreateForProject(projectPath)}
-							>
-								New TaskNote
-							</button>
-						{/if}
-					</div>
-				{/if}
 			</div>
 			{#if nextUpMeetings.length === 0 && nextUpListItems.length === 0}
 				<p class="fulcrum-muted">
@@ -459,7 +490,7 @@
 				{/if}
 				{#if nextUpListItems.length > 0}
 					<ul
-						class="fulcrum-activity-list fulcrum-next-up-list"
+						class="fulcrum-activity-list fulcrum-activity-list--timeline fulcrum-next-up-list"
 						class:fulcrum-next-up-list--with-meetings-above={nextUpMeetings.length > 0}
 					>
 						{#each nextUpListItems as item}
@@ -538,6 +569,10 @@
 								{plugin}
 								hoverParentLeaf={hoverParentLeaf}
 								hoverPath={row.hoverPath}
+								suppressHoverPreview={true}
+								accentColorCss={rollup.accentColorCss}
+								bodyPreview={row.hoverPath ? activityFeedPreviews[row.hoverPath] : undefined}
+								previewAccentCss={rollup.accentColorCss}
 							/>
 						</li>
 					{/each}

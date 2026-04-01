@@ -122,6 +122,20 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		this.textSetting("meetingDurationField", "Meeting duration field");
 		this.textSetting("meetingTotalMinutesField", "Meeting total minutes field");
 		this.textSetting("meetingTitleField", "Meeting title field");
+		new Setting(containerEl)
+			.setName("Meeting organizer field")
+			.setDesc(
+				"On notes under the meetings folder, companion chrome lists this person first. If they also appear elsewhere in frontmatter, the duplicate card is omitted.",
+			)
+			.addText((t) =>
+				t
+					.setPlaceholder("organizer")
+					.setValue(this.plugin.settings.meetingOrganizerField)
+					.onChange(async (v) => {
+						this.plugin.settings.meetingOrganizerField = v;
+						await this.plugin.saveSettings();
+					}),
+			);
 
 		heading(containerEl, "Tasks");
 		new Setting(containerEl)

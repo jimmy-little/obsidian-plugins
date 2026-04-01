@@ -34,7 +34,7 @@
 	margin: 0;
 	width: var(--suite-person-card-max-width, 5rem);
 	max-width: var(--suite-person-card-max-width, 5rem);
-	height: 8rem;
+	height: 7rem;
 	padding: 0;
 	gap: 0;
 	border: var(--suite-person-card-border, 1px solid color-mix(in srgb, var(--background-modifier-border) 92%, transparent));

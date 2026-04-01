@@ -18,6 +18,8 @@
 	"license": "MIT",
 	"dependencies": {
 		"@obsidian-suite/core": "*",
+		"@obsidian-suite/interop": "*",
+		"@obsidian-suite/note-preview": "*",
 		"monkey-around": "^3.0.0"
 	},
 	"devDependencies": {

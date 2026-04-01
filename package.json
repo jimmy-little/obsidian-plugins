@@ -2,7 +2,7 @@
 	"name": "obsidian-plugins",
 	"private": true,
 	"version": "0.0.0",
-	"description": "Monorepo: Pulse, Lapse, Ratchet, Fulcrum, CRM — shared Svelte shell and tooling",
+	"description": "Monorepo: Pulse, Lapse, Ratchet, Fulcrum, CRM — @obsidian-suite/core, theme, interop, svelte-shell",
 	"workspaces": [
 		"packages/*",
 		"plugins/*"

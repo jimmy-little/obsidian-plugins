@@ -1,6 +1,16 @@
 import { Plugin } from "obsidian";
 import { revealOrCreateView } from "@obsidian-suite/core";
-import { ShellView, VIEW_TYPE } from "./ShellView";
+import { createSuiteShellViewClass } from "@obsidian-suite/svelte-shell";
+import App from "./App.svelte";
+
+export const VIEW_TYPE = "pulse-main";
+
+const ShellView = createSuiteShellViewClass({
+	viewType: VIEW_TYPE,
+	displayText: "Pulse",
+	icon: "activity",
+	App,
+});
 
 export default class PulsePlugin extends Plugin {
 	async onload(): Promise<void> {
@@ -12,7 +22,7 @@ export default class PulsePlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-main",
-			name: "Open " + "Pulse",
+			name: "Open Pulse",
 			callback: () => void this.activateMainView(),
 		});
 	}

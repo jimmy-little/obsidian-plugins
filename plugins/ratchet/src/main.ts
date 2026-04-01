@@ -1,6 +1,17 @@
 import { Plugin } from "obsidian";
 import { revealOrCreateView } from "@obsidian-suite/core";
-import { ShellView, VIEW_TYPE } from "./ShellView";
+import { createSuiteShellViewClass } from "@obsidian-suite/svelte-shell";
+import App from "./App.svelte";
+
+/** Match legacy obsidian-ratchet `VIEW_TYPE_RATCHET_MAIN` */
+export const VIEW_TYPE = "ratchet-main-view";
+
+const ShellView = createSuiteShellViewClass({
+	viewType: VIEW_TYPE,
+	displayText: "Ratchet",
+	icon: "tally-5",
+	App,
+});
 
 export default class RatchetPlugin extends Plugin {
 	async onload(): Promise<void> {
@@ -12,7 +23,7 @@ export default class RatchetPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-main",
-			name: "Open " + "Ratchet",
+			name: "Open Ratchet",
 			callback: () => void this.activateMainView(),
 		});
 	}

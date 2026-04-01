@@ -10,6 +10,15 @@ export function leafIsInWorkspace(app: App, leaf: WorkspaceLeaf): boolean {
 	return found;
 }
 
+/**
+ * True when the leaf lives in the left/right sidebar (or mobile drawer), not the main editor root.
+ * Opening “beside” such a leaf produces a useless narrow split; callers should target the main stack instead.
+ */
+export function anchorLeafIsInSideDock(app: App, leaf: WorkspaceLeaf): boolean {
+	const r = leaf.getRoot();
+	return r === app.workspace.leftSplit || r === app.workspace.rightSplit;
+}
+
 export type FulcrumCompanionLeaf = {current: WorkspaceLeaf | null};
 
 /**
@@ -29,7 +38,18 @@ export async function openMarkdownBesideFulcrum(
 		!anchorLeaf ||
 		!leafIsInWorkspace(app, anchorLeaf)
 	) {
-		await app.workspace.getLeaf("tab").openFile(file, {active: true, ...openState});
+		const leaf = app.workspace.getLeaf("tab");
+		await leaf.openFile(file, {active: true, ...openState});
+		companion.current = leaf;
+		return;
+	}
+
+	if (anchorLeafIsInSideDock(app, anchorLeaf)) {
+		const mainLeaf =
+			app.workspace.getMostRecentLeaf(app.workspace.rootSplit) ?? app.workspace.getLeaf(false);
+		await app.workspace.revealLeaf(mainLeaf);
+		await mainLeaf.openFile(file, {active: true, ...openState});
+		companion.current = mainLeaf;
 		return;
 	}
 

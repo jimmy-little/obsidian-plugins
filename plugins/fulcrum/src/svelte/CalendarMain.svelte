@@ -59,12 +59,13 @@
 	$: sRev = $settingsRevision;
 	$: viewMode = (void sRev, plugin.settings.calendarViewMode) as CalendarViewMode;
 	$: doneTask = new Set(parseList(plugin.settings.taskDoneStatuses));
+	$: weekStart = (void sRev, plugin.settings.calendarFirstDayOfWeek);
 
 	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas);
 	$: onlyWork = $workRelatedOnly;
 
-	$: dates = gridDates(focalDate, viewMode);
-	$: startDate = gridStartDate(focalDate, viewMode);
+	$: dates = gridDates(focalDate, viewMode, weekStart);
+	$: startDate = gridStartDate(focalDate, viewMode, weekStart);
 	$: dayCount = daysInView(viewMode);
 
 	/** Tasks with scheduled or due date */

@@ -233,7 +233,7 @@ export class VaultIndex {
 				const statusRaw =
 					s.projectStatusIndication === "subfolder"
 						? projectStatusFromSubfolderLayout(path, apRoot)
-						: (fmString(fm, statusKey) ?? "").toLowerCase();
+						: (fmString(fm, statusKey) ?? "active").toLowerCase();
 				const launchRaw = fmString(fm, s.projectLaunchDateField)?.trim();
 				const launchDate =
 					launchRaw && launchRaw.length >= 10 ? launchRaw.slice(0, 10) : launchRaw || undefined;

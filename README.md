@@ -25,12 +25,20 @@ npm run build -w obsidian-plugin-pulse
 
 ## Install into a vault (no symlinks)
 
-Set your vault path, then:
+**Option A — env (one-off):**
 
 ```bash
 export OBSIDIAN_VAULT_PATH="/path/to/your/vault"
 npm run build:install -w obsidian-plugin-pulse
 ```
+
+**Option B — persistent (gitignored):** create `.vault-path.local.json` at the monorepo root:
+
+```json
+{ "vaultPath": "/path/to/your/vault" }
+```
+
+Then `npm run build:install -w obsidian-plugin-pulse` works without exporting the variable.
 
 Copies `main.js`, `manifest.json`, and `styles.css` into  
 `.obsidian/plugins/<plugin-id>/`.
@@ -69,7 +77,8 @@ Build / install:
 
 ```bash
 npm run build -w obsidian-plugin-fulcrum
-export OBSIDIAN_VAULT_PATH="/path/to/vault"
+# Either: export OBSIDIAN_VAULT_PATH="/path/to/vault"
+# Or: add .vault-path.local.json at repo root — see “Install into a vault” above
 npm run build:install -w obsidian-plugin-fulcrum
 ```
 

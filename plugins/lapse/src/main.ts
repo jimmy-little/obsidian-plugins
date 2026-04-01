@@ -1,6 +1,17 @@
 import { Plugin } from "obsidian";
 import { revealOrCreateView } from "@obsidian-suite/core";
-import { ShellView, VIEW_TYPE } from "./ShellView";
+import { createSuiteShellViewClass } from "@obsidian-suite/svelte-shell";
+import App from "./App.svelte";
+
+/** Main shell view id (legacy multi-view Lapse uses additional types). */
+export const VIEW_TYPE = "lapse-tracker-main";
+
+const ShellView = createSuiteShellViewClass({
+	viewType: VIEW_TYPE,
+	displayText: "Lapse",
+	icon: "clock",
+	App,
+});
 
 export default class LapsePlugin extends Plugin {
 	async onload(): Promise<void> {
@@ -12,7 +23,7 @@ export default class LapsePlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-main",
-			name: "Open " + "Lapse",
+			name: "Open Lapse",
 			callback: () => void this.activateMainView(),
 		});
 	}

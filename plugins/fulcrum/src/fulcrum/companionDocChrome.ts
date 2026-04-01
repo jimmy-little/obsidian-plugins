@@ -1,18 +1,28 @@
-import {MarkdownView, normalizePath, TFile, type App, type EventRef} from "obsidian";
+import {MarkdownView, normalizePath, setIcon, TFile, type App, type EventRef} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
-import {extractWikilinksFromText} from "./projectPeople";
+import {
+	buildPeopleFolderMatchIndex,
+	extractWikilinksFromText,
+	resolvePeopleFolderNote,
+} from "./projectPeople";
 import {readTrackedMinutesFromFm} from "./utils/trackedMinutes";
 import {parseWikiLink} from "./utils/wikilinks";
-import {isUnderFolder} from "./utils/paths";
 import {resolveBannerImageSrc, resolveProjectAccentCss} from "./utils/projectVisual";
 import {formatTrackedMinutesShort} from "./utils/dates";
 import {leafIsInWorkspace, type FulcrumCompanionLeaf} from "./openBesideFulcrum";
 import {leadingTimelineEmojiFromNoteType} from "./utils/projectActivity";
+import {isUnderFolder} from "./utils/paths";
+import {getLapseApi} from "./lapseIntegration";
 
 export type CompanionChromeHost = {
 	readonly app: App;
 	getSettings(): FulcrumSettings;
 	registerEvent(ref: EventRef): void;
+	/** When Lapse is installed, companion banner shows Play to start a timer in this note. */
+	startLapseInOpenNote?: (
+		file: TFile,
+		meta: { projectLabel: string; entryTitle: string },
+	) => Promise<void>;
 };
 
 function fmDisplayString(v: unknown): string {
@@ -22,16 +32,71 @@ function fmDisplayString(v: unknown): string {
 	return "";
 }
 
+/** Link-like strings from a frontmatter scalar (wikilinks, plain path, YAML array). */
+function collectLinkTextsFromFmValue(v: unknown): string[] {
+	const out: string[] = [];
+	if (typeof v === "string") {
+		const single = parseWikiLink(v);
+		if (single) out.push(single);
+		out.push(...extractWikilinksFromText(v));
+		const plain = v.replace(/\[\[[^\]]+]]/g, "").trim();
+		if (plain && !single) out.push(plain);
+	} else if (Array.isArray(v)) {
+		for (const item of v) {
+			out.push(...collectLinkTextsFromFmValue(item));
+		}
+	}
+	const uniq: string[] = [];
+	const seen = new Set<string>();
+	for (const s of out) {
+		const t = s.trim();
+		if (!t || seen.has(t)) continue;
+		seen.add(t);
+		uniq.push(t);
+	}
+	return uniq;
+}
+
+function resolveFirstPeopleFileFromLinks(
+	app: App,
+	linkTexts: string[],
+	sourcePath: string,
+	folder: string,
+	matchIndex: Map<string, TFile>,
+): TFile | null {
+	for (const link of linkTexts) {
+		const dest = resolvePeopleFolderNote(app, link, sourcePath, folder, matchIndex);
+		if (dest) return dest;
+	}
+	return null;
+}
+
 function collectPeopleFilesFromFm(
 	app: App,
 	sourcePath: string,
 	fm: Record<string, unknown>,
-	peopleFolder: string,
+	s: FulcrumSettings,
 ): TFile[] {
-	const folder = normalizePath(peopleFolder.trim());
+	const folder = normalizePath(s.peopleFolder.trim());
 	if (!folder) return [];
+
+	const matchIndex = buildPeopleFolderMatchIndex(app, folder);
+	const meetingsRoot = normalizePath(s.meetingsFolder.trim());
+	const isMeetingNote = Boolean(meetingsRoot && isUnderFolder(sourcePath, meetingsRoot));
+
+	const organizerKey = (s.meetingOrganizerField ?? "organizer").trim();
+	let organizerFile: TFile | null = null;
+	if (isMeetingNote && organizerKey) {
+		const rawOrg = fm[organizerKey];
+		const orgLinks = collectLinkTextsFromFmValue(rawOrg);
+		organizerFile = resolveFirstPeopleFileFromLinks(app, orgLinks, sourcePath, folder, matchIndex);
+	}
+
 	const linkTexts: string[] = [];
-	for (const v of Object.values(fm)) {
+	for (const [k, v] of Object.entries(fm)) {
+		if (isMeetingNote && organizerKey && k.trim().toLowerCase() === organizerKey.toLowerCase()) {
+			continue;
+		}
 		if (typeof v === "string") {
 			linkTexts.push(...extractWikilinksFromText(v));
 			const single = parseWikiLink(v);
@@ -46,18 +111,21 @@ function collectPeopleFilesFromFm(
 			}
 		}
 	}
-	const files: TFile[] = [];
+
 	const seen = new Set<string>();
+	if (organizerFile) seen.add(organizerFile.path);
+
+	const others: TFile[] = [];
 	for (const link of linkTexts) {
-		const dest = app.metadataCache.getFirstLinkpathDest(link, sourcePath);
-		if (!(dest instanceof TFile)) continue;
-		if (!isUnderFolder(dest.path, folder)) continue;
+		const dest = resolvePeopleFolderNote(app, link, sourcePath, folder, matchIndex);
+		if (!dest) continue;
 		if (seen.has(dest.path)) continue;
 		seen.add(dest.path);
-		files.push(dest);
+		others.push(dest);
 	}
-	files.sort((a, b) => a.basename.localeCompare(b.basename, undefined, {sensitivity: "base"}));
-	return files;
+	others.sort((a, b) => a.basename.localeCompare(b.basename, undefined, {sensitivity: "base"}));
+
+	return organizerFile ? [organizerFile, ...others] : others;
 }
 
 function personChip(
@@ -167,12 +235,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
 	return node;
 }
 
-function buildChromeDom(
-	app: App,
-	file: TFile,
-	fm: Record<string, unknown>,
-	s: FulcrumSettings,
-): HTMLElement {
+function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<string, unknown>): HTMLElement {
+	const app = hostCtx.app;
+	const s = hostCtx.getSettings();
 	const host = el("div", "fulcrum-companion-chrome-host");
 
 	const accentCss = resolveBannerAccentCss(app, file.path, fm, s);
@@ -208,12 +273,49 @@ function buildChromeDom(
 		);
 		dates.append(row);
 	}
+
+	const actionsRow = el("div", "fulcrum-companion-banner__actions");
+	const lapseApi = getLapseApi(app);
+	const hasLapsePlay =
+		lapseApi &&
+		typeof lapseApi.startTimerInNote === "function" &&
+		typeof hostCtx.startLapseInOpenNote === "function";
+	if (hasLapsePlay) {
+		const lapseBtn = el("button", "fulcrum-companion-lapse-btn");
+		lapseBtn.type = "button";
+		lapseBtn.title = "Start a Lapse timer in this note";
+		lapseBtn.setAttribute("aria-label", "Start a Lapse timer in this note");
+		setIcon(lapseBtn, "play");
+		lapseBtn.addEventListener("click", (ev) => {
+			ev.preventDefault();
+			ev.stopPropagation();
+			void hostCtx.startLapseInOpenNote?.(file, {
+				projectLabel: projLabel,
+				entryTitle: titleBase,
+			});
+		});
+		actionsRow.append(lapseBtn);
+	}
+
+	const tracked = readTrackedMinutesFromFm(fm, s.taskTrackedMinutesField);
+	const timeCard = el(
+		"div",
+		"fulcrum-companion-time-card fulcrum-companion-time-card--banner fulcrum-person-card",
+	);
+	const timeVal = el("div", "fulcrum-companion-time-card__value", tracked > 0 ? formatTrackedMinutesShort(tracked) : "—");
+	const timeLbl = el("div", "fulcrum-companion-time-card__label", "Tracked");
+	timeCard.append(timeVal, timeLbl);
+	actionsRow.append(timeCard);
+
+	if (actionsRow.childNodes.length > 0) {
+		dates.append(actionsRow);
+	}
 	top.append(main, dates);
 
 	const peopleRow = el("div", "fulcrum-companion-people-row");
 
 	const avatarField = s.peopleAvatarField.trim() || "avatar";
-	const peopleFiles = collectPeopleFilesFromFm(app, file.path, fm, s.peopleFolder);
+	const peopleFiles = collectPeopleFilesFromFm(app, file.path, fm, s);
 	for (const pf of peopleFiles) {
 		const p = personChip(app, pf, avatarField);
 		const btn = el("button", "fulcrum-person-card fulcrum-companion-person-card");
@@ -238,14 +340,10 @@ function buildChromeDom(
 		peopleRow.append(btn);
 	}
 
-	const tracked = readTrackedMinutesFromFm(fm, s.taskTrackedMinutesField);
-	const timeCard = el("div", "fulcrum-companion-time-card fulcrum-person-card");
-	const timeVal = el("div", "fulcrum-companion-time-card__value", tracked > 0 ? formatTrackedMinutesShort(tracked) : "—");
-	const timeLbl = el("div", "fulcrum-companion-time-card__label", "Tracked");
-	timeCard.append(timeVal, timeLbl);
-	peopleRow.append(timeCard);
-
-	surface.append(top, peopleRow);
+	surface.append(top);
+	if (peopleRow.childNodes.length > 0) {
+		surface.append(peopleRow);
+	}
 	host.append(surface);
 
 	return host;
@@ -276,7 +374,7 @@ function syncCompanionChrome(host: CompanionChromeHost, companion: FulcrumCompan
 	view.contentEl.classList.add("fulcrum-companion-doc");
 	const prev = view.contentEl.querySelector(":scope > .fulcrum-companion-chrome-host");
 	prev?.remove();
-	view.contentEl.prepend(buildChromeDom(app, file, fm, host.getSettings()));
+	view.contentEl.prepend(buildChromeDom(host, file, fm));
 }
 
 /** Debounced refresh when metadata / files change. */

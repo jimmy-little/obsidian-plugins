@@ -1,3 +1,11 @@
+import {
+	buildMultilineFeedPreview,
+	stripBlockquoteLines,
+	stripFencedCodeBlocks,
+	stripObsidianCallouts,
+	stripYamlFrontmatter,
+} from "@obsidian-suite/note-preview";
+
 export function parseTagsFromFm(fm: Record<string, unknown> | undefined): string[] {
 	if (!fm) return [];
 	const t = fm.tags;
@@ -22,34 +30,6 @@ export function parseTagsFromFm(fm: Record<string, unknown> | undefined): string
 		dedup.push(x);
 	}
 	return dedup;
-}
-
-/** Remove fenced ``` / ~~~ blocks (Dataview, code, etc.). */
-export function stripFencedCodeBlocks(markdown: string): string {
-	const lines = markdown.split(/\r?\n/);
-	const out: string[] = [];
-	let inFence = false;
-	for (const line of lines) {
-		if (/^\s*((?:`{3,}|~{3,}))/u.test(line)) {
-			inFence = !inFence;
-			continue;
-		}
-		if (!inFence) out.push(line);
-	}
-	return out.join("\n");
-}
-
-export function stripBlockquoteLines(markdown: string): string {
-	return markdown
-		.split(/\r?\n/)
-		.filter((line) => !/^\s*>/.test(line))
-		.join("\n");
-}
-
-export function stripYamlFrontmatter(markdown: string): string {
-	if (!markdown.startsWith("---")) return markdown;
-	const m = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-	return m ? markdown.slice(m[0].length) : markdown;
 }
 
 function escapeFieldKeyForRegex(key: string): string {
@@ -92,7 +72,9 @@ export function resolveEntryTitle(params: {
 	return basename.replace(/\.md$/i, "");
 }
 
-/** Short plain-text preview after stripping noise and inline metadata lines. */
+/**
+ * Short single-line preview for indexes (VaultIndex); still strips structural noise via suite package.
+ */
 export function buildNoteBodyPreview(
 	body: string,
 	entryTitle: string,
@@ -100,21 +82,15 @@ export function buildNoteBodyPreview(
 ): string | undefined {
 	let t = stripYamlFrontmatter(body);
 	t = stripFencedCodeBlocks(t);
+	t = stripObsidianCallouts(t);
 	t = stripBlockquoteLines(t);
-	const iKey = entryFieldKey.trim().toLowerCase();
-	const lines = t.split(/\r?\n/);
-	const kept: string[] = [];
-	for (const line of lines) {
-		const m = line.trim().match(/^(?:\*\*)?([^:*]+?)(?:\*\*)?\s*::\s*(.*)$/i);
-		if (m?.[1]) {
-			const name = m[1].replace(/\s+/g, " ").trim().toLowerCase();
-			if (name === iKey || name === "entry" || name === "type") continue;
-		}
-		kept.push(line);
-	}
-	t = kept.join("\n").trim();
-	t = t.replace(/^#{1,6}[ \t]+[^\n]+\n?/m, "").trim();
-	t = t.replace(/\s+/g, " ").trim();
-	if (!t || t.toLowerCase() === entryTitle.toLowerCase()) return undefined;
-	return t.length > 320 ? `${t.slice(0, 317).trimEnd()}…` : t;
+	const multi = buildMultilineFeedPreview(t, {
+		maxLines: 80,
+		entryFieldKey,
+		displayTitle: entryTitle,
+	});
+	if (!multi) return undefined;
+	const oneLine = multi.replace(/\s+/g, " ").trim();
+	if (!oneLine || oneLine.toLowerCase() === entryTitle.toLowerCase()) return undefined;
+	return oneLine.length > 320 ? `${oneLine.slice(0, 317).trimEnd()}…` : oneLine;
 }

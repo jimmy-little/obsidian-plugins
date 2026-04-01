@@ -5,13 +5,11 @@
 
 export type CalendarViewMode = "month" | "workWeek" | "week" | "threeDay" | "day";
 
-/** Start of week: 0 = Sunday, 1 = Monday (work week start). */
-const WEEK_START = 1; // Monday
-
-export function getWeekStart(date: Date): Date {
+/** Align `date` to the start of its week. `weekStart`: 0 = Sunday … 6 = Saturday (matches settings). */
+export function getWeekStart(date: Date, weekStart: number): Date {
 	const d = new Date(date);
 	const day = d.getDay();
-	const diff = (day - WEEK_START + 7) % 7;
+	const diff = (day - weekStart + 7) % 7;
 	d.setDate(d.getDate() - diff);
 	d.setHours(0, 0, 0, 0);
 	return d;
@@ -41,20 +39,17 @@ export function daysInView(mode: CalendarViewMode): number {
 }
 
 /** First date shown in the grid for the given mode and focal date. */
-export function gridStartDate(focal: Date, mode: CalendarViewMode): Date {
+export function gridStartDate(focal: Date, mode: CalendarViewMode, weekStart: number): Date {
 	const d = new Date(focal);
 	d.setHours(0, 0, 0, 0);
 
 	if (mode === "month") {
-		const ws = getWeekStart(d);
-		// If we're in the middle of a month, align to that month's first week
 		const firstOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-		const weekStartOfFirst = getWeekStart(firstOfMonth);
-		return weekStartOfFirst;
+		return getWeekStart(firstOfMonth, weekStart);
 	}
 
 	if (mode === "workWeek" || mode === "week") {
-		return getWeekStart(d);
+		return getWeekStart(d, weekStart);
 	}
 
 	// threeDay, day: start at focal date
@@ -62,8 +57,12 @@ export function gridStartDate(focal: Date, mode: CalendarViewMode): Date {
 }
 
 /** Array of [date, isCurrentMonth?] for the visible grid. */
-export function gridDates(focal: Date, mode: CalendarViewMode): {date: Date; isCurrentMonth: boolean}[] {
-	const start = gridStartDate(focal, mode);
+export function gridDates(
+	focal: Date,
+	mode: CalendarViewMode,
+	weekStart: number,
+): {date: Date; isCurrentMonth: boolean}[] {
+	const start = gridStartDate(focal, mode, weekStart);
 	const count = daysInView(mode);
 	const out: {date: Date; isCurrentMonth: boolean}[] = [];
 	const focalMonth = focal.getMonth();

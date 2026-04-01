@@ -10,16 +10,24 @@
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 	export let hoverPath: string | undefined = undefined;
+	/** When true, do not trigger Obsidian page hover-preview on this row (e.g. Activity feeds with inline previews). */
+	export let suppressHoverPreview = false;
 	export let variant: "default" | "timeline" | "icon" = "default";
 	/** Optional CSS color for timeline node/stem (e.g. project color in aggregated feed). */
 	export let accentColorCss: string | undefined = undefined;
 	/** When set on a note row, replaces the file icon inside the timeline circle. */
 	export let timelineEmoji: string | undefined = undefined;
+	/** Markdown excerpt under the title (e.g. feed preview); rendered by the plugin. */
+	export let bodyPreview: string | undefined = undefined;
+	/** Left accent on the preview card (e.g. project color CSS). */
+	export let previewAccentCss: string | undefined = undefined;
 
 	let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+	let previewHost: HTMLElement | undefined;
+	let previewRenderChain: Promise<void> = Promise.resolve();
 
 	function onHover(ev: MouseEvent): void {
-		if (!hoverPath || !hoverParentLeaf) return;
+		if (suppressHoverPreview || !hoverPath || !hoverParentLeaf) return;
 		const delay = plugin.settings.hoverPreviewDelayMs ?? 0;
 		if (delay <= 0) {
 			plugin.triggerFulcrumHoverLink(
@@ -53,6 +61,22 @@
 		ev.preventDefault();
 		whenClick();
 	}
+
+	function onRowClick(ev: MouseEvent): void {
+		if ((ev.target as HTMLElement | null)?.closest(".fulcrum-activity-row__preview a")) return;
+		whenClick();
+	}
+
+	$: if (previewHost && bodyPreview && hoverPath) {
+		const host = previewHost;
+		const path = hoverPath;
+		const md = bodyPreview;
+		previewRenderChain = previewRenderChain.then(async () => {
+			if (!host.isConnected) return;
+			host.empty();
+			await plugin.renderActivityBodyPreview(host, path, md);
+		});
+	}
 </script>
 
 <div
@@ -62,7 +86,7 @@
 	class:fulcrum-activity-row--timeline={variant === "timeline"}
 	class:fulcrum-activity-row--icon={variant === "icon"}
 	data-fulcrum-activity-kind={kind}
-	on:click={whenClick}
+	on:click={onRowClick}
 	on:keydown={onRowKeydown}
 	on:mouseenter={onHover}
 	on:mouseleave={onHoverCancel}
@@ -178,6 +202,15 @@
 					{/if}
 				{/each}
 			</div>
+		{/if}
+		{#if bodyPreview}
+			<div
+				class="fulcrum-activity-row__preview"
+				style={previewAccentCss
+					? `--fulcrum-preview-accent: ${previewAccentCss}`
+					: undefined}
+				bind:this={previewHost}
+			></div>
 		{/if}
 	</div>
 </div>

@@ -20,15 +20,15 @@ export function isUnderFolder(filePath: string, folder: string): boolean {
 
 /**
  * When projects live in `root/StatusName/...`, returns that status segment (lowercased).
- * Files directly in `root` (not in a subfolder) → `""` (no status).
+ * Files directly in `root` (not in a subfolder) → `"active"`.
  */
 export function projectStatusFromSubfolderLayout(filePath: string, root: string): string {
 	const r = normalizeVaultRelPath(root);
 	const p = filePath.replace(/^\/+/, "");
-	if (!r || !p.startsWith(r + "/")) return "";
+	if (!r || !p.startsWith(r + "/")) return "active";
 	const rel = p.slice(r.length + 1);
 	const parts = rel.split("/").filter(Boolean);
-	if (parts.length < 2) return "";
+	if (parts.length < 2) return "active";
 	return parts[0]!.toLowerCase();
 }
 

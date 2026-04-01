@@ -1,0 +1,8 @@
+{
+	"name": "@obsidian-suite/note-preview",
+	"version": "0.0.1",
+	"private": true,
+	"description": "Strip structural Markdown (frontmatter, callouts, fences) and build line-limited feed previews — shared by suite plugins",
+	"main": "src/index.ts",
+	"types": "src/index.ts"
+}

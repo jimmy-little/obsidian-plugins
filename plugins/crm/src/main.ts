@@ -1,6 +1,16 @@
 import { Plugin } from "obsidian";
 import { revealOrCreateView } from "@obsidian-suite/core";
-import { ShellView, VIEW_TYPE } from "./ShellView";
+import { createSuiteShellViewClass } from "@obsidian-suite/svelte-shell";
+import App from "./App.svelte";
+
+export const VIEW_TYPE = "crm-main";
+
+const ShellView = createSuiteShellViewClass({
+	viewType: VIEW_TYPE,
+	displayText: "CRM",
+	icon: "contact",
+	App,
+});
 
 export default class CrmPlugin extends Plugin {
 	async onload(): Promise<void> {
@@ -12,7 +22,7 @@ export default class CrmPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-main",
-			name: "Open " + "CRM",
+			name: "Open CRM",
 			callback: () => void this.activateMainView(),
 		});
 	}

@@ -28,6 +28,7 @@
 		type ActivityRowModel,
 	} from "../fulcrum/utils/projectActivity";
 	import TaskCard from "./TaskCard.svelte";
+	import {loadActivityFeedPreviews} from "../fulcrum/loadActivityFeedPreviews";
 	import ActivityRow from "./ActivityRow.svelte";
 	import ProjectListRow from "./ProjectListRow.svelte";
 
@@ -177,6 +178,26 @@
 		void load();
 	}
 
+	let dashActivityPreviews: Record<string, string> = {};
+
+	$: dashActivityFeedKey =
+		aggregatedActivity.length > 0
+			? `${rev}\u0000${aggregatedActivity.map((r) => r.id).join("\u0000")}\u0000${plugin.settings.atomicNoteEntryField}`
+			: "";
+
+	$: if (dashActivityFeedKey) {
+		const key = dashActivityFeedKey;
+		const rows = aggregatedActivity;
+		const vault = plugin.app.vault;
+		const entryField = plugin.settings.atomicNoteEntryField;
+		void loadActivityFeedPreviews(vault, rows, entryField, 10).then((m) => {
+			if (key !== dashActivityFeedKey) return;
+			dashActivityPreviews = m;
+		});
+	} else {
+		dashActivityPreviews = {};
+	}
+
 	function openFile(path: string): void {
 		plugin.openLinkedNoteFromFulcrum(path, hoverParentLeaf);
 	}
@@ -259,11 +280,11 @@
 									style={`--fulcrum-cal-event-accent: ${accent}`}
 									on:click={() => openFile(m.file.path)}
 								>
-									<span class="fulcrum-dashboard-meetings__event-time">
-										{tlabel || "All day"}
-									</span>
 									<span class="fulcrum-dashboard-meetings__event-title">
 										{m.title?.trim() || m.file.basename.replace(/\.md$/i, "")}
+									</span>
+									<span class="fulcrum-dashboard-meetings__event-time">
+										{tlabel || "All day"}
 									</span>
 								</button>
 							{/each}
@@ -338,7 +359,10 @@
 						{plugin}
 						hoverParentLeaf={hoverParentLeaf}
 						hoverPath={row.hoverPath}
+						suppressHoverPreview={true}
 						accentColorCss={row.accentColorCss}
+						bodyPreview={row.hoverPath ? dashActivityPreviews[row.hoverPath] : undefined}
+						previewAccentCss={row.accentColorCss}
 					/>
 				</li>
 			{/each}

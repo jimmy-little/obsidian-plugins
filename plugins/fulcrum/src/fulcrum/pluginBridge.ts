@@ -57,4 +57,6 @@ export interface FulcrumHost {
 		targetEl: HTMLElement,
 		path: string,
 	): void;
+	/** Renders markdown into a host element (e.g. activity note preview). */
+	renderActivityBodyPreview(el: HTMLElement, sourcePath: string, markdown: string): Promise<void>;
 }
