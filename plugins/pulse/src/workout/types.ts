@@ -22,6 +22,8 @@ export interface ExerciseFrontmatter {
 	name: string;
 	movement: string;
 	equipment: string;
+	/** Muscle / region (e.g. chest, back, shoulders) */
+	body_part: string;
 	unit: "lb" | "kg";
 	/** For movement Cardio: label for distance column (mi / km / m) */
 	"distance-unit"?: "mi" | "km" | "m";
@@ -108,6 +110,7 @@ export interface NewExerciseData {
 	name: string;
 	movement: string;
 	equipment: string;
+	body_part?: string;
 	unit: "lb" | "kg";
 	tags?: string[];
 }

@@ -5,6 +5,7 @@
 		"src/**/*.svelte"
 	],
 	"compilerOptions": {
+		"lib": ["DOM", "ES2018", "ES2022"],
 		"types": [
 			"node",
 			"svelte"

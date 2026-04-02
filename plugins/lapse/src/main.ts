@@ -666,12 +666,26 @@ export default class LapsePlugin extends Plugin {
 			await this.mergeProjectIntoFrontmatter(notePath, project);
 		}
 		await this.addDefaultTagToNote(notePath);
+		await this.ensureLapseTimerCodeBlockInNote(notePath);
 		await this.updateFrontmatter(notePath);
 		this.app.workspace.getLeavesOfType("lapse-sidebar").forEach((leaf) => {
 			if (leaf.view instanceof LapseSidebarView) {
 				leaf.view.refresh();
 			}
 		});
+	}
+
+	/**
+	 * If the note has no ```lapse fence yet, append an empty one so Reading/Live Preview
+	 * shows the timer UI (used by Fulcrum companion and other startTimerInNote callers).
+	 */
+	private async ensureLapseTimerCodeBlockInNote(filePath: string): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (!file || !(file instanceof TFile)) return;
+		const content = await this.app.vault.read(file);
+		if (/```[\t ]*lapse\b/im.test(content)) return;
+		const fence = "\n\n```lapse\n```\n";
+		await this.app.vault.modify(file, content.replace(/\s*$/, "") + fence);
 	}
 
 	async mergeProjectIntoFrontmatter(filePath: string, projectName: string): Promise<void> {

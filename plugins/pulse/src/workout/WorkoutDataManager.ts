@@ -57,12 +57,14 @@ export class WorkoutDataManager {
 			return existing;
 		}
 
+		const bp = (data.body_part ?? "").trim();
 		const fm = [
 			"---",
 			"pulse-type: exercise",
 			`name: ${data.name}`,
 			`movement: ${data.movement}`,
 			`equipment: ${data.equipment}`,
+			bp ? `body_part: ${bp}` : null,
 			`unit: ${data.unit}`,
 			data.tags?.length ? `tags: [${data.tags.join(", ")}]` : null,
 			"---",
@@ -92,6 +94,11 @@ export class WorkoutDataManager {
 		if (updates.name != null) fmMap.set("name", updates.name);
 		if (updates.movement != null) fmMap.set("movement", updates.movement);
 		if (updates.equipment != null) fmMap.set("equipment", updates.equipment);
+		if (updates.body_part !== undefined) {
+			const v = updates.body_part.trim();
+			if (v) fmMap.set("body_part", v);
+			else fmMap.delete("body_part");
+		}
 		if (updates.unit != null) fmMap.set("unit", updates.unit);
 		if (updates.tags != null) {
 			fmMap.set("tags", `[${updates.tags.join(", ")}]`);
@@ -584,6 +591,9 @@ export class WorkoutDataManager {
 				name: String(fm.name ?? file.basename),
 				movement: String(fm.movement ?? fm.category ?? ""),
 				equipment: String(fm.equipment ?? ""),
+				body_part: String(
+					fm.body_part ?? (fm as Record<string, unknown>)["body-part"] ?? "",
+				),
 				unit: (fm.unit === "kg" ? "kg" : this.settings.weightUnit) as "lb" | "kg",
 				...(distU ? { "distance-unit": distU } : {}),
 				tags: parsedTags,

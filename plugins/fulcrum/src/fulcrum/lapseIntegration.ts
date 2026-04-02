@@ -89,7 +89,7 @@ export async function pickLapseQuickStartForProject(
 }
 
 /**
- * Start Lapse in the open companion note (appends lapse block, syncs frontmatter).
+ * Start Lapse in the open companion note (Lapse appends an empty lapse code fence if missing, then syncs frontmatter).
  * Requires a Lapse build that exposes {@link LapsePublicApi.startTimerInNote}.
  */
 export async function runLapseTimerInOpenNote(

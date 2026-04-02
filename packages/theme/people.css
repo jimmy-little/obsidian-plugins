@@ -143,6 +143,7 @@
 }
 
 .fulcrum-companion-time-card.fulcrum-person-card {
+	display: flex;
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;

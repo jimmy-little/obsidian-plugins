@@ -26,6 +26,341 @@
 	font-size: var(--font-ui-smaller);
 }
 
+/* —— Orbit home / Fulcrum Project Manager–style shell —— */
+
+.workspace-leaf[data-type="orbit-main"] .workspace-leaf-content {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.workspace-leaf-content .view-content:has(.orbit-pm) {
+	position: relative;
+	height: 100%;
+	max-height: 100%;
+	min-height: 0;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.workspace-leaf-content .view-content .orbit-pm {
+	position: absolute;
+	inset: 0;
+	width: auto;
+	height: auto;
+	min-height: 0;
+	min-width: 0;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.orbit-pm {
+	--orbit-pm-left-w: 22rem;
+	--orbit-pm-split-w: 5px;
+	display: grid;
+	grid-template-columns: var(--orbit-pm-left-w) var(--orbit-pm-split-w) minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr);
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	align-items: stretch;
+	background: var(--background-primary);
+	box-sizing: border-box;
+}
+
+.orbit-pm > .orbit-pm__sidebar,
+.orbit-pm > .orbit-pm__main {
+	min-height: 0;
+}
+
+.orbit-pm.orbit-pm-left-collapsed {
+	--orbit-pm-left-w: 2.35rem;
+	--orbit-pm-split-w: 0px;
+}
+
+.orbit-pm.orbit-pm--list-only {
+	grid-template-columns: minmax(0, 1fr);
+	--orbit-pm-split-w: 0px;
+}
+
+.orbit-pm--list-only .orbit-pm__split {
+	display: none;
+}
+
+.orbit-pm__sidebar {
+	min-height: 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.orbit-pm__sidebar--left {
+	border-right: none;
+	background: var(--background-secondary);
+	overflow: hidden;
+}
+
+.orbit-pm-left-collapsed .orbit-pm__sidebar--left {
+	border-right: 1px solid var(--background-modifier-border);
+}
+
+.orbit-pm__split {
+	--input-shadow: none !important;
+	--shadow-s: none !important;
+	--shadow-l: none !important;
+	display: block;
+	min-width: 0;
+	width: 100%;
+	min-height: 0;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	border-left: 1px solid var(--background-modifier-border);
+	background: transparent;
+	box-shadow: none !important;
+	font-size: 0;
+	line-height: 0;
+	color: transparent;
+	cursor: col-resize;
+	touch-action: none;
+	box-sizing: border-box;
+	align-self: stretch;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.orbit-pm__split:hover:not(:disabled),
+.orbit-pm__split:focus-visible:not(:disabled) {
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+.orbit-pm__split:focus-visible:not(:disabled) {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+	z-index: 1;
+}
+
+.orbit-pm__split:disabled {
+	cursor: default;
+	border-left: none;
+	background: transparent;
+	opacity: 1;
+}
+
+.orbit-pm__left-stack {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+	min-width: 0;
+}
+
+.orbit-pm__glyph-bar {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 0.1rem;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.3rem 0.35rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
+}
+
+.orbit-pm-left-collapsed .orbit-pm__glyph-bar {
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 0.2rem;
+	padding: 0.35rem 0.15rem;
+}
+
+.orbit-pm__glyph-spacer {
+	flex: 1 1 auto;
+	min-width: 0.2rem;
+}
+
+.orbit-pm-left-collapsed .orbit-pm__glyph-spacer {
+	display: none;
+}
+
+.orbit-pm__glyph-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	margin: 0;
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	color: var(--text-muted);
+	line-height: 1;
+	cursor: pointer;
+	box-shadow: none;
+}
+
+.orbit-pm__glyph-btn:hover:not(:disabled) {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.orbit-pm__glyph-btn:disabled {
+	opacity: 0.32;
+	cursor: default;
+	pointer-events: none;
+}
+
+.orbit-pm__glyph-btn svg {
+	width: 16px;
+	height: 16px;
+}
+
+.orbit-pm__left-scroll {
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
+	overflow: auto;
+	padding: 0 0 0.75rem 0;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.orbit-pm-left-collapsed .orbit-pm__left-scroll {
+	display: none;
+}
+
+.orbit-pm__main {
+	min-width: 0;
+	min-height: 0;
+	overflow: auto;
+	-webkit-overflow-scrolling: touch;
+	padding: 0.75rem 1rem 1.25rem;
+}
+
+/* People list (Fulcrum project-row styling, orbit-prefixed) */
+.orbit-people-panel {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	flex: 1;
+}
+
+.orbit-people-panel__search {
+	flex-shrink: 0;
+	padding: 0.45rem 0.5rem 0.35rem;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+}
+
+.orbit-people-panel__search .search-input {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.orbit-people-panel__empty {
+	margin: 0.75rem 0.5rem;
+}
+
+.orbit-sidebar-people-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	width: 100%;
+}
+
+.orbit-sidebar-people-list > li {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+}
+
+.orbit-pl-row {
+	--orbit-pl-accent: var(--background-modifier-border);
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	width: 100%;
+	text-align: left;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+	border-left: 5px solid var(--orbit-pl-accent);
+	background: transparent;
+	font: inherit;
+	color: var(--text-normal);
+	cursor: pointer;
+	box-sizing: border-box;
+	outline: none;
+}
+
+.orbit-pl-row:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+.orbit-pl-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.orbit-pl-row--active {
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
+}
+
+.orbit-pl-row--active:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary));
+}
+
+.orbit-pl-row__inner {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	padding: 0.48rem 0.45rem 0.52rem 0.55rem;
+	box-sizing: border-box;
+}
+
+.orbit-pl-row__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.25rem 0.65rem;
+	width: 100%;
+}
+
+.orbit-pl-row__name {
+	flex: 1 1 6rem;
+	min-width: 0;
+	font-size: var(--font-ui-small);
+	font-weight: 700;
+	line-height: 1.35;
+	color: var(--text-normal);
+	word-break: break-word;
+}
+
+.orbit-pl-row__desc {
+	width: 100%;
+	margin: 0.22rem 0 0;
+	padding: 0;
+	font-size: var(--font-ui-small);
+	font-weight: 400;
+	line-height: 1.4;
+	color: var(--text-muted);
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	overflow: hidden;
+	word-break: break-word;
+}
+
 /*
  * Shared “suite people” UI — portrait cards + inline pills.
  * Used by Fulcrum (related people, companion chrome, markdown people links) and
@@ -171,6 +506,7 @@
 }
 
 .fulcrum-companion-time-card.fulcrum-person-card {
+	display: flex;
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;

@@ -2,6 +2,13 @@ import { Notice } from "obsidian";
 import type PulsePlugin from "../main";
 import type { ExerciseNote, NewExerciseData } from "./types";
 import { renderProgressChart } from "./charts";
+import {
+	type ExerciseGroupBy,
+	exerciseMatchesFilter,
+	getStoredExerciseGroupBy,
+	groupExercisesBy,
+	setStoredExerciseGroupBy,
+} from "./exerciseListUi";
 
 export class ExercisesTab {
 	private plugin: PulsePlugin;
@@ -23,12 +30,38 @@ export class ExercisesTab {
 		container.empty();
 		const wrapper = container.createDiv({ cls: "pulse-workout-exercises" });
 
-		// Search bar
-		const searchBar = wrapper.createDiv({ cls: "pulse-workout-search-bar" });
-		const searchInput = searchBar.createEl("input", {
-			type: "text",
+		// Search + group (match sidebar / Fulcrum-style header controls)
+		const searchBar = wrapper.createDiv({ cls: "pulse-workout-search-bar pulse-workout-search-bar--split" });
+		const groupWrap = searchBar.createDiv({ cls: "pulse-workout-group-by" });
+		groupWrap.createEl("label", { text: "Group", cls: "pulse-workout-group-by-label" });
+		const groupSelect = groupWrap.createEl("select", {
+			cls: "pulse-workout-select pulse-workout-select--compact",
+		});
+		for (const o of [
+			{ value: "movement", label: "Movement" },
+			{ value: "equipment", label: "Equipment" },
+			{ value: "body_part", label: "Body part" },
+		] as { value: ExerciseGroupBy; label: string }[]) {
+			groupSelect.createEl("option", { text: o.label, value: o.value });
+		}
+		groupSelect.value = getStoredExerciseGroupBy();
+
+		const searchInputWrap = searchBar.createDiv({ cls: "pulse-workout-search-input-wrap" });
+		const hintId = "pulse-modal-exercise-hints";
+		const dataList = searchInputWrap.createEl("datalist", { attr: { id: hintId } });
+		const hintSeen = new Set<string>();
+		for (const e of exercises) {
+			const n = e.frontmatter.name.trim();
+			if (n && !hintSeen.has(n)) {
+				hintSeen.add(n);
+				dataList.createEl("option", { attr: { value: n } });
+			}
+		}
+		const searchInput = searchInputWrap.createEl("input", {
+			type: "search",
 			cls: "pulse-workout-search",
-			placeholder: "Search exercises...",
+			placeholder: "Find exercises…",
+			attr: { list: hintId, autocomplete: "off" },
 		});
 
 		const newBtn = searchBar.createEl("button", {
@@ -37,37 +70,35 @@ export class ExercisesTab {
 		});
 		newBtn.addEventListener("click", () => this.showNewExerciseForm());
 
-		// Category groups
 		const listContainer = wrapper.createDiv({ cls: "pulse-workout-exercise-groups" });
 
 		const renderGrouped = (filter: string) => {
 			listContainer.empty();
-			const filtered = exercises.filter(e =>
-				e.frontmatter.name.toLowerCase().includes(filter.toLowerCase()) ||
-				e.frontmatter.movement.toLowerCase().includes(filter.toLowerCase())
-			);
-
-			const grouped = new Map<string, ExerciseNote[]>();
-			for (const ex of filtered) {
-				const mov = ex.frontmatter.movement || "Uncategorized";
-				if (!grouped.has(mov)) grouped.set(mov, []);
-				grouped.get(mov)!.push(ex);
-			}
+			const by = getStoredExerciseGroupBy();
+			groupSelect.value = by;
+			const filtered = exercises.filter(e => exerciseMatchesFilter(e, filter));
+			const grouped = groupExercisesBy(filtered, by);
 
 			if (grouped.size === 0) {
 				listContainer.createEl("p", { text: "No exercises found.", cls: "pulse-workout-muted" });
 				return;
 			}
 
-			for (const [movement, exList] of grouped) {
+			const keys = [...grouped.keys()].sort((a, b) => a.localeCompare(b));
+			for (const key of keys) {
+				const exList = grouped.get(key)!;
+				exList.sort((a, b) => a.frontmatter.name.localeCompare(b.frontmatter.name));
+
 				const group = listContainer.createDiv({ cls: "pulse-workout-exercise-group" });
-				group.createEl("h4", { text: movement, cls: "pulse-workout-group-header" });
+				group.createEl("h4", { text: key, cls: "pulse-workout-group-header" });
 
 				for (const ex of exList) {
 					const row = group.createDiv({ cls: "pulse-workout-exercise-row" });
 					const info = row.createDiv({ cls: "pulse-workout-exercise-info" });
 					info.createSpan({ text: ex.frontmatter.name });
-					const details: string[] = [ex.frontmatter.equipment];
+					const details: string[] = [];
+					if (ex.frontmatter.body_part) details.push(ex.frontmatter.body_part);
+					if (ex.frontmatter.equipment) details.push(ex.frontmatter.equipment);
 					if (ex.frontmatter["pr-weight"]) {
 						details.push(`PR: ${ex.frontmatter["pr-weight"]} ${ex.frontmatter.unit}`);
 					}
@@ -78,8 +109,13 @@ export class ExercisesTab {
 			}
 		};
 
+		groupSelect.addEventListener("change", () => {
+			setStoredExerciseGroupBy(groupSelect.value as ExerciseGroupBy);
+			renderGrouped(searchInput.value);
+		});
+
 		renderGrouped("");
-		searchInput.addEventListener("input", (e) => renderGrouped((e.target as HTMLInputElement).value));
+		searchInput.addEventListener("input", () => renderGrouped(searchInput.value));
 	}
 
 	private async showExerciseDetail(exercise: ExerciseNote): Promise<void> {
@@ -97,6 +133,7 @@ export class ExercisesTab {
 
 		const meta = detail.createDiv({ cls: "pulse-workout-exercise-meta" });
 		meta.createSpan({ text: exercise.frontmatter.movement });
+		if (exercise.frontmatter.body_part) meta.createSpan({ text: exercise.frontmatter.body_part });
 		meta.createSpan({ text: exercise.frontmatter.equipment });
 		meta.createSpan({ text: exercise.frontmatter.unit });
 
@@ -156,6 +193,7 @@ export class ExercisesTab {
 
 		const nameInput = this.createFormField(form, "Name", "text", "e.g. Bench Press");
 		const movementInput = this.createFormField(form, "Movement", "text", "e.g. Push, Pull, Legs");
+		const bodyPartInput = this.createFormField(form, "Body part", "text", "e.g. Chest, Back, Shoulders");
 		const equipmentInput = this.createFormField(form, "Equipment", "text", "e.g. Barbell, Dumbbell");
 		const tagsInput = this.createFormField(form, "Tags", "text", "e.g. chest, triceps");
 
@@ -178,6 +216,7 @@ export class ExercisesTab {
 			const data: NewExerciseData = {
 				name,
 				movement: (movementInput as HTMLInputElement).value.trim() || "Uncategorized",
+				body_part: (bodyPartInput as HTMLInputElement).value.trim() || undefined,
 				equipment: (equipmentInput as HTMLInputElement).value.trim() || "Bodyweight",
 				unit: unitSelect.value as "lb" | "kg",
 				tags: (tagsInput as HTMLInputElement).value.split(",").map(t => t.trim()).filter(Boolean),

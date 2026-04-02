@@ -1,31 +1,33 @@
-import {MarkdownView, Plugin, TFile, type WorkspaceLeaf} from "obsidian";
+import {MarkdownRenderer, MarkdownView, Plugin, TFile, type WorkspaceLeaf} from "obsidian";
 import {revealOrCreateView} from "@obsidian-suite/core";
-import {createSuiteShellViewClass} from "@obsidian-suite/svelte-shell";
-import App from "./App.svelte";
 import {OrbitSettingTab} from "./OrbitSettingTab";
-import {VIEW_ORBIT_MAIN, VIEW_ORBIT_PERSON} from "./orbit/constants";
+import {VIEW_ORBIT_MAIN, VIEW_ORBIT_ORG_CHART, VIEW_ORBIT_PERSON} from "./orbit/constants";
 import type {OrbitHost} from "./orbit/pluginHost";
 import {isFileInPeopleDirs} from "./orbit/pathUtils";
 import {formatQuickNoteLine} from "./orbit/quickNoteFormat";
 import {DEFAULT_SETTINGS, normalizeSettings, type OrbitSettings} from "./orbit/settings";
+import {OrbitMainView} from "./views/OrbitMainView";
+import {OrgChartView} from "./views/OrgChartView";
 import {PersonView} from "./views/PersonView";
-
-const ShellView = createSuiteShellViewClass({
-	viewType: VIEW_ORBIT_MAIN,
-	displayText: "Orbit",
-	icon: "orbit",
-	App,
-});
 
 export default class OrbitPlugin extends Plugin implements OrbitHost {
 	settings: OrbitSettings = DEFAULT_SETTINGS;
+
+	/**
+	 * Paths opened via "Open note" in the person header: keep the standard Markdown
+	 * editor (source) so frontmatter/metadata is reachable; skip auto Person view routing
+	 * until `openPersonFile` explicitly opens Orbit again.
+	 */
+	private readonly personMarkdownPreferred = new Set<string>();
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 	}
 
 	async openMarkdownFile(file: TFile): Promise<void> {
-		await this.app.workspace.getLeaf("tab").openFile(file);
+		this.personMarkdownPreferred.add(file.path);
+		const leaf = this.app.workspace.getLeaf("tab");
+		await leaf.openFile(file, {active: true, state: {mode: "source"}});
 	}
 
 	async appendQuickNote(personFile: TFile, text: string): Promise<void> {
@@ -33,8 +35,31 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 		await this.app.vault.append(personFile, `\n${line}\n`);
 	}
 
+	async renderActivityPreview(el: HTMLElement, sourcePath: string, markdown: string): Promise<void> {
+		el.empty();
+		await MarkdownRenderer.render(this.app, markdown, el, sourcePath, this);
+	}
+
+	async openOrgChartForAnchor(anchorPath: string): Promise<void> {
+		await revealOrCreateView(this.app, VIEW_ORBIT_ORG_CHART, "sidebar", {anchorPath});
+	}
+
+	async openPersonProfileInMain(personPath: string): Promise<void> {
+		const mainLeaf =
+			this.app.workspace.getMostRecentLeaf(this.app.workspace.rootSplit) ??
+			this.app.workspace.getLeaf(false);
+		if (!mainLeaf) return;
+		await this.app.workspace.revealLeaf(mainLeaf);
+		await mainLeaf.setViewState({
+			type: VIEW_ORBIT_PERSON,
+			active: true,
+			state: {path: personPath},
+		});
+	}
+
 	/** Fulcrum / suite: open a person in the Orbit profile (split leaf). */
 	async openPersonFile(file: TFile): Promise<void> {
+		this.personMarkdownPreferred.delete(file.path);
 		if (file.extension !== "md") {
 			await this.app.workspace.getLeaf("tab").openFile(file);
 			return;
@@ -55,8 +80,9 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
-		this.registerView(VIEW_ORBIT_MAIN, (leaf) => new ShellView(leaf, this));
+		this.registerView(VIEW_ORBIT_MAIN, (leaf) => new OrbitMainView(leaf, this));
 		this.registerView(VIEW_ORBIT_PERSON, (leaf) => new PersonView(leaf, this));
+		this.registerView(VIEW_ORBIT_ORG_CHART, (leaf) => new OrgChartView(leaf, this));
 
 		this.addSettingTab(new OrbitSettingTab(this.app, this));
 
@@ -120,6 +146,7 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 	}
 
 	private async routeMarkdownLeafToOrbit(leaf: WorkspaceLeaf, file: TFile): Promise<void> {
+		if (this.personMarkdownPreferred.has(file.path)) return;
 		const vs = leaf.getViewState();
 		if (vs.type === VIEW_ORBIT_PERSON && (vs.state as {path?: string} | undefined)?.path === file.path) {
 			return;

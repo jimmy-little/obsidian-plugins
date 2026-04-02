@@ -2,6 +2,7 @@ import { Notice, setIcon } from "obsidian";
 import type PulsePlugin from "../main";
 import type { PulseView } from "./PulseView";
 import type { ExerciseNote, ProgramExercise, ProgramDay } from "../workout/types";
+import { exerciseMatchesFilter } from "../workout/exerciseListUi";
 
 interface BuilderExercise {
 	exercisePath: string;
@@ -216,10 +217,7 @@ export class WorkoutBuilder {
 
 		const renderList = (filter: string) => {
 			listEl.empty();
-			const filtered = this.allExercises.filter(e =>
-				e.frontmatter.name.toLowerCase().includes(filter.toLowerCase()) ||
-				e.frontmatter.movement.toLowerCase().includes(filter.toLowerCase())
-			);
+			const filtered = this.allExercises.filter(e => exerciseMatchesFilter(e, filter));
 
 			// Group by movement
 			const grouped = new Map<string, ExerciseNote[]>();

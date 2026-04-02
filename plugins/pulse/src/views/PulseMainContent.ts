@@ -138,6 +138,7 @@ export class PulseMainContent {
 
 		const meta = header.createDiv({ cls: "pulse-pm__main-meta" });
 		if (fm.movement) meta.createSpan({ text: fm.movement, cls: "pulse-pm__tag" });
+		if (fm.body_part) meta.createSpan({ text: fm.body_part, cls: "pulse-pm__tag" });
 		if (fm.equipment) meta.createSpan({ text: fm.equipment, cls: "pulse-pm__tag" });
 		meta.createSpan({ text: unit, cls: "pulse-pm__tag" });
 		if (fm.tags && fm.tags.length > 0) {
@@ -227,6 +228,7 @@ export class PulseMainContent {
 		container.addClass("pulse-ex__edit-form");
 
 		const MOVEMENTS = ["Push", "Pull", "Legs", "Core", "Cardio", "Olympic", "Isolation", "Compound", "Stretch", ""];
+		const BODY_PARTS = ["Chest", "Back", "Shoulders", "Arms", "Biceps", "Triceps", "Legs", "Glutes", "Core", "Full body", "Cardio", ""];
 		const EQUIPMENT = ["Barbell", "Dumbbell", "Bodyweight", "Cable", "Machine", "Kettlebell", "Band", "Smith Machine", ""];
 
 		// Name
@@ -248,6 +250,17 @@ export class PulseMainContent {
 			movSelect.createEl("option", { text: m || "(none)", value: m });
 		}
 		movSelect.value = currentMov;
+
+		// Body part
+		const bpRow = container.createDiv({ cls: "pulse-ex__edit-row" });
+		bpRow.createEl("label", { text: "Body part", cls: "pulse-builder__control-label" });
+		const bpSelect = bpRow.createEl("select", { cls: "pulse-ex__edit-select" });
+		const currentBp = exercise.frontmatter.body_part ?? "";
+		const bpOptions = BODY_PARTS.includes(currentBp) ? BODY_PARTS : [currentBp, ...BODY_PARTS];
+		for (const b of bpOptions) {
+			bpSelect.createEl("option", { text: b || "(none)", value: b });
+		}
+		bpSelect.value = currentBp;
 
 		// Equipment (dropdown with custom option)
 		const eqRow = container.createDiv({ cls: "pulse-ex__edit-row" });
@@ -281,6 +294,7 @@ export class PulseMainContent {
 			await dm.updateExercise(path, {
 				name: nameInput.value.trim() || exercise.frontmatter.name,
 				movement: movSelect.value,
+				body_part: bpSelect.value,
 				equipment: eqSelect.value,
 				tags: tagInput.value.split(",").map(t => t.trim()).filter(Boolean),
 			});
@@ -439,11 +453,31 @@ export class PulseMainContent {
 		const unit = this.plugin.settings.weightUnit;
 		const dayName = session.frontmatter.programDay ?? "Workout";
 
-		const header = container.createDiv({ cls: "pulse-pm__main-head" });
-		header.createEl("h2", {
+		const header = container.createDiv({ cls: "pulse-pm__main-head pulse-pm__main-head--split" });
+		const headRow = header.createDiv({ cls: "pulse-pm__main-title-row" });
+		headRow.createEl("h2", {
 			text: `Edit — ${session.frontmatter.date} — ${dayName}`,
 			cls: "pulse-pm__main-title",
 		});
+		if (isStandaloneSession(session)) {
+			const delBtn = headRow.createEl("button", {
+				cls: "pulse-pm__glyph-btn clickable-icon",
+				attr: { type: "button", "aria-label": "Delete workout" },
+			});
+			setIcon(delBtn, "trash-2");
+			delBtn.addEventListener("click", async () => {
+				if (
+					!window.confirm(
+						"Delete this workout? The note will be moved to Trash.",
+					)
+				) {
+					return;
+				}
+				await dm.deleteSession(path);
+				new Notice("Workout deleted");
+				this.view.navigate("today");
+			});
+		}
 
 		const body = container.createDiv({ cls: "pulse-pm__main-body pulse-pm__workout-edit" });
 
@@ -497,64 +531,119 @@ export class PulseMainContent {
 		});
 		notesInput.value = session.frontmatter.notes ?? "";
 
-		const setInputs: {
+		const exercisesHost = body.createDiv({ cls: "pulse-pm__workout-edit-ex-host" });
+
+		type SetFieldInputs = {
 			weight: HTMLInputElement;
 			reps: HTMLInputElement;
 			duration: HTMLInputElement;
 			distance: HTMLInputElement;
 			note: HTMLInputElement;
-		}[][] = [];
+		};
+		const draftExercises: SessionExercise[] = session.session.exercises.map(ex => ({
+			exercisePath: ex.exercisePath,
+			order: ex.order,
+			sets: ex.sets.map(s => ({ ...s })),
+		}));
+		const collectSetInputs: SetFieldInputs[][] = [];
 
-		for (const exercise of session.session.exercises) {
-			const exSection = body.createDiv({ cls: "pulse-pm__exercise-block pulse-pm__workout-edit-ex" });
-			const name = exercise.exercisePath.split("/").pop()?.replace(".md", "") ?? exercise.exercisePath;
+		const parseOptFloat = (s: string): number | undefined => {
+			const t = s.trim();
+			if (t === "") return undefined;
+			const n = parseFloat(t);
+			return Number.isFinite(n) ? n : undefined;
+		};
+		const parseOptInt = (s: string): number | undefined => {
+			const t = s.trim();
+			if (t === "") return undefined;
+			const n = parseInt(t, 10);
+			return Number.isFinite(n) ? n : undefined;
+		};
 
-			const exHeader = exSection.createDiv({ cls: "pulse-pm__exercise-block-head" });
-			exHeader.createEl("h4", { text: name });
-			exHeader.style.cursor = "pointer";
-			exHeader.addEventListener("click", () => {
-				this.view.navigate("exercise", exercise.exercisePath);
-			});
+		const renderExerciseBlocks = (): void => {
+			exercisesHost.empty();
+			collectSetInputs.length = 0;
 
-			const table = exSection.createEl("table", { cls: "pulse-pm__table" });
-			const thead = table.createEl("thead");
-			const hRow = thead.createEl("tr");
-			["Set", `Weight (${unit})`, "Reps", "Duration (s)", "Distance", "Note"].forEach(h => hRow.createEl("th", { text: h }));
+			for (let ei = 0; ei < draftExercises.length; ei++) {
+				const exercise = draftExercises[ei];
+				const exSection = exercisesHost.createDiv({ cls: "pulse-pm__exercise-block pulse-pm__workout-edit-ex" });
+				const name = exercise.exercisePath.split("/").pop()?.replace(".md", "") ?? exercise.exercisePath;
 
-			const tbody = table.createEl("tbody");
-			const rowInputs: (typeof setInputs)[number] = [];
-			for (const set of exercise.sets) {
-				const row = tbody.createEl("tr");
-				row.createEl("td", { text: String(set.set) });
-				const wIn = row.createEl("td").createEl("input", {
-					type: "text",
-					cls: "pulse-builder__inline-input",
-					value: set.weight != null ? String(set.weight) : "",
+				const exHeader = exSection.createDiv({ cls: "pulse-pm__exercise-block-head pulse-pm__exercise-block-head--row" });
+				const title = exHeader.createEl("h4", { text: name });
+				title.style.cursor = "pointer";
+				title.addEventListener("click", () => {
+					this.view.navigate("exercise", exercise.exercisePath);
 				});
-				const rIn = row.createEl("td").createEl("input", {
-					type: "text",
-					cls: "pulse-builder__inline-input",
-					value: set.reps != null ? String(set.reps) : "",
+
+				const rmEx = exHeader.createEl("button", {
+					text: "Remove exercise",
+					cls: "pulse-workout-btn pulse-workout-btn-link pulse-workout-btn-small",
+					attr: { type: "button" },
 				});
-				const dIn = row.createEl("td").createEl("input", {
-					type: "text",
-					cls: "pulse-builder__inline-input",
-					value: set.duration != null ? String(set.duration) : "",
+				rmEx.addEventListener("click", () => {
+					draftExercises.splice(ei, 1);
+					renderExerciseBlocks();
 				});
-				const distIn = row.createEl("td").createEl("input", {
-					type: "text",
-					cls: "pulse-builder__inline-input",
-					value: set.distance != null ? String(set.distance) : "",
-				});
-				const nIn = row.createEl("td").createEl("input", {
-					type: "text",
-					cls: "pulse-builder__inline-input",
-					value: set.note ?? "",
-				});
-				rowInputs.push({ weight: wIn, reps: rIn, duration: dIn, distance: distIn, note: nIn });
+
+				const table = exSection.createEl("table", { cls: "pulse-pm__table" });
+				const thead = table.createEl("thead");
+				const hRow = thead.createEl("tr");
+				for (const h of ["Set", `Weight (${unit})`, "Reps", "Duration (s)", "Distance", "Note", ""]) {
+					hRow.createEl("th", { text: h });
+				}
+
+				const tbody = table.createEl("tbody");
+				const rowInputs: SetFieldInputs[] = [];
+				for (let si = 0; si < exercise.sets.length; si++) {
+					const set = exercise.sets[si];
+					const row = tbody.createEl("tr");
+					row.createEl("td", { text: String(si + 1) });
+					const wIn = row.createEl("td").createEl("input", {
+						type: "text",
+						cls: "pulse-builder__inline-input",
+						value: set.weight != null ? String(set.weight) : "",
+					});
+					const rIn = row.createEl("td").createEl("input", {
+						type: "text",
+						cls: "pulse-builder__inline-input",
+						value: set.reps != null ? String(set.reps) : "",
+					});
+					const dIn = row.createEl("td").createEl("input", {
+						type: "text",
+						cls: "pulse-builder__inline-input",
+						value: set.duration != null ? String(set.duration) : "",
+					});
+					const distIn = row.createEl("td").createEl("input", {
+						type: "text",
+						cls: "pulse-builder__inline-input",
+						value: set.distance != null ? String(set.distance) : "",
+					});
+					const nIn = row.createEl("td").createEl("input", {
+						type: "text",
+						cls: "pulse-builder__inline-input",
+						value: set.note ?? "",
+					});
+					const actCell = row.createEl("td");
+					if (exercise.sets.length > 1) {
+						const rmSet = actCell.createEl("button", {
+							text: "Remove",
+							cls: "pulse-workout-btn pulse-workout-btn-link pulse-workout-btn-small",
+							attr: { type: "button" },
+						});
+						rmSet.addEventListener("click", () => {
+							exercise.sets.splice(si, 1);
+							exercise.sets.forEach((s, i) => { s.set = i + 1; });
+							renderExerciseBlocks();
+						});
+					}
+					rowInputs.push({ weight: wIn, reps: rIn, duration: dIn, distance: distIn, note: nIn });
+				}
+				collectSetInputs.push(rowInputs);
 			}
-			setInputs.push(rowInputs);
-		}
+		};
+
+		renderExerciseBlocks();
 
 		const actions = body.createDiv({ cls: "pulse-pm__workout-edit-actions" });
 		const saveBtn = actions.createEl("button", {
@@ -562,19 +651,6 @@ export class PulseMainContent {
 			cls: "pulse-workout-btn pulse-workout-btn-primary pulse-workout-btn-small",
 		});
 		saveBtn.addEventListener("click", async () => {
-			const parseOptFloat = (s: string): number | undefined => {
-				const t = s.trim();
-				if (t === "") return undefined;
-				const n = parseFloat(t);
-				return Number.isFinite(n) ? n : undefined;
-			};
-			const parseOptInt = (s: string): number | undefined => {
-				const t = s.trim();
-				if (t === "") return undefined;
-				const n = parseInt(t, 10);
-				return Number.isFinite(n) ? n : undefined;
-			};
-
 			const dateStr = dateInput.value.trim() || session.frontmatter.date;
 			const durStr = durInput.value.trim();
 			const duration = durStr === "" ? undefined : parseOptFloat(durStr);
@@ -582,10 +658,10 @@ export class PulseMainContent {
 			const bodyweight = bwStr === "" ? undefined : parseOptFloat(bwStr);
 			const notes = notesInput.value.trim() || undefined;
 
-			const exercises: SessionExercise[] = session.session.exercises.map((ex, ei) => ({
+			const exercises: SessionExercise[] = draftExercises.map((ex, ei) => ({
 				exercisePath: ex.exercisePath,
-				order: ex.order,
-				sets: setInputs[ei].map((inputs, si) => ({
+				order: ei + 1,
+				sets: collectSetInputs[ei].map((inputs, si) => ({
 					set: si + 1,
 					weight: parseOptFloat(inputs.weight.value),
 					reps: parseOptInt(inputs.reps.value),

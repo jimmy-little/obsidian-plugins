@@ -73,6 +73,11 @@ export class PulseView extends ItemView {
 		});
 	}
 
+	/** Re-render sidebar + main without changing mode/path (e.g. after delete from sidebar). */
+	async refresh(): Promise<void> {
+		await this.render();
+	}
+
 	private async render(): Promise<void> {
 		this.main?.destroy();
 		this.contentEl.empty();

@@ -49,6 +49,28 @@ function stripWikilinks(s: string): string {
 	return s.replace(/\[\[(?:[^\]|]+\|)?([^\]]+)\]\]/g, "$1");
 }
 
+function normalizeFulcrumTag(t: string): string {
+	return t.replace(/^#/, "").trim().toLowerCase();
+}
+
+/**
+ * Omit from project “Next up” when the Tasks block already covers it: same file as an open
+ * indexed task, or frontmatter tags/type match the configured task tag (e.g. #task).
+ */
+function atomicNoteExcludedFromProjectNextUp(
+	n: AtomicNoteRow,
+	openTaskPaths: Set<string>,
+	taskTag: string,
+): boolean {
+	if (openTaskPaths.has(n.file.path)) return true;
+	const tagNorm = normalizeFulcrumTag(taskTag);
+	if (!tagNorm) return false;
+	if (n.tags.some((t) => normalizeFulcrumTag(t) === tagNorm)) return true;
+	const typeNorm = n.noteType ? stripWikilinks(n.noteType).trim().toLowerCase() : "";
+	if (typeNorm === tagNorm) return true;
+	return false;
+}
+
 /**
  * If `noteType` (raw frontmatter / display form) starts with an emoji grapheme after wikilink
  * stripping, returns that grapheme for the activity timeline node; otherwise `undefined`.
@@ -198,26 +220,27 @@ function meetingNextUpKey(m: IndexedMeeting): string | null {
 }
 
 /**
- * Next up: incomplete tasks (due or scheduled today+), notes (primary date today+, no `endTime`), and meetings
- * (date today+ and not already ended via `endTime` or start+duration). Atomic notes whose file is a linked meeting
- * are omitted from `items` (shown only as meeting tiles).
- * Sorted ascending by date key; capped at `limit` total rows, then split into meetings vs task/note items.
+ * Next up (project page): meetings (date today+, not already ended) and dated atomic notes — not indexed tasks
+ * (they belong in the Tasks section). Notes whose file is an open task, or tagged / typed as `taskTag`, are omitted.
+ * Atomic notes whose file is a linked meeting are omitted from `items` (shown only as meeting tiles).
+ * Sorted ascending by date key; capped at `limit` total rows, then split into meetings vs note items.
  */
 export function buildNextUpSegments(
 	rollup: ProjectRollup,
 	doneTask: Set<string>,
 	limit = 8,
+	taskTag: string = "task",
 ): NextUpSegments {
 	const meetingPaths = new Set(rollup.meetings.map((m) => m.file.path));
+	const openTaskPaths = new Set(
+		rollup.tasks
+			.filter((t) => !doneTask.has(t.status) && !t.completedDate?.trim())
+			.map((t) => t.file.path),
+	);
 	const rows: NextUpSortRow[] = [];
-	for (const t of rollup.tasks) {
-		if (doneTask.has(t.status) || t.completedDate?.trim()) continue;
-		const key = earliestTodayOrFutureDueOrSched(t);
-		if (key == null) continue;
-		rows.push({key, kind: "task", task: t});
-	}
 	for (const n of rollup.atomicNotes) {
 		if (meetingPaths.has(n.file.path)) continue;
+		if (atomicNoteExcludedFromProjectNextUp(n, openTaskPaths, taskTag)) continue;
 		if (n.endTime?.trim()) continue;
 		if (!isISODateTodayOrFuture(n.dateSort)) continue;
 		rows.push({key: n.dateSort.slice(0, 10), kind: "note", note: n});

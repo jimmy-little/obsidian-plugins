@@ -80,5 +80,29 @@ export class OrbitSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+
+		new Setting(containerEl)
+			.setName("Activity preview entry field")
+			.setDesc(
+				"Inline metadata key skipped in feed excerpts (same as Fulcrum “entry”; leave blank to disable stripping only that key).",
+			)
+			.addText((t) => {
+				t.setValue(this.plugin.settings.activityPreviewEntryField).onChange(async (v) => {
+					this.plugin.settings.activityPreviewEntryField = v.trim() || "entry";
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName("Activity preview max lines")
+			.setDesc("Lines of note body to show under each activity row (after frontmatter cleanup).")
+			.addText((t) => {
+				t.setValue(String(this.plugin.settings.activityPreviewMaxLines)).onChange(async (v) => {
+					const n = parseInt(v, 10);
+					this.plugin.settings.activityPreviewMaxLines =
+						Number.isFinite(n) && n >= 1 ? Math.min(30, n) : 10;
+					await this.plugin.saveSettings();
+				});
+			});
 	}
 }

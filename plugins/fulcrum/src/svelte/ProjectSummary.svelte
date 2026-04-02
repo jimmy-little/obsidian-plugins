@@ -2,6 +2,16 @@
 	import type {WorkspaceLeaf} from "obsidian";
 	import {setIcon} from "obsidian";
 	import {onMount} from "svelte";
+
+	function bannerBtnIcon(el: HTMLElement, icon: string): { update: (next: string) => void } {
+		setIcon(el, icon);
+		return {
+			update(next: string) {
+				el.empty();
+				setIcon(el, next);
+			},
+		};
+	}
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import {indexRevision} from "../fulcrum/stores";
 	import {parseList} from "../fulcrum/settingsDefaults";
@@ -116,6 +126,12 @@
 		}
 	}
 
+	function onQuickNoteKeydown(ev: KeyboardEvent): void {
+		if (ev.key !== "Enter" || ev.shiftKey) return;
+		ev.preventDefault();
+		void appendLog();
+	}
+
 	async function captureSnapshot(): Promise<void> {
 		await plugin.archiveProjectSnapshot(projectPath);
 	}
@@ -124,7 +140,9 @@
 		plugin.openMarkReviewedModal(projectPath, () => void loadLogActivity());
 	}
 
-	$: nextUpSeg = rollup ? buildNextUpSegments(rollup, doneTask, 8) : {meetings: [], items: []};
+	$: nextUpSeg = rollup
+		? buildNextUpSegments(rollup, doneTask, 8, plugin.settings.taskTag)
+		: {meetings: [], items: []};
 	$: nextUpMeetings = nextUpSeg.meetings;
 	$: nextUpListItems = nextUpSeg.items;
 
@@ -296,30 +314,41 @@
 							<div class="fulcrum-banner-btn-row">
 								<button
 									type="button"
-									class="fulcrum-banner-btn fulcrum-banner-btn--half"
+									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+									aria-label="Open note"
+									title="Open note"
 									on:click={() => openPath(rollup.project.file.path)}
 								>
-									Open Note
+									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"file-input"} aria-hidden="true"></span>
 								</button>
 								<button
 									type="button"
-									class="fulcrum-banner-btn fulcrum-banner-btn--half"
+									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+									aria-label="Capture snapshot"
 									title="Capture snapshot"
 									on:click={() => void captureSnapshot()}
 								>
-									Snapshot
+									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"camera"} aria-hidden="true"></span>
 								</button>
 							</div>
 							<div class="fulcrum-banner-btn-row">
-								<button type="button" class="fulcrum-banner-btn fulcrum-banner-btn--half" on:click={markReviewed}>
-									Review
+								<button
+									type="button"
+									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+									aria-label="Mark reviewed"
+									title="Mark reviewed"
+									on:click={markReviewed}
+								>
+									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"glasses"} aria-hidden="true"></span>
 								</button>
 								<button
 									type="button"
-									class="fulcrum-banner-btn fulcrum-banner-btn--half"
+									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+									aria-label="Mark project complete"
+									title="Mark project complete"
 									on:click={markProjectComplete}
 								>
-									Complete
+									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"folder-check"} aria-hidden="true"></span>
 								</button>
 							</div>
 							{#if showNewNoteFromTemplateBtn || showNewInlineTaskBtn}
@@ -327,14 +356,16 @@
 									{#if showNewNoteFromTemplateBtn}
 										<button
 											type="button"
-											class="fulcrum-banner-btn fulcrum-banner-btn--half"
+											class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+											aria-label="New note from template"
+											title="New note from template"
 											on:click={() =>
 												void plugin.createNewNoteFromTemplateForProject(
 													projectPath,
 													hoverParentLeaf,
 												)}
 										>
-											New note
+											<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"file-plus"} aria-hidden="true"></span>
 										</button>
 									{:else}
 										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
@@ -342,10 +373,12 @@
 									{#if showNewInlineTaskBtn}
 										<button
 											type="button"
-											class="fulcrum-banner-btn fulcrum-banner-btn--half"
+											class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+											aria-label="New task"
+											title="New task"
 											on:click={() => plugin.openNewInlineTaskForProject(projectPath)}
 										>
-											New Task
+											<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"check"} aria-hidden="true"></span>
 										</button>
 									{:else}
 										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
@@ -357,10 +390,12 @@
 									{#if showNewTaskNoteBtn}
 										<button
 											type="button"
-											class="fulcrum-banner-btn fulcrum-banner-btn--half"
+											class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+											aria-label="New task note"
+											title="New task note"
 											on:click={() => plugin.openTaskNoteCreateForProject(projectPath)}
 										>
-											New TaskNote
+											<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"file-check"} aria-hidden="true"></span>
 										</button>
 									{:else}
 										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
@@ -368,11 +403,12 @@
 									{#if lapseApiAvailable}
 										<button
 											type="button"
-											class="fulcrum-banner-btn fulcrum-banner-btn--half"
+											class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+											aria-label="Start Lapse timer (Quick Start) for this project"
 											title="Start a Lapse timer (Quick Start) for this project"
 											on:click={startLapseTimer}
 										>
-											Lapse play
+											<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"play"} aria-hidden="true"></span>
 										</button>
 									{:else}
 										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
@@ -469,15 +505,33 @@
 			</div>
 		</div>
 
+		<section class="fulcrum-section fulcrum-section--quick-notes" aria-label="Quick notes">
+			<div class="fulcrum-quick-notes-row">
+				<textarea
+					class="fulcrum-quick-note-input"
+					rows="1"
+					placeholder="Add a quick note…"
+					bind:value={logDraft}
+					disabled={logBusy}
+					on:keydown={onQuickNoteKeydown}
+				/>
+				<button
+					type="button"
+					class="fulcrum-quick-note-btn"
+					disabled={logBusy}
+					on:click={() => void appendLog()}
+				>
+					Add Quick Note
+				</button>
+			</div>
+		</section>
+
 		<section class="fulcrum-section">
 			<div class="fulcrum-section-head">
 				<h2 class="fulcrum-section-head__title">Next up</h2>
 			</div>
 			{#if nextUpMeetings.length === 0 && nextUpListItems.length === 0}
-				<p class="fulcrum-muted">
-					Nothing with a date of today or later (tasks need due or scheduled; notes and meetings use their
-					primary date). Closed time blocks and meetings that have already ended are omitted.
-				</p>
+				<p class="fulcrum-muted">Nothing on the horizon...</p>
 			{:else}
 				{#if nextUpMeetings.length > 0}
 					<div class="fulcrum-next-up-meetings-row" role="list" aria-label="Upcoming meetings">
@@ -495,16 +549,7 @@
 					>
 						{#each nextUpListItems as item}
 							<li>
-								{#if item.kind === "task" && item.task}
-									<TaskCard
-										plugin={plugin}
-										task={item.task}
-										done={false}
-										showProjectLink={false}
-										showTimelineIcon={true}
-										anchorLeaf={hoverParentLeaf}
-									/>
-								{:else if item.kind === "note" && item.note}
+								{#if item.kind === "note" && item.note}
 									<ActivityRow
 										variant="icon"
 										title={item.note.entryTitle}
@@ -512,6 +557,7 @@
 										kind="note"
 										timelineEmoji={leadingTimelineEmojiFromNoteType(item.note.noteType)}
 										whenClick={() => item.note && openPath(item.note.file.path)}
+										accentColorCss={rollup.accentColorCss}
 										{plugin}
 										hoverParentLeaf={hoverParentLeaf}
 										hoverPath={item.note.file.path}
@@ -609,26 +655,5 @@
 				</div>
 			</section>
 		{/if}
-
-		<section class="fulcrum-section fulcrum-section--log">
-			<h2>Project log</h2>
-			<div class="fulcrum-log-row">
-				<textarea
-					class="fulcrum-log-input"
-					rows="3"
-					placeholder="Quick note for the project page…"
-					bind:value={logDraft}
-					disabled={logBusy}
-				/>
-				<button
-					type="button"
-					class="mod-cta fulcrum-cta-accent"
-					disabled={logBusy}
-					on:click={() => void appendLog()}
-				>
-					Append to project note
-				</button>
-			</div>
-		</section>
 	</div>
 {/if}

@@ -1,6 +1,8 @@
 import type {App, CachedMetadata} from "obsidian";
 import {TFile} from "obsidian";
+import {tryParseWhenFromBasename} from "./filenameWhen";
 import {extractQuickNotesFromBody} from "./noteBody";
+import {resolveWikiPath, wikiLinkPathsFromText} from "./orgLinks";
 import type {OrbitSettings} from "./settings";
 
 export type InteractionKind = "meeting" | "call" | "note" | "quick";
@@ -9,7 +11,11 @@ export type InteractionEntry = {
 	file: TFile;
 	title: string;
 	dateMs: number;
+	/** When true, show time in the feed (explicit datetime); false for date-only and mtime fallback. */
+	showTimeInFeed: boolean;
 	kind: InteractionKind;
+	/** Raw YAML `type` (emoji + label) for timeline icon. */
+	typeRaw?: string;
 	/** Inline quick-note text (only when kind === "quick"). */
 	quickBody?: string;
 };
@@ -19,27 +25,65 @@ function fmString(meta: CachedMetadata | null | undefined, key: string): string 
 	return typeof v === "string" ? v : undefined;
 }
 
+function readTypeRaw(meta: CachedMetadata | null | undefined): string | undefined {
+	const v = meta?.frontmatter?.type;
+	if (typeof v === "string") return v;
+	if (Array.isArray(v) && v.length > 0) return String(v[0]);
+	return undefined;
+}
+
+/** Lowercase type keyword after optional leading emoji (e.g. 📅 Meeting). */
+function typeKeyForKind(raw: string | undefined): string {
+	if (!raw?.trim()) return "";
+	let s = raw.replace(/\[\[(?:[^\]|]+\|)?([^\]]+)\]\]/g, "$1").trimStart();
+	try {
+		const seg = new Intl.Segmenter(undefined, {granularity: "grapheme"});
+		const first = [...seg.segment(s)][0];
+		if (first && /\p{Extended_Pictographic}/u.test(first.segment)) {
+			s = s.slice(first.segment.length).trimStart();
+		}
+	} catch {
+		/* Intl.Segmenter unsupported */
+	}
+	return s.toLowerCase();
+}
+
 function inferKind(meta: CachedMetadata | null | undefined): InteractionKind {
-	const t = fmString(meta, "type")?.toLowerCase().trim();
-	if (t === "meeting") return "meeting";
-	if (t === "call") return "call";
-	if (t === "note") return "note";
+	const t = typeKeyForKind(readTypeRaw(meta));
+	if (t.startsWith("meeting")) return "meeting";
+	if (t.startsWith("call")) return "call";
+	if (t.startsWith("note")) return "note";
 	return "note";
 }
 
-function resolveDateMs(
+function fmDateTimeShowsTime(raw: string): boolean {
+	return /\b\d{1,2}:\d{2}\b/.test(raw) || /T\d{2}:\d{2}/.test(raw);
+}
+
+function resolveWhen(
 	file: TFile,
 	meta: CachedMetadata | null | undefined,
 	settings: OrbitSettings,
-): number {
+): {dateMs: number; showTimeInFeed: boolean} {
 	const d1 = fmString(meta, settings.dateField);
 	const d2 = fmString(meta, settings.startTimeField);
-	for (const raw of [d1, d2]) {
-		if (!raw) continue;
-		const ms = Date.parse(raw);
-		if (!Number.isNaN(ms)) return ms;
+
+	if (d1?.trim()) {
+		const ms = Date.parse(d1);
+		if (!Number.isNaN(ms)) {
+			const hasTime = fmDateTimeShowsTime(d1) || Boolean(d2?.trim());
+			return {dateMs: ms, showTimeInFeed: hasTime};
+		}
 	}
-	return file.stat.mtime;
+	if (d2?.trim()) {
+		const ms = Date.parse(d2);
+		if (!Number.isNaN(ms)) return {dateMs: ms, showTimeInFeed: true};
+	}
+
+	const fromName = tryParseWhenFromBasename(file.basename);
+	if (fromName) return {dateMs: fromName.ms, showTimeInFeed: fromName.hasTime};
+
+	return {dateMs: file.stat.mtime, showTimeInFeed: false};
 }
 
 /** Resolve paths of notes that link to `personPath` via `metadataCache.resolvedLinks`. */
@@ -51,28 +95,66 @@ function sourcePathsLinkingTo(app: App, personPath: string): string[] {
 	return out;
 }
 
+function lineMentionsPerson(app: App, line: string, source: TFile, personPath: string): boolean {
+	for (const lt of wikiLinkPathsFromText(line)) {
+		const p = resolveWikiPath(app, lt, source);
+		if (p === personPath) return true;
+	}
+	return false;
+}
+
 /**
- * Notes that link to `personFile` (backlinks), excluding the person's own file.
+ * Backlinks to `personFile`, excluding the person's own note.
+ * When a linking file contains dated quick-log lines (`M/D/YY, h:mm AM/PM — …`) that wikilink
+ * this person (e.g. project notes), each such line becomes its own feed row; otherwise one row
+ * per backlink file as before.
  */
-export function collectInteractions(
+export async function collectInteractions(
 	app: App,
 	personFile: TFile,
 	settings: OrbitSettings,
-): InteractionEntry[] {
+): Promise<InteractionEntry[]> {
 	const out: InteractionEntry[] = [];
 	for (const linkingPath of sourcePathsLinkingTo(app, personFile.path)) {
 		const f = app.vault.getAbstractFileByPath(linkingPath);
 		if (!f || !(f instanceof TFile) || f.path === personFile.path) continue;
 		if (f.extension !== "md") continue;
 
-		const cache = app.metadataCache.getFileCache(f);
-		const title = f.basename;
-		out.push({
-			file: f,
-			title,
-			dateMs: resolveDateMs(f, cache, settings),
-			kind: inferKind(cache),
-		});
+		let body: string;
+		try {
+			body = await app.vault.cachedRead(f);
+		} catch {
+			continue;
+		}
+
+		const quickLines = extractQuickNotesFromBody(body);
+		const mentionLines = quickLines.filter((q) =>
+			lineMentionsPerson(app, q.rawLine, f, personFile.path),
+		);
+
+		if (mentionLines.length > 0) {
+			for (const q of mentionLines) {
+				out.push({
+					file: f,
+					title: f.basename,
+					dateMs: q.dateMs,
+					showTimeInFeed: true,
+					kind: "quick",
+					quickBody: q.body,
+				});
+			}
+		} else {
+			const cache = app.metadataCache.getFileCache(f);
+			const when = resolveWhen(f, cache, settings);
+			out.push({
+				file: f,
+				title: f.basename,
+				dateMs: when.dateMs,
+				showTimeInFeed: when.showTimeInFeed,
+				kind: inferKind(cache),
+				typeRaw: readTypeRaw(cache),
+			});
+		}
 	}
 
 	out.sort((a, b) => b.dateMs - a.dateMs);
@@ -86,6 +168,7 @@ export function quickNoteEntriesFromPersonBody(personFile: TFile, markdown: stri
 		file: personFile,
 		title: "Quick note",
 		dateMs: q.dateMs,
+		showTimeInFeed: true,
 		kind: "quick" as const,
 		quickBody: q.body,
 	}));

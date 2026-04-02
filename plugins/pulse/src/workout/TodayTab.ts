@@ -10,6 +10,7 @@ import {
 	parseDistanceUnit,
 	type DistanceUnit,
 } from "./exerciseKind";
+import { exerciseMatchesFilter } from "./exerciseListUi";
 
 export interface TodayTabOptions {
 	startImmediately?: boolean;
@@ -369,7 +370,19 @@ export class TodayTab {
 		const unit = this.plugin.settings.weightUnit;
 
 		const header = card.createDiv({ cls: "pulse-workout-exercise-header" });
-		header.createEl("h4", { text: exercise.exerciseName, cls: "pulse-workout-exercise-title" });
+		const titleRow = header.createDiv({ cls: "pulse-workout-exercise-title-row" });
+		titleRow.createEl("h4", { text: exercise.exerciseName, cls: "pulse-workout-exercise-title" });
+		const removeExBtn = titleRow.createEl("button", {
+			cls: "pulse-workout-icon-btn clickable-icon",
+			attr: { type: "button", "aria-label": "Remove exercise" },
+		});
+		setIcon(removeExBtn, "minus-circle");
+		removeExBtn.addEventListener("click", () => {
+			if (!this.state) return;
+			this.state.exercises.splice(exIdx, 1);
+			this.persistState();
+			this.renderActiveWorkout();
+		});
 		if (cardio && exercise.previousCardio) {
 			const { duration, distance } = exercise.previousCardio;
 			const parts: string[] = [];
@@ -527,7 +540,25 @@ export class TodayTab {
 			});
 		}
 
-		const checkBtn = row.createEl("button", {
+		const actions = row.createDiv({ cls: "pulse-workout-set-actions" });
+		if (exercise.sets.length > 1) {
+			const removeSetBtn = actions.createEl("button", {
+				cls: "pulse-workout-icon-btn pulse-workout-icon-btn--set clickable-icon",
+				attr: { type: "button", "aria-label": "Remove set" },
+			});
+			setIcon(removeSetBtn, "minus-circle");
+			removeSetBtn.addEventListener("click", (ev) => {
+				ev.preventDefault();
+				if (!this.state) return;
+				const sets = this.state.exercises[exIdx].sets;
+				sets.splice(sIdx, 1);
+				sets.forEach((s, i) => { s.set = i + 1; });
+				this.persistState();
+				this.renderActiveWorkout();
+			});
+		}
+
+		const checkBtn = actions.createEl("button", {
 			cls: `pulse-workout-check ${set.completed ? "pulse-workout-check-done" : ""}`,
 		});
 		setIcon(checkBtn, "check");
@@ -818,9 +849,7 @@ export class TodayTab {
 
 		const renderList = (filter: string) => {
 			list.empty();
-			const filtered = exercises.filter(e =>
-				e.frontmatter.name.toLowerCase().includes(filter.toLowerCase())
-			);
+			const filtered = exercises.filter(e => exerciseMatchesFilter(e, filter));
 			if (filtered.length === 0) {
 				list.createEl("p", { text: "No exercises found.", cls: "pulse-workout-muted" });
 			}

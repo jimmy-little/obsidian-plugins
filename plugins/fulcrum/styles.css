@@ -258,7 +258,7 @@ If your plugin does not need CSS, delete this file.
 .fulcrum-banner-btn-slot {
 	flex: 1 1 0;
 	min-width: 0;
-	min-height: 1.75rem;
+	min-height: 2rem;
 }
 
 .fulcrum-banner-btn-row--icons .fulcrum-banner-btn--icon-only {
@@ -333,6 +333,26 @@ If your plugin does not need CSS, delete this file.
 	cursor: pointer;
 	text-align: center;
 	line-height: 1.25;
+}
+
+.fulcrum-project-banner .fulcrum-banner-btn--icon-only {
+	display: inline-flex !important;
+	align-items: center;
+	justify-content: center;
+	padding: 0.3rem 0.4rem !important;
+	min-width: 2rem;
+	min-height: 2rem;
+	line-height: 0;
+}
+
+.fulcrum-banner-btn__icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	--icon-size: 1.05rem;
+	width: 1.05rem;
+	height: 1.05rem;
 }
 
 .fulcrum-project-banner__inner--on-dark .fulcrum-banner-btn:not(.clickable-icon) {
@@ -428,6 +448,192 @@ If your plugin does not need CSS, delete this file.
 	color: var(--text-muted);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
+}
+
+/* —— Project summary (`.fulcrum-project`): accent-aligned chrome —— */
+.fulcrum-project .fulcrum-mega-stat {
+	border-color: color-mix(in srgb, var(--fulcrum-accent) 42%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--fulcrum-accent) 9%, var(--background-secondary));
+}
+
+.fulcrum-project .fulcrum-mega-stat__value {
+	color: var(--fulcrum-accent);
+}
+
+.fulcrum-project .fulcrum-mega-stat__label {
+	color: color-mix(in srgb, var(--fulcrum-accent) 55%, var(--text-muted));
+}
+
+.fulcrum-project .fulcrum-section > h2,
+.fulcrum-project .fulcrum-section--people__title,
+.fulcrum-project .fulcrum-section-head__title {
+	color: var(--fulcrum-accent);
+}
+
+.fulcrum-project .fulcrum-next-up-meeting-card {
+	border-color: color-mix(in srgb, var(--fulcrum-accent) 38%, var(--background-modifier-border));
+}
+
+.fulcrum-project .fulcrum-next-up-meeting-card__icon {
+	color: var(--fulcrum-accent);
+}
+
+.fulcrum-project .fulcrum-next-up-meeting-card:focus-visible {
+	outline-color: var(--fulcrum-accent);
+}
+
+.fulcrum-project .fulcrum-next-up-list > li {
+	border-bottom-color: color-mix(in srgb, var(--fulcrum-accent) 28%, var(--background-modifier-border));
+}
+
+.fulcrum-project .fulcrum-activity-list > li {
+	border-bottom-color: color-mix(in srgb, var(--fulcrum-accent) 22%, var(--background-modifier-border));
+}
+
+.fulcrum-project .fulcrum-task-agenda-list > li {
+	border-bottom-color: color-mix(in srgb, var(--fulcrum-accent) 28%, var(--background-modifier-border));
+}
+
+.fulcrum-project .fulcrum-person-card:not(.fulcrum-companion-time-card) {
+	border-color: color-mix(in srgb, var(--fulcrum-accent) 45%, var(--background-modifier-border));
+}
+
+.fulcrum-project .fulcrum-person-card:not(.fulcrum-companion-time-card):focus-visible {
+	outline-color: var(--fulcrum-accent);
+}
+
+.fulcrum-project .fulcrum-task-card {
+	--fulcrum-task-border: var(--fulcrum-accent);
+}
+
+.fulcrum-project .fulcrum-task-card--overdue {
+	--fulcrum-task-border: #e74c3c;
+}
+
+.fulcrum-project .fulcrum-task-card--due-today {
+	--fulcrum-task-border: #f39c12;
+}
+
+.fulcrum-project .fulcrum-task-card--priority-high {
+	--fulcrum-task-border: #e74c3c;
+}
+
+.fulcrum-project .fulcrum-task-card--priority-low {
+	--fulcrum-task-border: #5dade2;
+}
+
+.fulcrum-project .fulcrum-activity-row:focus-visible {
+	outline-color: var(--fulcrum-accent);
+}
+
+.fulcrum-project .fulcrum-task-card__status-dot:focus-visible {
+	outline-color: var(--fulcrum-accent);
+}
+
+.fulcrum-project .fulcrum-project-banner__inner--on-light .fulcrum-project-banner__extlink {
+	color: var(--fulcrum-accent) !important;
+}
+
+.fulcrum-project .fulcrum-activity-row--timeline:hover
+	.fulcrum-activity-timeline__track:not(.fulcrum-activity-timeline__track--accent)
+	.fulcrum-activity-timeline__node,
+.fulcrum-project .fulcrum-activity-row--icon:hover
+	.fulcrum-activity-timeline__track:not(.fulcrum-activity-timeline__track--accent)
+	.fulcrum-activity-timeline__node {
+	border-color: color-mix(in srgb, var(--fulcrum-accent) 35%, var(--background-modifier-border));
+	color: var(--fulcrum-accent);
+}
+
+.fulcrum-project-banner__inner--on-dark .fulcrum-banner-btn:not(.clickable-icon) {
+	background: color-mix(in srgb, var(--fulcrum-accent) 32%, rgba(255, 255, 255, 0.08)) !important;
+	border-color: color-mix(in srgb, var(--fulcrum-accent) 55%, rgba(255, 255, 255, 0.35)) !important;
+}
+
+.fulcrum-project-banner__inner--on-dark .fulcrum-banner-btn:not(.clickable-icon):hover:not(:disabled) {
+	background: color-mix(in srgb, var(--fulcrum-accent) 48%, rgba(255, 255, 255, 0.12)) !important;
+	border-color: color-mix(in srgb, var(--fulcrum-accent) 72%, rgba(255, 255, 255, 0.45)) !important;
+}
+
+.fulcrum-project-banner__inner--on-light .fulcrum-banner-btn:not(.clickable-icon) {
+	border-color: color-mix(in srgb, var(--fulcrum-accent) 40%, var(--background-modifier-border)) !important;
+}
+
+.fulcrum-project-banner__inner--on-light .fulcrum-banner-btn:not(.clickable-icon):hover:not(:disabled) {
+	background: color-mix(in srgb, var(--fulcrum-accent) 10%, var(--background-modifier-hover)) !important;
+}
+
+.fulcrum-project-back__btn:hover {
+	color: var(--fulcrum-accent);
+}
+
+.fulcrum-section--quick-notes {
+	margin-top: 0.35rem;
+}
+
+.fulcrum-quick-notes-row {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	gap: 0.55rem;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.fulcrum-quick-note-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: block;
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0.4rem 0.55rem;
+	min-height: calc(1.35em + 0.8rem);
+	max-height: calc(1.35em + 0.8rem);
+	height: calc(1.35em + 0.8rem);
+	resize: none;
+	overflow-x: auto;
+	overflow-y: hidden;
+	line-height: 1.35;
+	font-size: var(--font-ui-small);
+	font-family: inherit;
+	border-radius: var(--radius-s);
+	border: 1px solid color-mix(in srgb, var(--fulcrum-accent) 35%, var(--background-modifier-border));
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.fulcrum-quick-note-input:focus {
+	border-color: color-mix(in srgb, var(--fulcrum-accent) 65%, var(--background-modifier-border));
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--fulcrum-accent) 22%, transparent);
+	outline: none;
+}
+
+.fulcrum-quick-note-input:disabled {
+	opacity: 0.55;
+}
+
+.fulcrum-quick-note-btn {
+	flex: 0 0 auto;
+	align-self: stretch;
+	--input-shadow: none;
+	box-shadow: none;
+	padding: 0.4rem 0.75rem;
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	cursor: pointer;
+	white-space: nowrap;
+	background: var(--fulcrum-accent) !important;
+	color: var(--fulcrum-cta-fg) !important;
+	border: 1px solid color-mix(in srgb, var(--fulcrum-accent) 82%, rgba(0, 0, 0, 0.12)) !important;
+}
+
+.fulcrum-quick-note-btn:hover:not(:disabled) {
+	filter: brightness(1.06);
+}
+
+.fulcrum-quick-note-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 /* —— Project activity (JIRA-style feed) —— */
@@ -833,12 +1039,6 @@ If your plugin does not need CSS, delete this file.
 	background: color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
 	color: var(--text-muted);
 	text-transform: capitalize;
-}
-
-.fulcrum-section--log textarea {
-	display: block;
-	width: 100%;
-	box-sizing: border-box;
 }
 
 .fulcrum-section {
@@ -2686,6 +2886,493 @@ button.fulcrum-task-card__note-type:focus-visible {
 	padding: 0 4px;
 }
 
+/* ── Time tracked dashboard (TimeTrackedMain.svelte) ── */
+
+.fulcrum-time-dashboard {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem 0;
+	max-width: 56rem;
+}
+
+.fulcrum-time-dashboard__disclaimer {
+	margin: 0 0 0.5rem;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+}
+
+.fulcrum-time-dashboard__disclaimer code {
+	font-size: 0.92em;
+}
+
+.fulcrum-time-dashboard__toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 0.45rem 0.75rem;
+	padding: 0.15rem 0 0.35rem;
+}
+
+.fulcrum-time-dashboard__toolbar-label {
+	flex: 0 0 auto;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding-top: 0.4rem;
+}
+
+.fulcrum-time-dashboard__segments {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.fulcrum-time-dashboard__seg {
+	font-size: var(--font-ui-smaller);
+	padding: 0.35rem 0.65rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	white-space: nowrap;
+	line-height: 1.3;
+}
+
+.fulcrum-time-dashboard__seg:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.fulcrum-time-dashboard__seg--active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.fulcrum-time-dashboard__seg--active:hover {
+	filter: brightness(0.97);
+}
+
+/* Area include/exclude: dimmed when toggled off */
+.fulcrum-time-dashboard__seg--toggle:not(.fulcrum-time-dashboard__seg--active) {
+	opacity: 0.5;
+	text-decoration: line-through;
+}
+
+.fulcrum-time-dashboard__seg--toggle.fulcrum-time-dashboard__seg--active {
+	opacity: 1;
+	text-decoration: none;
+}
+
+.fulcrum-time-dashboard__kpis {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.65rem;
+	margin: 0.5rem 0 0.15rem;
+}
+
+@media (min-width: 640px) {
+	.fulcrum-time-dashboard__kpis {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
+}
+
+.fulcrum-time-kpi {
+	padding: 0.65rem 0.75rem;
+	border-radius: var(--radius-m);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+.fulcrum-time-kpi__value {
+	font-size: var(--font-ui-large);
+	font-weight: 700;
+	line-height: 1.15;
+	color: var(--text-normal);
+}
+
+.fulcrum-time-kpi__label {
+	margin-top: 0.25rem;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.fulcrum-time-dashboard__section {
+	margin-top: 1.15rem;
+	padding-top: 0.15rem;
+}
+
+.fulcrum-time-dashboard__section h2 {
+	margin: 0 0 0.5rem;
+	font-size: var(--font-ui-medium);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.fulcrum-time-dashboard__section-lead {
+	margin: 0 0 0.65rem;
+	font-size: var(--font-ui-smaller);
+}
+
+.fulcrum-time-dashboard__charts-row {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 1.15rem;
+	margin-top: 0.15rem;
+}
+
+@media (min-width: 840px) {
+	.fulcrum-time-dashboard__charts-row {
+		grid-template-columns: 1fr 1fr;
+		align-items: start;
+	}
+}
+
+.fulcrum-time-dashboard__section--chart {
+	margin-top: 0;
+}
+
+.fulcrum-time-insights {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.fulcrum-time-insight {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 0.25rem 0.75rem;
+	align-items: baseline;
+	padding: 0.5rem 0.65rem;
+	border-radius: var(--radius-s);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	background: color-mix(in srgb, var(--background-secondary) 55%, var(--background-primary));
+}
+
+.fulcrum-time-insight__label {
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.fulcrum-time-insight__value {
+	font-size: var(--font-ui-small);
+	font-weight: 700;
+	color: var(--text-accent);
+	text-align: right;
+}
+
+.fulcrum-time-insight__hint {
+	grid-column: 1 / -1;
+	font-size: var(--font-ui-smaller);
+	margin: 0;
+}
+
+.fulcrum-time-pie-wrap {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 1rem;
+}
+
+.fulcrum-time-pie {
+	width: 8.5rem;
+	height: 8.5rem;
+	border-radius: 50%;
+	flex-shrink: 0;
+	border: 2px solid color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
+	box-sizing: border-box;
+}
+
+.fulcrum-time-pie-legend {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	flex: 1 1 12rem;
+	min-width: 10rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	font-size: var(--font-ui-smaller);
+}
+
+.fulcrum-time-pie-legend li {
+	display: grid;
+	grid-template-columns: 1rem minmax(0, 1fr) auto;
+	gap: 0.4rem 0.5rem;
+	align-items: center;
+}
+
+.fulcrum-time-pie-legend__swatch {
+	width: 0.85rem;
+	height: 0.85rem;
+	border-radius: 2px;
+	flex-shrink: 0;
+}
+
+.fulcrum-time-pie-legend__label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+	color: var(--text-normal);
+}
+
+.fulcrum-time-pie-legend__val {
+	font-weight: 600;
+	color: var(--text-muted);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.fulcrum-time-bars {
+	display: flex;
+	flex-direction: column;
+	gap: 0.55rem;
+}
+
+.fulcrum-time-bar {
+	display: grid;
+	grid-template-columns: minmax(4rem, 30%) minmax(0, 1fr) auto;
+	gap: 0.35rem 0.5rem;
+	align-items: center;
+	font-size: var(--font-ui-smaller);
+}
+
+.fulcrum-time-bar__name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.fulcrum-time-bar__track {
+	height: 0.55rem;
+	border-radius: var(--pill-radius, 2rem);
+	background: color-mix(in srgb, var(--background-modifier-border) 42%, transparent);
+	overflow: hidden;
+	min-width: 0;
+}
+
+.fulcrum-time-bar__fill {
+	height: 100%;
+	border-radius: inherit;
+	min-width: 2px;
+}
+
+.fulcrum-time-bar__val {
+	font-weight: 600;
+	color: var(--text-muted);
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	min-width: 3.25rem;
+}
+
+.fulcrum-time-stack-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+}
+
+.fulcrum-time-stack-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr) auto;
+	gap: 0.45rem 0.65rem;
+	align-items: center;
+	width: 100%;
+	margin: 0;
+	padding: 0.45rem 0.5rem;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	cursor: pointer;
+	font: inherit;
+	text-align: left;
+	box-sizing: border-box;
+}
+
+.fulcrum-time-stack-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-time-stack-row:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+.fulcrum-time-stack-row__name {
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+	color: var(--text-normal);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.fulcrum-time-stack-row__bar {
+	display: flex;
+	height: 0.5rem;
+	border-radius: var(--pill-radius, 2rem);
+	overflow: hidden;
+	background: color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
+	min-width: 0;
+}
+
+.fulcrum-time-stack-row__seg {
+	display: block;
+	height: 100%;
+	min-width: 0;
+}
+
+.fulcrum-time-stack-row__seg--tasks {
+	background: rgba(var(--color-accent-rgb, 72, 135, 202), 0.78);
+}
+
+.fulcrum-time-stack-row__seg--meetings {
+	background: rgba(168, 85, 247, 0.62);
+}
+
+.fulcrum-time-stack-row__seg--atomic {
+	background: color-mix(in srgb, var(--text-muted) 52%, var(--background-modifier-border));
+}
+
+.fulcrum-time-stack-row__seg--project {
+	background: color-mix(in srgb, var(--text-faint) 68%, var(--background-modifier-border));
+}
+
+.fulcrum-time-stack-row__total {
+	font-size: var(--font-ui-smaller);
+	font-weight: 700;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.fulcrum-time-stack-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.65rem 1.1rem;
+	margin-top: 0.65rem;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.fulcrum-time-stack-legend > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.fulcrum-time-stack-legend__i {
+	display: inline-block;
+	width: 0.65rem;
+	height: 0.65rem;
+	border-radius: 2px;
+	flex-shrink: 0;
+}
+
+.fulcrum-time-stack-legend__i--tasks {
+	background: rgba(var(--color-accent-rgb, 72, 135, 202), 0.78);
+}
+
+.fulcrum-time-stack-legend__i--meetings {
+	background: rgba(168, 85, 247, 0.62);
+}
+
+.fulcrum-time-stack-legend__i--atomic {
+	background: color-mix(in srgb, var(--text-muted) 52%, var(--background-modifier-border));
+}
+
+.fulcrum-time-stack-legend__i--project {
+	background: color-mix(in srgb, var(--text-faint) 68%, var(--background-modifier-border));
+}
+
+.fulcrum-time-table-wrap {
+	overflow-x: auto;
+	margin-top: 0.35rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-primary);
+}
+
+.fulcrum-time-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--font-ui-smaller);
+}
+
+.fulcrum-time-table th,
+.fulcrum-time-table td {
+	padding: 0.45rem 0.55rem;
+	text-align: left;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 82%, transparent);
+	vertical-align: middle;
+}
+
+.fulcrum-time-table thead th {
+	font-size: calc(var(--font-ui-smaller) - 0.5px);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+	background: color-mix(in srgb, var(--background-secondary) 72%, var(--background-primary));
+}
+
+.fulcrum-time-table tbody tr:last-child td {
+	border-bottom: none;
+}
+
+.fulcrum-time-table tbody tr:hover {
+	background: color-mix(in srgb, var(--background-modifier-hover) 48%, transparent);
+}
+
+.fulcrum-time-table__num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.fulcrum-time-table__proj {
+	display: block;
+	width: 100%;
+	margin: 0;
+	padding: 0.2rem 0.35rem 0.2rem 0.5rem;
+	border: none;
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
+	background: transparent;
+	font: inherit;
+	font-weight: 500;
+	color: var(--text-accent);
+	text-align: left;
+	cursor: pointer;
+}
+
+.fulcrum-time-table__proj:hover {
+	background: color-mix(in srgb, var(--background-modifier-hover) 55%, transparent);
+}
+
+.fulcrum-time-deepcut {
+	margin: 0;
+	font-size: var(--font-ui-small);
+	line-height: 1.45;
+	color: var(--text-normal);
+}
+
 /* ── Time grid (Day / Week / Work Week) ── */
 
 .fulcrum-cal-tg {
@@ -3237,6 +3924,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 .fulcrum-companion-time-card.fulcrum-person-card {
+	display: flex;
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;

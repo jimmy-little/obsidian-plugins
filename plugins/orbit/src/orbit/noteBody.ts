@@ -14,9 +14,12 @@ export type ParsedQuickNote = {
 	body: string;
 };
 
-/** `- M/D/YY, h:mm AM/PM — text` (spec §2.6); em dash, en dash, or hyphen after time */
+/**
+ * Dated log line: `M/D/YY, h:mm AM/PM — text` (spec §2.6).
+ * Optional leading `- ` for list items; also used for project quick logs (plain lines).
+ */
 const QUICK_NOTE_LINE =
-	/^\s*-\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s*(\d{1,2}):(\d{2})\s*(AM|PM)\s*[\u2014\u2013\-]\s*(.*)$/im;
+	/^\s*(?:-\s*)?(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s*(\d{1,2}):(\d{2})\s*(AM|PM)\s*[\u2014\u2013\-]\s*(.*)$/im;
 
 function parseQuickNoteLine(line: string): ParsedQuickNote | null {
 	const m = line.match(QUICK_NOTE_LINE);
