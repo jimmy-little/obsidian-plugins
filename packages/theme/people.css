@@ -194,7 +194,9 @@
 	box-sizing: border-box;
 	cursor: pointer;
 	flex: 0 0 auto;
-	align-self: baseline;
+	/* Let the flex parent control cross-axis alignment (e.g. center in a row). Baseline
+	   alignment here made image vs SVG avatar pills sit at different heights. */
+	align-self: auto;
 }
 
 a.fulcrum-person-inline-pill {

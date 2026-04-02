@@ -29,12 +29,15 @@ org_down:                               # array of wikilinks
   - "[[Petzel, Dave]]"
   - "[[Little, Jimmy]]"
 avatar: "path/to/photo.jpg"            # local wikilink OR remote URL
-color: "#2a2a2a"                       # optional; defaults to theme dark-gray
+banner: "[[assets/banner.jpg]]"       # optional; image wikilink/path/URL → banner background
+color: "#2a2a2a"                       # optional; tints page chrome + heatmap (named tokens ok); default from settings
 tags: []
 ```
 
 - `org_up` / `org_down`: wikilinks to other people files. Clicking navigates to that person's Orbit leaf.
 - `avatar`: resolves as local vault path (wikilink syntax) or remote URL. Behavior (cover, circle, etc.) is controlled by the shared `avatar_style` setting (see §6).
+- `banner`: optional background image (image extensions only); wikilink, vault path, or `https` URL. A scrim + `color` tint keeps title/controls readable.
+- `color`: tints the page like Fulcrum project accent (stats, section headers, buttons, activity chrome, heatmap). Hex, `rgb()`, or named tokens (`navy`, `teal`, …).
 
 ### 1.3 Interaction Detection
 

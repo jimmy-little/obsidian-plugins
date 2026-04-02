@@ -26,41 +26,17 @@ If your plugin does not need CSS, delete this file.
 	font-size: var(--font-ui-large);
 }
 
-/* —— Project summary: back to shell —— */
-.fulcrum-project-back {
-	margin-bottom: 0.65rem;
+/* —— Project summary: compact “shell home” in banner foot (left of status) —— */
+.fulcrum-project-banner__shell-back.fulcrum-banner-btn--icon-only {
+	min-width: 1.75rem;
+	min-height: 1.75rem;
+	padding: 0.22rem !important;
 }
 
-.fulcrum-project-back__btn {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.4rem;
-	padding: 0.25rem 0.5rem 0.25rem 0.35rem;
-	font-size: var(--font-ui-small);
-	color: var(--text-muted);
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-s);
-	cursor: pointer;
-}
-
-.fulcrum-project-back__btn:hover {
-	color: var(--text-normal);
-	background: var(--background-modifier-hover);
-}
-
-.fulcrum-project-back__icon {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 1rem;
-	height: 1rem;
-	flex-shrink: 0;
-	--icon-size: 1rem;
-}
-
-.fulcrum-project-back__text {
-	font-weight: 500;
+.fulcrum-project-banner__shell-back-icon.fulcrum-banner-btn__icon {
+	width: 0.95rem;
+	height: 0.95rem;
+	--icon-size: 0.95rem;
 }
 
 /* —— Project banner (image → solid color → plain) —— */
@@ -539,10 +515,6 @@ If your plugin does not need CSS, delete this file.
 
 .fulcrum-project-banner__inner--on-light .fulcrum-banner-btn:not(.clickable-icon):hover:not(:disabled) {
 	background: color-mix(in srgb, var(--fulcrum-accent) 10%, var(--background-modifier-hover)) !important;
-}
-
-.fulcrum-project-back__btn:hover {
-	color: var(--fulcrum-accent);
 }
 
 .fulcrum-section--quick-notes {

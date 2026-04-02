@@ -1,6 +1,9 @@
 <script lang="ts">
 	import {onDestroy, onMount} from "svelte";
-	import {setIcon, TFile} from "obsidian";
+	import {setIcon, type App, TFile} from "obsidian";
+	import {buildHeatmapGrid, countsFromTimestamps, createHeatmapElement} from "@obsidian-suite/heatmap";
+	import {filesByDayFromActivity} from "../orbit/heatmapFiles";
+	import {HeatmapDayModal} from "../modals/HeatmapDayModal";
 
 	function orbitBannerIcon(el: HTMLElement, icon: string): {update: (next: string) => void} {
 		setIcon(el, icon);
@@ -12,6 +15,8 @@
 		};
 	}
 	import type {OrbitHost} from "../orbit/pluginHost";
+	import {resolveOrbitAccentCss} from "../orbit/accentCss";
+	import {normalizeVaultLinkPath, resolveBannerImageUrl} from "../orbit/bannerImage";
 	import {readPersonFrontmatter, displayNameForPerson, formatPersonWorkLocationLine} from "../orbit/personModel";
 	import {
 		collectInteractions,
@@ -27,6 +32,45 @@
 
 	const ACTIVITY_PAGE_SIZE = 25;
 
+	function orbitHeatmap(
+		node: HTMLElement,
+		params: {
+			activity: InteractionEntry[];
+			accentHex: string | null;
+			firstDayOfWeek: number;
+			app: App;
+		},
+	) {
+		function render() {
+			node.replaceChildren();
+			const counts = countsFromTimestamps(params.activity.map((a) => a.dateMs));
+			const filesByDay = filesByDayFromActivity(params.activity);
+			const grid = buildHeatmapGrid(counts, {
+				firstDayOfWeek: params.firstDayOfWeek,
+				intensity: "relative",
+			});
+			const el = createHeatmapElement(grid, {
+				accentColor: params.accentHex ?? undefined,
+				ariaLabel: "Interactions in the last year",
+				filesByDay,
+				onDayClick: ({dateKey, files}) => {
+					new HeatmapDayModal(params.app, dateKey, files).open();
+				},
+			});
+			node.appendChild(el);
+		}
+		render();
+		return {
+			update(p: typeof params) {
+				params = p;
+				render();
+			},
+			destroy() {
+				node.replaceChildren();
+			},
+		};
+	}
+
 	type OrgPersonPill = {
 		path: string;
 		label: string;
@@ -39,7 +83,9 @@
 
 	let personFile: TFile | null = null;
 	let displayName = "";
-	let bannerColor = "";
+	/** Resolved CSS color for banner + page `--orbit-accent` (from `color:` + named tokens). */
+	let orbitAccentCss = "";
+	let bannerImageSrc: string | null = null;
 	let avatarSrc: string | null = null;
 	let initials = "";
 	let workLocationLine = "";
@@ -55,7 +101,7 @@
 
 	function resolveAvatarSrcForNote(raw: string | undefined, sourceNotePath: string): string | null {
 		if (!raw?.trim()) return null;
-		const s = raw.trim();
+		const s = normalizeVaultLinkPath(raw);
 		if (/^https?:\/\//i.test(s)) return s;
 		const dest = plugin.app.metadataCache.getFirstLinkpathDest(s, sourceNotePath);
 		if (dest) {
@@ -96,6 +142,8 @@
 			personFile = null;
 			activity = [];
 			stats = null;
+			orbitAccentCss = "";
+			bannerImageSrc = null;
 			return;
 		}
 		personFile = f;
@@ -113,7 +161,9 @@
 					? rawFm.avatar
 					: fm.avatar;
 		displayName = displayNameForPerson(fm, f.basename);
-		bannerColor = (fm.color?.trim() || plugin.settings.defaultBannerColor).trim();
+		orbitAccentCss = resolveOrbitAccentCss(fm.color, plugin.settings.defaultBannerColor);
+		const bannerRaw = typeof rawFm?.banner === "string" ? rawFm.banner : fm.banner;
+		bannerImageSrc = resolveBannerImageUrl(plugin.app, bannerRaw, f.path);
 		avatarSrc = resolveAvatarSrcForNote(avatarRaw, f.path);
 		const parts = displayName.split(/\s+/).filter(Boolean);
 		initials =
@@ -221,6 +271,17 @@
 		await plugin.openMarkdownFile(personFile);
 	}
 
+	let snapshotBusy = false;
+	async function captureSnapshot(): Promise<void> {
+		if (!personFile || snapshotBusy) return;
+		snapshotBusy = true;
+		try {
+			await plugin.capturePersonSnapshot(personFile);
+		} finally {
+			snapshotBusy = false;
+		}
+	}
+
 	function openOrgChartSidebar(): void {
 		if (!personFile) return;
 		void plugin.openOrgChartForAnchor(personFile.path);
@@ -262,7 +323,7 @@
 		return lum <= 0.55;
 	}
 
-	$: bannerOnDark = bannerUiOnDark(bannerColor);
+	$: bannerOnDark = bannerImageSrc ? true : bannerUiOnDark(orbitAccentCss);
 
 	onMount(() => {
 		const ref = plugin.app.metadataCache.on("changed", (file) => {
@@ -282,8 +343,19 @@
 	});
 </script>
 
-<div class="orbit-profile orbit-view-root">
-	<header class="orbit-banner" style={`--orbit-banner-bg: ${bannerColor}`}>
+<div
+	class="orbit-profile orbit-view-root orbit-profile--accent"
+	style={`--orbit-accent: ${orbitAccentCss}; --orbit-banner-bg: ${orbitAccentCss};`}
+>
+	<header
+		class="orbit-banner"
+		class:orbit-banner--has-image={bannerImageSrc}
+		style={`--orbit-banner-bg: ${orbitAccentCss};`}
+	>
+		{#if bannerImageSrc}
+			<img class="orbit-banner__img" src={bannerImageSrc} alt="" />
+			<div class="orbit-banner__scrim" aria-hidden="true"></div>
+		{/if}
 		<div
 			class="orbit-banner__inner"
 			class:orbit-banner__inner--on-dark={bannerOnDark}
@@ -317,9 +389,10 @@
 						<button
 							type="button"
 							class="orbit-banner-btn orbit-banner-btn--icon-only"
-							disabled
+							disabled={snapshotBusy}
 							aria-label="Snapshot"
-							title="Coming soon"
+							title="Capture snapshot to note"
+							on:click={() => void captureSnapshot()}
 						>
 							<span class="orbit-banner-btn__icon" use:orbitBannerIcon={"camera"} aria-hidden="true"></span>
 						</button>
@@ -373,6 +446,21 @@
 				<span class="orbit-stat-tile__label">Month streak</span>
 				<span class="orbit-stat-tile__value">{stats.monthStreak}</span>
 			</div>
+		</section>
+	{/if}
+
+	{#if personFile}
+		<section class="orbit-section orbit-heatmap-section" aria-label="Yearly activity">
+			<h2 class="orbit-section__title">Last year</h2>
+			<div
+				class="orbit-heatmap-host"
+				use:orbitHeatmap={{
+					activity,
+					accentHex: orbitAccentCss?.trim() || null,
+					firstDayOfWeek: plugin.settings.firstDayOfWeek,
+					app: plugin.app,
+				}}
+			></div>
 		</section>
 	{/if}
 
@@ -503,8 +591,34 @@
 		margin: 0 1rem 0.5rem;
 		box-sizing: border-box;
 	}
+	.orbit-banner--has-image {
+		min-height: 9.5rem;
+		background: var(--orbit-banner-bg);
+	}
+	.orbit-banner__img {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: center;
+		pointer-events: none;
+	}
+	.orbit-banner__scrim {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		z-index: 0;
+		background: linear-gradient(
+			105deg,
+			color-mix(in srgb, var(--orbit-banner-bg) 55%, rgba(0, 0, 0, 0.82)) 0%,
+			color-mix(in srgb, var(--orbit-banner-bg) 25%, rgba(0, 0, 0, 0.5)) 45%,
+			color-mix(in srgb, var(--orbit-banner-bg) 12%, rgba(0, 0, 0, 0.28)) 100%
+		);
+	}
 	.orbit-banner__inner {
 		position: relative;
+		z-index: 1;
 		padding: 1.15rem 1.25rem 1.2rem;
 		box-sizing: border-box;
 	}
@@ -665,6 +779,11 @@
 		margin: 0 0 0.5rem;
 		font-size: var(--font-ui-medium);
 		font-weight: 600;
+	}
+	.orbit-heatmap-host {
+		overflow-x: auto;
+		max-width: 100%;
+		padding-bottom: 0.25rem;
 	}
 	.orbit-section--quick-notes {
 		margin-top: 0.35rem;

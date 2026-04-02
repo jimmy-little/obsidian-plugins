@@ -1,0 +1,8 @@
+{
+	"name": "@obsidian-suite/heatmap",
+	"version": "0.0.1",
+	"private": true,
+	"description": "GitHub-style contribution heatmap grid (shared by Orbit, Fulcrum, Pulse, Ratchet)",
+	"main": "src/index.ts",
+	"types": "src/index.ts"
+}

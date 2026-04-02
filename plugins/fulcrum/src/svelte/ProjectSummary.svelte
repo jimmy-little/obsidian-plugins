@@ -48,9 +48,6 @@
 	export let onBackFromProject: (() => void) | undefined = undefined;
 	export let backTargetLabel = "Dashboard";
 
-	let backBtnIconEl: HTMLSpanElement | null = null;
-	$: if (backBtnIconEl && onBackFromProject) setIcon(backBtnIconEl, "arrow-left");
-
 	let rollup: ProjectRollup | null = null;
 	let rollupLoadId = 0;
 	let rollupMissing = false;
@@ -269,19 +266,6 @@
 		class="fulcrum-project"
 		style="--fulcrum-accent: {rollup.accentColorCss}; --fulcrum-cta-fg: {ctaFgOnAccent};"
 	>
-		{#if onBackFromProject}
-			<div class="fulcrum-project-back">
-				<button
-					type="button"
-					class="fulcrum-project-back__btn"
-					on:click={onBackFromProject}
-					aria-label="Back to {backTargetLabel}"
-				>
-					<span class="fulcrum-project-back__icon" bind:this={backBtnIconEl} aria-hidden="true"></span>
-					<span class="fulcrum-project-back__text">Back to {backTargetLabel}</span>
-				</button>
-			</div>
-		{/if}
 		<div
 			class="fulcrum-project-banner"
 			class:fulcrum-project-banner--image={bannerMode === "image"}
@@ -420,6 +404,21 @@
 				</div>
 				<div class="fulcrum-project-banner__foot">
 					<div class="fulcrum-project-banner__foot-left">
+						{#if onBackFromProject}
+							<button
+								type="button"
+								class="fulcrum-banner-btn fulcrum-banner-btn--icon-only fulcrum-project-banner__shell-back"
+								on:click={onBackFromProject}
+								aria-label="Back to {backTargetLabel}"
+								title="Back to {backTargetLabel}"
+							>
+								<span
+									class="fulcrum-banner-btn__icon fulcrum-project-banner__shell-back-icon"
+									use:bannerBtnIcon={"layout-dashboard"}
+									aria-hidden="true"
+								></span>
+							</button>
+						{/if}
 						{#if statusPillText}
 							<button
 								type="button"

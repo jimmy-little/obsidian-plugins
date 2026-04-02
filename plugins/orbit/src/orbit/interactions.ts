@@ -1,5 +1,6 @@
 import type {App, CachedMetadata} from "obsidian";
 import {TFile} from "obsidian";
+import {msFromLocalYMDDateOnlyString} from "@obsidian-suite/heatmap";
 import {tryParseWhenFromBasename} from "./filenameWhen";
 import {extractQuickNotesFromBody} from "./noteBody";
 import {resolveWikiPath, wikiLinkPathsFromText} from "./orgLinks";
@@ -69,6 +70,12 @@ function resolveWhen(
 	const d2 = fmString(meta, settings.startTimeField);
 
 	if (d1?.trim()) {
+		const t = d1.trim();
+		const localDay = msFromLocalYMDDateOnlyString(t);
+		if (localDay !== null) {
+			const hasTime = fmDateTimeShowsTime(d1) || Boolean(d2?.trim());
+			return {dateMs: localDay, showTimeInFeed: hasTime};
+		}
 		const ms = Date.parse(d1);
 		if (!Number.isNaN(ms)) {
 			const hasTime = fmDateTimeShowsTime(d1) || Boolean(d2?.trim());

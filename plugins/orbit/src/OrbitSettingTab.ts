@@ -104,5 +104,21 @@ export class OrbitSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+
+		const dowLabels = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+		new Setting(containerEl)
+			.setName("Week starts on")
+			.setDesc("First row of the yearly activity heatmap on person profiles (GitHub-style grid).")
+			.addDropdown((dd) => {
+				for (let i = 0; i < 7; i++) {
+					dd.addOption(String(i), dowLabels[i]);
+				}
+				dd.setValue(String(this.plugin.settings.firstDayOfWeek)).onChange(async (v) => {
+					const n = parseInt(v, 10);
+					this.plugin.settings.firstDayOfWeek =
+						Number.isFinite(n) && n >= 0 && n <= 6 ? n : 0;
+					await this.plugin.saveSettings();
+				});
+			});
 	}
 }

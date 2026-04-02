@@ -5,6 +5,77 @@
 	font-size: var(--font-ui-smaller);
 }
 
+/* Person profile: `color:` frontmatter tints chrome (Fulcrum project-style) */
+.orbit-profile.orbit-profile--accent .orbit-section__title {
+	color: var(--orbit-accent);
+}
+
+.orbit-profile.orbit-profile--accent .orbit-stat-tile {
+	border-color: color-mix(in srgb, var(--orbit-accent) 42%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--orbit-accent) 9%, var(--background-secondary));
+}
+
+.orbit-profile.orbit-profile--accent .orbit-stat-tile__value {
+	color: var(--orbit-accent);
+}
+
+.orbit-profile.orbit-profile--accent .orbit-stat-tile__label {
+	color: color-mix(in srgb, var(--orbit-accent) 52%, var(--text-muted));
+}
+
+.orbit-profile.orbit-profile--accent .orbit-btn {
+	border-color: color-mix(in srgb, var(--orbit-accent) 48%, var(--background-modifier-border));
+	color: var(--orbit-accent);
+	background: color-mix(in srgb, var(--orbit-accent) 8%, var(--background-primary));
+}
+
+.orbit-profile.orbit-profile--accent .orbit-btn:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--orbit-accent) 16%, var(--background-modifier-hover));
+	border-color: color-mix(in srgb, var(--orbit-accent) 58%, var(--background-modifier-border));
+}
+
+.orbit-profile.orbit-profile--accent .orbit-quick-note-btn {
+	border-color: color-mix(in srgb, var(--orbit-accent) 55%, var(--background-modifier-border));
+	color: var(--orbit-accent);
+	background: color-mix(in srgb, var(--orbit-accent) 14%, var(--background-primary));
+}
+
+.orbit-profile.orbit-profile--accent .orbit-quick-note-btn:hover {
+	background: color-mix(in srgb, var(--orbit-accent) 22%, var(--background-modifier-hover));
+}
+
+.orbit-profile.orbit-profile--accent .orbit-quick-note-input:focus {
+	border-color: color-mix(in srgb, var(--orbit-accent) 55%, var(--background-modifier-border));
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--orbit-accent) 18%, transparent);
+}
+
+.orbit-profile.orbit-profile--accent .orbit-activity-timeline__node {
+	color: var(--orbit-accent);
+	border-color: color-mix(in srgb, var(--orbit-accent) 45%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--orbit-accent) 10%, var(--background-primary));
+}
+
+.orbit-profile.orbit-profile--accent .orbit-activity-timeline__stem--before,
+.orbit-profile.orbit-profile--accent .orbit-activity-timeline__stem--after {
+	background: color-mix(in srgb, var(--orbit-accent) 35%, var(--background-modifier-border));
+}
+
+.orbit-profile.orbit-profile--accent .orbit-org-row__label {
+	color: color-mix(in srgb, var(--orbit-accent) 45%, var(--text-muted));
+}
+
+.orbit-profile.orbit-profile--accent .fulcrum-person-inline-pill {
+	border-color: color-mix(in srgb, var(--orbit-accent) 48%, var(--background-modifier-border));
+}
+
+.orbit-profile.orbit-profile--accent .fulcrum-person-inline-pill:hover {
+	border-color: color-mix(in srgb, var(--orbit-accent) 62%, var(--background-modifier-border));
+}
+
+.orbit-profile.orbit-profile--accent .suite-heatmap-wrap {
+	--suite-heatmap-accent: var(--orbit-accent);
+}
+
 /* —— Orbit home / Fulcrum Project Manager–style shell —— */
 
 .workspace-leaf[data-type="orbit-main"] .workspace-leaf-content {
@@ -338,4 +409,36 @@
 	line-clamp: 2;
 	overflow: hidden;
 	word-break: break-word;
+}
+
+/* Heatmap day modal */
+.orbit-heatmap-day-modal__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.orbit-heatmap-day-modal__list li {
+	margin: 0;
+}
+
+button.orbit-heatmap-day-modal__link {
+	display: block;
+	width: 100%;
+	text-align: left;
+	font: inherit;
+	font-size: var(--font-ui-small);
+	padding: 0.35rem 0.45rem;
+	border-radius: var(--radius-s);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+	background: var(--background-secondary);
+	color: var(--text-accent);
+	cursor: pointer;
+}
+
+button.orbit-heatmap-day-modal__link:hover {
+	background: var(--background-modifier-hover);
 }

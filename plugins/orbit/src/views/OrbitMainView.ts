@@ -23,6 +23,10 @@ export class OrbitMainView extends ItemView {
 		return VIEW_ORBIT_MAIN;
 	}
 
+	getIcon(): string {
+		return "orbit";
+	}
+
 	getDisplayText(): string {
 		if (this.selectedPersonPath && !leafIsInSideDock(this.app, this.leaf)) {
 			const f = this.app.vault.getAbstractFileByPath(this.selectedPersonPath);

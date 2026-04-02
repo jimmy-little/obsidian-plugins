@@ -2,7 +2,7 @@
 	"name": "obsidian-plugins",
 	"private": true,
 	"version": "0.0.0",
-	"description": "Monorepo: Pulse, Lapse, Ratchet, Fulcrum, Orbit — @obsidian-suite/core, theme, interop, svelte-shell",
+	"description": "Monorepo: Pulse, Lapse, Ratchet, Fulcrum, Orbit — @obsidian-suite/core, heatmap, theme, interop, svelte-shell",
 	"workspaces": [
 		"packages/*",
 		"plugins/*"

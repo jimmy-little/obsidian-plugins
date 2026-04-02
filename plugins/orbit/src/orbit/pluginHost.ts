@@ -15,4 +15,6 @@ export type OrbitHost = {
 	 * Open the Orbit person profile in the main editor area (when the picker lives in a sidebar).
 	 */
 	openPersonProfileInMain: (personPath: string) => Promise<void>;
+	/** Write or replace the HTML-comment snapshot block on the person note. */
+	capturePersonSnapshot: (personFile: import("obsidian").TFile) => Promise<void>;
 };

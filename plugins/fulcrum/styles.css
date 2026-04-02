@@ -19,6 +19,160 @@
 	--suite-person-card-border: 1px solid color-mix(in srgb, var(--background-modifier-border) 92%, transparent);
 }
 
+/* @obsidian-suite/heatmap — GitHub-style contribution graph (merged into each plugin styles.css) */
+
+.suite-heatmap-wrap {
+	--suite-heatmap-cell: 11px;
+	--suite-heatmap-gap: 3px;
+	--suite-heatmap-accent: var(--interactive-accent);
+	--suite-heatmap-empty: color-mix(in srgb, var(--background-modifier-border) 72%, var(--background-primary));
+	--suite-heatmap-out: color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+	min-width: 0;
+}
+
+.suite-heatmap__top {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-end;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
+}
+
+.suite-heatmap__corner {
+	width: 1.15rem;
+	flex: 0 0 1.15rem;
+	min-height: 1rem;
+}
+
+.suite-heatmap__month-row {
+	position: relative;
+	flex: 0 1 auto;
+	min-width: 0;
+	height: 1.1rem;
+	box-sizing: border-box;
+}
+
+.suite-heatmap__month-label {
+	position: absolute;
+	top: 0;
+	left: 0;
+	font-size: 0.65rem;
+	line-height: 1;
+	font-weight: 600;
+	color: var(--text-muted);
+	letter-spacing: 0.02em;
+	pointer-events: none;
+	white-space: nowrap;
+}
+
+.suite-heatmap__bottom {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 6px;
+	min-width: 0;
+}
+
+.suite-heatmap__dow-col {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	justify-content: flex-start;
+	gap: var(--suite-heatmap-gap);
+	flex: 0 0 auto;
+	padding-top: 0;
+	min-width: 1.15rem;
+}
+
+.suite-heatmap__dow-label {
+	display: block;
+	width: 100%;
+	font-size: 0.58rem;
+	line-height: var(--suite-heatmap-cell);
+	height: var(--suite-heatmap-cell);
+	text-align: right;
+	color: var(--text-muted);
+	font-weight: 600;
+	user-select: none;
+}
+
+.suite-heatmap {
+	--suite-heatmap-accent: var(--interactive-accent);
+	--suite-heatmap-empty: color-mix(in srgb, var(--background-modifier-border) 72%, var(--background-primary));
+	--suite-heatmap-out: color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
+	display: inline-flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	gap: var(--suite-heatmap-gap);
+	padding: 0;
+	flex: 0 0 auto;
+	width: calc(
+		var(--suite-heatmap-cols, 1) * var(--suite-heatmap-cell) + (var(--suite-heatmap-cols, 1) - 1) * var(--suite-heatmap-gap)
+	);
+	box-sizing: border-box;
+}
+
+.suite-heatmap__week {
+	display: flex;
+	flex-direction: column;
+	gap: var(--suite-heatmap-gap);
+}
+
+.suite-heatmap__day {
+	width: var(--suite-heatmap-cell);
+	height: var(--suite-heatmap-cell);
+	border-radius: 2px;
+	box-sizing: border-box;
+	flex-shrink: 0;
+	background: var(--suite-heatmap-empty);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+}
+
+.suite-heatmap__day--clickable {
+	cursor: pointer;
+}
+
+.suite-heatmap__day--clickable:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+.suite-heatmap__day--out {
+	background: var(--suite-heatmap-out);
+	border-color: transparent;
+	opacity: 0.45;
+}
+
+.suite-heatmap__day:not(.suite-heatmap__day--out)[data-level="0"] {
+	background: var(--suite-heatmap-empty);
+}
+
+.suite-heatmap__day[data-level="1"] {
+	background: color-mix(in srgb, var(--suite-heatmap-accent) 28%, var(--suite-heatmap-empty));
+	border-color: color-mix(in srgb, var(--suite-heatmap-accent) 22%, var(--background-modifier-border));
+}
+
+.suite-heatmap__day[data-level="2"] {
+	background: color-mix(in srgb, var(--suite-heatmap-accent) 48%, var(--suite-heatmap-empty));
+	border-color: color-mix(in srgb, var(--suite-heatmap-accent) 35%, var(--background-modifier-border));
+}
+
+.suite-heatmap__day[data-level="3"] {
+	background: color-mix(in srgb, var(--suite-heatmap-accent) 68%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--suite-heatmap-accent) 48%, var(--background-modifier-border));
+}
+
+.suite-heatmap__day[data-level="4"] {
+	background: color-mix(in srgb, var(--suite-heatmap-accent) 88%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--suite-heatmap-accent) 62%, var(--background-modifier-border));
+}
+
 /*
 
 This CSS file will be included with your plugin, and
@@ -47,41 +201,17 @@ If your plugin does not need CSS, delete this file.
 	font-size: var(--font-ui-large);
 }
 
-/* —— Project summary: back to shell —— */
-.fulcrum-project-back {
-	margin-bottom: 0.65rem;
+/* —— Project summary: compact “shell home” in banner foot (left of status) —— */
+.fulcrum-project-banner__shell-back.fulcrum-banner-btn--icon-only {
+	min-width: 1.75rem;
+	min-height: 1.75rem;
+	padding: 0.22rem !important;
 }
 
-.fulcrum-project-back__btn {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.4rem;
-	padding: 0.25rem 0.5rem 0.25rem 0.35rem;
-	font-size: var(--font-ui-small);
-	color: var(--text-muted);
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-s);
-	cursor: pointer;
-}
-
-.fulcrum-project-back__btn:hover {
-	color: var(--text-normal);
-	background: var(--background-modifier-hover);
-}
-
-.fulcrum-project-back__icon {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 1rem;
-	height: 1rem;
-	flex-shrink: 0;
-	--icon-size: 1rem;
-}
-
-.fulcrum-project-back__text {
-	font-weight: 500;
+.fulcrum-project-banner__shell-back-icon.fulcrum-banner-btn__icon {
+	width: 0.95rem;
+	height: 0.95rem;
+	--icon-size: 0.95rem;
 }
 
 /* —— Project banner (image → solid color → plain) —— */
@@ -560,10 +690,6 @@ If your plugin does not need CSS, delete this file.
 
 .fulcrum-project-banner__inner--on-light .fulcrum-banner-btn:not(.clickable-icon):hover:not(:disabled) {
 	background: color-mix(in srgb, var(--fulcrum-accent) 10%, var(--background-modifier-hover)) !important;
-}
-
-.fulcrum-project-back__btn:hover {
-	color: var(--fulcrum-accent);
 }
 
 .fulcrum-section--quick-notes {
@@ -3975,7 +4101,9 @@ button.fulcrum-task-card__note-type:focus-visible {
 	box-sizing: border-box;
 	cursor: pointer;
 	flex: 0 0 auto;
-	align-self: baseline;
+	/* Let the flex parent control cross-axis alignment (e.g. center in a row). Baseline
+	   alignment here made image vs SVG avatar pills sit at different heights. */
+	align-self: auto;
 }
 
 a.fulcrum-person-inline-pill {

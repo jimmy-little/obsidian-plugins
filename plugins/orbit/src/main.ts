@@ -1,8 +1,14 @@
-import {MarkdownRenderer, MarkdownView, Plugin, TFile, type WorkspaceLeaf} from "obsidian";
+import {MarkdownRenderer, MarkdownView, Notice, Plugin, TFile, type WorkspaceLeaf} from "obsidian";
 import {revealOrCreateView} from "@obsidian-suite/core";
 import {OrbitSettingTab} from "./OrbitSettingTab";
 import {VIEW_ORBIT_MAIN, VIEW_ORBIT_ORG_CHART, VIEW_ORBIT_PERSON} from "./orbit/constants";
 import type {OrbitHost} from "./orbit/pluginHost";
+import {
+	buildFullOrbitSnapshotBlock,
+	buildPersonSnapshotMarkdown,
+	gatherPersonSnapshotData,
+	insertOrReplacePersonSnapshot,
+} from "./orbit/personSnapshot";
 import {isFileInPeopleDirs} from "./orbit/pathUtils";
 import {formatQuickNoteLine} from "./orbit/quickNoteFormat";
 import {DEFAULT_SETTINGS, normalizeSettings, type OrbitSettings} from "./orbit/settings";
@@ -26,13 +32,30 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 
 	async openMarkdownFile(file: TFile): Promise<void> {
 		this.personMarkdownPreferred.add(file.path);
-		const leaf = this.app.workspace.getLeaf("tab");
+		const leaf = this.app.workspace.getLeaf("split", "vertical");
 		await leaf.openFile(file, {active: true, state: {mode: "source"}});
 	}
 
 	async appendQuickNote(personFile: TFile, text: string): Promise<void> {
 		const line = formatQuickNoteLine(text.trim());
 		await this.app.vault.append(personFile, `\n${line}\n`);
+	}
+
+	async capturePersonSnapshot(personFile: TFile): Promise<void> {
+		try {
+			const data = await gatherPersonSnapshotData(this.app, personFile, this.settings);
+			if (!data) {
+				new Notice("Could not build snapshot.");
+				return;
+			}
+			const md = buildPersonSnapshotMarkdown(this.app, personFile.path, data);
+			const full = buildFullOrbitSnapshotBlock(md);
+			await insertOrReplacePersonSnapshot(this.app, personFile, full);
+			new Notice("Person snapshot saved.");
+		} catch (e) {
+			console.error(e);
+			new Notice("Could not save snapshot.");
+		}
 	}
 
 	async renderActivityPreview(el: HTMLElement, sourcePath: string, markdown: string): Promise<void> {
@@ -159,6 +182,6 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 	}
 
 	async activateMainView(): Promise<void> {
-		await revealOrCreateView(this.app, VIEW_ORBIT_MAIN, "sidebar");
+		await revealOrCreateView(this.app, VIEW_ORBIT_MAIN, "main");
 	}
 }

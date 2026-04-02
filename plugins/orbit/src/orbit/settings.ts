@@ -13,6 +13,11 @@ export interface OrbitSettings {
 	activityPreviewEntryField: string;
 	/** Max content lines per activity preview card. */
 	activityPreviewMaxLines: number;
+	/**
+	 * First column / top row of the yearly heatmap (`0` = Sunday … `6` = Saturday).
+	 * Matches local calendar convention; align with Obsidian locale if desired.
+	 */
+	firstDayOfWeek: number;
 }
 
 export const DEFAULT_SETTINGS: OrbitSettings = {
@@ -24,6 +29,7 @@ export const DEFAULT_SETTINGS: OrbitSettings = {
 	startTimeField: "startTime",
 	activityPreviewEntryField: "entry",
 	activityPreviewMaxLines: 10,
+	firstDayOfWeek: 0,
 };
 
 export function normalizeSettings(raw: Partial<OrbitSettings> | undefined): OrbitSettings {
@@ -42,5 +48,11 @@ export function normalizeSettings(raw: Partial<OrbitSettings> | undefined): Orbi
 			typeof raw?.activityPreviewMaxLines === "number" && raw.activityPreviewMaxLines >= 1
 				? Math.min(30, Math.floor(raw.activityPreviewMaxLines))
 				: DEFAULT_SETTINGS.activityPreviewMaxLines,
+		firstDayOfWeek:
+			typeof raw?.firstDayOfWeek === "number" &&
+			raw.firstDayOfWeek >= 0 &&
+			raw.firstDayOfWeek <= 6
+				? Math.floor(raw.firstDayOfWeek)
+				: DEFAULT_SETTINGS.firstDayOfWeek,
 	};
 }
