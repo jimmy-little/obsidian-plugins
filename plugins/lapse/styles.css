@@ -2312,6 +2312,27 @@
     pointer-events: none;
 }
 
+/* Planned blocks (intent only; not logged work) */
+.lapse-calendar-planned-block {
+    border-style: dashed;
+    border-width: 1px;
+    opacity: 0.92;
+    z-index: 2;
+}
+
+.lapse-calendar-month-day-planned {
+    font-size: 10px;
+    color: var(--text-accent);
+    margin-top: 2px;
+}
+
+.lapse-calendar-draw-modal-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
 /*
  * Shared “suite people” UI — portrait cards + inline pills.
  * Used by Fulcrum (related people, companion chrome, markdown people links) and

@@ -1,7 +1,10 @@
 import {
 	LAPSE_PLUGIN_ID,
+	LAPSE_PLANNED_DRAG_MIME,
 	LAPSE_PUBLIC_API_READY_EVENT,
 	LAPSE_PUBLIC_API_UNLOAD_EVENT,
+	type LapsePlannedBlockPublic,
+	type LapsePlannedBlockUpsertInput,
 	type LapsePublicApi,
 	type LapseQuickStartItemPublic,
 } from "@obsidian-suite/interop";
@@ -56,6 +59,12 @@ interface LapseSettings {
 	showDurationOnNoteButtons: boolean; // Show duration on note buttons/links
 	noteButtonDurationType: 'project' | 'note'; // Type of duration to show (project or note)
 	noteButtonTimePeriod: 'today' | 'thisWeek' | 'thisMonth' | 'lastWeek' | 'lastMonth'; // Time period for duration
+	/** Vault folder for per-day planner notes `YYYY-MM-DD.md` (planned time blocks; not logged work). */
+	plannedBlocksFolder: string;
+	/** Frontmatter array key for planned blocks inside planner notes. */
+	plannedBlocksKey: string;
+	/** When drawing a new slot on the calendar: ask plan vs log, or always one mode. */
+	calendarDrawMode: 'ask' | 'plan' | 'log';
 }
 
 const DEFAULT_SETTINGS: LapseSettings = {
@@ -87,6 +96,9 @@ const DEFAULT_SETTINGS: LapseSettings = {
 	showDurationOnNoteButtons: false, // Don't show duration on note buttons by default
 	noteButtonDurationType: 'note', // Default to note
 	noteButtonTimePeriod: 'today', // Default to today
+	plannedBlocksFolder: 'Lapse/Planner',
+	plannedBlocksKey: 'lapse_planned',
+	calendarDrawMode: 'ask',
 }
 
 interface TimeEntry {
@@ -96,6 +108,16 @@ interface TimeEntry {
 	endTime: number | null;
 	duration: number;
 	isPaused: boolean;
+	tags: string[];
+}
+
+/** Tentative calendar block; stored in planner day notes — not counted as logged work. */
+interface PlannedBlock {
+	id: string;
+	label: string;
+	startTime: number;
+	endTime: number;
+	project: string | null;
 	tags: string[];
 }
 
@@ -161,6 +183,8 @@ export default class LapsePlugin extends Plugin {
 	statusBarUpdateInterval: number | null = null; // Interval for updating status bar
 	pendingSaves: Promise<void>[] = []; // Track pending save operations
 	colorMeasurementEl: HTMLElement | null = null; // Hidden element for measuring computed colors
+	/** Planner note path → cached planned blocks (mtime-validated). */
+	plannedDayCache: Map<string, { mtime: number; blocks: PlannedBlock[] }> = new Map();
 	/** @see LapsePublicApi — duplicate reference as `api` for common plugin conventions */
 	lapsePublicApi!: Readonly<LapsePublicApi>;
 	/** Alias of {@link LapsePlugin.lapsePublicApi} for `getPlugin('lapse-tracker').api` */
@@ -545,6 +569,15 @@ export default class LapsePlugin extends Plugin {
 			},
 			startTimerInNote: async (notePath, options) => {
 				await this.runStartTimerInNoteFromApi(notePath, options);
+			},
+			listPlannedBlocksInRange: async (startMs, endMs) => {
+				return this.listPlannedBlocksInRangeApi(startMs, endMs);
+			},
+			upsertPlannedBlock: async (input) => {
+				return this.upsertPlannedBlockApi(input);
+			},
+			deletePlannedBlock: async (id, dateIso) => {
+				await this.deletePlannedBlockApi(id, dateIso);
 			},
 		};
 		this.lapsePublicApi = Object.freeze(api);
@@ -4341,6 +4374,283 @@ export default class LapsePlugin extends Plugin {
 	invalidateCacheForFile(filePath: string) {
 		// Remove file from cache - will be re-indexed on next access
 		delete this.entryCache[filePath];
+		this.plannedDayCache.delete(filePath);
+	}
+
+	/** Local calendar day YYYY-MM-DD */
+	localDateIso(d: Date): string {
+		const pad = (n: number) => String(n).padStart(2, '0');
+		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+	}
+
+	getPlannedDayNotePath(isoDate: string): string {
+		const folder = this.settings.plannedBlocksFolder.replace(/\/+$/, '');
+		return `${folder}/${isoDate}.md`;
+	}
+
+	async ensurePlannedBlocksFolder(): Promise<void> {
+		const folder = this.settings.plannedBlocksFolder.replace(/\/+$/, '');
+		if (!folder) return;
+		const existing = this.app.vault.getAbstractFileByPath(folder);
+		if (existing instanceof TFolder) return;
+		await this.app.vault.createFolder(folder).catch(() => {
+			/* may already exist */
+		});
+	}
+
+	normalizePlannedRow(
+		row: Record<string, unknown>,
+		filePath: string,
+		iso: string,
+		index: number,
+	): PlannedBlock | null {
+		const label = typeof row.label === 'string' ? row.label : 'Untitled';
+		let startMs: number | null = null;
+		let endMs: number | null = null;
+		const s = row.start;
+		const e = row.end;
+		if (typeof s === 'number') startMs = s;
+		else if (typeof s === 'string') startMs = this.parseDatetimeLocal(s);
+		if (typeof e === 'number') endMs = e;
+		else if (typeof e === 'string') endMs = this.parseDatetimeLocal(e);
+		if (startMs === null || endMs === null || endMs <= startMs) return null;
+		const id =
+			typeof row.id === 'string' && row.id.trim()
+				? row.id.trim()
+				: `pb-${iso}-${index}-${startMs}`;
+		let project: string | null = null;
+		if (typeof row.project === 'string' && row.project.trim()) project = row.project.trim();
+		let tags: string[] = [];
+		if (Array.isArray(row.tags)) {
+			tags = row.tags.map((t) => String(t)).filter(Boolean);
+		}
+		return { id, label, startTime: startMs, endTime: endMs, project, tags };
+	}
+
+	parsePlannedBlocksFromFrontmatter(file: TFile, iso: string): PlannedBlock[] {
+		const key = this.settings.plannedBlocksKey;
+		const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+		const raw = fm?.[key];
+		if (!Array.isArray(raw)) return [];
+		const out: PlannedBlock[] = [];
+		raw.forEach((item, index) => {
+			if (item && typeof item === 'object' && !Array.isArray(item)) {
+				const b = this.normalizePlannedRow(item as Record<string, unknown>, file.path, iso, index);
+				if (b) out.push(b);
+			}
+		});
+		return out;
+	}
+
+	async loadPlannedBlocksForDay(iso: string): Promise<PlannedBlock[]> {
+		const path = this.getPlannedDayNotePath(iso);
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) return [];
+		const cached = this.plannedDayCache.get(path);
+		if (cached && cached.mtime === file.stat.mtime) return cached.blocks.map((b) => ({ ...b }));
+		let blocks = this.parsePlannedBlocksFromFrontmatter(file, iso);
+		if (blocks.length === 0) {
+			const content = await this.app.vault.read(file);
+			blocks = this.parsePlannedBlocksFromFileContent(content, file.path, iso);
+		}
+		this.plannedDayCache.set(path, { mtime: file.stat.mtime, blocks: blocks.map((b) => ({ ...b })) });
+		return blocks.map((b) => ({ ...b }));
+	}
+
+	/** Fallback when metadata cache has not parsed planner YAML yet. */
+	parsePlannedBlocksFromFileContent(content: string, filePath: string, iso: string): PlannedBlock[] {
+		const key = this.settings.plannedBlocksKey;
+		const frontmatterRegex = /^---\n([\s\S]*?)\n---/;
+		const match = content.match(frontmatterRegex);
+		if (!match) return [];
+		const lines = match[1].split('\n');
+		let inArr = false;
+		const rows: Record<string, unknown>[] = [];
+		let cur: Record<string, unknown> | null = null;
+		for (const originalLine of lines) {
+			const trimmed = originalLine.trim();
+			const indent = originalLine.length - originalLine.trimStart().length;
+			if (trimmed.startsWith(`${key}:`)) {
+				inArr = true;
+				continue;
+			}
+			if (!inArr) continue;
+			if (trimmed && indent === 0 && !trimmed.startsWith('-')) {
+				break;
+			}
+			if (trimmed.startsWith('- ')) {
+				if (cur) rows.push(cur);
+				cur = {};
+				const rest = trimmed.slice(1).trim();
+				const kv = rest.split(':');
+				if (kv.length >= 2) {
+					const k = kv[0].trim();
+					const v = rest.slice(rest.indexOf(':') + 1).trim();
+					if (k === 'label') cur.label = v.replace(/^["']|["']$/g, '');
+				}
+				continue;
+			}
+			if (cur && trimmed.includes(':')) {
+				const colon = trimmed.indexOf(':');
+				const k = trimmed.slice(0, colon).trim();
+				const v = trimmed.slice(colon + 1).trim();
+				if (k === 'id') cur.id = v.replace(/^["']|["']$/g, '');
+				else if (k === 'label') cur.label = v.replace(/^["']|["']$/g, '');
+				else if (k === 'start') cur.start = v;
+				else if (k === 'end') cur.end = v;
+				else if (k === 'project') cur.project = v.replace(/^["']|["']$/g, '');
+			}
+		}
+		if (cur) rows.push(cur);
+		const out: PlannedBlock[] = [];
+		rows.forEach((row, index) => {
+			const b = this.normalizePlannedRow(row, filePath, iso, index);
+			if (b) out.push(b);
+		});
+		return out;
+	}
+
+	async savePlannedBlocksToDay(iso: string, blocks: PlannedBlock[]): Promise<void> {
+		await this.ensurePlannedBlocksFolder();
+		const path = this.getPlannedDayNotePath(iso);
+		const key = this.settings.plannedBlocksKey;
+		let yaml = `${key}:\n`;
+		if (blocks.length === 0) {
+			yaml += `  []\n`;
+		} else {
+			for (const b of blocks) {
+				const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+				yaml += `  - id: "${esc(b.id)}"\n`;
+				yaml += `    label: "${esc(b.label)}"\n`;
+				yaml += `    start: ${this.formatForDatetimeLocal(b.startTime)}\n`;
+				yaml += `    end: ${this.formatForDatetimeLocal(b.endTime)}\n`;
+				if (b.project) yaml += `    project: "${esc(b.project)}"\n`;
+				if (b.tags.length > 0) {
+					yaml += `    tags: [${b.tags.map((t) => `"${esc(t)}"`).join(', ')}]\n`;
+				}
+			}
+		}
+		const body = `# Planner — ${iso}\n\nPlanned time blocks (not logged work until you start a timer).\n`;
+		const full = `---\n${yaml}---\n\n${body}`;
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing instanceof TFile) {
+			await this.app.vault.modify(existing, full);
+		} else {
+			await this.app.vault.create(path, full);
+		}
+		this.invalidateCacheForFile(path);
+	}
+
+	async getAllPlannedInRange(
+		startDate: Date,
+		endDate: Date,
+	): Promise<Array<{ file: TFile; block: PlannedBlock; dateIso: string }>> {
+		const out: Array<{ file: TFile; block: PlannedBlock; dateIso: string }> = [];
+		const cur = new Date(startDate);
+		cur.setHours(0, 0, 0, 0);
+		const end = new Date(endDate);
+		end.setHours(23, 59, 59, 999);
+		while (cur <= end) {
+			const iso = this.localDateIso(cur);
+			const blocks = await this.loadPlannedBlocksForDay(iso);
+			const path = this.getPlannedDayNotePath(iso);
+			const file = this.app.vault.getAbstractFileByPath(path);
+			if (!(file instanceof TFile)) {
+				cur.setDate(cur.getDate() + 1);
+				continue;
+			}
+			const rangeStart = startDate.getTime();
+			const rangeEnd = endDate.getTime();
+			for (const block of blocks) {
+				if (block.startTime <= rangeEnd && block.endTime >= rangeStart) {
+					out.push({ file, block, dateIso: iso });
+				}
+			}
+			cur.setDate(cur.getDate() + 1);
+		}
+		return out;
+	}
+
+	toPlannedBlockPublic(block: PlannedBlock, dateIso: string, plannerPath: string): LapsePlannedBlockPublic {
+		return {
+			id: block.id,
+			label: block.label,
+			startTime: block.startTime,
+			endTime: block.endTime,
+			dateIso,
+			project: block.project,
+			tags: [...block.tags],
+			plannerNotePath: plannerPath,
+		};
+	}
+
+	async listPlannedBlocksInRangeApi(startMs: number, endMs: number): Promise<LapsePlannedBlockPublic[]> {
+		const start = new Date(startMs);
+		const end = new Date(endMs);
+		const rows = await this.getAllPlannedInRange(start, end);
+		return rows.map((r) => this.toPlannedBlockPublic(r.block, r.dateIso, r.file.path));
+	}
+
+	async upsertPlannedBlockApi(input: LapsePlannedBlockUpsertInput): Promise<LapsePlannedBlockPublic> {
+		const iso = input.dateIso.slice(0, 10);
+		const blocks = await this.loadPlannedBlocksForDay(iso);
+		const id =
+			input.id?.trim() || `pb-${iso}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		const next: PlannedBlock = {
+			id,
+			label: input.label.trim() || 'Untitled',
+			startTime: input.startTime,
+			endTime: input.endTime,
+			project: input.project ?? null,
+			tags: input.tags ? [...input.tags] : [],
+		};
+		const idx = blocks.findIndex((b) => b.id === id);
+		if (idx >= 0) blocks[idx] = next;
+		else blocks.push(next);
+		await this.savePlannedBlocksToDay(iso, blocks);
+		return this.toPlannedBlockPublic(next, iso, this.getPlannedDayNotePath(iso));
+	}
+
+	async deletePlannedBlockApi(id: string, dateIso: string): Promise<void> {
+		const iso = dateIso.slice(0, 10);
+		const blocks = await this.loadPlannedBlocksForDay(iso);
+		const filtered = blocks.filter((b) => b.id !== id);
+		if (filtered.length === blocks.length) return;
+		await this.savePlannedBlocksToDay(iso, filtered);
+	}
+
+	async updatePlannedBlockTimes(iso: string, blockId: string, startMs: number, endMs: number): Promise<void> {
+		const blocks = await this.loadPlannedBlocksForDay(iso);
+		const idx = blocks.findIndex((b) => b.id === blockId);
+		if (idx < 0) return;
+		blocks[idx] = { ...blocks[idx], startTime: startMs, endTime: endMs };
+		await this.savePlannedBlocksToDay(iso, blocks);
+	}
+
+	/** Move or reschedule a planned block (same or different calendar day). */
+	async movePlannedBlock(
+		fromIso: string,
+		block: PlannedBlock,
+		newStart: number,
+		newEnd: number,
+		toIso: string,
+	): Promise<void> {
+		const updated: PlannedBlock = { ...block, startTime: newStart, endTime: newEnd };
+		if (fromIso === toIso) {
+			const blocks = await this.loadPlannedBlocksForDay(fromIso);
+			const idx = blocks.findIndex((b) => b.id === block.id);
+			if (idx >= 0) {
+				blocks[idx] = updated;
+				await this.savePlannedBlocksToDay(fromIso, blocks);
+			}
+			return;
+		}
+		const fromBlocks = (await this.loadPlannedBlocksForDay(fromIso)).filter((b) => b.id !== block.id);
+		await this.savePlannedBlocksToDay(fromIso, fromBlocks);
+		const toBlocks = await this.loadPlannedBlocksForDay(toIso);
+		const rest = toBlocks.filter((b) => b.id !== block.id);
+		rest.push(updated);
+		await this.savePlannedBlocksToDay(toIso, rest);
 	}
 
 	async getCachedOrLoadEntries(filePath: string): Promise<{ entries: TimeEntry[]; project: string | null; totalTime: number }> {
@@ -6162,6 +6472,49 @@ class LapseSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		containerEl.createEl('h3', { text: 'Time blocking (planned blocks)' });
+
+		new Setting(containerEl)
+			.setName('Planner folder')
+			.setDesc('Per-day notes `YYYY-MM-DD.md` in this folder store planned blocks (frontmatter). Not counted in time reports until you log time or start a timer.')
+			.addText((text) =>
+				text
+					.setPlaceholder('Lapse/Planner')
+					.setValue(this.plugin.settings.plannedBlocksFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.plannedBlocksFolder = value.trim() || 'Lapse/Planner';
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Planner frontmatter key')
+			.setDesc('YAML array key for planned intervals inside each planner note.')
+			.addText((text) =>
+				text
+					.setPlaceholder('lapse_planned')
+					.setValue(this.plugin.settings.plannedBlocksKey)
+					.onChange(async (value) => {
+						this.plugin.settings.plannedBlocksKey = (value?.trim()) || 'lapse_planned';
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Calendar: draw new slot as…')
+			.setDesc('When you drag on an empty area of the week/day calendar: create a planned block, a logged interval (timer note), or ask each time.')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('ask', 'Ask (plan vs log)')
+					.addOption('plan', 'Always plan')
+					.addOption('log', 'Always log time')
+					.setValue(this.plugin.settings.calendarDrawMode)
+					.onChange(async (value) => {
+						this.plugin.settings.calendarDrawMode = value as LapseSettings['calendarDrawMode'];
+						await this.plugin.saveSettings();
+					}),
+			);
+
 		containerEl.createDiv({ cls: 'setting-item-description' })
 			.createEl('p', {
 				text: 'Inline code `lapse:TemplateName` and template Quick Start buttons create a new note from that template (saved using the path above) and open it in a new tab. Project Quick Start buttons start a running timer immediately.'
@@ -6915,6 +7268,41 @@ class LapseReportsView extends ItemView {
 	}
 }
 
+class CalendarDrawChoiceModal extends Modal {
+	constructor(
+		app: App,
+		private readonly onChoose: (mode: 'plan' | 'log') => void | Promise<void>,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createEl('h2', { text: 'New calendar block' });
+		contentEl.createEl('p', {
+			text: 'Plan a block (intent only) or log time (creates a timer note with a completed interval).',
+		});
+		const row = contentEl.createDiv({ cls: 'lapse-calendar-draw-modal-buttons' });
+		const planBtn = row.createEl('button', { text: 'Plan', cls: 'mod-cta' });
+		planBtn.onclick = () => {
+			void Promise.resolve(this.onChoose('plan'));
+			this.close();
+		};
+		const logBtn = row.createEl('button', { text: 'Log time' });
+		logBtn.onclick = () => {
+			void Promise.resolve(this.onChoose('log'));
+			this.close();
+		};
+		const cancel = row.createEl('button', { text: 'Cancel' });
+		cancel.onclick = () => this.close();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
 /**
  * Calendar View for Lapse Tracker
  * Displays time entries in a calendar grid similar to TaskNotes
@@ -6928,9 +7316,10 @@ class LapseCalendarView extends ItemView {
 	
 	// Drag state
 	dragState: {
-		type: 'resize-start' | 'resize-end' | 'move' | 'create' | null;
+		type: 'resize-start' | 'resize-end' | 'move' | 'resize-planned-start' | 'resize-planned-end' | 'create' | null;
 		entryBlock: HTMLElement | null;
 		entryData: { file: TFile; entry: TimeEntry } | null;
+		plannedData: { file: TFile; block: PlannedBlock; dateIso: string } | null;
 		startY: number;
 		startTime: number;
 		dayColumn: HTMLElement | null;
@@ -6939,6 +7328,7 @@ class LapseCalendarView extends ItemView {
 		type: null,
 		entryBlock: null,
 		entryData: null,
+		plannedData: null,
 		startY: 0,
 		startTime: 0,
 		dayColumn: null,
@@ -7103,11 +7493,12 @@ class LapseCalendarView extends ItemView {
 		const startDate = this.getViewStartDate();
 		const endDate = this.getViewEndDate();
 		const entries = await this.getAllEntriesInRange(startDate, endDate);
+		const planned = await this.plugin.getAllPlannedInRange(startDate, endDate);
 
 		if (this.viewType === 'month') {
-			await this.renderMonthView(gridContainer, entries, startDate);
+			await this.renderMonthView(gridContainer, entries, planned, startDate);
 		} else {
-			await this.renderTimeSlotView(gridContainer, entries, startDate, endDate);
+			await this.renderTimeSlotView(gridContainer, entries, planned, startDate, endDate);
 		}
 	}
 
@@ -7165,7 +7556,7 @@ class LapseCalendarView extends ItemView {
 		entry: TimeEntry;
 		project: string | null;
 		noteName: string;
-	}>, startDate: Date, endDate: Date) {
+	}>, planned: Array<{ file: TFile; block: PlannedBlock; dateIso: string }>, startDate: Date, endDate: Date) {
 		// Create calendar grid
 		const grid = container.createDiv({ cls: 'lapse-calendar-grid' });
 		
@@ -7220,6 +7611,7 @@ class LapseCalendarView extends ItemView {
 			dayStart.setHours(0, 0, 0, 0);
 			const dayEnd = new Date(day);
 			dayEnd.setHours(23, 59, 59, 999);
+			const dayIso = this.plugin.localDateIso(dayStart);
 
 			// Create time slot containers
 			for (const timeSlot of timeSlots) {
@@ -7236,6 +7628,11 @@ class LapseCalendarView extends ItemView {
 
 			for (const item of dayEntries) {
 				await this.renderEntryBlock(dayColumn, item, dayStart);
+			}
+
+			const dayPlanned = planned.filter((p) => p.dateIso === dayIso);
+			for (const p of dayPlanned) {
+				await this.renderPlannedBlock(dayColumn, p, dayStart);
 			}
 
 			// Setup drag-and-drop handlers for moving entries between days
@@ -7341,6 +7738,7 @@ class LapseCalendarView extends ItemView {
 			this.dragState.type = 'move';
 			this.dragState.entryBlock = block;
 			this.dragState.entryData = { file: item.file, entry: item.entry };
+			this.dragState.plannedData = null;
 			this.dragState.startTime = item.entry.startTime!;
 			e.dataTransfer!.effectAllowed = 'move';
 			block.addClass('lapse-calendar-entry-dragging');
@@ -7351,6 +7749,7 @@ class LapseCalendarView extends ItemView {
 			this.dragState.type = null;
 			this.dragState.entryBlock = null;
 			this.dragState.entryData = null;
+			this.dragState.plannedData = null;
 		};
 
 		// Resize handle handlers
@@ -7365,12 +7764,216 @@ class LapseCalendarView extends ItemView {
 		}
 	}
 
+	async renderPlannedBlock(
+		dayColumn: HTMLElement,
+		item: { file: TFile; block: PlannedBlock; dateIso: string },
+		dayStart: Date,
+	) {
+		const blockData = item.block;
+		const entryStart = new Date(blockData.startTime);
+		const entryEnd = new Date(blockData.endTime);
+		const slotHeight = 60;
+		const minutesPerSlot = 30;
+		const startMinutes = entryStart.getHours() * 60 + entryStart.getMinutes();
+		const endMinutes = entryEnd.getHours() * 60 + entryEnd.getMinutes();
+		const durationMinutes = endMinutes - startMinutes;
+		const top = (startMinutes / minutesPerSlot) * slotHeight;
+		const height = Math.max((durationMinutes / minutesPerSlot) * slotHeight, 20);
+
+		const block = dayColumn.createDiv({
+			cls: 'lapse-calendar-entry-block lapse-calendar-planned-block',
+		});
+		block.style.top = `${top}px`;
+		block.style.height = `${height}px`;
+		block.draggable = true;
+		block.dataset.plannedId = blockData.id;
+		block.dataset.dateIso = item.dateIso;
+
+		if (blockData.project) {
+			const projectColor = await this.plugin.getProjectColor(blockData.project);
+			if (projectColor) {
+				block.style.borderLeftColor = projectColor;
+				block.style.borderLeftWidth = '3px';
+				block.style.borderLeftStyle = 'dashed';
+			}
+		}
+
+		const resizeStartHandle = block.createDiv({ cls: 'lapse-calendar-resize-handle lapse-calendar-resize-start' });
+		resizeStartHandle.title = 'Drag to change start time';
+		const resizeEndHandle = block.createDiv({ cls: 'lapse-calendar-resize-handle lapse-calendar-resize-end' });
+		resizeEndHandle.title = 'Drag to change end time';
+
+		const label = block.createDiv({ cls: 'lapse-calendar-entry-label' });
+		label.textContent = blockData.label || 'Planned';
+		label.title = 'Planned (not logged)';
+
+		const time = block.createDiv({ cls: 'lapse-calendar-entry-time' });
+		const startTimeStr = entryStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+		const endTimeStr = entryEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+		time.textContent = `${startTimeStr} - ${endTimeStr}`;
+
+		let isDragging = false;
+		block.onmousedown = (e) => {
+			if (e.target === resizeStartHandle || e.target === resizeEndHandle) return;
+			isDragging = false;
+			const startX = e.clientX;
+			const startY = e.clientY;
+			const onMouseMove = (moveEvent: MouseEvent) => {
+				if (Math.abs(moveEvent.clientX - startX) > 5 || Math.abs(moveEvent.clientY - startY) > 5) {
+					isDragging = true;
+				}
+			};
+			const onMouseUp = async () => {
+				document.removeEventListener('mousemove', onMouseMove);
+				document.removeEventListener('mouseup', onMouseUp);
+				if (!isDragging) {
+					await this.openPlannedBlockMenu(item);
+				}
+			};
+			document.addEventListener('mousemove', onMouseMove);
+			document.addEventListener('mouseup', onMouseUp);
+		};
+
+		block.ondragstart = (e) => {
+			if (e.target === resizeStartHandle || e.target === resizeEndHandle) {
+				e.preventDefault();
+				return;
+			}
+			this.dragState.type = 'move';
+			this.dragState.plannedData = { file: item.file, block: blockData, dateIso: item.dateIso };
+			this.dragState.entryData = null;
+			this.dragState.entryBlock = block;
+			this.dragState.startTime = blockData.startTime;
+			e.dataTransfer!.effectAllowed = 'move';
+			try {
+				e.dataTransfer!.setData(
+					LAPSE_PLANNED_DRAG_MIME,
+					JSON.stringify({
+						kind: 'lapse-planned',
+						id: blockData.id,
+						dateIso: item.dateIso,
+						startTime: blockData.startTime,
+						endTime: blockData.endTime,
+						label: blockData.label,
+						project: blockData.project,
+					}),
+				);
+			} catch {
+				/* ignore */
+			}
+			block.addClass('lapse-calendar-entry-dragging');
+		};
+
+		block.ondragend = () => {
+			block.removeClass('lapse-calendar-entry-dragging');
+			this.dragState.type = null;
+			this.dragState.entryBlock = null;
+			this.dragState.plannedData = null;
+			this.dragState.entryData = null;
+		};
+
+		this.setupPlannedResizeHandle(resizeStartHandle, block, item, dayStart, 'start');
+		this.setupPlannedResizeHandle(resizeEndHandle, block, item, dayStart, 'end');
+	}
+
+	async openPlannedBlockMenu(item: { file: TFile; block: PlannedBlock; dateIso: string }) {
+		const menu = new Modal(this.plugin.app);
+		menu.contentEl.createEl('h2', { text: 'Planned block' });
+		menu.contentEl.createEl('p', { text: item.block.label });
+		const row = menu.contentEl.createDiv({ cls: 'lapse-calendar-draw-modal-buttons' });
+		const openBtn = row.createEl('button', { text: 'Open planner note', cls: 'mod-cta' });
+		openBtn.onclick = () => {
+			void this.plugin.app.workspace.openLinkText(item.file.path, '', false);
+			menu.close();
+		};
+		const timerBtn = row.createEl('button', { text: 'Quick start timer' });
+		timerBtn.onclick = () => {
+			menu.close();
+			new LapseQuickStartModal(this.plugin.app, this.plugin).open();
+		};
+		const doneBtn = row.createEl('button', { text: 'Remove plan' });
+		doneBtn.onclick = async () => {
+			await this.plugin.deletePlannedBlockApi(item.block.id, item.dateIso);
+			menu.close();
+			await this.render();
+		};
+		menu.open();
+	}
+
+	setupPlannedResizeHandle(
+		handle: HTMLElement,
+		block: HTMLElement,
+		item: { file: TFile; block: PlannedBlock; dateIso: string },
+		dayStart: Date,
+		type: 'start' | 'end',
+	) {
+		handle.onmousedown = (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			const slotHeight = 60;
+			const minutesPerSlot = 30;
+			const entryStart = new Date(item.block.startTime);
+			const entryEnd = new Date(item.block.endTime);
+			this.dragState.type = type === 'start' ? 'resize-planned-start' : 'resize-planned-end';
+			this.dragState.entryBlock = block;
+			this.dragState.plannedData = item;
+			this.dragState.entryData = null;
+			this.dragState.startY = e.clientY;
+			this.dragState.startTime = type === 'start' ? entryStart.getTime() : entryEnd.getTime();
+			this.dragState.dayColumn = block.parentElement as HTMLElement;
+			const dayColumnRect = this.dragState.dayColumn.getBoundingClientRect();
+			const initialY = e.clientY - dayColumnRect.top;
+			const onMouseMove = (moveEvent: MouseEvent) => {
+				const currentY = moveEvent.clientY - dayColumnRect.top;
+				const deltaY = currentY - initialY;
+				const deltaMinutes = (deltaY / slotHeight) * minutesPerSlot;
+				let newTime = this.dragState.startTime + deltaMinutes * 60 * 1000;
+				newTime = this.snapTo5Minutes(newTime);
+				if (type === 'start') {
+					const newStart = new Date(newTime);
+					const currentEnd = new Date(item.block.endTime);
+					if (currentEnd.getTime() - newStart.getTime() <= 0) return;
+					const sm = newStart.getHours() * 60 + newStart.getMinutes();
+					const top = (sm / minutesPerSlot) * slotHeight;
+					const height =
+						((currentEnd.getTime() - newStart.getTime()) / 60000 / minutesPerSlot) * slotHeight;
+					block.style.top = `${top}px`;
+					block.style.height = `${Math.max(height, 20)}px`;
+				} else {
+					const currentStart = new Date(item.block.startTime);
+					const newEnd = new Date(newTime);
+					if (newEnd.getTime() - currentStart.getTime() <= 0) return;
+					const height =
+						((newEnd.getTime() - currentStart.getTime()) / 60000 / minutesPerSlot) * slotHeight;
+					block.style.height = `${Math.max(height, 20)}px`;
+				}
+			};
+			const onMouseUp = async (upEvent: MouseEvent) => {
+				document.removeEventListener('mousemove', onMouseMove);
+				document.removeEventListener('mouseup', onMouseUp);
+				const currentY = upEvent.clientY - dayColumnRect.top;
+				const deltaY = currentY - initialY;
+				const deltaMinutes = (deltaY / slotHeight) * minutesPerSlot;
+				let newTime = this.dragState.startTime + deltaMinutes * 60 * 1000;
+				newTime = this.snapTo5Minutes(newTime);
+				if (type === 'start') {
+					await this.plugin.updatePlannedBlockTimes(item.dateIso, item.block.id, newTime, item.block.endTime);
+				} else {
+					await this.plugin.updatePlannedBlockTimes(item.dateIso, item.block.id, item.block.startTime, newTime);
+				}
+				await this.render();
+			};
+			document.addEventListener('mousemove', onMouseMove);
+			document.addEventListener('mouseup', onMouseUp);
+		};
+	}
+
 	async renderMonthView(container: HTMLElement, entries: Array<{
 		file: TFile;
 		entry: TimeEntry;
 		project: string | null;
 		noteName: string;
-	}>, startDate: Date) {
+	}>, planned: Array<{ file: TFile; block: PlannedBlock; dateIso: string }>, startDate: Date) {
 		// Month view - simplified calendar grid
 		const monthGrid = container.createDiv({ cls: 'lapse-calendar-month-grid' });
 		
@@ -7415,26 +8018,35 @@ class LapseCalendarView extends ItemView {
 				const entryDate = new Date(item.entry.startTime);
 				return entryDate >= dayStart && entryDate <= dayEnd;
 			});
+			const dayIso = this.plugin.localDateIso(dayStart);
+			const dayPlanned = planned.filter((p) => p.dateIso === dayIso);
 
-			if (dayEntries.length > 0) {
-				const totalTime = dayEntries.reduce((sum, item) => {
-					if (item.entry.startTime && item.entry.endTime) {
-						return sum + item.entry.duration;
-					} else if (item.entry.startTime) {
-						return sum + (Date.now() - item.entry.startTime);
-					}
-					return sum;
-				}, 0);
+			if (dayEntries.length > 0 || dayPlanned.length > 0) {
+				if (dayEntries.length > 0) {
+					const totalTime = dayEntries.reduce((sum, item) => {
+						if (item.entry.startTime && item.entry.endTime) {
+							return sum + item.entry.duration;
+						} else if (item.entry.startTime) {
+							return sum + (Date.now() - item.entry.startTime);
+						}
+						return sum;
+					}, 0);
 
-				const timeDisplay = dayCell.createDiv({ cls: 'lapse-calendar-month-day-time' });
-				timeDisplay.textContent = this.plugin.formatTimeForButton(totalTime);
-				
-				const countDisplay = dayCell.createDiv({ cls: 'lapse-calendar-month-day-count' });
-				countDisplay.textContent = `${dayEntries.length} entry${dayEntries.length !== 1 ? 'ies' : 'y'}`;
+					const timeDisplay = dayCell.createDiv({ cls: 'lapse-calendar-month-day-time' });
+					timeDisplay.textContent = this.plugin.formatTimeForButton(totalTime);
+					
+					const countDisplay = dayCell.createDiv({ cls: 'lapse-calendar-month-day-count' });
+					countDisplay.textContent = `${dayEntries.length} entry${dayEntries.length !== 1 ? 'ies' : 'y'}`;
+				}
+				if (dayPlanned.length > 0) {
+					dayCell.createDiv({
+						text: `${dayPlanned.length} planned`,
+						cls: 'lapse-calendar-month-day-planned',
+					});
+				}
 
 				dayCell.addClass('has-entries');
 				dayCell.onclick = () => {
-					// Switch to day view for this date
 					this.currentDate = new Date(currentDay);
 					this.viewType = 'day';
 					this.render();
@@ -7471,6 +8083,7 @@ class LapseCalendarView extends ItemView {
 			this.dragState.type = type === 'start' ? 'resize-start' : 'resize-end';
 			this.dragState.entryBlock = block;
 			this.dragState.entryData = { file: item.file, entry: item.entry };
+			this.dragState.plannedData = null;
 			this.dragState.startY = e.clientY;
 			this.dragState.startTime = type === 'start' ? entryStart.getTime() : entryEnd.getTime();
 			this.dragState.dayColumn = block.parentElement as HTMLElement;
@@ -7622,7 +8235,73 @@ class LapseCalendarView extends ItemView {
 		dayColumn.ondrop = async (e) => {
 			e.preventDefault();
 			dayColumn.removeClass('lapse-calendar-day-column-drag-over');
+
+			let ext: string | null = null;
+			try {
+				ext = e.dataTransfer?.getData(LAPSE_PLANNED_DRAG_MIME) || null;
+			} catch {
+				ext = null;
+			}
+			if (!ext) {
+				try {
+					ext = e.dataTransfer?.getData('text/plain') || null;
+					if (ext && !ext.includes('lapse-planned')) ext = null;
+				} catch {
+					/* ignore */
+				}
+			}
+			if (ext) {
+				try {
+					const parsed = JSON.parse(ext) as { kind?: string; id?: string; dateIso?: string; startTime?: number; endTime?: number; label?: string; project?: string | null };
+					if (parsed.kind === 'lapse-planned' && parsed.id && parsed.dateIso && parsed.startTime != null && parsed.endTime != null) {
+						const dayColumnRect = dayColumn.getBoundingClientRect();
+						const dropY = e.clientY - dayColumnRect.top;
+						const slotHeight = 60;
+						const minutesPerSlot = 30;
+						const dropMinutes = (dropY / slotHeight) * minutesPerSlot;
+						const dropHours = Math.floor(dropMinutes / 60);
+						const dropMins = Math.floor(dropMinutes % 60);
+						const dropDay = new Date(dayColumn.dataset.day!);
+						const newStart = new Date(dropDay);
+						newStart.setHours(dropHours, dropMins, 0, 0);
+						const snappedStart = this.snapTo5Minutes(newStart.getTime());
+						const dur = parsed.endTime - parsed.startTime;
+						const newEnd = snappedStart + dur;
+						const toIso = this.plugin.localDateIso(dropDay);
+						const blocks = await this.plugin.loadPlannedBlocksForDay(parsed.dateIso);
+						const blk = blocks.find((b) => b.id === parsed.id);
+						if (blk) {
+							await this.plugin.movePlannedBlock(parsed.dateIso, blk, snappedStart, newEnd, toIso);
+							await this.render();
+							return;
+						}
+					}
+				} catch (err) {
+					console.error('Lapse: external planned drop', err);
+				}
+			}
 			
+			if (this.dragState.type === 'move' && this.dragState.plannedData) {
+				const pd = this.dragState.plannedData;
+				const dayColumnRect = dayColumn.getBoundingClientRect();
+				const dropY = e.clientY - dayColumnRect.top;
+				const slotHeight = 60;
+				const minutesPerSlot = 30;
+				const dropMinutes = (dropY / slotHeight) * minutesPerSlot;
+				const dropHours = Math.floor(dropMinutes / 60);
+				const dropMins = Math.floor(dropMinutes % 60);
+				const dropDay = new Date(dayColumn.dataset.day!);
+				const newStart = new Date(dropDay);
+				newStart.setHours(dropHours, dropMins, 0, 0);
+				const snappedStart = this.snapTo5Minutes(newStart.getTime());
+				const dur = pd.block.endTime - pd.block.startTime;
+				const newEnd = snappedStart + dur;
+				const toIso = this.plugin.localDateIso(dropDay);
+				await this.plugin.movePlannedBlock(pd.dateIso, pd.block, snappedStart, newEnd, toIso);
+				await this.render();
+				return;
+			}
+
 			if (this.dragState.type === 'move' && this.dragState.entryData) {
 				const dayColumnRect = dayColumn.getBoundingClientRect();
 				const dropY = e.clientY - dayColumnRect.top;
@@ -7661,14 +8340,14 @@ class LapseCalendarView extends ItemView {
 					
 					if (sameDay && this.dragState.entryBlock) {
 						// Same day - just update the block position
-						const dayStart = new Date(dropDay);
-						dayStart.setHours(0, 0, 0, 0);
+						const ds = new Date(dropDay);
+						ds.setHours(0, 0, 0, 0);
 						await this.updateEntryBlockDisplay(this.dragState.entryBlock, {
 							file: this.dragState.entryData.file,
 							entry: entry,
 							project: null,
 							noteName: ''
-						}, dayStart);
+						}, ds);
 					} else {
 						// Different day - need to re-render to move block to new column
 						await this.render();
@@ -7737,7 +8416,17 @@ class LapseCalendarView extends ItemView {
 				const snappedEnd = this.snapTo5Minutes(endTime.getTime());
 				
 				if (snappedEnd > snappedStart) {
-					await this.createNewEntryFromCalendar(snappedStart, snappedEnd);
+					const mode = this.plugin.settings.calendarDrawMode;
+					if (mode === 'plan') {
+						await this.createNewPlannedFromCalendar(snappedStart, snappedEnd, dayStart);
+					} else if (mode === 'log') {
+						await this.createNewEntryFromCalendar(snappedStart, snappedEnd);
+					} else {
+						new CalendarDrawChoiceModal(this.plugin.app, async (m) => {
+							if (m === 'plan') await this.createNewPlannedFromCalendar(snappedStart, snappedEnd, dayStart);
+							else await this.createNewEntryFromCalendar(snappedStart, snappedEnd);
+						}).open();
+					}
 				}
 				
 				if (previewBlock) {
@@ -7751,6 +8440,19 @@ class LapseCalendarView extends ItemView {
 			document.addEventListener('mousemove', onMouseMove);
 			document.addEventListener('mouseup', onMouseUp);
 		};
+	}
+
+	async createNewPlannedFromCalendar(startTime: number, endTime: number, dayStart: Date) {
+		const label = prompt('Label for planned block:');
+		if (!label?.trim()) return;
+		const iso = this.plugin.localDateIso(dayStart);
+		await this.plugin.upsertPlannedBlockApi({
+			label: label.trim(),
+			startTime,
+			endTime,
+			dateIso: iso,
+		});
+		await this.render();
 	}
 
 	async createNewEntryFromCalendar(startTime: number, endTime: number) {

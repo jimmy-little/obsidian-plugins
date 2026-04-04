@@ -21,16 +21,24 @@ export class RatchetSettingTab extends PluginSettingTab {
 		});
 
 		containerEl.createEl("p", {
-			text: "URI host must be ratchet. Opens the main view (same as the ribbon). Optional screen=main. Do not use action=open.",
+			text: "URI host must be ratchet. Opens the Ratchet sidebar (same as the ribbon). Do not use action=open.",
 			cls: "setting-item-description",
 		});
 		containerEl.createEl("p", {
-			text: "obsidian://ratchet?screen=main",
+			text: "obsidian://ratchet",
 			cls: "mod-code",
 		});
 		containerEl.createEl("p", {
-			text: "You can omit screen=; main is the default. Conceptual route: /ratchet/main.",
+			text: "Month grid in the same leaf: obsidian://ratchet?screen=grid",
+			cls: "mod-code",
+		});
+		containerEl.createEl("p", {
+			text: "Quick log opens as a main tab (tap cards to add 1; good for mobile home-screen shortcuts). Same with panel=quicklog or quicklog=1.",
 			cls: "setting-item-description",
+		});
+		containerEl.createEl("p", {
+			text: "obsidian://ratchet?focus=quicklog",
+			cls: "mod-code",
 		});
 
 		new Setting(containerEl)

@@ -1,9 +1,17 @@
-import { ItemView, WorkspaceLeaf, Setting, TextComponent, ButtonComponent } from "obsidian";
+import {
+	ButtonComponent,
+	ItemView,
+	Setting,
+	TextComponent,
+	WorkspaceLeaf,
+	setIcon,
+} from "obsidian";
 import type RatchetPlugin from "../main";
 import type { DataManager } from "../data/DataManager";
 import type { TrackerConfig, GoalType, ResetPeriod } from "../data/TrackerConfig";
 import { createTracker, makeTrackerId, DEFAULT_TRACKER_COLOR } from "../data/TrackerConfig";
-import { renderTrackerCard } from "./TrackerCard";
+import { renderRatchetMonthGrid } from "./renderRatchetMonthGrid";
+import { renderQuickLogSection } from "./renderQuickLogSection";
 
 export const VIEW_TYPE_RATCHET_MAIN = "ratchet-main-view";
 
@@ -34,12 +42,34 @@ const PRESET_COLORS = [
 	"#0f172a",
 ];
 
+const PM_LEFT_WIDTH_LS = "ratchet-pm-left-col-px";
+const PM_LEFT_MIN = 200;
+const PM_MAIN_MIN = 280;
+const PM_SPLIT_PX = 5;
+
 export class RatchetMainView extends ItemView {
+	private leftCollapsed = false;
+	private leftWidthPx: number | null = RatchetMainView.readStoredLeftWidth();
+	private pmEl: HTMLElement | null = null;
+
 	constructor(
 		leaf: WorkspaceLeaf,
 		private plugin: RatchetPlugin,
 	) {
 		super(leaf);
+	}
+
+	private static readStoredLeftWidth(): number | null {
+		if (typeof localStorage === "undefined") return null;
+		try {
+			const s = localStorage.getItem(PM_LEFT_WIDTH_LS);
+			if (!s) return null;
+			const n = Number.parseInt(s, 10);
+			if (!Number.isFinite(n) || n < PM_LEFT_MIN) return null;
+			return n;
+		} catch {
+			return null;
+		}
 	}
 
 	getViewType(): string {
@@ -55,60 +85,194 @@ export class RatchetMainView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
+		this.contentEl.addClass("ratchet-view-root");
 		this.render();
 	}
 
 	async onClose(): Promise<void> {}
 
+	private maxLeftColWidth(): number {
+		if (!this.pmEl) return 720;
+		const pmW = this.pmEl.getBoundingClientRect().width;
+		return Math.max(PM_LEFT_MIN, pmW - PM_SPLIT_PX - PM_MAIN_MIN);
+	}
+
+	private clampLeftWidth(w: number): number {
+		return Math.min(Math.max(Math.round(w), PM_LEFT_MIN), this.maxLeftColWidth());
+	}
+
+	private persistLeftWidth(w: number): void {
+		try {
+			localStorage.setItem(PM_LEFT_WIDTH_LS, String(w));
+		} catch {
+			/* private mode / quota */
+		}
+	}
+
+	private onSplitPointerDown(ev: PointerEvent): void {
+		if (this.leftCollapsed) return;
+		const handle = ev.currentTarget as HTMLElement;
+		ev.preventDefault();
+		handle.setPointerCapture(ev.pointerId);
+		const aside = this.pmEl?.querySelector(".ratchet-pm__sidebar--left");
+		const startW =
+			aside instanceof HTMLElement ? aside.getBoundingClientRect().width : PM_LEFT_MIN;
+		const startX = ev.clientX;
+
+		const move = (e: PointerEvent): void => {
+			this.leftWidthPx = this.clampLeftWidth(startW + (e.clientX - startX));
+			if (this.pmEl && this.leftWidthPx != null) {
+				this.pmEl.style.setProperty("--ratchet-pm-left-w", `${this.leftWidthPx}px`);
+			}
+		};
+
+		const up = (e: PointerEvent): void => {
+			handle.releasePointerCapture(e.pointerId);
+			window.removeEventListener("pointermove", move);
+			window.removeEventListener("pointerup", up);
+			window.removeEventListener("pointercancel", up);
+			if (this.leftWidthPx != null) this.persistLeftWidth(this.leftWidthPx);
+		};
+
+		window.addEventListener("pointermove", move);
+		window.addEventListener("pointerup", up);
+		window.addEventListener("pointercancel", up);
+	}
+
+	private onSplitKeydown(ev: KeyboardEvent): void {
+		if (this.leftCollapsed) return;
+		if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+		ev.preventDefault();
+		const aside = this.pmEl?.querySelector(".ratchet-pm__sidebar--left");
+		const cur =
+			this.leftWidthPx ??
+			(aside instanceof HTMLElement ? aside.getBoundingClientRect().width : 352);
+		const step = ev.shiftKey ? 24 : 8;
+		const delta = ev.key === "ArrowRight" ? step : -step;
+		const next = this.clampLeftWidth(cur + delta);
+		this.leftWidthPx = next;
+		if (this.pmEl) this.pmEl.style.setProperty("--ratchet-pm-left-w", `${next}px`);
+		this.persistLeftWidth(next);
+	}
+
+	/** @internal invoked from plugin.refreshRatchetViews */
 	render(): void {
-		const container = this.containerEl.children[1] as HTMLElement;
-		if (!container) return;
-		container.empty();
-		container.addClass("ratchet-main-view");
-
-		const scroll = container.createDiv("ratchet-main-scroll");
-		const content = scroll.createDiv("ratchet-main-content");
-
-		// Title
-		content.createEl("h1", { text: "Ratchet" });
-
-		// Grid: trackers + New button
-		const grid = content.createDiv("ratchet-main-grid");
-		const dm = this.plugin.getDataManager();
+		this.contentEl.empty();
 		const selectedId = this.plugin.ratchetViewState.selectedId;
+		const mainPane = this.plugin.ratchetViewState.mainPane;
 
-		void (async () => {
-			const trackers = await dm.getAllTrackers();
-			for (const tracker of trackers) {
-				const cardWrap = grid.createDiv("ratchet-card-wrap");
-				renderTrackerCard(cardWrap, {
-					tracker,
-					dataManager: dm,
-					onIncrement: () => this.render(),
-					onOpenDetail: (t: TrackerConfig) => {
-						this.plugin.ratchetViewState.selectedId = t.id;
-						this.render();
-					},
-				});
-			}
-			// New tracker card
-			const newWrap = grid.createDiv("ratchet-card-wrap");
-			const newCard = newWrap.createDiv("ratchet-card ratchet-card-new");
-			newCard.createDiv("ratchet-card-new-inner").createEl("span", { text: "+ New tracker" });
-			newCard.addEventListener("click", () => {
+		const shell = this.contentEl.createDiv({
+			cls: `ratchet-pm ${this.leftCollapsed ? "ratchet-pm-left-collapsed" : ""}`,
+		});
+		this.pmEl = shell;
+		if (!this.leftCollapsed && this.leftWidthPx != null) {
+			shell.style.setProperty("--ratchet-pm-left-w", `${this.leftWidthPx}px`);
+		}
+
+		const leftSidebar = shell.createDiv({ cls: "ratchet-pm__sidebar ratchet-pm__sidebar--left" });
+		const leftStack = leftSidebar.createDiv({ cls: "ratchet-pm__left-stack" });
+
+		const glyphBar = leftStack.createDiv({ cls: "ratchet-pm__glyph-bar", attr: { role: "toolbar", "aria-label": "Trackers sidebar" } });
+
+		const collapseBtn = glyphBar.createEl("button", {
+			cls: "ratchet-pm__glyph-btn clickable-icon",
+			type: "button",
+			attr: {
+				"aria-label": this.leftCollapsed ? "Expand tracker list" : "Collapse tracker list",
+				title: this.leftCollapsed ? "Expand" : "Collapse",
+			},
+			text: this.leftCollapsed ? "›" : "‹",
+		});
+		collapseBtn.addEventListener("click", () => {
+			this.leftCollapsed = !this.leftCollapsed;
+			this.render();
+		});
+
+		glyphBar.createDiv({ cls: "ratchet-pm__glyph-spacer", attr: { "aria-hidden": "true" } });
+
+		const homeBtn = glyphBar.createEl("button", {
+			cls: `ratchet-pm__glyph-btn clickable-icon ${mainPane === "dashboard" ? "ratchet-pm__glyph-btn--active" : ""}`,
+			type: "button",
+			attr: { "aria-label": "Dashboard & quick log", title: "Dashboard" },
+		});
+		setIcon(homeBtn, "layout-dashboard");
+		homeBtn.addEventListener("click", () => {
+			this.plugin.ratchetViewState.mainPane = "dashboard";
+			this.plugin.ratchetViewState.selectedId = null;
+			this.render();
+		});
+
+		const newBtn = glyphBar.createEl("button", {
+			cls: `ratchet-pm__glyph-btn clickable-icon ${selectedId === "new" && mainPane === "dashboard" ? "ratchet-pm__glyph-btn--active" : ""}`,
+			type: "button",
+			attr: { "aria-label": "New tracker", title: "New tracker" },
+		});
+		setIcon(newBtn, "plus");
+		newBtn.addEventListener("click", () => {
+			this.plugin.ratchetViewState.mainPane = "dashboard";
+			this.plugin.ratchetViewState.selectedId = "new";
+			this.render();
+		});
+
+		const gridBtn = glyphBar.createEl("button", {
+			cls: `ratchet-pm__glyph-btn clickable-icon ${mainPane === "grid" ? "ratchet-pm__glyph-btn--active" : ""}`,
+			type: "button",
+			attr: { "aria-label": "Month grid", title: "Month grid" },
+		});
+		setIcon(gridBtn, "layout-grid");
+		gridBtn.addEventListener("click", () => {
+			this.plugin.ratchetViewState.mainPane = "grid";
+			this.render();
+		});
+
+		const scrollArea = leftStack.createDiv({ cls: "ratchet-pm__left-scroll" });
+		scrollArea.createDiv({
+			cls: "ratchet-pm__sidebar-placeholder",
+			text: "Tracker cards and quick log live in the main pane →",
+		});
+
+		const splitter = shell.createEl("button", {
+			cls: "ratchet-pm__split",
+			type: "button",
+			attr: { "aria-label": "Resize tracker list. Drag or use arrow keys." },
+		});
+		splitter.disabled = this.leftCollapsed;
+		splitter.addEventListener("pointerdown", (e) => this.onSplitPointerDown(e));
+		splitter.addEventListener("keydown", (e) => this.onSplitKeydown(e));
+
+		const mainArea = shell.createDiv({ cls: "ratchet-pm__main" });
+		const mainScroll = mainArea.createDiv({ cls: "ratchet-main-scroll" });
+
+		if (mainPane === "grid") {
+			void renderRatchetMonthGrid(mainScroll, this.plugin, () => this.plugin.refreshRatchetViews());
+			return;
+		}
+
+		const content = mainScroll.createDiv({ cls: "ratchet-main-content" });
+		content.createEl("h1", { text: "Ratchet" });
+		const qlWrap = content.createDiv({
+			cls: "ratchet-ql-wrap ratchet-ql-wrap--embedded",
+			attr: { id: "ratchet-quick-log" },
+		});
+		renderQuickLogSection(qlWrap, this.plugin, {
+			onRefresh: () => this.plugin.refreshRatchetViews(),
+			openEditTracker: (id) => {
+				this.plugin.ratchetViewState.selectedId = id;
+				this.plugin.refreshRatchetViews();
+			},
+			openNewTracker: () => {
 				this.plugin.ratchetViewState.selectedId = "new";
-				this.render();
-			});
+				this.plugin.refreshRatchetViews();
+			},
+		});
 
-			// Edit form below when something is selected
-			if (selectedId) {
-				const formSection = content.createDiv("ratchet-main-form-section");
-				formSection.createEl("h2", {
-					text: selectedId === "new" ? "New tracker" : "Edit tracker",
-				});
-				this.renderTrackerForm(formSection, selectedId);
-			}
-		})();
+		if (this.plugin.ratchetViewState.selectedId) {
+			const formSection = content.createDiv({ cls: "ratchet-main-form-section" });
+			formSection.createEl("h2", {
+				text: this.plugin.ratchetViewState.selectedId === "new" ? "New tracker" : "Edit tracker",
+			});
+			this.renderTrackerForm(formSection, this.plugin.ratchetViewState.selectedId);
+		}
 	}
 
 	private renderTrackerForm(container: HTMLElement, selectedId: string): void {
@@ -249,13 +413,13 @@ export class RatchetMainView extends ItemView {
 				);
 
 			if (isEdit) {
-				this.renderPastEntriesSection(form, selectedId, dm, goalType, goal, () => this.render());
+				this.renderPastEntriesSection(form, selectedId, dm, goalType, goal, () => this.plugin.refreshRatchetViews());
 			}
 
 			const actions = form.createDiv("ratchet-config-actions");
 			new ButtonComponent(actions).setButtonText("Cancel").onClick(() => {
 				this.plugin.ratchetViewState.selectedId = null;
-				this.render();
+				this.plugin.refreshRatchetViews();
 			});
 
 			if (isEdit) {
@@ -265,7 +429,7 @@ export class RatchetMainView extends ItemView {
 					.onClick(async () => {
 						await dm.deleteTracker(selectedId);
 						this.plugin.ratchetViewState.selectedId = null;
-						this.render();
+						this.plugin.refreshRatchetViews();
 					});
 			}
 
@@ -301,7 +465,7 @@ export class RatchetMainView extends ItemView {
 						await dm.createTracker(config);
 					}
 					this.plugin.ratchetViewState.selectedId = null;
-					this.render();
+					this.plugin.refreshRatchetViews();
 				});
 		})();
 	}
@@ -352,7 +516,6 @@ export class RatchetMainView extends ItemView {
 					const newVal = parseInt(String(input.value), 10);
 					if (isNaN(newVal) || newVal < 0) return;
 					let delta = newVal - entry.count;
-					// "At most 0": setting empty day to 0 = mark done (add 0-value event)
 					if (goalType === "at most" && goal === 0 && newVal === 0 && entry.eventCount === 0) {
 						delta = 0;
 						await dm.incrementOnDate(trackerId, 0, entry.date, "done");

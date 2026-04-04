@@ -4,7 +4,7 @@
  * Uses the same vault resolution as tooling/install-to-vault.mjs (OBSIDIAN_VAULT_PATH or .vault-path.local.json).
  *
  * Plugins (order matters for your mental model; each is built via the root `npm run build` first):
- *   Pulse, Lapse, Fulcrum, Conduit, Orbit, Journal (Quill — folder plugins/quill or legacy plugins/day-won).
+ *   Pulse, Lapse, Ratchet, Fulcrum, Conduit, Orbit, Journal (Quill — folder plugins/quill or legacy plugins/day-won).
  *
  * Usage:
  *   node tooling/install-all-to-vault.mjs
@@ -33,6 +33,7 @@ const failOnMissing = args.includes("--fail-on-missing");
 const PLUGIN_SPECS = [
 	["plugins/pulse"],
 	["plugins/lapse"],
+	["plugins/ratchet"],
 	["plugins/fulcrum"],
 	["plugins/conduit"],
 	["plugins/orbit"],

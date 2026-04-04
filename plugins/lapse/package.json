@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-plugin-lapse",
-	"version": "0.1.11",
+	"version": "0.1.12",
 	"description": "Compact time tracker with code block integration, frontmatter updates, and Fulcrum interop",
 	"main": "main.js",
 	"scripts": {

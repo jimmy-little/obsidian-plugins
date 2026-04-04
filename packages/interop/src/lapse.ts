@@ -9,6 +9,32 @@ export const LAPSE_PUBLIC_API_READY_EVENT = `${LAPSE_PLUGIN_ID}:public-api-ready
 
 export const LAPSE_PUBLIC_API_UNLOAD_EVENT = `${LAPSE_PLUGIN_ID}:public-api-unload` as const;
 
+/** Drag/drop and JSON payloads for planned time blocks (calendar ↔ other plugins). */
+export const LAPSE_PLANNED_DRAG_MIME = "application/x-obsidian-lapse-planned+json" as const;
+
+export interface LapsePlannedBlockPublic {
+	readonly id: string;
+	readonly label: string;
+	readonly startTime: number;
+	readonly endTime: number;
+	/** Local calendar day YYYY-MM-DD (planner note day). */
+	readonly dateIso: string;
+	readonly project: string | null;
+	readonly tags: readonly string[];
+	readonly plannerNotePath: string;
+}
+
+export interface LapsePlannedBlockUpsertInput {
+	id?: string;
+	label: string;
+	startTime: number;
+	endTime: number;
+	/** Calendar day for the planner note (YYYY-MM-DD). */
+	dateIso: string;
+	project?: string | null;
+	tags?: string[];
+}
+
 export interface LapseQuickStartItemPublic {
 	kind: "template" | "project";
 	templatePath: string | null;
@@ -35,4 +61,10 @@ export interface LapsePublicApi {
 		notePath: string,
 		options?: { projectName?: string | null; noteTitle?: string | null },
 	): Promise<void>;
+	/** List planned time blocks (not logged work) intersecting [startMs, endMs]. */
+	listPlannedBlocksInRange?(startMs: number, endMs: number): Promise<LapsePlannedBlockPublic[]>;
+	/** Create or replace a planned block by id; omit id to create. */
+	upsertPlannedBlock?(input: LapsePlannedBlockUpsertInput): Promise<LapsePlannedBlockPublic>;
+	/** Remove a planned block from its day note. */
+	deletePlannedBlock?(id: string, dateIso: string): Promise<void>;
 }

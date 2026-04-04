@@ -2136,3 +2136,24 @@
     opacity: 0.7;
     pointer-events: none;
 }
+
+/* Planned blocks (intent only; not logged work) */
+.lapse-calendar-planned-block {
+    border-style: dashed;
+    border-width: 1px;
+    opacity: 0.92;
+    z-index: 2;
+}
+
+.lapse-calendar-month-day-planned {
+    font-size: 10px;
+    color: var(--text-accent);
+    margin-top: 2px;
+}
+
+.lapse-calendar-draw-modal-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}

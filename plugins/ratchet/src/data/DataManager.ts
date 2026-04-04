@@ -249,6 +249,12 @@ export class DataManager {
 		return out;
 	}
 
+	/** Sum of event values in an inclusive time range (local). */
+	async sumEventsInRange(trackerId: string, startDate: Date, endDate: Date): Promise<number> {
+		const events = await this.getHistory(trackerId, startDate, endDate);
+		return events.reduce((sum, e) => sum + e.value, 0);
+	}
+
 	async getHistory(trackerId: string, startDate: Date, endDate: Date): Promise<RatchetEvent[]> {
 		const startKey = getMonthKey(startDate);
 		const endKey = getMonthKey(endDate);
@@ -301,5 +307,42 @@ export class DataManager {
 		} catch {
 			await this.vault.adapter.write(path, line);
 		}
+	}
+
+	/**
+	 * Remove all events for this tracker on this local calendar day (grid / heatmap “reset day”).
+	 */
+	async clearEventsForTrackerOnDay(trackerId: string, date: Date): Promise<void> {
+		const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+		const end = new Date(start);
+		end.setDate(end.getDate() + 1);
+		const startMs = start.getTime();
+		const endMs = end.getTime();
+		const monthKey = getMonthKey(start);
+		const path = this.eventFilePath(monthKey);
+		let raw = "";
+		try {
+			raw = await this.vault.adapter.read(path);
+		} catch {
+			return;
+		}
+		const lines = raw.split("\n");
+		const kept: string[] = [];
+		for (const line of lines) {
+			const e = parseEventLine(line);
+			if (!e) {
+				if (line.trim()) kept.push(line);
+				continue;
+			}
+			if (e.tracker !== trackerId) {
+				kept.push(line);
+				continue;
+			}
+			const t = new Date(e.timestamp).getTime();
+			if (t >= startMs && t < endMs) continue;
+			kept.push(line);
+		}
+		const text = kept.join("\n");
+		await this.vault.adapter.write(path, text ? `${text}\n` : "");
 	}
 }

@@ -4,6 +4,8 @@ import { DataManager } from "./data/DataManager";
 import { DEFAULT_SETTINGS, type RatchetSettings } from "./settings/Settings";
 import { RatchetSettingTab } from "./settings/RatchetSettingTab";
 import { RatchetMainView, VIEW_TYPE_RATCHET_MAIN } from "./ui/RatchetMainView";
+import { RatchetQuickLogView, VIEW_TYPE_RATCHET_QUICK_LOG } from "./ui/RatchetQuickLogView";
+import { loadStoredQuickLogScope, type QuickLogScope } from "./ui/quickLogScope";
 import {
 	registerRatchetCounter,
 	renderRatchetCounter,
@@ -17,17 +19,37 @@ export default class RatchetPlugin extends Plugin {
 	settings!: RatchetSettings;
 	private dataManager: DataManager | null = null;
 
-	/** Which tracker is selected for editing in the main view: null, "new", or tracker id. */
-	ratchetViewState: { selectedId: string | null } = { selectedId: null };
+	/**
+	 * Main Ratchet leaf UI: dashboard (cards + quick log) vs month grid, editor selection,
+	 * grid month navigation; quick log scope; dedicated quick-log leaf (main) for mobile shortcuts.
+	 */
+	ratchetViewState: {
+		selectedId: string | null;
+		mainPane: "dashboard" | "grid";
+		gridYear: number;
+		gridMonth: number;
+		quickLogScope: QuickLogScope;
+	} = {
+		selectedId: null,
+		mainPane: "dashboard",
+		gridYear: new Date().getFullYear(),
+		gridMonth: new Date().getMonth(),
+		quickLogScope: "day",
+	};
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		this.ratchetViewState.quickLogScope = loadStoredQuickLogScope();
 		this.refreshDataManager();
 
 		this.registerView(VIEW_TYPE_RATCHET_MAIN, (leaf) => new RatchetMainView(leaf, this));
+		this.registerView(VIEW_TYPE_RATCHET_QUICK_LOG, (leaf) => new RatchetQuickLogView(leaf, this));
 
 		this.addRibbonIcon("tally-5", "Ratchet", () => {
 			void this.activateRatchetView();
+		});
+		this.addRibbonIcon("layout-grid", "Ratchet month grid", () => {
+			void this.openMonthGridInRatchetLeaf();
 		});
 
 		this.addCommand({
@@ -40,9 +62,22 @@ export default class RatchetPlugin extends Plugin {
 			id: "create-tracker",
 			name: "Create new tracker",
 			callback: () => {
+				this.ratchetViewState.mainPane = "dashboard";
 				this.ratchetViewState.selectedId = "new";
 				void this.activateRatchetView();
 			},
+		});
+
+		this.addCommand({
+			id: "open-month-grid",
+			name: "Open month grid",
+			callback: () => void this.openMonthGridInRatchetLeaf(),
+		});
+
+		this.addCommand({
+			id: "open-quick-log",
+			name: "Open Ratchet quick log",
+			callback: () => void this.openRatchetQuickLog(),
 		});
 
 		this.addSettingTab(new RatchetSettingTab(this.app, this));
@@ -67,6 +102,7 @@ export default class RatchetPlugin extends Plugin {
 
 	onunload(): void {
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_RATCHET_MAIN);
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_RATCHET_QUICK_LOG);
 	}
 
 	private async applyRatchetDeepLink(params: ObsidianProtocolData): Promise<void> {
@@ -82,15 +118,69 @@ export default class RatchetPlugin extends Plugin {
 				return;
 			}
 		}
+		const quick =
+			String(params.focus ?? "").toLowerCase() === "quicklog" ||
+			String(params.panel ?? "").toLowerCase() === "quicklog" ||
+			String(params.quicklog ?? "") === "1";
+
+		if (screen === "grid") {
+			await this.openMonthGridInRatchetLeaf();
+			return;
+		}
 		if (screen && screen !== "main") {
 			new Notice(`Ratchet: unknown screen "${screen}".`);
+			return;
+		}
+		if (quick) {
+			await this.openRatchetQuickLog();
 			return;
 		}
 		await this.activateRatchetView();
 	}
 
+	/** Re-render all Ratchet custom views (sidebar dashboard + main quick log). */
+	refreshRatchetViews(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_RATCHET_MAIN)) {
+			if (leaf.view instanceof RatchetMainView) {
+				leaf.view.render();
+			}
+		}
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_RATCHET_QUICK_LOG)) {
+			if (leaf.view instanceof RatchetQuickLogView) {
+				leaf.view.render();
+			}
+		}
+	}
+
 	async activateRatchetView(): Promise<void> {
 		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "sidebar");
+	}
+
+	/** Full dashboard + editor in sidebar (from ribbon / “Open Ratchet”). */
+	async openRatchetDashboardForEdit(trackerId: string): Promise<void> {
+		this.ratchetViewState.selectedId = trackerId;
+		this.ratchetViewState.mainPane = "dashboard";
+		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "sidebar");
+		this.refreshRatchetViews();
+	}
+
+	async openRatchetNewTracker(): Promise<void> {
+		this.ratchetViewState.selectedId = "new";
+		this.ratchetViewState.mainPane = "dashboard";
+		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "sidebar");
+		this.refreshRatchetViews();
+	}
+
+	async openMonthGridInRatchetLeaf(): Promise<void> {
+		this.ratchetViewState.mainPane = "grid";
+		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "sidebar");
+		this.refreshRatchetViews();
+	}
+
+	/** Mobile-friendly tap-to-log in a main tab (home screen shortcuts). */
+	async openRatchetQuickLog(): Promise<void> {
+		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_QUICK_LOG, "main");
+		this.refreshRatchetViews();
 	}
 
 	getDataManager(): DataManager {

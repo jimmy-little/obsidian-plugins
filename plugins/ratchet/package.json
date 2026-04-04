@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-plugin-ratchet",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Habit trackers, counters, and markdown widgets (obsidian-suite monorepo)",
 	"main": "main.js",
 	"scripts": {
