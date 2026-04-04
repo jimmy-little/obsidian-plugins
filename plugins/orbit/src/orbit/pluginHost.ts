@@ -17,4 +17,6 @@ export type OrbitHost = {
 	openPersonProfileInMain: (personPath: string) => Promise<void>;
 	/** Write or replace the HTML-comment snapshot block on the person note. */
 	capturePersonSnapshot: (personFile: import("obsidian").TFile) => Promise<void>;
+	/** Edit YAML properties in a modal (links / tags / vault value hints) without leaving Orbit. */
+	openPersonProperties: (personFile: import("obsidian").TFile) => void;
 };

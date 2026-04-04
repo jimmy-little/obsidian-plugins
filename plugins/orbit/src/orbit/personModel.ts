@@ -12,6 +12,8 @@ export type PersonFrontmatter = {
 	/** Wikilink lines or list entries from frontmatter. */
 	org_down?: string | string[];
 	avatar?: string;
+	/** e.g. they/them — shown in profile banner after the name. */
+	pronouns?: string;
 	/** Banner background image: wikilink, vault path, or URL (image extensions only). */
 	banner?: string;
 	color?: string;
@@ -36,6 +38,7 @@ export function readPersonFrontmatter(cache: CachedMetadata | null | undefined):
 					? (orgDown as string[])
 					: undefined,
 		avatar: typeof fm.avatar === "string" ? fm.avatar : undefined,
+		pronouns: typeof fm.pronouns === "string" ? fm.pronouns : undefined,
 		banner: typeof fm.banner === "string" ? fm.banner : undefined,
 		color: typeof fm.color === "string" ? fm.color : undefined,
 		tags: Array.isArray(fm.tags) ? (fm.tags as string[]) : undefined,

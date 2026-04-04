@@ -1,4 +1,13 @@
-import {MarkdownRenderer, Notice, Platform, Plugin, TFile, type WorkspaceLeaf} from "obsidian";
+import {
+	MarkdownRenderer,
+	Notice,
+	Platform,
+	Plugin,
+	TFile,
+	normalizePath,
+	type ObsidianProtocolData,
+	type WorkspaceLeaf,
+} from "obsidian";
 import {
 	appendFulcrumProjectLog,
 	formatFulcrumProjectLogLine,
@@ -32,9 +41,11 @@ import {
 	openProjectSummaryLeaf,
 	revealOrCreateAreas,
 	revealOrCreateDashboard,
+	revealOrCreateProjectManager,
 	revealOrCreateTimeTracked,
 	revealOrCreateTimeline,
 } from "./fulcrum/openViews";
+import {NotePropertiesModal, revealOrCreateView} from "@obsidian-suite/core";
 import {DEFAULT_SETTINGS, DASHBOARD_ACTIVITY_MAX_DAYS, type FulcrumSettings} from "./fulcrum/settingsDefaults";
 import {postTaskNotesToggleStatus} from "./fulcrum/taskNotesApi";
 import {toggleInlineTaskLine, toggleTaskNoteFrontmatter} from "./fulcrum/taskVaultToggle";
@@ -132,6 +143,12 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 				getSettings: () => this.settings,
 				registerEvent: (r) => this.registerEvent(r),
 				startLapseInOpenNote: (file, meta) => runLapseTimerInOpenNote(this.app, file, meta),
+				openNoteProperties: (file) => {
+					new NotePropertiesModal(this.app, file, {
+						displayTitleField: this.settings.atomicNoteEntryField,
+					}).open();
+				},
+				openProjectSummary: (path) => this.openProjectSummary(path),
 			},
 			this.fulcrumCompanionLeaf,
 		);
@@ -221,10 +238,75 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			},
 		});
 
+		this.registerObsidianProtocolHandler(this.manifest.id, (params) => {
+			this.handleFulcrumOpenUri(params);
+		});
 	}
 
 	onunload(): void {
 		this.vaultIndex.cancelScheduledRebuild();
+	}
+
+	private handleFulcrumOpenUri(params: ObsidianProtocolData): void {
+		void this.applyFulcrumDeepLink(params).catch((err) => {
+			console.error(err);
+			new Notice("Fulcrum could not open that link.");
+		});
+	}
+
+	private async applyFulcrumDeepLink(params: ObsidianProtocolData): Promise<void> {
+		const screenRaw = String(params.screen ?? params.leaf ?? "").trim().toLowerCase();
+		const route = String(params.route ?? "")
+			.trim()
+			.replace(/^\/+/, "");
+		let screen = screenRaw;
+		if (!screen && route) {
+			const tail = route.replace(/^fulcrum\//i, "");
+			const seg = tail.split("/")[0] ?? "";
+			screen = seg.toLowerCase();
+		}
+		if (!screen) screen = "dashboard";
+
+		const projectPath = String(params.projectPath ?? "").trim();
+		const focalDate = String(params.focalDate ?? params.date ?? "").trim();
+
+		switch (screen) {
+			case "dashboard":
+				await revealOrCreateDashboard(this.app, this.settings);
+				return;
+			case "areas":
+				await revealOrCreateAreas(this.app, this.settings);
+				return;
+			case "kanban":
+				await revealOrCreateProjectManager(this.app, this.settings, {mode: "kanban"});
+				return;
+			case "calendar":
+				await revealOrCreateProjectManager(this.app, this.settings, {mode: "calendar"});
+				return;
+			case "time":
+			case "time-tracked":
+				await revealOrCreateTimeTracked(this.app, this.settings);
+				return;
+			case "timeline":
+				await revealOrCreateTimeline(
+					this.app,
+					this.settings,
+					focalDate.length >= 10 ? {focalDateIso: focalDate.slice(0, 10)} : undefined,
+				);
+				return;
+			case "project":
+				if (!projectPath) {
+					new Notice('Fulcrum: add query param projectPath (vault path to the project note).');
+					return;
+				}
+				await openProjectSummaryLeaf(this.app, this.settings, normalizePath(projectPath));
+				return;
+			case "classic":
+				await revealOrCreateView(this.app, VIEW_DASHBOARD, this.settings.openViewsIn);
+				return;
+			default:
+				new Notice(`Fulcrum: unknown screen "${screen}".`);
+		}
 	}
 
 	async loadSettings(): Promise<void> {
@@ -260,6 +342,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (
 			merged.dashboardActiveProjectsGroupBy !== "area" &&
 			merged.dashboardActiveProjectsGroupBy !== "status" &&
+			merged.dashboardActiveProjectsGroupBy !== "reviewDue" &&
 			merged.dashboardActiveProjectsGroupBy !== "none"
 		) {
 			merged.dashboardActiveProjectsGroupBy = DEFAULT_SETTINGS.dashboardActiveProjectsGroupBy;

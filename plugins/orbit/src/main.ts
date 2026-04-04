@@ -1,4 +1,13 @@
-import {MarkdownRenderer, MarkdownView, Notice, Plugin, TFile, type WorkspaceLeaf} from "obsidian";
+import {
+	MarkdownRenderer,
+	MarkdownView,
+	Notice,
+	Plugin,
+	TFile,
+	normalizePath,
+	type ObsidianProtocolData,
+	type WorkspaceLeaf,
+} from "obsidian";
 import {revealOrCreateView} from "@obsidian-suite/core";
 import {OrbitSettingTab} from "./OrbitSettingTab";
 import {VIEW_ORBIT_MAIN, VIEW_ORBIT_ORG_CHART, VIEW_ORBIT_PERSON} from "./orbit/constants";
@@ -13,6 +22,8 @@ import {isFileInPeopleDirs} from "./orbit/pathUtils";
 import {formatQuickNoteLine} from "./orbit/quickNoteFormat";
 import {DEFAULT_SETTINGS, normalizeSettings, type OrbitSettings} from "./orbit/settings";
 import {OrbitMainView} from "./views/OrbitMainView";
+import {ConfirmDeletePersonModal} from "./modals/ConfirmDeletePersonModal";
+import {PersonPropertiesModal} from "./modals/PersonPropertiesModal";
 import {OrgChartView} from "./views/OrgChartView";
 import {PersonView} from "./views/PersonView";
 
@@ -31,7 +42,7 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 	}
 
 	async openMarkdownFile(file: TFile): Promise<void> {
-		this.personMarkdownPreferred.add(file.path);
+		this.personMarkdownPreferred.add(normalizePath(file.path));
 		const leaf = this.app.workspace.getLeaf("split", "vertical");
 		await leaf.openFile(file, {active: true, state: {mode: "source"}});
 	}
@@ -76,13 +87,13 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 		await mainLeaf.setViewState({
 			type: VIEW_ORBIT_PERSON,
 			active: true,
-			state: {path: personPath},
+			state: {path: normalizePath(personPath)},
 		});
 	}
 
 	/** Fulcrum / suite: open a person in the Orbit profile (split leaf). */
 	async openPersonFile(file: TFile): Promise<void> {
-		this.personMarkdownPreferred.delete(file.path);
+		this.personMarkdownPreferred.delete(normalizePath(file.path));
 		if (file.extension !== "md") {
 			await this.app.workspace.getLeaf("tab").openFile(file);
 			return;
@@ -95,7 +106,7 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 		await leaf.setViewState({
 			type: VIEW_ORBIT_PERSON,
 			active: true,
-			state: {path: file.path},
+			state: {path: normalizePath(file.path)},
 		});
 		await this.app.workspace.revealLeaf(leaf);
 	}
@@ -133,6 +144,61 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 			name: "Open Orbit",
 			callback: () => void this.activateMainView(),
 		});
+
+		this.registerObsidianProtocolHandler(this.manifest.id, (params) => {
+			this.handleOrbitOpenUri(params);
+		});
+	}
+
+	private handleOrbitOpenUri(params: ObsidianProtocolData): void {
+		void this.applyOrbitDeepLink(params).catch((err) => {
+			console.error(err);
+			new Notice("Orbit could not open that link.");
+		});
+	}
+
+	private async applyOrbitDeepLink(params: ObsidianProtocolData): Promise<void> {
+		const screenRaw = String(params.screen ?? params.leaf ?? "").trim().toLowerCase();
+		const route = String(params.route ?? "")
+			.trim()
+			.replace(/^\/+/, "");
+		let screen = screenRaw;
+		if (!screen && route) {
+			const tail = route.replace(/^orbit\//i, "");
+			screen = (tail.split("/")[0] ?? "").toLowerCase();
+		}
+		if (!screen) screen = "home";
+
+		const personPath = String(params.path ?? params.personPath ?? "").trim();
+		const anchorPath = String(params.anchorPath ?? "").trim();
+
+		switch (screen) {
+			case "home":
+			case "main":
+				await this.activateMainView();
+				return;
+			case "org-chart":
+			case "orgchart":
+				await revealOrCreateView(
+					this.app,
+					VIEW_ORBIT_ORG_CHART,
+					"sidebar",
+					anchorPath ? { anchorPath: normalizePath(anchorPath) } : undefined,
+				);
+				return;
+			case "person":
+			case "profile":
+				if (!personPath) {
+					new Notice("Orbit: add path= or personPath= (vault path to the person note).");
+					return;
+				}
+				await revealOrCreateView(this.app, VIEW_ORBIT_PERSON, "main", {
+					path: normalizePath(personPath),
+				});
+				return;
+			default:
+				new Notice(`Orbit: unknown screen "${screen}".`);
+		}
 	}
 
 	private async loadSettings(): Promise<void> {
@@ -142,19 +208,26 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 
 	/** Run after layout catches up: `file-open` is too early for `getActiveViewOfType(MarkdownView)`. */
 	private scheduleRoutePersonFile(file: TFile): void {
+		const target = normalizePath(file.path);
+		if (this.personMarkdownPreferred.has(target)) return;
+
 		const run = (): void => {
-			const leaf = this.findMarkdownLeafForFile(file);
-			if (leaf) void this.routeMarkdownLeafToOrbit(leaf, file);
+			const leaf = this.findMarkdownLeafForNormalizedPath(target);
+			if (!leaf) return;
+			const af = this.app.vault.getAbstractFileByPath(target);
+			if (af instanceof TFile) void this.routeMarkdownLeafToOrbit(leaf, af);
 		};
 		queueMicrotask(run);
-		window.setTimeout(run, 0);
+		for (const ms of [0, 16, 50, 120, 250, 450]) {
+			window.setTimeout(run, ms);
+		}
 	}
 
-	private findMarkdownLeafForFile(file: TFile): WorkspaceLeaf | null {
+	private findMarkdownLeafForNormalizedPath(normalizedPath: string): WorkspaceLeaf | null {
 		let found: WorkspaceLeaf | null = null;
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			const v = leaf.view;
-			if (v instanceof MarkdownView && v.file?.path === file.path) found = leaf;
+			if (v instanceof MarkdownView && v.file && normalizePath(v.file.path) === normalizedPath) found = leaf;
 		});
 		return found;
 	}
@@ -169,16 +242,53 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 	}
 
 	private async routeMarkdownLeafToOrbit(leaf: WorkspaceLeaf, file: TFile): Promise<void> {
-		if (this.personMarkdownPreferred.has(file.path)) return;
+		const pathNorm = normalizePath(file.path);
+		if (this.personMarkdownPreferred.has(pathNorm)) return;
 		const vs = leaf.getViewState();
-		if (vs.type === VIEW_ORBIT_PERSON && (vs.state as {path?: string} | undefined)?.path === file.path) {
+		const stPath =
+			typeof (vs.state as {path?: string} | undefined)?.path === "string"
+				? normalizePath((vs.state as {path: string}).path)
+				: "";
+		if (vs.type === VIEW_ORBIT_PERSON && stPath === pathNorm) {
 			return;
 		}
 		await leaf.setViewState({
 			type: VIEW_ORBIT_PERSON,
 			active: true,
-			state: {path: file.path},
+			state: {path: pathNorm},
 		});
+	}
+
+	openPersonProperties(file: TFile): void {
+		let modal!: PersonPropertiesModal;
+		modal = new PersonPropertiesModal(this.app, file, {
+			onDeletePage: () => {
+				modal.close();
+				new ConfirmDeletePersonModal(this.app, file, async () => {
+					await this.deletePersonNotePermanently(file);
+				}).open();
+			},
+		});
+		modal.open();
+	}
+
+	private async deletePersonNotePermanently(file: TFile): Promise<void> {
+		const pathNorm = normalizePath(file.path);
+		try {
+			await this.app.vault.delete(file);
+		} catch (e) {
+			console.error(e);
+			new Notice("Could not delete the file.");
+			return;
+		}
+		this.personMarkdownPreferred.delete(pathNorm);
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const vs = leaf.getViewState();
+			if (vs.type !== VIEW_ORBIT_PERSON) return;
+			const p = (vs.state as {path?: string} | undefined)?.path;
+			if (p && normalizePath(p) === pathNorm) leaf.detach();
+		});
+		new Notice("Note deleted.");
 	}
 
 	async activateMainView(): Promise<void> {

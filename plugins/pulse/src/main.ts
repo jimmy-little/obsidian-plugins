@@ -1,9 +1,9 @@
-import { Plugin } from "obsidian";
+import { Notice, Plugin, normalizePath, type ObsidianProtocolData } from "obsidian";
 import { DEFAULT_SETTINGS, PulseSettingTab } from "./settings";
 import type { PulseSettings } from "./settings";
 import { ImportManager } from "./import/importManager";
 import { WorkoutDataManager } from "./workout/WorkoutDataManager";
-import { PulseView, VIEW_TYPE_PULSE } from "./views/PulseView";
+import { PulseView, VIEW_TYPE_PULSE, type PulseViewMode } from "./views/PulseView";
 import { renderExerciseLogBlock, renderSessionBlock } from "./workout/renderers";
 
 export default class PulsePlugin extends Plugin {
@@ -76,6 +76,61 @@ export default class PulsePlugin extends Plugin {
 
 		// Settings tab
 		this.addSettingTab(new PulseSettingTab(this.app, this));
+
+		this.registerObsidianProtocolHandler(this.manifest.id, (params) => {
+			this.handlePulseOpenUri(params);
+		});
+	}
+
+	private readonly pulseModeAliases: Record<string, PulseViewMode> = {
+		programs: "program",
+		programmes: "program",
+		exercises: "exercise",
+	};
+
+	private handlePulseOpenUri(params: ObsidianProtocolData): void {
+		void this.applyPulseDeepLink(params).catch((err) => {
+			console.error(err);
+			new Notice("Pulse could not open that link.");
+		});
+	}
+
+	private async applyPulseDeepLink(params: ObsidianProtocolData): Promise<void> {
+		const raw = String(params.screen ?? params.mode ?? params.leaf ?? "today")
+			.trim()
+			.toLowerCase();
+		const route = String(params.route ?? "")
+			.trim()
+			.replace(/^\/+/, "");
+		let modeKey = raw;
+		if (!modeKey && route) {
+			const tail = route.replace(/^pulse\//i, "");
+			modeKey = (tail.split("/")[0] ?? "").toLowerCase();
+		}
+		if (!modeKey) modeKey = "today";
+
+		const mode: PulseViewMode =
+			this.pulseModeAliases[modeKey] ?? (modeKey as PulseViewMode);
+		const valid: PulseViewMode[] = [
+			"today",
+			"exercise",
+			"session",
+			"program",
+			"history",
+			"stats",
+			"new-exercise",
+			"workout-builder",
+			"program-builder",
+			"edit-program",
+			"workout-edit",
+		];
+		if (!valid.includes(mode)) {
+			new Notice(`Pulse: unknown screen "${modeKey}".`);
+			return;
+		}
+
+		const pathRaw = String(params.path ?? "").trim();
+		await this.openPulseView(mode, pathRaw ? normalizePath(pathRaw) : undefined);
 	}
 
 	onunload(): void {

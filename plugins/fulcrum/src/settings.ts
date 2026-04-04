@@ -417,7 +417,12 @@ export class FulcrumSettingTab extends PluginSettingTab {
 			)
 			.addDropdown((d) =>
 				d
-					.addOptions({area: "Area", status: "Status", none: "None"})
+					.addOptions({
+						area: "Area",
+						status: "Status",
+						reviewDue: "Review due",
+						none: "None",
+					})
 					.setValue(this.plugin.settings.dashboardActiveProjectsGroupBy)
 					.onChange(async (v) => {
 						this.plugin.settings.dashboardActiveProjectsGroupBy = v as FulcrumSettings["dashboardActiveProjectsGroupBy"];
@@ -518,6 +523,34 @@ export class FulcrumSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		heading(containerEl, "URL schemes (Obsidian URI)");
+		containerEl.createEl("p", {
+			text: "Open Fulcrum from bookmarks or automation. The URI host must be the plugin id (fulcrum), not “open”. Example: obsidian://fulcrum?screen=dashboard — query params carry screen, route, projectPath, focalDate. With multiple vaults open, the focused vault is used unless you launch via obsidian://open?vault=VAULT_NAME&…",
+		});
+		const fulcrumUriExamples = [
+			["/fulcrum/dashboard — Project Manager (dashboard)", "obsidian://fulcrum?screen=dashboard"],
+			["/fulcrum/areas", "obsidian://fulcrum?screen=areas"],
+			["/fulcrum/kanban", "obsidian://fulcrum?screen=kanban"],
+			["/fulcrum/calendar", "obsidian://fulcrum?screen=calendar"],
+			["/fulcrum/time — Time tracked", "obsidian://fulcrum?screen=time"],
+			["/fulcrum/timeline — optional focalDate=YYYY-MM-DD", "obsidian://fulcrum?screen=timeline&focalDate=2026-04-01"],
+			[
+				"/fulcrum/project — requires projectPath",
+				"obsidian://fulcrum?screen=project&projectPath=Projects%2FExample.md",
+			],
+			["/fulcrum/classic — standalone dashboard leaf", "obsidian://fulcrum?screen=classic"],
+			["Alternate: route=/fulcrum/dashboard", "obsidian://fulcrum?route=%2Ffulcrum%2Fdashboard"],
+		] as const;
+		for (const [label, uri] of fulcrumUriExamples) {
+			containerEl.createEl("p", {text: label, cls: "fulcrum-settings-lead"});
+			const pre = containerEl.createEl("pre", {
+				cls: "fulcrum-settings-uri",
+				text: uri,
+			});
+			pre.style.whiteSpace = "pre-wrap";
+			pre.style.wordBreak = "break-all";
+		}
 
 		containerEl.createEl("p", {
 			cls: "fulcrum-settings-lead",

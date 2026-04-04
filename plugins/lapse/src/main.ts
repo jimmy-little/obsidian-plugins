@@ -9,6 +9,7 @@ import {
 	App,
 	type MarkdownPostProcessorContext,
 	Modal,
+	Notice,
 	Plugin,
 	PluginSettingTab,
 	Setting,
@@ -18,6 +19,7 @@ import {
 	TFile,
 	TFolder,
 	setIcon,
+	type ObsidianProtocolData,
 } from "obsidian";
 
 interface LapseSettings {
@@ -505,6 +507,10 @@ export default class LapsePlugin extends Plugin {
 
 		// Settings tab
 		this.addSettingTab(new LapseSettingTab(this.app, this));
+
+		this.registerObsidianProtocolHandler(this.manifest.id, (p) => {
+			void this.handleLapseOpenUri(p);
+		});
 
 		// Status bar setup
 		if (this.settings.showStatusBar) {
@@ -4079,6 +4085,41 @@ export default class LapsePlugin extends Plugin {
 		this.invalidateCacheForFile(filePath);
 	}
 
+	private async handleLapseOpenUri(params: ObsidianProtocolData): Promise<void> {
+		const raw = String(params.screen ?? params.leaf ?? 'activity')
+			.trim()
+			.toLowerCase()
+			.replace(/-/g, '_');
+		const route = String(params.route ?? '')
+			.trim()
+			.replace(/^\/+/, '');
+		let key = raw;
+		if (!key && route) {
+			const tail = route.replace(/^lapse\//i, '').replace(/^lapse-tracker\//i, '');
+			key = (tail.split('/')[0] ?? '').toLowerCase().replace(/-/g, '_');
+		}
+		if (!key) key = 'activity';
+
+		const map: Record<string, () => Promise<void>> = {
+			activity: () => this.activateView(),
+			sidebar: () => this.activateView(),
+			reports: () => this.activateReportsView(),
+			quick_start: () => this.activateButtonsView(),
+			quickstart: () => this.activateButtonsView(),
+			buttons: () => this.activateButtonsView(),
+			calendar: () => this.activateCalendarView(),
+			grid: () => this.activateGridView(),
+			entry_grid: () => this.activateGridView(),
+		};
+
+		const fn = map[key];
+		if (fn) {
+			await fn();
+			return;
+		}
+		new Notice(`Lapse: unknown screen "${key}".`);
+	}
+
 	async activateView() {
 		const { workspace } = this.app;
 
@@ -5780,6 +5821,24 @@ class LapseSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 
 		containerEl.empty();
+
+		containerEl.createEl('h3', { text: 'URL schemes (Obsidian URI)' });
+		containerEl.createEl('p', {
+			text: 'URI host must be lapse-tracker (manifest id). Example: obsidian://lapse-tracker?screen=activity. Do not use action=open.',
+		});
+		const lapseUris: [string, string][] = [
+			['/lapse/activity — Activity sidebar (default)', 'obsidian://lapse-tracker?screen=activity'],
+			['/lapse/reports', 'obsidian://lapse-tracker?screen=reports'],
+			['/lapse/quick-start — template timers', 'obsidian://lapse-tracker?screen=quick-start'],
+			['/lapse/calendar', 'obsidian://lapse-tracker?screen=calendar'],
+			['/lapse/grid — entry grid', 'obsidian://lapse-tracker?screen=grid'],
+		];
+		for (const [label, uri] of lapseUris) {
+			containerEl.createEl('p', { text: label, cls: 'setting-item-description' });
+			const pre = containerEl.createEl('pre', { text: uri });
+			pre.style.whiteSpace = 'pre-wrap';
+			pre.style.wordBreak = 'break-all';
+		}
 
 		containerEl.createEl('h3', { text: 'Frontmatter Keys' });
 

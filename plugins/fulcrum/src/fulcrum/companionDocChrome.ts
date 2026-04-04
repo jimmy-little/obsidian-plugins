@@ -23,6 +23,8 @@ export type CompanionChromeHost = {
 		file: TFile,
 		meta: { projectLabel: string; entryTitle: string },
 	) => Promise<void>;
+	openNoteProperties(file: TFile): void;
+	openProjectSummary(path: string): Promise<void>;
 };
 
 function fmDisplayString(v: unknown): string {
@@ -253,12 +255,37 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 	const leadEmoji = leadingTimelineEmojiFromNoteType(typeRaw);
 	const titleDisplay = leadEmoji ? `${leadEmoji} ${titleBase}` : titleBase;
 	const h1 = el("h1", "fulcrum-companion-banner__title", titleDisplay);
-	const proj = el("div", "fulcrum-companion-banner__project");
+	const projFile = resolveLinkedProjectFile(app, file.path, fm, s.projectLinkField);
 	const projLabel = resolveProjectLabel(app, file.path, fm, s.projectLinkField);
-	proj.textContent = projLabel ? projLabel : "—";
+	let proj: HTMLElement;
+	if (projFile && projLabel) {
+		const projBtn = el("button", "fulcrum-companion-banner__project fulcrum-companion-banner__project--link", projLabel);
+		projBtn.type = "button";
+		projBtn.setAttribute("aria-label", `Open project ${projLabel}`);
+		projBtn.addEventListener("click", (ev) => {
+			ev.preventDefault();
+			ev.stopPropagation();
+			void hostCtx.openProjectSummary(projFile.path);
+		});
+		proj = projBtn;
+	} else {
+		proj = el("div", "fulcrum-companion-banner__project", projLabel ? projLabel : "—");
+	}
 	main.append(h1, proj);
 
-	const dates = el("div", "fulcrum-companion-banner__dates");
+	const dates = el("div", "fulcrum-companion-banner__dates fulcrum-companion-banner__dates--props-trigger");
+	dates.setAttribute("role", "button");
+	dates.tabIndex = 0;
+	dates.setAttribute("aria-label", "Edit note properties (YAML)");
+	dates.addEventListener("click", () => {
+		hostCtx.openNoteProperties(file);
+	});
+	dates.addEventListener("keydown", (ev) => {
+		if (ev.key === "Enter" || ev.key === " ") {
+			ev.preventDefault();
+			hostCtx.openNoteProperties(file);
+		}
+	});
 	const dateRows: [string, string][] = [
 		["Date", fmDisplayString(fm.date)],
 		["Start", fmDisplayString(fm.startTime)],

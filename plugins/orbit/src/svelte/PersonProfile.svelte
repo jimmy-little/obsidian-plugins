@@ -1,6 +1,6 @@
 <script lang="ts">
 	import {onDestroy, onMount} from "svelte";
-	import {setIcon, type App, TFile} from "obsidian";
+	import {setIcon, type App, TFile, normalizePath} from "obsidian";
 	import {buildHeatmapGrid, countsFromTimestamps, createHeatmapElement} from "@obsidian-suite/heatmap";
 	import {filesByDayFromActivity} from "../orbit/heatmapFiles";
 	import {HeatmapDayModal} from "../modals/HeatmapDayModal";
@@ -17,7 +17,12 @@
 	import type {OrbitHost} from "../orbit/pluginHost";
 	import {resolveOrbitAccentCss} from "../orbit/accentCss";
 	import {normalizeVaultLinkPath, resolveBannerImageUrl} from "../orbit/bannerImage";
-	import {readPersonFrontmatter, displayNameForPerson, formatPersonWorkLocationLine} from "../orbit/personModel";
+	import {
+		readPersonFrontmatter,
+		displayNameForPerson,
+		formatPersonWorkLocationLine,
+		stripWikiLinkDisplay,
+	} from "../orbit/personModel";
 	import {
 		collectInteractions,
 		mergeActivityFeed,
@@ -89,6 +94,8 @@
 	let avatarSrc: string | null = null;
 	let initials = "";
 	let workLocationLine = "";
+	/** `pronouns:` frontmatter, display only (after name in banner). */
+	let pronounsDisplay = "";
 	let orgUpPaths: OrgPersonPill[] = [];
 	let orgDownPaths: OrgPersonPill[] = [];
 	let activity: InteractionEntry[] = [];
@@ -144,6 +151,7 @@
 			stats = null;
 			orbitAccentCss = "";
 			bannerImageSrc = null;
+			pronounsDisplay = "";
 			return;
 		}
 		personFile = f;
@@ -171,6 +179,8 @@
 				? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 				: displayName.slice(0, 2).toUpperCase() || "?";
 		workLocationLine = formatPersonWorkLocationLine(fm);
+		const pronRaw = stripWikiLinkDisplay(fm.pronouns?.trim() ?? "").trim();
+		pronounsDisplay = pronRaw;
 
 		orgUpPaths = [];
 		for (const lt of wikiLinkPathsFromText(fm.org_up)) {
@@ -271,6 +281,11 @@
 		await plugin.openMarkdownFile(personFile);
 	}
 
+	function openProperties(): void {
+		if (!personFile) return;
+		plugin.openPersonProperties(personFile);
+	}
+
 	let snapshotBusy = false;
 	async function captureSnapshot(): Promise<void> {
 		if (!personFile || snapshotBusy) return;
@@ -326,15 +341,20 @@
 	$: bannerOnDark = bannerImageSrc ? true : bannerUiOnDark(orbitAccentCss);
 
 	onMount(() => {
+		const pathNorm = normalizePath(filePath);
 		const ref = plugin.app.metadataCache.on("changed", (file) => {
-			if (file?.path === filePath) rebuild();
+			if (file && normalizePath(file.path) === pathNorm) rebuild();
 		});
 		const refVault = plugin.app.vault.on("modify", (file) => {
-			if (file?.path === filePath) rebuild();
+			if (file && normalizePath(file.path) === pathNorm) rebuild();
+		});
+		const refDel = plugin.app.vault.on("delete", (af) => {
+			if (af && normalizePath(af.path) === pathNorm) rebuild();
 		});
 		unsub = () => {
 			plugin.app.metadataCache.offref(ref);
 			plugin.app.vault.offref(refVault);
+			plugin.app.vault.offref(refDel);
 		};
 	});
 
@@ -370,7 +390,9 @@
 							<span class="orbit-banner__initials">{initials}</span>
 						{/if}
 					</div>
-					<h1 class="orbit-banner__title">{displayName}</h1>
+					<h1 class="orbit-banner__title">
+						{displayName}{#if pronounsDisplay}<span class="orbit-banner__pronouns">{pronounsDisplay}</span>{/if}
+					</h1>
 					{#if workLocationLine}
 						<p class="orbit-banner__company">{workLocationLine}</p>
 					{/if}
@@ -385,6 +407,15 @@
 							on:click={() => void openRawNote()}
 						>
 							<span class="orbit-banner-btn__icon" use:orbitBannerIcon={"file-input"} aria-hidden="true"></span>
+						</button>
+						<button
+							type="button"
+							class="orbit-banner-btn orbit-banner-btn--icon-only"
+							aria-label="Edit properties"
+							title="Edit properties (YAML)"
+							on:click={openProperties}
+						>
+							<span class="orbit-banner-btn__icon" use:orbitBannerIcon={"file-json"} aria-hidden="true"></span>
 						</button>
 						<button
 							type="button"
@@ -411,7 +442,6 @@
 								aria-hidden="true"
 							></span>
 						</button>
-						<span class="orbit-banner-btn-slot" aria-hidden="true"></span>
 					</div>
 				</div>
 			</div>
@@ -655,6 +685,17 @@
 	.orbit-banner__inner--on-dark .orbit-banner__title {
 		color: rgba(255, 255, 255, 0.97);
 		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+	}
+	.orbit-banner__pronouns {
+		margin-left: 0.5rem;
+		font-size: 0.68em;
+		font-weight: 500;
+		letter-spacing: 0.02em;
+		color: var(--text-muted);
+	}
+	.orbit-banner__inner--on-dark .orbit-banner__pronouns {
+		color: rgba(255, 255, 255, 0.52);
+		text-shadow: none;
 	}
 	.orbit-banner__company {
 		margin: 0.35rem 0 0;

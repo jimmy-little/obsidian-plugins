@@ -1,6 +1,8 @@
+import {normalizePath} from "obsidian";
+
 /** Normalize a vault-relative path segment for comparison (no leading/trailing slashes). */
 export function normalizeVaultPath(p: string): string {
-	return p
+	return normalizePath(p)
 		.replace(/\\/g, "/")
 		.replace(/^\/+/, "")
 		.replace(/\/+$/, "");
@@ -19,5 +21,6 @@ export function filePathUnderDir(filePath: string, dir: string): boolean {
 
 export function isFileInPeopleDirs(filePath: string, peopleDirs: string[]): boolean {
 	if (!peopleDirs.length) return false;
-	return peopleDirs.some((d) => filePathUnderDir(filePath, d));
+	const fp = normalizeVaultPath(filePath);
+	return peopleDirs.some((d) => filePathUnderDir(fp, normalizePath(d)));
 }

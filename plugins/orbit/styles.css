@@ -243,6 +243,10 @@
 	border-color: color-mix(in srgb, var(--orbit-accent) 48%, var(--background-modifier-border));
 }
 
+.orbit-profile.orbit-profile--accent .fulcrum-person-card:not(.fulcrum-companion-time-card) {
+	--suite-person-card-accent: var(--orbit-accent);
+}
+
 .orbit-profile.orbit-profile--accent .fulcrum-person-inline-pill:hover {
 	border-color: color-mix(in srgb, var(--orbit-accent) 62%, var(--background-modifier-border));
 }
@@ -618,6 +622,73 @@ button.orbit-heatmap-day-modal__link:hover {
 	background: var(--background-modifier-hover);
 }
 
+/* Edit properties modal */
+.orbit-person-props .orbit-person-props__scroll {
+	max-height: min(55vh, 28rem);
+	overflow-y: auto;
+	margin-bottom: 0.5rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 8px);
+	padding: 0.4rem;
+	background: var(--background-primary);
+}
+
+.orbit-person-props__row {
+	display: grid;
+	grid-template-columns: minmax(6.5rem, 22%) minmax(0, 1fr) 2rem;
+	gap: 0.35rem 0.45rem;
+	align-items: center;
+	margin-bottom: 0.4rem;
+}
+
+.orbit-person-props__key,
+.orbit-person-props__val {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	height: var(--input-height);
+	padding: 0.25rem 0.45rem;
+	font-size: var(--font-ui-small);
+	border-radius: var(--radius-s, 6px);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.orbit-person-props__remove {
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: var(--radius-s, 4px);
+	font-size: 1rem;
+	line-height: 1;
+	padding: 0.15rem;
+}
+
+.orbit-person-props__remove:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.orbit-person-props-suggest__label {
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+}
+
+.orbit-person-props-suggest__detail {
+	font-size: 0.72rem;
+	color: var(--text-muted);
+	line-height: 1.2;
+	margin-top: 2px;
+}
+
+.orbit-person-props__hr {
+	margin: 0.75rem 0 0.35rem;
+	border: none;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
 /*
  * Shared “suite people” UI — portrait cards + inline pills.
  * Used by Fulcrum (related people, companion chrome, markdown people links) and
@@ -625,6 +696,9 @@ button.orbit-heatmap-day-modal__link:hover {
  *
  * Markup (card): .fulcrum-person-card > .fulcrum-person-card__top > .fulcrum-person-card__avatar (+ img|svg) + .fulcrum-person-card__name
  * Markup (inline pill): .fulcrum-person-inline-pill (a or span) > .fulcrum-person-inline-pill__avatar + .fulcrum-person-inline-pill__name
+ *
+ * Optional: set --suite-person-card-accent on an ancestor (e.g. Fulcrum .fulcrum-project, companion surface, Orbit profile)
+ * for a thin accent border on the card and avatar ring.
  */
 
 .fulcrum-section--people {
@@ -645,7 +719,7 @@ button.orbit-heatmap-day-modal__link:hover {
 }
 
 /*
- * Portrait card: square image fills top of card; fixed 3-line name block below (wraps).
+ * Portrait card: circular avatar centered in the upper square; fixed 3-line name block below (wraps).
  */
 .fulcrum-person-card:not(.fulcrum-companion-time-card) {
 	display: flex;
@@ -658,6 +732,7 @@ button.orbit-heatmap-day-modal__link:hover {
 	padding: 0;
 	gap: 0;
 	border: var(--suite-person-card-border, 1px solid color-mix(in srgb, var(--background-modifier-border) 92%, transparent));
+	border-color: var(--suite-person-card-accent);
 	border-radius: var(--radius-m);
 	background: var(--background-secondary);
 	box-shadow: none;
@@ -692,11 +767,20 @@ button.orbit-heatmap-day-modal__link:hover {
 
 .fulcrum-person-card:not(.fulcrum-companion-time-card) .fulcrum-person-card__avatar {
 	position: absolute;
-	inset: 0;
-	width: 100%;
-	height: 100%;
-	border-radius: 0;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: 72%;
+	aspect-ratio: 1;
+	height: auto;
+	box-sizing: border-box;
+	border-radius: 50%;
 	overflow: hidden;
+	border: 1px solid
+		var(
+			--suite-person-card-accent,
+			color-mix(in srgb, var(--background-modifier-border) 88%, transparent)
+		);
 	background: color-mix(in srgb, var(--background-modifier-border) 35%, var(--background-primary));
 	display: flex;
 	align-items: center;
@@ -711,12 +795,13 @@ button.orbit-heatmap-day-modal__link:hover {
 	height: 100%;
 	object-fit: cover;
 	object-position: center center;
+	border-radius: 50%;
 }
 
 .fulcrum-person-card:not(.fulcrum-companion-time-card) .fulcrum-person-card__avatar svg {
 	position: relative;
-	width: 40%;
-	height: 40%;
+	width: 46%;
+	height: 46%;
 	flex-shrink: 0;
 	opacity: 0.45;
 	color: var(--text-muted);

@@ -21,7 +21,7 @@ function resolveProjectManagerState(initial?: ProjectManagerViewState): ProjectM
 	return {mode: "dashboard"};
 }
 
-/** Primary Fulcrum shell: sidebars + dashboard or project in the main pane. */
+/** Primary Fulcrum shell: sidebars + dashboard or project in the main pane. Exported for deep links. */
 export async function revealOrCreateProjectManager(
 	app: App,
 	settings: FulcrumSettings,

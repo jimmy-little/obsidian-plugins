@@ -1,4 +1,4 @@
-import {ItemView, WorkspaceLeaf, type ViewStateResult} from "obsidian";
+import {ItemView, WorkspaceLeaf, normalizePath, type ViewStateResult} from "obsidian";
 import type {SvelteComponent} from "svelte";
 import {VIEW_ORBIT_PERSON} from "../orbit/constants";
 import type {OrbitHost} from "../orbit/pluginHost";
@@ -24,7 +24,7 @@ export class PersonView extends ItemView {
 
 	getDisplayText(): string {
 		if (!this.personPath) return "Person";
-		const f = this.app.vault.getAbstractFileByPath(this.personPath);
+		const f = this.app.vault.getAbstractFileByPath(normalizePath(this.personPath));
 		if (f?.name) return f.name.replace(/\.md$/i, "");
 		return "Person";
 	}
@@ -39,7 +39,7 @@ export class PersonView extends ItemView {
 
 	async setState(state: PersonViewState, _result: ViewStateResult): Promise<void> {
 		if (typeof state?.path === "string" && state.path) {
-			this.personPath = state.path;
+			this.personPath = normalizePath(state.path);
 		} else {
 			this.personPath = null;
 		}

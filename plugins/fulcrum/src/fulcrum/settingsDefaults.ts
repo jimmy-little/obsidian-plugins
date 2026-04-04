@@ -97,7 +97,7 @@ export interface FulcrumSettings {
 	showRibbonIcon: boolean;
 	dateDisplayFormat: string;
 	completionThresholdPercent: number;
-	dashboardActiveProjectsGroupBy: "area" | "status" | "none";
+	dashboardActiveProjectsGroupBy: "area" | "status" | "reviewDue" | "none";
 	projectSidebarSortBy: ProjectSidebarSortBy;
 	projectSidebarSortDir: ProjectSidebarSortDir;
 	/** Project sidebar filter: unchecked status keys (empty = all checked). Use __none__ for no status. */

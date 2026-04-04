@@ -23,6 +23,20 @@ Build one plugin:
 npm run build -w obsidian-plugin-pulse
 ```
 
+## URL schemes (deep links)
+
+Each plugin registers **Obsidian URIs** with the [protocol host](https://docs.obsidian.md/Reference/TypeScript+API/Plugin/registerObsidianProtocolHandler) equal to its **manifest plugin id**: `obsidian://<plugin-id>?screen=…` (and other query keys). The host is **not** `open` — `obsidian://open` is Obsidian’s core handler, so `?action=open` on a plugin URL will not register your plugin. Conceptual routes like `/pulse/today` map to `obsidian://pulse?screen=today`.
+
+| Plugin   | Manifest id     | Doc |
+|----------|-----------------|-----|
+| Fulcrum  | `fulcrum`       | [plugins/fulcrum/README.md](plugins/fulcrum/README.md) |
+| Pulse    | `pulse`         | [plugins/pulse/README.md](plugins/pulse/README.md) |
+| Lapse    | `lapse-tracker` | [plugins/lapse/README.md](plugins/lapse/README.md) |
+| Orbit    | `orbit`         | [plugins/orbit/README.md](plugins/orbit/README.md) |
+| Ratchet  | `ratchet`       | [plugins/ratchet/README.md](plugins/ratchet/README.md) |
+
+Each plugin’s **Settings** tab includes a **URL schemes (Obsidian URI)** section with copy-ready examples.
+
 ## Install into a vault (no symlinks)
 
 **Option A — env (one-off):**

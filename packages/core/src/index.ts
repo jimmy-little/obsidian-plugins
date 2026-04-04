@@ -2,6 +2,17 @@ import type { App, WorkspaceLeaf } from "obsidian";
 
 export type OpenViewsIn = "main" | "sidebar";
 
+export {NotePropertiesModal, type NotePropertiesModalOptions} from "./notePropertiesModal";
+export {
+	gatherAllPropertyKeys,
+	gatherValueHistoryForKey,
+	PropertyKeySuggest,
+	PersonPropertyValueSuggest,
+	partialTagNeedle,
+	partialWikilinkNeedle,
+	type PropertyValueSuggestItem,
+} from "./notePropertySuggests";
+
 /**
  * Choose a leaf for opening a custom view (Fulcrum-style).
  */

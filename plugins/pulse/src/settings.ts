@@ -261,6 +261,30 @@ export class PulseSettingTab extends PluginSettingTab {
 			this.plugin.saveSettings();
 			this.display();
 		});
+
+		containerEl.createEl("h3", { text: "URL schemes (Obsidian URI)" });
+		containerEl.createEl("p", {
+			text: "URI host must be pulse (plugin id). Use query params only — e.g. obsidian://pulse?screen=today. Do not use action=open; that targets the core “open” handler. Aliases: programs → program. Optional path= when needed.",
+		});
+		const pulseUris: [string, string][] = [
+			["/pulse/today (default)", "obsidian://pulse?screen=today"],
+			["/pulse/program — alias screen=programs", "obsidian://pulse?screen=programs"],
+			["/pulse/stats", "obsidian://pulse?screen=stats"],
+			["/pulse/history", "obsidian://pulse?screen=history"],
+			["/pulse/exercise", "obsidian://pulse?screen=exercise"],
+			["/pulse/session", "obsidian://pulse?screen=session"],
+			["route=/pulse/today", "obsidian://pulse?route=%2Fpulse%2Ftoday"],
+		];
+		for (const [label, uri] of pulseUris) {
+			containerEl.createEl("p", { text: label, cls: "setting-item-description" });
+			const pre = containerEl.createEl("pre", { text: uri });
+			pre.style.whiteSpace = "pre-wrap";
+			pre.style.wordBreak = "break-all";
+		}
+		containerEl.createEl("p", {
+			cls: "setting-item-description",
+			text: "Other screens (same pattern): new-exercise, workout-builder, program-builder, edit-program, workout-edit — use screen=… and path= when required.",
+		});
 	}
 
 	private renderKeyMappings(container: HTMLElement): void {

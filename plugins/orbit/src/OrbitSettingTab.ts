@@ -120,5 +120,22 @@ export class OrbitSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+
+		containerEl.createEl("h3", {text: "URL schemes (Obsidian URI)"});
+		containerEl.createEl("p", {
+			text: "URI host must be orbit (plugin id). Example: obsidian://orbit?screen=home. Do not prefix with action=open.",
+		});
+		const orbitUris: [string, string][] = [
+			["/orbit/home (default)", "obsidian://orbit?screen=home"],
+			["/orbit/org-chart — optional anchorPath=", "obsidian://orbit?screen=org-chart&anchorPath=People%2FExample.md"],
+			["/orbit/person — requires path=", "obsidian://orbit?screen=person&path=People%2FExample.md"],
+			["route=/orbit/home", "obsidian://orbit?route=%2Forbit%2Fhome"],
+		];
+		for (const [label, uri] of orbitUris) {
+			containerEl.createEl("p", {text: label, cls: "setting-item-description"});
+			const pre = containerEl.createEl("pre", {text: uri});
+			pre.style.whiteSpace = "pre-wrap";
+			pre.style.wordBreak = "break-all";
+		}
 	}
 }

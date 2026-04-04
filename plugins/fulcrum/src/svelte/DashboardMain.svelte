@@ -21,11 +21,10 @@
 		todayLocalISODate,
 		isDueToday,
 		isOverdue,
-		isDateInUpcomingDays,
 		dayStartMs,
+		formatTrackedMinutesShort,
 	} from "../fulcrum/utils/dates";
-	import {formatTrackedMinutesShort} from "../fulcrum/utils/dates";
-	import {addDays, toISODate, formatDayShort} from "../fulcrum/utils/calendarGrid";
+	import {addDays, toISODate, formatDayShort, getWeekStart} from "../fulcrum/utils/calendarGrid";
 	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
 	import {
 		buildAggregatedActivityRows,
@@ -60,7 +59,7 @@
 
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
 
-	/** Active projects with open tasks, upcoming meetings (7d), or overdue review — same signals as the sidebar. */
+	/** Active projects with open tasks, upcoming meetings (rolling 7d), or overdue review — same signals as the sidebar. */
 	$: attentionProjects = ((): IndexedProject[] => {
 		const out: IndexedProject[] = [];
 		const candidates = filterProjectsWorkRelated(
@@ -106,13 +105,23 @@
 		return c >= weekAgo;
 	});
 
-	/** 7 days starting today for the meetings calendar grid */
-	$: meetingGridDays = (() => {
-		const out: {iso: string; dayLabel: string; dayNum: string}[] = [];
+	/** 0 = week that contains today; ±1 = adjacent weeks (calendar week per `calendarFirstDayOfWeek`). */
+	let weekOffset = 0;
+
+	$: dashboardWeekStart = ((): Date => {
+		void sRev;
+		void weekOffset;
 		const today = new Date();
 		today.setHours(0, 0, 0, 0);
+		const ws = getWeekStart(today, plugin.settings.calendarFirstDayOfWeek);
+		return addDays(ws, weekOffset * 7);
+	})();
+
+	/** Seven days for the visible calendar week */
+	$: meetingGridDays = (() => {
+		const out: {iso: string; dayLabel: string; dayNum: string}[] = [];
 		for (let i = 0; i < 7; i++) {
-			const d = addDays(today, i);
+			const d = addDays(dashboardWeekStart, i);
 			out.push({
 				iso: toISODate(d),
 				dayLabel: formatDayShort(d),
@@ -123,12 +132,14 @@
 	})();
 
 	$: meetingsByDate = ((): Map<string, IndexedMeeting[]> => {
+		const startIso = toISODate(dashboardWeekStart);
+		const endIso = toISODate(addDays(dashboardWeekStart, 6));
 		const m = new Map<string, IndexedMeeting[]>();
 		for (const mt of snapshot.meetings) {
 			if (!meetingPassesWorkFilter(mt, snapshot, onlyWork, areaWorkMap)) continue;
 			const key = mt.date?.slice(0, 10) ?? "";
-			if (!key) continue;
-			if (!isDateInUpcomingDays(mt.date, 7)) continue;
+			if (!key || key.length < 10) continue;
+			if (key < startIso || key > endIso) continue;
 			const cur = m.get(key) ?? [];
 			cur.push(mt);
 			m.set(key, cur);
@@ -241,6 +252,18 @@
 		const proj = snapshot.projects.find((p) => p.file.path === path);
 		return resolveProjectAccentCss(proj?.color);
 	}
+
+	function dashboardWeekPrev(): void {
+		weekOffset -= 1;
+	}
+
+	function dashboardWeekThis(): void {
+		weekOffset = 0;
+	}
+
+	function dashboardWeekNext(): void {
+		weekOffset += 1;
+	}
 </script>
 
 <section class="fulcrum-section">
@@ -266,9 +289,41 @@
 </section>
 
 <section class="fulcrum-section">
-	<h2>Upcoming</h2>
 	<div class="fulcrum-dashboard-meetings-scroll">
-		<div class="fulcrum-dashboard-meetings-grid" role="grid" aria-label="Meetings by day">
+		<div class="fulcrum-dashboard-meetings-week">
+			<div class="fulcrum-dashboard-meetings-nav" role="toolbar" aria-label="Week navigation">
+				<div class="fulcrum-dashboard-meetings-nav__lead" aria-hidden="true"></div>
+				<div class="fulcrum-dashboard-meetings-nav__controls">
+					<button
+						type="button"
+						class="fulcrum-dashboard-meetings-nav__btn"
+						on:click={dashboardWeekPrev}
+						aria-label="Previous week"
+						title="Previous week"
+					>
+						‹
+					</button>
+					<button
+						type="button"
+						class="fulcrum-dashboard-meetings-nav__btn fulcrum-dashboard-meetings-nav__btn--dot"
+						on:click={dashboardWeekThis}
+						aria-label="This week"
+						title="This week"
+					>
+						•
+					</button>
+					<button
+						type="button"
+						class="fulcrum-dashboard-meetings-nav__btn"
+						on:click={dashboardWeekNext}
+						aria-label="Next week"
+						title="Next week"
+					>
+						›
+					</button>
+				</div>
+			</div>
+			<div class="fulcrum-dashboard-meetings-grid" role="grid" aria-label="Meetings by day">
 			{#each meetingGridDays as {iso, dayLabel, dayNum}}
 				{@const dayMeetings = meetingsByDate.get(iso) ?? []}
 				{@const isToday = iso === todayLocalISODate()}
@@ -306,6 +361,7 @@
 					</div>
 				</div>
 			{/each}
+			</div>
 		</div>
 	</div>
 </section>
