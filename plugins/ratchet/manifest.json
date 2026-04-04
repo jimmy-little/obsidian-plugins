@@ -1,12 +1,11 @@
 {
 	"id": "ratchet",
 	"name": "Ratchet",
-	"version": "0.0.1",
+	"version": "0.1.1",
 	"minAppVersion": "0.15.0",
-	"description": "Ratchet (obsidian-suite monorepo)",
+	"description": "Habit trackers, counters, heatmaps, and markdown widgets.",
 	"author": "Jimmy Little",
+	"authorUrl": "https://github.com/jimmylittle",
 	"isDesktopOnly": false,
-	"styles": [
-		"styles.css"
-	]
+	"styles": ["styles.css"]
 }

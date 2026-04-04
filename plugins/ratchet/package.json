@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-plugin-ratchet",
-	"version": "0.0.1",
-	"description": "Ratchet (obsidian-suite monorepo)",
+	"version": "0.1.1",
+	"description": "Habit trackers, counters, and markdown widgets (obsidian-suite monorepo)",
 	"main": "main.js",
 	"scripts": {
 		"prebuild": "node ../../tooling/merge-css.mjs",
@@ -17,8 +17,7 @@
 	"author": "Jimmy Little",
 	"license": "MIT",
 	"dependencies": {
-		"@obsidian-suite/core": "*",
-		"@obsidian-suite/svelte-shell": "*"
+		"@obsidian-suite/core": "*"
 	},
 	"devDependencies": {
 		"@types/node": "^16.18.0",

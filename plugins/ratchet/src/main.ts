@@ -1,34 +1,61 @@
 import { Notice, Plugin, type ObsidianProtocolData } from "obsidian";
 import { revealOrCreateView } from "@obsidian-suite/core";
-import { createSuiteShellViewClass } from "@obsidian-suite/svelte-shell";
-import App from "./App.svelte";
-import { RatchetSettingTab } from "./RatchetSettingTab";
-
-/** Match legacy obsidian-ratchet `VIEW_TYPE_RATCHET_MAIN` */
-export const VIEW_TYPE = "ratchet-main-view";
-
-const ShellView = createSuiteShellViewClass({
-	viewType: VIEW_TYPE,
-	displayText: "Ratchet",
-	icon: "tally-5",
-	App,
-});
+import { DataManager } from "./data/DataManager";
+import { DEFAULT_SETTINGS, type RatchetSettings } from "./settings/Settings";
+import { RatchetSettingTab } from "./settings/RatchetSettingTab";
+import { RatchetMainView, VIEW_TYPE_RATCHET_MAIN } from "./ui/RatchetMainView";
+import {
+	registerRatchetCounter,
+	renderRatchetCounter,
+	registerRatchetHeatmap,
+	renderRatchetHeatmap,
+	registerRatchetSummary,
+	renderRatchetSummary,
+} from "./processors/CodeBlockProcessor";
 
 export default class RatchetPlugin extends Plugin {
+	settings!: RatchetSettings;
+	private dataManager: DataManager | null = null;
+
+	/** Which tracker is selected for editing in the main view: null, "new", or tracker id. */
+	ratchetViewState: { selectedId: string | null } = { selectedId: null };
+
 	async onload(): Promise<void> {
-		this.registerView(VIEW_TYPE, (leaf) => new ShellView(leaf, this));
+		await this.loadSettings();
+		this.refreshDataManager();
+
+		this.registerView(VIEW_TYPE_RATCHET_MAIN, (leaf) => new RatchetMainView(leaf, this));
 
 		this.addRibbonIcon("tally-5", "Ratchet", () => {
-			void this.activateMainView();
+			void this.activateRatchetView();
 		});
 
 		this.addCommand({
-			id: "open-main",
+			id: "open-dashboard",
 			name: "Open Ratchet",
-			callback: () => void this.activateMainView(),
+			callback: () => void this.activateRatchetView(),
+		});
+
+		this.addCommand({
+			id: "create-tracker",
+			name: "Create new tracker",
+			callback: () => {
+				this.ratchetViewState.selectedId = "new";
+				void this.activateRatchetView();
+			},
 		});
 
 		this.addSettingTab(new RatchetSettingTab(this.app, this));
+
+		registerRatchetCounter(this, (source, el) => {
+			void renderRatchetCounter(source, el, this);
+		});
+		registerRatchetHeatmap(this, (source, el) => {
+			void renderRatchetHeatmap(source, el, this);
+		});
+		registerRatchetSummary(this, (source, el) => {
+			void renderRatchetSummary(source, el, this);
+		});
 
 		this.registerObsidianProtocolHandler(this.manifest.id, (params) => {
 			void this.applyRatchetDeepLink(params).catch((err) => {
@@ -36,6 +63,10 @@ export default class RatchetPlugin extends Plugin {
 				new Notice("Ratchet could not open that link.");
 			});
 		});
+	}
+
+	onunload(): void {
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_RATCHET_MAIN);
 	}
 
 	private async applyRatchetDeepLink(params: ObsidianProtocolData): Promise<void> {
@@ -55,10 +86,29 @@ export default class RatchetPlugin extends Plugin {
 			new Notice(`Ratchet: unknown screen "${screen}".`);
 			return;
 		}
-		await this.activateMainView();
+		await this.activateRatchetView();
 	}
 
-	async activateMainView(): Promise<void> {
-		await revealOrCreateView(this.app, VIEW_TYPE, "sidebar");
+	async activateRatchetView(): Promise<void> {
+		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "sidebar");
+	}
+
+	getDataManager(): DataManager {
+		if (!this.dataManager) {
+			this.refreshDataManager();
+		}
+		return this.dataManager!;
+	}
+
+	refreshDataManager(): void {
+		this.dataManager = new DataManager(this.app.vault, this.settings.dataFolder, this.settings.firstDayOfWeek);
+	}
+
+	async loadSettings(): Promise<void> {
+		this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
+	}
+
+	async saveSettings(): Promise<void> {
+		await this.saveData(this.settings);
 	}
 }
