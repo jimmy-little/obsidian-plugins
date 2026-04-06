@@ -992,6 +992,16 @@ If your plugin does not need CSS, delete this file.
 	text-transform: capitalize;
 }
 
+/* File mtime (sort key vs semantic dates): file-diff icon, subdued */
+.fulcrum-activity-chip--file-touch {
+	color: var(--text-faint);
+	font-weight: 450;
+}
+
+.fulcrum-activity-chip--file-touch .fulcrum-activity-chip__icon {
+	opacity: 0.55;
+}
+
 .fulcrum-section {
 	margin-top: 0.5rem;
 }

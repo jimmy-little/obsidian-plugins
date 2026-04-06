@@ -1,9 +1,17 @@
 import type {ProjectLogActivityEntry} from "../projectNote";
 import type {AtomicNoteRow, IndexedMeeting, IndexedTask, ProjectRollup} from "../types";
-import {formatShortMonthDay, isISODateTodayOrFuture} from "./dates";
+import {formatShortMonthDay, formatShortMonthDayFromMs, isISODateTodayOrFuture} from "./dates";
 import {meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
 
-export type ChipKind = "tag" | "date" | "type" | "tracked" | "status" | "misc" | "project";
+export type ChipKind =
+	| "tag"
+	| "date"
+	| "type"
+	| "tracked"
+	| "status"
+	| "misc"
+	| "project"
+	| "fileTouch";
 
 export type ActivityChip = {
 	kind: ChipKind;
@@ -129,6 +137,23 @@ function chipsForMeeting(m: IndexedMeeting, formatTracked: (n: number) => string
 	const eff = meetingEffectiveMinutes(m);
 	if (eff > 0) c.push({kind: "tracked", label: formatTracked(eff)});
 	return c;
+}
+
+/** File last-modified (vault), shown in activity feeds so sort order matches visible metadata. */
+function chipFileModifiedMeta(fileMtimeMs: number): ActivityChip {
+	return {
+		kind: "fileTouch",
+		label: formatShortMonthDayFromMs(fileMtimeMs),
+	};
+}
+
+function appendFileModifiedChip(
+	chips: ActivityChip[],
+	rowKind: ActivityRowModel["kind"],
+	fileMtimeMs: number,
+): ActivityChip[] {
+	if (rowKind === "log") return chips;
+	return [...chips, chipFileModifiedMeta(fileMtimeMs)];
 }
 
 /** One-line when string for Next up meeting cards: weekday · date · time · duration. */
@@ -318,7 +343,7 @@ export function buildActivityRowModels(
 			kind: "note",
 			sortMs: n.modifiedMs,
 			title: n.entryTitle,
-			chips: chipsForNote(n, deps.formatTracked),
+			chips: appendFileModifiedChip(chipsForNote(n, deps.formatTracked), "note", n.file.stat.mtime),
 			open: () => deps.openPath(n.file.path),
 			hoverPath: n.file.path,
 			timelineEmoji: leadingTimelineEmojiFromNoteType(n.noteType),
@@ -331,7 +356,7 @@ export function buildActivityRowModels(
 			kind: "task",
 			sortMs: t.file.stat.mtime,
 			title: t.title,
-			chips: chipsForTask(t, deps.formatTracked),
+			chips: appendFileModifiedChip(chipsForTask(t, deps.formatTracked), "task", t.file.stat.mtime),
 			open: () => deps.openTask(t),
 			hoverPath: t.file.path,
 		});
@@ -342,7 +367,7 @@ export function buildActivityRowModels(
 			kind: "meeting",
 			sortMs: sortMsForMeeting(m),
 			title: m.title?.trim() || m.file.basename.replace(/\.md$/i, ""),
-			chips: chipsForMeeting(m, deps.formatTracked),
+			chips: appendFileModifiedChip(chipsForMeeting(m, deps.formatTracked), "meeting", m.file.stat.mtime),
 			open: () => deps.openPath(m.file.path),
 			hoverPath: m.file.path,
 		});
@@ -405,7 +430,9 @@ export function buildAggregatedActivityRows(
 				kind: "note",
 				sortMs: n.modifiedMs,
 				title: n.entryTitle,
-				chips: addProjectChip(chipsForNote(n, deps.formatTracked)),
+				chips: addProjectChip(
+					appendFileModifiedChip(chipsForNote(n, deps.formatTracked), "note", n.file.stat.mtime),
+				),
 				open: () => deps.openPath(n.file.path),
 				hoverPath: n.file.path,
 				timelineEmoji: leadingTimelineEmojiFromNoteType(n.noteType),
@@ -422,7 +449,7 @@ export function buildAggregatedActivityRows(
 				kind: "task",
 				sortMs: mtime,
 				title: t.title,
-				chips: addProjectChip(chipsForTask(t, deps.formatTracked)),
+				chips: addProjectChip(appendFileModifiedChip(chipsForTask(t, deps.formatTracked), "task", mtime)),
 				open: () => deps.openTask(t),
 				hoverPath: t.file.path,
 				projectName,
@@ -437,7 +464,9 @@ export function buildAggregatedActivityRows(
 				kind: "meeting",
 				sortMs,
 				title: m.title?.trim() || m.file.basename.replace(/\.md$/i, ""),
-				chips: addProjectChip(chipsForMeeting(m, deps.formatTracked)),
+				chips: addProjectChip(
+					appendFileModifiedChip(chipsForMeeting(m, deps.formatTracked), "meeting", m.file.stat.mtime),
+				),
 				open: () => deps.openPath(m.file.path),
 				hoverPath: m.file.path,
 				projectName,

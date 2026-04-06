@@ -88,6 +88,15 @@ export function formatShortMonthDay(iso: string | undefined): string {
 	);
 }
 
+/** Local calendar day, same style as {@link formatShortMonthDay}, from file mtime (or any instant in ms). */
+export function formatShortMonthDayFromMs(ms: number): string {
+	const d = new Date(ms);
+	const y = d.getFullYear();
+	const mo = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return formatShortMonthDay(`${y}-${mo}-${day}`) || `${y}-${mo}-${day}`;
+}
+
 export function formatTrackedMinutesShort(n: number): string {
 	if (n < 1) return "";
 	if (n < 60) return `${n}m`;

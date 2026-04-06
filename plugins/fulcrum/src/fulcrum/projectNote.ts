@@ -209,21 +209,48 @@ function parseProjectLogLineCore(line: string): {
 }
 
 /**
- * Parse log bullets; legacy lines (no `fulcrum-log` comment) use `anchorMtime` and list order for sort keys.
+ * Parse human-readable stamps from quick-note / legacy log lines (locale date strings, ISO snippets).
  */
-export function parseProjectLogLines(
-	lines: string[],
-	anchorMtime: number,
-): ProjectLogActivityEntry[] {
-	const len = lines.length;
+function parseHumanStampToSortMs(stampLabel: string): number | null {
+	const s = stampLabel.trim();
+	if (!s) return null;
+	const direct = Date.parse(s);
+	if (!Number.isNaN(direct)) return direct;
+	const iso = s.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+	if (iso) {
+		const t = Date.parse(iso[1]! + "T12:00:00");
+		if (!Number.isNaN(t)) return t;
+	}
+	return null;
+}
+
+/**
+ * Sort key for legacy bullets with no embedded `fulcrum-log` ms: prefer parsed inline stamp; never use
+ * the project file mtime (editing the project note would reshuffle all quick notes incorrectly).
+ */
+function sortMsForLegacyLogLine(
+	core: { sortMs: number | null; stampLabel: string; title: string },
+	lineIndex: number,
+): number {
+	if (core.sortMs != null) return core.sortMs;
+	const fromStamp = parseHumanStampToSortMs(core.stampLabel);
+	if (fromStamp != null) return fromStamp;
+	const fromTitle = parseHumanStampToSortMs(core.title.slice(0, 120));
+	if (fromTitle != null) return fromTitle;
+	/* Unparseable: stable low tier so real timestamps win; preserve file order within this tier. */
+	return 978307200000 + lineIndex * 60_000;
+}
+
+/**
+ * Parse log bullets; lines with `<!-- fulcrum-log:ms -->` use that instant. Legacy lines use the
+ * human stamp before " — " when present, not the project note's modified time.
+ */
+export function parseProjectLogLines(lines: string[]): ProjectLogActivityEntry[] {
 	const out: ProjectLogActivityEntry[] = [];
 	for (let i = 0; i < lines.length; i++) {
 		const core = parseProjectLogLineCore(lines[i]!);
 		if (!core) continue;
-		const sortMs =
-			core.sortMs != null
-				? core.sortMs
-				: anchorMtime - (len - 1 - i) * 1000;
+		const sortMs = sortMsForLegacyLogLine(core, i);
 		out.push({
 			sortMs,
 			title: core.title,

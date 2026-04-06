@@ -632,7 +632,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			this.settings.projectLogSectionHeading,
 			this.settings.projectLogPreviewMaxLines,
 		);
-		return parseProjectLogLines(raw, f.stat.mtime);
+		return parseProjectLogLines(raw);
 	}
 
 	async archiveProjectSnapshot(projectPath: string): Promise<void> {
