@@ -19,13 +19,66 @@ import type {
 } from "./types";
 import { parseDistanceUnit } from "./exerciseKind";
 
+function exercisePathToWikilink(path: string): string {
+	const p = path.replace(/\.md$/i, "").trim();
+	return `[[${p}]]`;
+}
+
+/** Remove auto-generated `## Exercises` block so `bodySuffix` stays HR / manual notes only. */
+function stripAutoExerciseWikilinkSection(s: string): string {
+	return s.replace(/^\s*## Exercises\s*\n[\s\S]*?(?=\n## [^\s#]|$)/, "").trimStart();
+}
+
 export class WorkoutDataManager {
 	constructor(private vault: Vault, private settings: WorkoutSettings) {}
+
+	/**
+	 * Prefer the stored path if that file exists; otherwise same note name under the
+	 * current exercises folder (handles renames and settings changes like folder moves).
+	 */
+	resolveExerciseVaultPath(storedPath: string): string {
+		const normalized = normalizePath(storedPath);
+		const existing = this.vault.getAbstractFileByPath(normalized);
+		if (existing instanceof TFile) return normalized;
+		const fileName = normalized.split("/").pop() ?? normalized;
+		const withMd = fileName.toLowerCase().endsWith(".md") ? fileName : `${fileName}.md`;
+		return normalizePath(`${this.settings.exercisesFolder}/${withMd}`);
+	}
+
+	private normalizeSessionDataForSave(session: SessionData): SessionData {
+		return {
+			exercises: session.exercises.map((ex) => ({
+				...ex,
+				exercisePath: this.resolveExerciseVaultPath(ex.exercisePath),
+			})),
+		};
+	}
+
+	/**
+	 * Markdown table with wikilinked exercise paths so Obsidian backlinks / graph see real links
+	 * (same structure as the pulse-session summary table in Reading view).
+	 */
+	private sessionExercisesSummaryTableMarkdown(exercises: SessionExercise[]): string {
+		if (exercises.length === 0) return "";
+		const unit = this.settings.weightUnit;
+		const rows = exercises.map((e) => {
+			const wiki = exercisePathToWikilink(this.resolveExerciseVaultPath(e.exercisePath));
+			const nSets = e.sets.length;
+			const vol = e.sets.reduce((sum, s) => {
+				if (s.weight != null && s.reps != null) return sum + s.weight * s.reps;
+				return sum;
+			}, 0);
+			const volCell = vol > 0 ? `${vol.toLocaleString()} ${unit}` : "—";
+			return `| ${wiki} | ${nSets} | ${volCell} |`;
+		});
+		return ["| Exercise | Sets | Volume |", "| --- | --- | --- |", ...rows].join("\n");
+	}
 
 	// --------------- Exercise CRUD ---------------
 
 	async getExercise(path: string): Promise<ExerciseNote | null> {
-		const file = this.vault.getAbstractFileByPath(path);
+		const resolved = this.resolveExerciseVaultPath(path);
+		const file = this.vault.getAbstractFileByPath(resolved);
 		if (!file || !(file instanceof TFile)) return null;
 		const content = await this.vault.read(file);
 		return this.parseExerciseNote(file, content, true);
@@ -75,7 +128,8 @@ export class WorkoutDataManager {
 	}
 
 	async updateExercise(path: string, updates: Partial<NewExerciseData>): Promise<void> {
-		const file = this.vault.getAbstractFileByPath(path);
+		const resolved = this.resolveExerciseVaultPath(path);
+		const file = this.vault.getAbstractFileByPath(resolved);
 		if (!file || !(file instanceof TFile)) return;
 		let content = await this.vault.read(file);
 
@@ -117,7 +171,8 @@ export class WorkoutDataManager {
 	}
 
 	async appendSetToExercise(exercisePath: string, entry: ExerciseLogEntry): Promise<void> {
-		const file = this.vault.getAbstractFileByPath(exercisePath);
+		const resolved = this.resolveExerciseVaultPath(exercisePath);
+		const file = this.vault.getAbstractFileByPath(resolved);
 		if (!file || !(file instanceof TFile)) return;
 		const content = await this.vault.read(file);
 		const logMatch = content.match(/(```pulse-log\n)([\s\S]*?)(```)/);
@@ -157,7 +212,7 @@ export class WorkoutDataManager {
 		await this.vault.modify(file, newContent);
 
 		if (this.settings.autoPR) {
-			await this.updatePersonalRecord(exercisePath);
+			await this.updatePersonalRecord(resolved);
 		}
 	}
 
@@ -228,7 +283,7 @@ export class WorkoutDataManager {
 			.map(([k, v]) => `${k}: ${v}`)
 			.join("\n");
 
-		const content = [
+		const lines = [
 			"---",
 			fmStr,
 			"---",
@@ -238,8 +293,13 @@ export class WorkoutDataManager {
 			"```pulse-session",
 			JSON.stringify(sessionData, null, 2),
 			"```",
-			"",
-		].join("\n");
+		];
+		const sessionForLinks = this.normalizeSessionDataForSave(sessionData);
+		if (sessionForLinks.exercises.length > 0) {
+			lines.push("", "## Exercises", "", this.sessionExercisesSummaryTableMarkdown(sessionForLinks.exercises));
+		}
+		lines.push("");
+		const content = lines.join("\n");
 
 		return await this.vault.create(path, content);
 	}
@@ -272,7 +332,8 @@ export class WorkoutDataManager {
 		}).join("\n");
 
 		const dayName = data.frontmatter.programDay ?? "Workout";
-		const content = [
+		const sessionForSave = this.normalizeSessionDataForSave(data.session);
+		const lines = [
 			"---",
 			fmStr,
 			"---",
@@ -280,14 +341,23 @@ export class WorkoutDataManager {
 			`# ${data.frontmatter.date} — ${dayName}`,
 			"",
 			"```pulse-session",
-			JSON.stringify(data.session, null, 2),
+			JSON.stringify(sessionForSave, null, 2),
 			"```",
-			"",
-		].join("\n");
+		];
+		if (sessionForSave.exercises.length > 0) {
+			lines.push("", "## Exercises", "", this.sessionExercisesSummaryTableMarkdown(sessionForSave.exercises));
+		}
+		const suffix = data.bodySuffix?.trimEnd();
+		if (suffix) {
+			lines.push("", suffix);
+		} else {
+			lines.push("");
+		}
+		const content = lines.join("\n");
 
 		await this.vault.modify(file, content);
 
-		for (const exercise of data.session.exercises) {
+		for (const exercise of sessionForSave.exercises) {
 			const logEntry: ExerciseLogEntry = {
 				date: data.frontmatter.date,
 				sessionPath: path,
@@ -341,7 +411,8 @@ export class WorkoutDataManager {
 		}).join("\n");
 
 		const dayName = data.frontmatter.programDay ?? "Workout";
-		const content = [
+		const sessionForSave = this.normalizeSessionDataForSave(data.session);
+		const draftLines = [
 			"---",
 			fmStr,
 			"---",
@@ -349,10 +420,19 @@ export class WorkoutDataManager {
 			`# ${data.frontmatter.date} — ${dayName}`,
 			"",
 			"```pulse-session",
-			JSON.stringify(data.session, null, 2),
+			JSON.stringify(sessionForSave, null, 2),
 			"```",
-			"",
-		].join("\n");
+		];
+		if (sessionForSave.exercises.length > 0) {
+			draftLines.push("", "## Exercises", "", this.sessionExercisesSummaryTableMarkdown(sessionForSave.exercises));
+		}
+		const draftSuffix = data.bodySuffix?.trimEnd();
+		if (draftSuffix) {
+			draftLines.push("", draftSuffix);
+		} else {
+			draftLines.push("");
+		}
+		const content = draftLines.join("\n");
 
 		await this.vault.modify(file, content);
 	}
@@ -480,7 +560,8 @@ export class WorkoutDataManager {
 	}
 
 	async updatePersonalRecord(exercisePath: string): Promise<void> {
-		const file = this.vault.getAbstractFileByPath(exercisePath);
+		const resolved = this.resolveExerciseVaultPath(exercisePath);
+		const file = this.vault.getAbstractFileByPath(resolved);
 		if (!file || !(file instanceof TFile)) return;
 		const content = await this.vault.read(file);
 		const note = this.parseExerciseNote(file, content);
@@ -534,7 +615,101 @@ export class WorkoutDataManager {
 		return candidates;
 	}
 
-	async mergeImportData(sessionPath: string, importData: ImportedWorkoutData): Promise<void> {
+	private static readonly IMPORT_MATCH_MIN_OVERLAP_MS = 3 * 60 * 1000;
+	private static readonly IMPORT_MATCH_MAX_START_DELTA_MS = 18 * 60 * 1000;
+
+	private overlapIntervalMs(a0: number, a1: number, b0: number, b1: number): number {
+		const s = Math.max(a0, b0);
+		const e = Math.min(a1, b1);
+		return Math.max(0, e - s);
+	}
+
+	/** Session [start,end] in ms when `startTime` is set; end uses duration or a minimum window. */
+	private getSessionIntervalMs(session: SessionNote, importEndMs: number): { start: number; end: number } | null {
+		const st = session.frontmatter.startTime;
+		if (!st) return null;
+		const startMs = new Date(st).getTime();
+		if (isNaN(startMs)) return null;
+		const durMin = session.frontmatter.duration;
+		const endMs =
+			durMin != null && durMin > 0
+				? startMs + durMin * 60 * 1000
+				: Math.max(importEndMs, startMs + 30 * 60 * 1000);
+		return { start: startMs, end: endMs };
+	}
+
+	/**
+	 * Find a Pulse session note (Today log) that likely corresponds to the same workout as a Health import.
+	 * Uses same calendar day, optional activity/program-day compatibility, then time overlap or close start time.
+	 */
+	async findBestMatchingSessionForImport(
+		importStart: Date,
+		importEnd: Date,
+		activityType: string
+	): Promise<SessionNote | null> {
+		if (isNaN(importStart.getTime())) return null;
+		const t0 = importStart.getTime();
+		let t1 = importEnd.getTime();
+		if (isNaN(t1)) t1 = t0 + 45 * 60 * 1000;
+		t1 = Math.max(t0 + 60_000, t1);
+
+		const dateStr = this.formatDate(importStart);
+		const sessions = await this.getAllSessions();
+		const candidates: SessionNote[] = [];
+		for (const session of sessions) {
+			if (session.frontmatter.date !== dateStr) continue;
+			const compatibleCategories = ACTIVITY_TYPE_MAP[activityType];
+			if (compatibleCategories) {
+				const sessionCategory = session.frontmatter.programDay ?? "";
+				const isCompatible = compatibleCategories.some(cat =>
+					sessionCategory.toLowerCase().includes(cat.toLowerCase())
+				);
+				if (!isCompatible && sessionCategory) continue;
+			}
+			candidates.push(session);
+		}
+		if (candidates.length === 0) return null;
+
+		const withStart = candidates.filter((s) => s.frontmatter.startTime);
+		const importDurMin = (t1 - t0) / 60000;
+
+		let best: SessionNote | null = null;
+		let bestScore = -Infinity;
+
+		for (const session of withStart) {
+			const interval = this.getSessionIntervalMs(session, t1);
+			if (!interval) continue;
+			const overlap = this.overlapIntervalMs(t0, t1, interval.start, interval.end);
+			const startMs = new Date(session.frontmatter.startTime!).getTime();
+			const startDelta = Math.abs(startMs - t0);
+			const strongStart = startDelta <= WorkoutDataManager.IMPORT_MATCH_MAX_START_DELTA_MS;
+			if (overlap < WorkoutDataManager.IMPORT_MATCH_MIN_OVERLAP_MS && !strongStart) continue;
+
+			const score = overlap * 10 - startDelta;
+			if (score > bestScore) {
+				bestScore = score;
+				best = session;
+			}
+		}
+		if (best) return best;
+
+		const noStart = candidates.filter(
+			(s) => !s.frontmatter.startTime && s.frontmatter.duration != null
+		);
+		if (noStart.length === 1) {
+			const s = noStart[0]!;
+			const sd = s.frontmatter.duration!;
+			if (Math.abs(sd - importDurMin) <= Math.max(4, importDurMin * 0.2)) return s;
+		}
+
+		return null;
+	}
+
+	async mergeImportData(
+		sessionPath: string,
+		importData: ImportedWorkoutData,
+		heartRateChartMarkdown?: string
+	): Promise<void> {
 		const session = await this.getSession(sessionPath);
 		if (!session) return;
 
@@ -545,6 +720,10 @@ export class WorkoutDataManager {
 		if (importData.hrAvg) session.frontmatter.hrAvg = importData.hrAvg;
 		if (importData.hrMax) session.frontmatter.hrMax = importData.hrMax;
 		session.frontmatter.importedAt = importData.importedAt;
+
+		if (heartRateChartMarkdown?.trim()) {
+			session.bodySuffix = this.mergeHeartRateBodySuffix(session.bodySuffix, heartRateChartMarkdown);
+		}
 
 		await this.saveSession(sessionPath, session);
 	}
@@ -604,6 +783,26 @@ export class WorkoutDataManager {
 		};
 	}
 
+	/** Everything after the closing \`\`\` of the pulse-session block (preserved on save). */
+	private extractSessionBodySuffix(content: string): string {
+		const block = content.match(/```pulse-session\n[\s\S]*?```/);
+		if (!block || block.index === undefined) return "";
+		const after = content.slice(block.index + block[0].length);
+		const raw = after.replace(/^\s*\n?/, "").trimEnd();
+		return stripAutoExerciseWikilinkSection(raw);
+	}
+
+	/** Replace or append the imported `## Heart Rate` chart section in freeform body suffix. */
+	private mergeHeartRateBodySuffix(existing: string | undefined, chartMarkdown: string): string {
+		const add = chartMarkdown.trim();
+		if (!add) return (existing ?? "").trimEnd();
+		let s = existing ?? "";
+		s = s.replace(/\n## Heart Rate\n[\s\S]*?(?=\n## [^\s#]|$)/, "");
+		s = s.replace(/^## Heart Rate\n[\s\S]*?(?=\n## [^\s#]|$)/, "");
+		s = s.trimEnd();
+		return `${s}${s ? "\n\n" : ""}${add}\n`;
+	}
+
 	private parseSessionNote(file: TFile, content: string): SessionNote | null {
 		const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
 		if (!fmMatch) return null;
@@ -615,6 +814,8 @@ export class WorkoutDataManager {
 		if (sessionMatch) {
 			try { sessionData = JSON.parse(sessionMatch[1]); } catch { /* empty */ }
 		}
+
+		const bodySuffix = this.extractSessionBodySuffix(content);
 
 		return {
 			file,
@@ -636,6 +837,7 @@ export class WorkoutDataManager {
 				importedAt: fm.importedAt != null ? String(fm.importedAt) : undefined,
 			},
 			session: sessionData,
+			...(bodySuffix ? { bodySuffix } : {}),
 		};
 	}
 

@@ -70,6 +70,8 @@ export interface SessionNote {
 	file: TFile;
 	frontmatter: SessionFrontmatter;
 	session: SessionData;
+	/** Markdown after the \`\`\`pulse-session\`\`\` block (e.g. imported Heart Rate chart). */
+	bodySuffix?: string;
 }
 
 /** Session not linked to a program (sidebar “Workouts” list, edit flow). */

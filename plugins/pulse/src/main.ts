@@ -15,8 +15,14 @@ export default class PulsePlugin extends Plugin {
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
-		this.importManager = new ImportManager(this.app.vault, this.app, this.settings);
 		this.workoutDataManager = new WorkoutDataManager(this.app.vault, this.settings);
+		this.importManager = new ImportManager(
+			this.app.vault,
+			this.app,
+			this.settings,
+			() => this.saveSettings(),
+			this.workoutDataManager
+		);
 
 		// Register leaf view
 		this.registerView(VIEW_TYPE_PULSE, (leaf) => new PulseView(leaf, this));
@@ -54,6 +60,12 @@ export default class PulsePlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: "open-pulse-body",
+			name: "Open Pulse — Body",
+			callback: () => this.openPulseView("body"),
+		});
+
+		this.addCommand({
 			id: "scan-health-workout-imports",
 			name: "Scan for Health and Workout Imports",
 			callback: () => this.importManager.scanAndImport(),
@@ -70,8 +82,8 @@ export default class PulsePlugin extends Plugin {
 			renderExerciseLogBlock(source, el, this);
 		});
 
-		this.registerMarkdownCodeBlockProcessor("pulse-session", (source, el) => {
-			renderSessionBlock(source, el, this);
+		this.registerMarkdownCodeBlockProcessor("pulse-session", (source, el, ctx) => {
+			renderSessionBlock(source, el, this, ctx.sourcePath);
 		});
 
 		// Settings tab
@@ -118,6 +130,7 @@ export default class PulsePlugin extends Plugin {
 			"program",
 			"history",
 			"stats",
+			"body",
 			"new-exercise",
 			"workout-builder",
 			"program-builder",

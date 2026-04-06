@@ -17,6 +17,7 @@
 	"author": "Jimmy Little",
 	"license": "MIT",
 	"dependencies": {
+		"@obsidian-suite/heatmap": "*",
 		"jszip": "^3.10.1"
 	},
 	"devDependencies": {

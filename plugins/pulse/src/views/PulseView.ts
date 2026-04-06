@@ -6,7 +6,7 @@ import { PulseMainContent } from "./PulseMainContent";
 export const VIEW_TYPE_PULSE = "pulse-workout-manager";
 
 export type PulseViewMode =
-	"today" | "exercise" | "session" | "program" | "history" | "stats" |
+	"today" | "exercise" | "session" | "program" | "history" | "stats" | "body" |
 	"new-exercise" | "workout-builder" | "program-builder" | "edit-program" |
 	"workout-edit";
 
@@ -114,6 +114,7 @@ export class PulseView extends ItemView {
 			{ icon: "dumbbell", label: "Today", mode: "today" },
 			{ icon: "history", label: "History", mode: "history" },
 			{ icon: "bar-chart-2", label: "Stats", mode: "stats" },
+			{ icon: "scale", label: "Body", mode: "body" },
 		];
 
 		const collapseBtn = bar.createDiv({ cls: "pulse-pm__glyph-btn clickable-icon" });

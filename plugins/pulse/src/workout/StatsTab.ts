@@ -1,6 +1,8 @@
 import type PulsePlugin from "../main";
+import { formatPulseImportAt } from "../formatImport";
 import type { SessionNote, ExerciseNote } from "./types";
 import { renderVolumeChart, renderCategoryChart } from "./charts";
+import { createSuiteWorkoutHeatmap } from "./pulseHeatmap";
 
 export class StatsTab {
 	private plugin: PulsePlugin;
@@ -37,6 +39,13 @@ export class StatsTab {
 
 		// Category breakdown
 		await this.renderCategoryBreakdown(wrapper, sessions, exercises);
+
+		const foot = wrapper.createDiv({ cls: "pulse-stats__footer" });
+		foot.createSpan({ cls: "pulse-stats__footer-label", text: "Last workout import: " });
+		foot.createSpan({
+			cls: "pulse-stats__footer-date",
+			text: formatPulseImportAt(this.plugin.settings.lastWorkoutImportAt),
+		});
 	}
 
 	private async renderVolumeSection(parent: HTMLElement, sessions: SessionNote[]): Promise<void> {
@@ -66,32 +75,18 @@ export class StatsTab {
 		const section = parent.createDiv({ cls: "pulse-workout-stats-section" });
 		section.createEl("h3", { text: "Workout Frequency" });
 
-		const dateSet = new Set(sessions.map(s => s.frontmatter.date));
-		const today = new Date();
-		const heatmap = section.createDiv({ cls: "pulse-workout-heatmap" });
-
-		// Day labels
-		const dayLabels = heatmap.createDiv({ cls: "pulse-workout-heatmap-labels" });
-		["", "Mon", "", "Wed", "", "Fri", ""].forEach(d =>
-			dayLabels.createDiv({ cls: "pulse-workout-heatmap-label", text: d })
-		);
-
-		const grid = heatmap.createDiv({ cls: "pulse-workout-heatmap-grid" });
-
-		// 52 weeks
-		for (let week = 51; week >= 0; week--) {
-			const col = grid.createDiv({ cls: "pulse-workout-heatmap-col" });
-			for (let day = 0; day < 7; day++) {
-				const d = new Date(today);
-				d.setDate(d.getDate() - (week * 7 + (today.getDay() - day)));
-				const dateStr = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
-				const hasWorkout = dateSet.has(dateStr);
-				const cell = col.createDiv({
-					cls: `pulse-workout-heatmap-cell ${hasWorkout ? "pulse-workout-heatmap-active" : ""}`,
-				});
-				cell.setAttribute("title", dateStr);
-			}
+		const counts = new Map<string, number>();
+		for (const s of sessions) {
+			const d = s.frontmatter.date;
+			if (!d) continue;
+			counts.set(d, (counts.get(d) ?? 0) + 1);
 		}
+
+		const heatmap = createSuiteWorkoutHeatmap(counts, {
+			ariaLabel: "Workout sessions in the last year",
+		});
+		heatmap.addClass("pulse-workout-stats-heatmap");
+		section.appendChild(heatmap);
 	}
 
 	private renderPRBoard(parent: HTMLElement, exercises: ExerciseNote[]): void {

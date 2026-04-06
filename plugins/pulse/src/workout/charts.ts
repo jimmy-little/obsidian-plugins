@@ -1,5 +1,12 @@
 import type { ExerciseLogEntry } from "./types";
 
+/**
+ * Chart.js draws on canvas; this mixes theme colors so grid lines stay visible in dark mode
+ * (plain --background-modifier-border is often too low-contrast on dark backgrounds).
+ */
+const CHART_GRID_COLOR =
+	"color-mix(in srgb, var(--text-muted) 40%, var(--background-primary))";
+
 type ChartType = { new(ctx: CanvasRenderingContext2D, config: Record<string, unknown>): { destroy(): void } };
 type ChartModule = { Chart: ChartType; registerables: unknown[] };
 
@@ -69,12 +76,12 @@ export async function renderProgressChart(
 				x: {
 					type: "category",
 					ticks: { color: "var(--text-muted)", maxTicksLimit: 8 },
-					grid: { color: "var(--background-modifier-border)" },
+					grid: { color: CHART_GRID_COLOR },
 				},
 				y: {
 					beginAtZero: false,
 					ticks: { color: "var(--text-muted)" },
-					grid: { color: "var(--background-modifier-border)" },
+					grid: { color: CHART_GRID_COLOR },
 				},
 			},
 		},
@@ -112,7 +119,7 @@ export async function renderVolumeChart(
 				y: {
 					beginAtZero: true,
 					ticks: { color: "var(--text-muted)" },
-					grid: { color: "var(--background-modifier-border)" },
+					grid: { color: CHART_GRID_COLOR },
 				},
 			},
 		},
@@ -149,6 +156,86 @@ export async function renderCategoryChart(
 				legend: {
 					position: "right",
 					labels: { color: "var(--text-normal)" },
+				},
+			},
+		},
+	} as Record<string, unknown>);
+}
+
+function readInteractiveAccentRgb(anchor: HTMLElement): { r: number; g: number; b: number } {
+	const el = document.createElement("span");
+	el.style.cssText = "position:absolute;left:-9999px;top:0;color:var(--interactive-accent)";
+	anchor.appendChild(el);
+	const rgb = getComputedStyle(el).color;
+	el.remove();
+	const m = rgb.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+	if (m) return { r: +m[1], g: +m[2], b: +m[3] };
+	return { r: 124, g: 108, b: 255 };
+}
+
+/** Smooth line chart for body metrics (tension avoids sharp corners at data points). */
+export async function renderSmoothLineChart(
+	canvas: HTMLCanvasElement,
+	points: { x: string; y: number }[],
+	_label: string
+): Promise<{ destroy(): void }> {
+	const { Chart } = await loadChartJs();
+	const ctx = canvas.getContext("2d");
+	if (!ctx) throw new Error("No canvas context");
+
+	const styleAnchor = (canvas.closest(".pulse-view-root") ?? canvas.parentElement ?? document.documentElement) as HTMLElement;
+	const accent = readInteractiveAccentRgb(styleAnchor);
+	const borderRgb = `rgb(${accent.r},${accent.g},${accent.b})`;
+
+	return new Chart(ctx, {
+		type: "line",
+		data: {
+			labels: points.map((p) => p.x),
+			datasets: [{
+				label: _label,
+				data: points.map((p) => p.y),
+				tension: 0.45,
+				borderColor: borderRgb,
+				backgroundColor: (context: {
+					chart: { ctx: CanvasRenderingContext2D; chartArea: { top: number; bottom: number } | null };
+				}) => {
+					const chart = context.chart;
+					const c = chart.ctx;
+					const { chartArea } = chart;
+					if (!chartArea) return "transparent";
+					const { r, g, b } = accent;
+					const grad = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+					grad.addColorStop(0, `rgba(${r},${g},${b}, 0.42)`);
+					grad.addColorStop(0.45, `rgba(${r},${g},${b}, 0.14)`);
+					grad.addColorStop(1, `rgba(${r},${g},${b}, 0)`);
+					return grad;
+				},
+				fill: true,
+				pointRadius: 2,
+				pointHoverRadius: 4,
+				pointBackgroundColor: borderRgb,
+				borderWidth: 2,
+			}],
+		},
+		options: {
+			responsive: true,
+			maintainAspectRatio: false,
+			interaction: { intersect: false, mode: "index" },
+			plugins: { legend: { display: false } },
+			scales: {
+				x: {
+					type: "category",
+					ticks: {
+						color: "var(--text-muted)",
+						maxTicksLimit: 8,
+						maxRotation: 0,
+					},
+					grid: { color: CHART_GRID_COLOR },
+				},
+				y: {
+					beginAtZero: false,
+					ticks: { color: "var(--text-muted)" },
+					grid: { color: CHART_GRID_COLOR },
 				},
 			},
 		},

@@ -145,9 +145,17 @@ export class ExercisesTab {
 			}
 		}
 
-		// Chart
-		if (exercise.log.length >= 2) {
-			const chartContainer = detail.createDiv({ cls: "pulse-workout-chart-container" });
+		// Chart (1+ sessions with weighted sets — Chart.js; otherwise hint text)
+		const chartContainer = detail.createDiv({ cls: "pulse-workout-chart-container" });
+		const hasWeighted = exercise.log.some(e =>
+			e.sets.some(s => s.weight != null && s.reps != null && (s.weight ?? 0) > 0)
+		);
+		if (!hasWeighted) {
+			chartContainer.createEl("p", {
+				text: "Log weighted sets to see estimated 1RM progress.",
+				cls: "pulse-workout-muted",
+			});
+		} else {
 			const canvas = chartContainer.createEl("canvas");
 			canvas.width = 400;
 			canvas.height = 200;

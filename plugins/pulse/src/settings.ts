@@ -24,6 +24,10 @@ export interface PulseSettings extends WorkoutSettings {
 	statsNoteBodyTemplatePath: string;
 	mapTileStyle: "osm" | "carto-dark" | "maptiler-fiord";
 	maptilerApiKey: string;
+	/** ISO timestamp of last successful FITINDEX/RENPHO body comp CSV import */
+	lastBodyCompImportAt: string;
+	/** ISO timestamp of last successful workout import (JSON or Workouts CSV) */
+	lastWorkoutImportAt: string;
 }
 
 export const DEFAULT_SETTINGS: PulseSettings = {
@@ -54,6 +58,8 @@ export const DEFAULT_SETTINGS: PulseSettings = {
 	statsNoteBodyTemplatePath: "",
 	mapTileStyle: "maptiler-fiord",
 	maptilerApiKey: "",
+	lastBodyCompImportAt: "",
+	lastWorkoutImportAt: "",
 };
 
 export class PulseSettingTab extends PluginSettingTab {
@@ -132,7 +138,7 @@ export class PulseSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Folder to scan")
-			.setDesc("Folder path to scan for JSON, body comp CSV, and Workouts CSV. Leave empty to scan the whole vault.")
+			.setDesc("Folder to scan for Health zips (auto-extracted), JSON export, HealthAutoExport-*.csv (daily metrics), Workouts-*.csv, and FITINDEX/RENPHO. Leave empty for whole vault.")
 			.addText(text => text
 				.setPlaceholder("e.g. Health Imports")
 				.setValue(this.plugin.settings.scanFolderPath ?? "")

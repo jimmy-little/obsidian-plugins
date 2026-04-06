@@ -1401,7 +1401,156 @@
 	font-size: 14px;
 }
 
-/* --- History --- */
+/* --- History (calendar + log) --- */
+.pulse-workout-history-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+	min-height: 0;
+}
+
+.pulse-cal {
+	display: flex;
+	flex-direction: column;
+	gap: 0.65rem;
+}
+
+.pulse-cal__head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+}
+
+.pulse-cal__title {
+	font-size: var(--font-ui-medium, 1rem);
+	font-weight: 700;
+	color: var(--text-normal);
+	flex: 1;
+	text-align: center;
+}
+
+.pulse-cal__nav-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.35rem;
+	border-radius: var(--radius-s);
+	color: var(--text-muted);
+}
+
+.pulse-cal__nav-btn:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.pulse-cal__grid {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.pulse-cal__weekdays {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	gap: 2px;
+	font-size: var(--font-ui-smaller, 0.75rem);
+	font-weight: 600;
+	color: var(--text-muted);
+	text-align: center;
+}
+
+.pulse-cal__weekday {
+	padding: 0.25rem 0;
+}
+
+.pulse-cal__cells {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	gap: 2px;
+}
+
+.pulse-cal__cell {
+	min-height: 4.5rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	padding: 0.3rem 0.35rem 0.4rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	min-width: 0;
+}
+
+.pulse-cal__cell--empty {
+	border: none;
+	background: transparent;
+	min-height: 0;
+	padding: 0;
+}
+
+.pulse-cal__day-num {
+	font-size: var(--font-ui-smaller, 0.75rem);
+	font-weight: 600;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.pulse-cal__marks {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	flex: 1;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.pulse-cal__marks--empty {
+	min-height: 0;
+}
+
+.pulse-cal__chip {
+	font-size: 0.68rem;
+	line-height: 1.2;
+	padding: 0.2rem 0.35rem;
+	border-radius: 3px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: default;
+}
+
+.pulse-cal__chip--done {
+	background: color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+	color: var(--text-normal);
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.pulse-cal__chip--done:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 40%, transparent);
+}
+
+.pulse-cal__chip--planned {
+	border: 1px dashed color-mix(in srgb, var(--text-muted) 55%, var(--background-primary));
+	background: transparent;
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.pulse-cal__hint {
+	font-size: var(--font-ui-smaller, 0.75rem);
+	line-height: 1.35;
+}
+
+.pulse-workout-history-log-title {
+	margin: 0 0 0.35rem 0;
+	font-size: var(--font-ui-small, 0.875rem);
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
 .pulse-workout-history {
 	display: flex;
 	flex-direction: column;
@@ -1609,49 +1758,11 @@
 	font-size: 16px;
 }
 
-/* --- Heatmap --- */
-.pulse-workout-heatmap {
-	display: flex;
-	gap: 2px;
+/* --- Heatmap (suite-heatmap-wrap: month row + weekday column; base rules in heatmap.css) --- */
+.pulse-workout-stats-heatmap.suite-heatmap-wrap,
+.pulse-log-activity-heatmap.suite-heatmap-wrap {
+	max-width: 100%;
 	overflow-x: auto;
-}
-
-.pulse-workout-heatmap-labels {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	flex-shrink: 0;
-}
-
-.pulse-workout-heatmap-label {
-	width: 24px;
-	height: 12px;
-	font-size: 9px;
-	color: var(--text-muted);
-	display: flex;
-	align-items: center;
-}
-
-.pulse-workout-heatmap-grid {
-	display: flex;
-	gap: 2px;
-}
-
-.pulse-workout-heatmap-col {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
-
-.pulse-workout-heatmap-cell {
-	width: 12px;
-	height: 12px;
-	border-radius: 2px;
-	background: var(--background-modifier-border);
-}
-
-.pulse-workout-heatmap-active {
-	background: var(--interactive-accent);
 }
 
 /* --- PR Table --- */
@@ -1881,6 +1992,12 @@
 	width: 100%;
 	height: auto;
 	max-height: 160px;
+}
+
+.pulse-log-empty-chart-msg {
+	fill: var(--text-muted);
+	font-size: 11px;
+	font-family: var(--font-interface);
 }
 
 .pulse-log-grid-line {
@@ -2627,4 +2744,170 @@
 /* Glyph button in header (re-used from glyph bar) */
 .pulse-pm__main-head .pulse-pm__glyph-btn {
 	flex-shrink: 0;
+}
+
+/* ============================================================
+   Body composition dashboard
+   ============================================================ */
+
+.pulse-body {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	min-height: 0;
+}
+
+.pulse-body__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem 1rem;
+}
+
+.pulse-body__title {
+	margin: 0;
+}
+
+.pulse-body__segmented {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	padding: 3px;
+	gap: 2px;
+	border-radius: var(--radius-m, 8px);
+	background: var(--background-modifier-form-field);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.pulse-body__segment {
+	margin: 0;
+	padding: 0.35rem 0.65rem;
+	font-size: var(--font-ui-smaller, 0.8rem);
+	font-weight: 500;
+	color: var(--text-muted);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-s, 4px);
+	cursor: pointer;
+	line-height: 1.2;
+}
+
+.pulse-body__segment:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.pulse-body__segment--active {
+	color: var(--text-normal);
+	background: var(--background-primary);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.pulse-body__cards {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.pulse-body-card {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: stretch;
+	gap: 1rem 1.25rem;
+	padding: 1rem 1.1rem;
+	border-radius: var(--radius-m, 8px);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	min-width: 0;
+}
+
+.pulse-body-card__meta {
+	flex: 0 1 220px;
+	min-width: 180px;
+	display: flex;
+	flex-direction: column;
+	gap: 0.65rem;
+}
+
+.pulse-body-card__label {
+	font-size: var(--font-ui-small, 0.875rem);
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+.pulse-body-card__stats {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.45rem 1rem;
+	font-size: var(--font-ui-smaller, 0.78rem);
+}
+
+.pulse-body-card__stat {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	min-width: 0;
+}
+
+.pulse-body-card__stat-key {
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	font-size: 0.72rem;
+}
+
+.pulse-body-card__stat-val {
+	color: var(--text-normal);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.pulse-body-card__chart {
+	flex: 1 1 200px;
+	min-width: 160px;
+	min-height: 120px;
+	position: relative;
+}
+
+.pulse-body-card__chart canvas {
+	display: block;
+	width: 100% !important;
+	height: 140px !important;
+}
+
+.pulse-body-card__chart-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 120px;
+	text-align: center;
+	padding: 0.5rem;
+}
+
+.pulse-body__footer {
+	margin-top: 0.5rem;
+	padding-top: 1rem;
+	border-top: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-smaller, 0.78rem);
+	color: var(--text-muted);
+}
+
+.pulse-body__footer-date {
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.pulse-stats__footer {
+	margin-top: 1.25rem;
+	padding-top: 1rem;
+	border-top: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-smaller, 0.78rem);
+	color: var(--text-muted);
+}
+
+.pulse-stats__footer-date {
+	color: var(--text-normal);
+	font-weight: 500;
 }

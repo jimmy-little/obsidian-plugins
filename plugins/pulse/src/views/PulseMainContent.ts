@@ -1,10 +1,11 @@
-import { Notice, setIcon } from "obsidian";
+import { Component, MarkdownRenderer, Notice, setIcon } from "obsidian";
 import type PulsePlugin from "../main";
 import type { PulseView, PulseViewMode } from "./PulseView";
 import { TodayTab } from "../workout/TodayTab";
 import { HistoryTab } from "../workout/HistoryTab";
 import { ExercisesTab } from "../workout/ExercisesTab";
 import { StatsTab } from "../workout/StatsTab";
+import { BodyCompTab } from "../workout/BodyCompTab";
 import { WorkoutBuilder } from "./WorkoutBuilder";
 import { ProgramBuilder } from "./ProgramBuilder";
 import type { ExerciseNote, ExerciseLogEntry, SetEntry, SessionNote, ProgramNote, SessionExercise } from "../workout/types";
@@ -12,7 +13,7 @@ import { isStandaloneSession } from "../workout/types";
 import { renderProgressChart } from "../workout/charts";
 import {
 	estimate1RM, daysAgo, relativeDate, bestSet, totalVolumeForEntry,
-	buildProgressSvg, buildActivityStrip,
+	buildProgressSvg, buildActivityHeatmap,
 } from "../workout/renderers";
 
 export class PulseMainContent {
@@ -23,6 +24,7 @@ export class PulseMainContent {
 	private todayTab: TodayTab | null = null;
 	private historyTab: HistoryTab | null = null;
 	private statsTab: StatsTab | null = null;
+	private bodyCompTab: BodyCompTab | null = null;
 	private chart: { destroy(): void } | null = null;
 
 	constructor(plugin: PulsePlugin, view: PulseView) {
@@ -43,6 +45,9 @@ export class PulseMainContent {
 				break;
 			case "stats":
 				await this.renderStats(container);
+				break;
+			case "body":
+				await this.renderBody(container);
 				break;
 			case "exercise":
 				await this.renderExercise(container);
@@ -104,6 +109,14 @@ export class PulseMainContent {
 		const content = container.createDiv({ cls: "pulse-pm__main-body" });
 		this.statsTab = new StatsTab(this.plugin);
 		await this.statsTab.render(content);
+	}
+
+	// ── Body composition ──
+
+	private async renderBody(container: HTMLElement): Promise<void> {
+		const content = container.createDiv({ cls: "pulse-pm__main-body" });
+		this.bodyCompTab = new BodyCompTab(this.plugin);
+		await this.bodyCompTab.render(content);
 	}
 
 	// ── Exercise detail ──
@@ -195,20 +208,17 @@ export class PulseMainContent {
 			volCard.createDiv({ text: unit, cls: "pulse-log-card-sub" });
 		}
 
-		// ── E1RM progress chart (SVG) ──
+		// ── E1RM progress chart (SVG) — always shown; empty state inside SVG when no weighted sets
 		const weightEntries = entries.filter(e => e.sets.some(s => s.weight != null && s.reps != null && s.weight! > 0));
-		if (weightEntries.length >= 2) {
-			const chartSection = body.createDiv({ cls: "pulse-pm__section" });
-			chartSection.createEl("h3", { text: "Estimated 1RM Progress", cls: "pulse-pm__section-title" });
-			const svg = buildProgressSvg(weightEntries, 600, 160);
-			chartSection.appendChild(svg);
-		}
+		const chartSection = body.createDiv({ cls: "pulse-pm__section" });
+		chartSection.createEl("h3", { text: "Estimated 1RM Progress", cls: "pulse-pm__section-title" });
+		chartSection.appendChild(buildProgressSvg(weightEntries, 600, 160));
 
-		// ── Activity heatmap ──
+		// ── Activity heatmap (same grid layout as Stats / Orbit-style heatmaps) ──
 		if (entries.length > 0) {
 			const activitySection = body.createDiv({ cls: "pulse-pm__section" });
 			activitySection.createEl("h3", { text: "Activity", cls: "pulse-pm__section-title" });
-			activitySection.appendChild(buildActivityStrip(entries));
+			activitySection.appendChild(buildActivityHeatmap(entries));
 		}
 
 		// ── Session history with expandable sets ──
@@ -405,16 +415,16 @@ export class PulseMainContent {
 			return;
 		}
 
+		const mdComp = new Component();
+		this.plugin.addChild(mdComp);
+
 		for (const exercise of session.session.exercises) {
 			const exSection = body.createDiv({ cls: "pulse-pm__exercise-block" });
-			const name = exercise.exercisePath.split("/").pop()?.replace(".md", "") ?? exercise.exercisePath;
 
 			const exHeader = exSection.createDiv({ cls: "pulse-pm__exercise-block-head" });
-			exHeader.createEl("h4", { text: name });
-			exHeader.addEventListener("click", () => {
-				this.view.navigate("exercise", exercise.exercisePath);
-			});
-			exHeader.style.cursor = "pointer";
+			const titleEl = exHeader.createEl("h4", { cls: "pulse-pm__exercise-block-title" });
+			const wikiPath = dm.resolveExerciseVaultPath(exercise.exercisePath).replace(/\.md$/i, "");
+			await MarkdownRenderer.render(this.plugin.app, `[[${wikiPath}]]`, titleEl, path, mdComp);
 
 			const table = exSection.createEl("table", { cls: "pulse-pm__table" });
 			const thead = table.createEl("thead");
@@ -573,7 +583,7 @@ export class PulseMainContent {
 				const title = exHeader.createEl("h4", { text: name });
 				title.style.cursor = "pointer";
 				title.addEventListener("click", () => {
-					this.view.navigate("exercise", exercise.exercisePath);
+					this.view.navigate("exercise", dm.resolveExerciseVaultPath(exercise.exercisePath));
 				});
 
 				const rmEx = exHeader.createEl("button", {
@@ -681,6 +691,7 @@ export class PulseMainContent {
 					notes,
 				},
 				session: { exercises },
+				...(session.bodySuffix ? { bodySuffix: session.bodySuffix } : {}),
 			};
 
 			await dm.saveSession(path, updated);
@@ -743,7 +754,8 @@ export class PulseMainContent {
 				const nameCell = row.createEl("td");
 				const exName = ex.exercisePath.split("/").pop()?.replace(".md", "") ?? ex.exercisePath;
 				const link = nameCell.createEl("span", { text: exName, cls: "pulse-pm__link" });
-				link.addEventListener("click", () => this.view.navigate("exercise", ex.exercisePath));
+				link.addEventListener("click", () =>
+					this.view.navigate("exercise", dm.resolveExerciseVaultPath(ex.exercisePath)));
 
 				row.createEl("td", { text: String(ex.sets) });
 				row.createEl("td", {
@@ -809,6 +821,8 @@ export class PulseMainContent {
 		this.todayTab?.destroy();
 		this.historyTab?.destroy();
 		this.statsTab?.destroy();
+		this.bodyCompTab?.destroy();
+		this.bodyCompTab = null;
 		if (this.chart) { this.chart.destroy(); this.chart = null; }
 		this.container = null;
 	}

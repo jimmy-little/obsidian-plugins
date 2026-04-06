@@ -4,9 +4,10 @@ import type { PulseSettings } from "../settings";
 import {
 	parseAutoExportJson, isAutoExportJson, parseFITINDEXCsv,
 	isFITINDEXCsvFileName, isRENPHOCsvFileName, isHealthAutoExportWorkoutsCsv,
+	isHealthAutoExportDailyCsv, parseHealthAutoExportDailyCsv,
 	parseHealthAutoExportWorkoutsCsv, parseFrontmatter, stringifyFrontmatter,
 	frontmatterWithoutBlanks, getStatsNotePath, workoutIdFromWorkout,
-	parseCsvLine, toCamelCase,
+	parseCsvLine, toCamelCase, parseHeartRateExportFilename,
 } from "./parsers";
 import {
 	AUTOEXPORT_METRIC_TO_FRONTMATTER,
@@ -14,12 +15,66 @@ import {
 	ACTIVITY_ICONS_FOLDER,
 	KG_TO_LB,
 } from "./types";
-import type { RoutePoint } from "./types";
+import type { ImportedWorkoutData, RoutePoint } from "./types";
+import type { HealthAutoExportDailyRow } from "./parsers";
+import type { WorkoutDataManager } from "../workout/WorkoutDataManager";
 
 const DEFAULT_STATS_PATH_TEMPLATE = "60 Logs/{year}/Stats/{month}/{date}.md";
 
 export class ImportManager {
-	constructor(private vault: Vault, private app: import("obsidian").App, private settings: PulseSettings) {}
+	/** Maps `workoutId` frontmatter → note file (rebuilt when null). */
+	private workoutIdIndex: Map<string, TFile> | null = null;
+	/** Workout IDs already written in this import run (skips duplicate CSV rows). */
+	private currentImportWorkoutIds = new Set<string>();
+
+	constructor(
+		private vault: Vault,
+		private app: import("obsidian").App,
+		private settings: PulseSettings,
+		private persistSettings: (() => Promise<void>) | undefined,
+		private workoutDataManager: WorkoutDataManager
+	) {}
+
+	private clearImportCaches(): void {
+		this.workoutIdIndex = null;
+		this.currentImportWorkoutIds.clear();
+	}
+
+	private async ensureWorkoutIdIndex(): Promise<void> {
+		if (this.workoutIdIndex) return;
+		const map = new Map<string, TFile>();
+		for (const f of this.vault.getMarkdownFiles()) {
+			try {
+				const c = await this.vault.read(f);
+				const { frontmatter } = parseFrontmatter(c);
+				const wid = frontmatter.workoutId;
+				if (wid != null && String(wid).trim() !== "") {
+					map.set(String(wid), f);
+				}
+			} catch {
+				/* skip */
+			}
+		}
+		this.workoutIdIndex = map;
+	}
+
+	private async saveImportMeta(): Promise<void> {
+		try {
+			await this.persistSettings?.();
+		} catch {
+			/* ignore */
+		}
+	}
+
+	private markLastBodyCompImport(): void {
+		this.settings.lastBodyCompImportAt = new Date().toISOString();
+		void this.saveImportMeta();
+	}
+
+	private markLastWorkoutImport(): void {
+		this.settings.lastWorkoutImportAt = new Date().toISOString();
+		void this.saveImportMeta();
+	}
 
 	async expandZipToVault(zipFile: TFile, baseFolder: string): Promise<void> {
 		const zipBasename = zipFile.basename;
@@ -69,26 +124,85 @@ export class ImportManager {
 				new Notice(`Failed to extract ${zipFile.name}: ${err}`);
 			}
 		}
+		this.clearImportCaches();
 		const toProcess = allFiles.filter((f) => {
 			if (!inScope(f)) return false;
 			const ext = (f.extension || "").toLowerCase();
 			if (ext === "json") return true;
 			if (ext === "csv" && isFITINDEXCsvFileName(f.name)) return true;
 			if (ext === "csv" && isRENPHOCsvFileName(f.name)) return true;
+			if (ext === "csv" && isHealthAutoExportDailyCsv(f.name)) return true;
 			if (ext === "csv" && isHealthAutoExportWorkoutsCsv(f.name)) return true;
 			return false;
 		});
+		console.info("[Pulse] Import scan:", {
+			scanFolder: folder || "(whole vault)",
+			filesQueued: toProcess.length,
+			paths: toProcess.map((f) => f.path),
+		});
 		if (toProcess.length === 0) {
-			new Notice(folder ? `No importable files found in ${folder}` : "No importable files found in vault");
+			try {
+				const orphan = await this.processOrphanHeartRateCsvs(folder);
+				if (orphan.success > 0) {
+					new Notice(
+						`Pulse: imported ${orphan.success} workout(s) from Heart Rate CSVs${orphan.errors > 0 ? ` (${orphan.errors} error(s))` : ""}.`
+					);
+					return;
+				}
+			} catch (err) {
+				new Notice(`Import failed: ${err}`);
+				return;
+			}
+			new Notice(
+				folder
+					? `Pulse: nothing to import under ${folder}. Looks for JSON, HealthAutoExport-*.csv (daily metrics), Workouts-*.csv, FITINDEX/RENPHO.`
+					: "Pulse: nothing to import. Looks for JSON, HealthAutoExport-*.csv, Workouts-*.csv, FITINDEX/RENPHO."
+			);
 			return;
 		}
-		new Notice(`Scanning ${toProcess.length} file(s)...`);
+		new Notice(`Pulse: scanning ${toProcess.length} file(s)...`);
 		try {
 			const result = await this.processVaultFiles(toProcess);
-			new Notice(`Imported ${result.success} item(s)${result.errors > 0 ? ` (${result.errors} error(s))` : ""}`);
+			const orphan = await this.processOrphanHeartRateCsvs(folder);
+			const total = result.success + orphan.success;
+			const errTotal = result.errors + orphan.errors;
+			new Notice(`Imported ${total} item(s)${errTotal > 0 ? ` (${errTotal} error(s))` : ""}`);
 		} catch (err) {
 			new Notice(`Import failed: ${err}`);
 		}
+	}
+
+	/**
+	 * When the summary Workouts*.csv omits rows, derive workouts from per-activity
+	 * `{Name}-Heart Rate-{YYYYMMDD}_{HHMMSS}*.csv` files in the scan folder.
+	 */
+	async processOrphanHeartRateCsvs(scanFolder: string): Promise<{ success: number; errors: number }> {
+		await this.ensureWorkoutIdIndex();
+		const inScope = (f: TFile) => !scanFolder || f.path === scanFolder || f.path.startsWith(scanFolder + "/");
+		let success = 0;
+		let errors = 0;
+		for (const f of this.vault.getFiles()) {
+			if ((f.extension || "").toLowerCase() !== "csv") continue;
+			if (!inScope(f)) continue;
+			const parsed = parseHeartRateExportFilename(f.name);
+			if (!parsed) continue;
+			const workout: Record<string, unknown> = {
+				name: parsed.name,
+				start: parsed.start,
+				duration: 0,
+			};
+			const wid = workoutIdFromWorkout(workout as { name: string; start: string });
+			if (this.currentImportWorkoutIds.has(wid)) continue;
+			if (this.workoutIdIndex?.has(wid)) continue;
+			try {
+				await this.processWorkout(workout, undefined, f.path);
+				success++;
+			} catch (e) {
+				console.error(`Pulse: Heart Rate CSV workout import ${f.path}:`, e);
+				errors++;
+			}
+		}
+		return { success, errors };
 	}
 
 	async processVaultFiles(files: TFile[]): Promise<{ success: number; errors: number }> {
@@ -119,13 +233,21 @@ export class ImportManager {
 					if (rows.length > 0) {
 						const n = await this.processFITINDEXToStatsNotes(rows);
 						success += n;
+						if (n > 0) this.markLastBodyCompImport();
+						processed = true;
+					}
+				} else if (ext === "csv" && isHealthAutoExportDailyCsv(file.name)) {
+					const rows = parseHealthAutoExportDailyCsv(text);
+					if (rows.length > 0) {
+						const n = await this.processHealthAutoExportDailyToStatsNotes(rows);
+						success += n;
 						processed = true;
 					}
 				} else if (ext === "csv" && isHealthAutoExportWorkoutsCsv(file.name)) {
 					const workouts = parseHealthAutoExportWorkoutsCsv(text);
 					for (const workout of workouts) {
 						try {
-							await this.processWorkout(workout);
+							await this.processWorkout(workout, undefined, file.path);
 							success++;
 						} catch (error) {
 							console.error("Error processing workout from Workouts CSV:", error);
@@ -157,7 +279,7 @@ export class ImportManager {
 		for (const workout of workouts) {
 			try {
 				const isFirst = workouts.indexOf(workout) === 0;
-				await this.processWorkout(workout, isFirst ? imageData : undefined);
+				await this.processWorkout(workout, isFirst ? imageData : undefined, "HealthAutoExport.json");
 				success++;
 			} catch (error) {
 				console.error("Error processing workout:", error);
@@ -340,6 +462,29 @@ export class ImportManager {
 		return count;
 	}
 
+	/** Wide `HealthAutoExport-*.csv` daily rows → stats notes (same keys as JSON metrics). */
+	async processHealthAutoExportDailyToStatsNotes(rows: HealthAutoExportDailyRow[]): Promise<number> {
+		let count = 0;
+		for (const row of rows) {
+			try {
+				if (!row.date) continue;
+				const [y, m, d] = row.date.split("-").map(Number);
+				const date = new Date(y, m - 1, d);
+				const updates: Record<string, string | number> = {};
+				for (const [k, v] of Object.entries(row.metrics)) {
+					updates[k] = Math.round(v * 100) / 100;
+				}
+				if (Object.keys(updates).length === 0) continue;
+				const { path } = await this.getOrCreateStatsNote(date);
+				await this.mergeAndWriteStatsNote(path, updates, "");
+				count++;
+			} catch (err) {
+				console.error(`Error writing HealthAutoExport daily stats for ${row.date}:`, err);
+			}
+		}
+		return count;
+	}
+
 	async processSleepToStatsNotes(sleepAnalysis: Record<string, unknown>[]): Promise<number> {
 		let count = 0;
 		for (const s of sleepAnalysis) {
@@ -414,45 +559,115 @@ export class ImportManager {
 		return count;
 	}
 
-	async processWorkout(workout: Record<string, unknown>, imageData?: string): Promise<string> {
+	private buildImportedWorkoutData(workout: Record<string, unknown>, sourcePath?: string): ImportedWorkoutData {
+		const startRaw = workout.start != null ? String(workout.start) : "";
+		const endRaw = workout.end != null ? String(workout.end) : "";
+		let durationSec =
+			typeof workout.duration === "number"
+				? workout.duration
+				: parseFloat(String(workout.duration ?? ""));
+		if (Number.isNaN(durationSec)) durationSec = 0;
+
+		const startDate = startRaw ? new Date(startRaw) : new Date();
+		let endDate = endRaw ? new Date(endRaw) : new Date(startDate.getTime() + Math.max(1, durationSec) * 1000);
+		if (isNaN(endDate.getTime())) {
+			endDate = new Date(startDate.getTime() + Math.max(1, durationSec) * 1000);
+		}
+
+		const hrAvg =
+			this.importNum(this.getNestedValue(workout, "heartRateAvg")) ??
+			this.importNum(workout.heartRateAvg as unknown);
+		const hrMax =
+			this.importNum(this.getNestedValue(workout, "heartRateMax")) ??
+			this.importNum(workout.heartRateMax as unknown);
+
+		return {
+			activityType: String(workout.name ?? "Unknown"),
+			startDate: startRaw || startDate.toISOString(),
+			endDate: endRaw || endDate.toISOString(),
+			duration: Math.round(durationSec),
+			hrAvg,
+			hrMax,
+			importedAt: new Date().toISOString(),
+			sourceFile: sourcePath ?? "",
+		};
+	}
+
+	private importNum(v: unknown): number | undefined {
+		if (typeof v === "number" && !Number.isNaN(v)) return v;
+		if (typeof v === "string" && v.trim() !== "") {
+			const n = parseFloat(v);
+			return Number.isNaN(n) ? undefined : n;
+		}
+		return undefined;
+	}
+
+	async processWorkout(workout: Record<string, unknown>, imageData?: string, sourcePath?: string): Promise<string> {
+		await this.ensureWorkoutIdIndex();
 		const workoutName = (workout.name as string) || "Unknown";
 		const template = this.settings.templates.find(
 			(t) => t.workoutType.toLowerCase() === workoutName.toLowerCase()
 		);
-		const templatePath = template?.templatePath || this.settings.defaultTemplatePath;
-		if (!templatePath) {
-			throw new Error(`No template found for workout type "${workoutName}" and no default template set`);
-		}
-		const templateFile = this.vault.getAbstractFileByPath(templatePath) as TFile;
-		if (!templateFile) {
-			throw new Error(`Template file not found: ${templatePath}`);
-		}
-		const templateContent = await this.vault.read(templateFile);
-		let workoutDate = workout.start ? new Date(workout.start as string) : new Date();
-		if (isNaN(workoutDate.getTime())) workoutDate = new Date();
-		const filePath = this.generateFilePath(workoutName, workoutDate);
-		const pathParts = filePath.split("/");
-		if (pathParts.length > 1) {
-			const folderPath = pathParts.slice(0, -1).join("/");
-			if (!this.vault.getAbstractFileByPath(folderPath)) {
-				await this.vault.createFolder(folderPath);
+		let templatePath = (template?.templatePath || this.settings.defaultTemplatePath || "").trim();
+		let templateContent = "";
+		if (templatePath) {
+			const templateFile = this.vault.getAbstractFileByPath(templatePath) as TFile;
+			if (templateFile) {
+				templateContent = await this.vault.read(templateFile);
+			} else {
+				console.warn(`Pulse: workout template missing at "${templatePath}", using empty body`);
+				templatePath = "";
 			}
 		}
-		const existingAtPath = this.vault.getAbstractFileByPath(filePath);
-		let finalFilePath: string;
-		if (existingAtPath && "content" in existingAtPath) {
-			finalFilePath = filePath;
+		const templatePathForYaml = templatePath || "pulse:import-without-template";
+		let workoutDate = workout.start ? new Date(workout.start as string) : new Date();
+		if (isNaN(workoutDate.getTime())) workoutDate = new Date();
+		const workoutId = workoutIdFromWorkout(workout as { name?: string; start?: string });
+
+		if (this.currentImportWorkoutIds.has(workoutId)) {
+			const existing = this.workoutIdIndex?.get(workoutId);
+			return existing?.path ?? "";
+		}
+
+		const filePath = this.generateFilePath(workoutName, workoutDate);
+		let finalFilePath = filePath;
+		let targetFile: TFile | null = this.workoutIdIndex?.get(workoutId) ?? null;
+
+		if (targetFile) {
+			finalFilePath = targetFile.path;
 		} else {
-			let counter = 1;
-			finalFilePath = filePath;
-			while (this.vault.getAbstractFileByPath(finalFilePath)) {
-				const parts2 = filePath.split("/");
-				const fileName = parts2[parts2.length - 1];
-				const folder = parts2.slice(0, -1).join("/");
-				const baseName = fileName.replace(".md", "");
-				const newFileName = `${baseName} (${counter}).md`;
-				finalFilePath = folder ? `${folder}/${newFileName}` : newFileName;
-				counter++;
+			const existingAtPath = this.vault.getAbstractFileByPath(filePath);
+			if (existingAtPath instanceof TFile) {
+				const content = await this.vault.read(existingAtPath);
+				const { frontmatter } = parseFrontmatter(content);
+				const exId = frontmatter.workoutId != null ? String(frontmatter.workoutId) : "";
+				if (!exId || exId === workoutId) {
+					targetFile = existingAtPath;
+					finalFilePath = filePath;
+				}
+			}
+			if (!targetFile) {
+				let counter = 1;
+				finalFilePath = filePath;
+				while (this.vault.getAbstractFileByPath(finalFilePath)) {
+					const parts2 = filePath.split("/");
+					const fileName = parts2[parts2.length - 1];
+					const folder = parts2.slice(0, -1).join("/");
+					const baseName = fileName.replace(".md", "");
+					const newFileName = `${baseName} (${counter}).md`;
+					finalFilePath = folder ? `${folder}/${newFileName}` : newFileName;
+					counter++;
+				}
+			}
+		}
+
+		if (!targetFile) {
+			const pathParts = finalFilePath.split("/");
+			if (pathParts.length > 1) {
+				const folderPath = pathParts.slice(0, -1).join("/");
+				if (!this.vault.getAbstractFileByPath(folderPath)) {
+					await this.vault.createFolder(folderPath);
+				}
 			}
 		}
 		const imageToSave = imageData ?? (await this.generateWorkoutBannerImage(workout));
@@ -482,10 +697,10 @@ export class ImportManager {
 		const month = (workoutDate.getMonth() + 1).toString().padStart(2, "0");
 		const day = workoutDate.getDate().toString().padStart(2, "0");
 		mappedData["date"] = `${year}-${month}-${day}`;
-		mappedData["workoutId"] = workoutIdFromWorkout(workout as { name?: string; start?: string });
-		const yamlFrontmatter = this.generateYAMLFrontmatter(mappedData, templatePath, relativeImagePath, workoutName);
+		mappedData["workoutId"] = workoutId;
+		const yamlFrontmatter = this.generateYAMLFrontmatter(mappedData, templatePathForYaml, relativeImagePath, workoutName);
 		let bodyContent = templateContent;
-		const workoutId = mappedData["workoutId"] as string;
+		let heartRateChartBlock = "";
 		const workoutStartKey = this.getWorkoutStartKey(workout as { start?: string });
 		if (workoutStartKey) {
 			const hrFile = this.getHeartRateCsvFile(workoutName, workoutStartKey);
@@ -494,7 +709,10 @@ export class ImportManager {
 					const hrCsv = await this.vault.read(hrFile);
 					const { labels, data } = this.parseHeartRateCsv(hrCsv);
 					const chartBlock = this.buildChartsHeartRateBlock(labels, data);
-					if (chartBlock) bodyContent = (templateContent.trim() ? templateContent + "\n\n" : "") + chartBlock;
+					if (chartBlock) {
+						heartRateChartBlock = chartBlock;
+						bodyContent = (templateContent.trim() ? templateContent + "\n\n" : "") + chartBlock;
+					}
 				} catch (e) {
 					console.warn("Failed to read/parse Heart Rate CSV:", e);
 				}
@@ -524,11 +742,39 @@ export class ImportManager {
 			}
 		}
 		const noteContent = `---\n${yamlFrontmatter}---\n\n${bodyContent}`;
-		if (existingAtPath && "content" in existingAtPath) {
-			await this.vault.modify(existingAtPath as unknown as TFile, noteContent);
+		if (targetFile) {
+			await this.vault.modify(targetFile, noteContent);
 		} else {
 			await this.vault.create(finalFilePath, noteContent);
+			const created = this.vault.getAbstractFileByPath(finalFilePath);
+			if (created instanceof TFile) targetFile = created;
 		}
+		if (targetFile) {
+			this.workoutIdIndex?.set(workoutId, targetFile);
+		}
+		this.currentImportWorkoutIds.add(workoutId);
+
+		try {
+			const importData = this.buildImportedWorkoutData(workout, sourcePath);
+			const importStart = new Date(importData.startDate);
+			const importEnd = new Date(importData.endDate);
+			const match = await this.workoutDataManager.findBestMatchingSessionForImport(
+				importStart,
+				importEnd,
+				importData.activityType
+			);
+			if (match) {
+				await this.workoutDataManager.mergeImportData(
+					match.file.path,
+					importData,
+					heartRateChartBlock || undefined
+				);
+			}
+		} catch (e) {
+			console.warn("Pulse: could not merge Health import into session:", e);
+		}
+
+		this.markLastWorkoutImport();
 		return finalFilePath;
 	}
 

@@ -25,6 +25,13 @@ function splitDurationSeconds(sec: number | undefined): { min: string; s: string
 	return { min: String(m), s: String(s) };
 }
 
+/** Wall-clock local time as `YYYY-MM-DDTHH:mm:ss` (no `Z`) so it matches Health import / local display. */
+function formatSessionStartTimeLocal(ms: number): string {
+	const d = new Date(ms);
+	const pad = (n: number) => n.toString().padStart(2, "0");
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function parseMinSecToDuration(minStr: string, secStr: string): number | undefined {
 	const m = parseInt(minStr, 10);
 	const s = parseInt(secStr, 10);
@@ -642,7 +649,7 @@ export class TodayTab {
 			// Update the existing saved session
 			const session = await dm.getSession(this.state.sessionPath);
 			if (session) {
-				session.frontmatter.startTime = new Date(this.state.startTime).toISOString();
+				session.frontmatter.startTime = formatSessionStartTimeLocal(this.state.startTime);
 				if (this.state.bodyweight) session.frontmatter.bodyweight = this.state.bodyweight;
 				session.session.exercises = sessionExercises;
 				// No duration = not finished
@@ -655,7 +662,7 @@ export class TodayTab {
 			const file = await dm.createSession(programDay, this.state.programName);
 			const session = await dm.getSession(file.path);
 			if (session) {
-				session.frontmatter.startTime = new Date(this.state.startTime).toISOString();
+				session.frontmatter.startTime = formatSessionStartTimeLocal(this.state.startTime);
 				if (this.state.bodyweight) session.frontmatter.bodyweight = this.state.bodyweight;
 				session.session.exercises = sessionExercises;
 				await dm.saveSessionDraft(file.path, session);
@@ -701,7 +708,7 @@ export class TodayTab {
 			const session = await dm.getSession(this.state.sessionPath);
 			if (session) {
 				session.frontmatter.duration = elapsed;
-				session.frontmatter.startTime = new Date(this.state.startTime).toISOString();
+				session.frontmatter.startTime = formatSessionStartTimeLocal(this.state.startTime);
 				if (this.state.bodyweight) session.frontmatter.bodyweight = this.state.bodyweight;
 				session.session.exercises = sessionExercises;
 				await dm.saveSession(this.state.sessionPath, session);
@@ -715,7 +722,7 @@ export class TodayTab {
 			const session = await dm.getSession(file.path);
 			if (session) {
 				session.frontmatter.duration = elapsed;
-				session.frontmatter.startTime = new Date(this.state.startTime).toISOString();
+				session.frontmatter.startTime = formatSessionStartTimeLocal(this.state.startTime);
 				if (this.state.bodyweight) session.frontmatter.bodyweight = this.state.bodyweight;
 				session.session.exercises = sessionExercises;
 				await dm.saveSession(file.path, session);

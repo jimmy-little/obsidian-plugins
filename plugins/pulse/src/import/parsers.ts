@@ -143,8 +143,94 @@ export function isRENPHOCsvFileName(fileName: string): boolean {
 	return fileName.toUpperCase().includes("RENPHO") && fileName.toLowerCase().endsWith(".csv");
 }
 
+/** Workouts summary CSV from Health Auto Export zip (hyphen or underscore prefix, any casing). */
 export function isHealthAutoExportWorkoutsCsv(fileName: string): boolean {
-	return fileName.startsWith("Workouts-") && fileName.toLowerCase().endsWith(".csv");
+	const n = fileName.toLowerCase();
+	return n.endsWith(".csv") && (n.startsWith("workouts-") || n.startsWith("workouts_"));
+}
+
+/**
+ * Wide daily summary CSV from Health Auto Export (zip), e.g. `HealthAutoExport-2026-01-01-2026-02-01.csv`
+ * or `HealthAutoExport_2026-01-01-2026-02-01.csv` (newer exports often use underscores).
+ */
+export function isHealthAutoExportDailyCsv(fileName: string): boolean {
+	const n = fileName.toLowerCase();
+	return n.endsWith(".csv") && (n.startsWith("healthautoexport-") || n.startsWith("healthautoexport_"));
+}
+
+export interface HealthAutoExportDailyRow {
+	date: string;
+	metrics: Record<string, number>;
+}
+
+function parseHealthAutoExportDailyDate(raw: string): string {
+	const s = (raw ?? "").trim();
+	const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+	return iso ? iso[1]! : "";
+}
+
+/**
+ * Map Health Auto Export daily CSV column titles to stats-note YAML keys (same as JSON metric import).
+ * Returns null for the date column and unknown columns.
+ */
+export function mapHealthAutoExportDailyHeaderToKey(header: string): string | null {
+	const h = header.trim().toLowerCase();
+	if (h === "date/time" || h.startsWith("date/time")) return null;
+
+	if (h.includes("step count")) return "steps";
+	if (h.includes("active energy") && h.includes("kcal")) return "activeCalories";
+	if (h.includes("apple exercise time")) return "exerciseMinutes";
+	if (h.includes("walking + running distance")) return "distance";
+	if (h.includes("flights climbed")) return "flights";
+	if (h.includes("vo2 max")) return "vo2Max";
+	if (h.includes("blood oxygen")) return "bloodOxygen";
+	if (h === "weight (lb)" || (h.includes("weight") && h.includes("lb"))) return "weight";
+	if (h.includes("body mass index")) return "bmi";
+	if (h.includes("body fat percentage")) return "bfp";
+	if (h.includes("lean body mass")) return "lbm";
+	if (h.includes("apple sleeping wrist temperature")) return "wristTemp";
+	if (h.includes("heart rate variability")) return "hrv";
+	if (h.includes("resting heart rate")) return "restingHr";
+	if (h.includes("respiratory rate")) return "respiratoryRate";
+	if (h.includes("heart rate") && h.includes("[avg]")) return "hr";
+	if (h.includes("heart rate") && h.includes("[min]")) return "hrMin";
+	if (h.includes("heart rate") && h.includes("[max]")) return "hrMax";
+	if (h.includes("mindful minutes")) return "mindfulMinutes";
+	if (h.includes("sleep analysis") && h.includes("asleep")) return "timeAsleep";
+	if (h.includes("sleep analysis") && h.includes("[deep]")) return "deepSleep";
+	if (h.includes("sleep analysis") && h.includes("[core]")) return "sleepCore";
+	if (h.includes("sleep analysis") && h.includes("[rem]")) return "remSleep";
+	if (h.includes("sleep analysis") && h.includes("awake")) return "sleepAwake";
+	if (h.includes("time in daylight")) return "daylightMinutes";
+
+	return null;
+}
+
+export function parseHealthAutoExportDailyCsv(csvText: string): HealthAutoExportDailyRow[] {
+	const lines = csvText.trim().split(/\r?\n/).filter((l) => l.trim());
+	if (lines.length < 2) return [];
+	const headers = parseCsvLine(lines[0]!.replace(/^\uFEFF/, "")).map((x) => x.trim());
+	const colKeys = headers.map((h) => mapHealthAutoExportDailyHeaderToKey(h));
+	const rows: HealthAutoExportDailyRow[] = [];
+
+	for (let i = 1; i < lines.length; i++) {
+		const values = parseCsvLine(lines[i]!);
+		if (values.length === 0) continue;
+		const dateStr = parseHealthAutoExportDailyDate(values[0] ?? "");
+		if (!dateStr) continue;
+		const metrics: Record<string, number> = {};
+		for (let c = 1; c < headers.length && c < values.length; c++) {
+			const key = colKeys[c];
+			if (!key) continue;
+			const n = parseNum(values[c] ?? "");
+			if (n === undefined) continue;
+			metrics[key] = n;
+		}
+		if (Object.keys(metrics).length > 0) {
+			rows.push({ date: dateStr, metrics });
+		}
+	}
+	return rows;
 }
 
 function parseDurationToSeconds(s: string): number {
@@ -157,13 +243,23 @@ function parseDurationToSeconds(s: string): number {
 export function parseHealthAutoExportWorkoutsCsv(csvText: string): Record<string, unknown>[] {
 	const lines = csvText.trim().split(/\r?\n/).filter((l) => l.trim());
 	if (lines.length < 2) return [];
-	const headerLine = lines[0];
+	const headerLine = lines[0].replace(/^\uFEFF/, "");
 	const headers = parseCsvLine(headerLine).map((h) => h.trim().toLowerCase());
 	const col = (name: string) => headers.findIndex((h) => h.includes(name.toLowerCase()));
-	const idxType = col("workout type") >= 0 ? col("workout type") : 0;
-	const idxStart = col("start") >= 0 ? col("start") : 1;
-	const idxEnd = col("end") >= 0 ? col("end") : 2;
-	const idxDuration = col("duration") >= 0 ? col("duration") : 3;
+	let idxType = col("workout type");
+	if (idxType < 0) {
+		const byActivity = headers.findIndex((h) => h === "activity" || h === "type");
+		idxType = byActivity >= 0 ? byActivity : 0;
+	}
+	let idxStart = col("start");
+	if (idxStart < 0) idxStart = headers.findIndex((h) => h === "start" || h.startsWith("start "));
+	if (idxStart < 0) idxStart = 1;
+	let idxEnd = col("end");
+	if (idxEnd < 0) idxEnd = headers.findIndex((h) => h === "end" || h.startsWith("end "));
+	if (idxEnd < 0) idxEnd = 2;
+	let idxDuration = col("duration");
+	if (idxDuration < 0) idxDuration = headers.findIndex((h) => h.includes("duration"));
+	if (idxDuration < 0) idxDuration = 3;
 	const idxActiveEnergy = col("active energy") >= 0 ? col("active energy") : 4;
 	const idxRestingEnergy = col("resting energy") >= 0 ? col("resting energy") : -1;
 	const idxIntensity = col("intensity") >= 0 ? col("intensity") : -1;
@@ -274,6 +370,34 @@ export function getStatsNotePath(date: Date, pathTemplate: string): string {
 		"-" +
 		date.getDate().toString().padStart(2, "0");
 	return template.replace(/\{year\}/g, year).replace(/\{month\}/g, month).replace(/\{date\}/g, dateStr);
+}
+
+/**
+ * Parse Health Auto Export per-workout files: `{Activity}-Heart Rate-{YYYYMMDD}_{HHMMSS}....csv`
+ * Skips Heart Rate Recovery, Resting Energy, etc.
+ */
+export function parseHeartRateExportFilename(fileName: string): { name: string; start: string } | null {
+	const base = fileName.replace(/\.csv$/i, "");
+	const marker = "-Heart Rate-";
+	const idx = base.indexOf(marker);
+	if (idx < 0) return null;
+	const activity = base.slice(0, idx).trim();
+	let tail = base.slice(idx + marker.length);
+	if (!activity) return null;
+	if (tail.startsWith("Recovery")) return null;
+	const m = tail.match(/^(\d{8})_(\d{2})(\d{2})(\d{2})/);
+	if (!m) return null;
+	const y = parseInt(m[1]!.slice(0, 4), 10);
+	const mo = parseInt(m[1]!.slice(4, 6), 10);
+	const d = parseInt(m[1]!.slice(6, 8), 10);
+	const hh = parseInt(m[2]!, 10);
+	const min = parseInt(m[3]!, 10);
+	const ss = parseInt(m[4]!, 10);
+	const dt = new Date(y, mo - 1, d, hh, min, ss);
+	if (isNaN(dt.getTime())) return null;
+	const pad = (n: number) => n.toString().padStart(2, "0");
+	const start = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+	return { name: activity, start };
 }
 
 export function workoutIdFromWorkout(workout: { name?: string; start?: string }): string {

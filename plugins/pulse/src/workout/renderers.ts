@@ -1,5 +1,7 @@
+import { Component, MarkdownRenderer } from "obsidian";
 import type PulsePlugin from "../main";
 import type { ExerciseLogEntry, SetEntry, SessionData } from "./types";
+import { createSuiteWorkoutHeatmap } from "./pulseHeatmap";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -67,17 +69,26 @@ export function buildProgressSvg(entries: ExerciseLogEntry[], width: number, hei
 		.filter(d => d.e1rm > 0)
 		.reverse();
 
-	if (e1rmData.length < 2) return svg;
-
 	const pad = { top: 8, right: 8, bottom: 20, left: 36 };
 	const plotW = width - pad.left - pad.right;
 	const plotH = height - pad.top - pad.bottom;
+
+	if (e1rmData.length === 0) {
+		const msg = document.createElementNS(SVG_NS, "text");
+		msg.setAttribute("x", String(width / 2));
+		msg.setAttribute("y", String(height / 2));
+		msg.setAttribute("text-anchor", "middle");
+		msg.setAttribute("class", "pulse-log-empty-chart-msg");
+		msg.textContent = "Log weighted sets to see estimated 1RM over time.";
+		svg.appendChild(msg);
+		return svg;
+	}
+
 	const vals = e1rmData.map(d => d.e1rm);
 	const minV = Math.min(...vals);
 	const maxV = Math.max(...vals);
 	const range = maxV - minV || 1;
 
-	// Grid lines
 	const gridSteps = 4;
 	for (let i = 0; i <= gridSteps; i++) {
 		const y = pad.top + (plotH / gridSteps) * i;
@@ -96,24 +107,74 @@ export function buildProgressSvg(entries: ExerciseLogEntry[], width: number, hei
 		svg.appendChild(label);
 	}
 
-	// Date labels (first, middle, last)
-	const dateIdxs = [0, Math.floor(e1rmData.length / 2), e1rmData.length - 1];
+	const xAt = (i: number, n: number) => pad.left + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+
+	if (e1rmData.length === 1) {
+		const x = xAt(0, 1);
+		const y = pad.top + plotH - ((e1rmData[0].e1rm - minV) / range) * plotH;
+		const dl = document.createElementNS(SVG_NS, "text");
+		dl.setAttribute("x", String(x));
+		dl.setAttribute("y", String(height - 2));
+		dl.setAttribute("text-anchor", "middle");
+		dl.setAttribute("class", "pulse-log-date-label");
+		dl.textContent = e1rmData[0].date.slice(5);
+		svg.appendChild(dl);
+
+		const defs = document.createElementNS(SVG_NS, "defs");
+		const grad = document.createElementNS(SVG_NS, "linearGradient");
+		grad.setAttribute("id", "pulse-e1rm-gradient");
+		grad.setAttribute("x1", "0");
+		grad.setAttribute("x2", "0");
+		grad.setAttribute("y1", "0");
+		grad.setAttribute("y2", "1");
+		const stop1 = document.createElementNS(SVG_NS, "stop");
+		stop1.setAttribute("offset", "0%");
+		stop1.setAttribute("class", "pulse-log-grad-top");
+		const stop2 = document.createElementNS(SVG_NS, "stop");
+		stop2.setAttribute("offset", "100%");
+		stop2.setAttribute("class", "pulse-log-grad-bottom");
+		grad.appendChild(stop1);
+		grad.appendChild(stop2);
+		defs.appendChild(grad);
+		svg.appendChild(defs);
+
+		const bl = pad.top + plotH;
+		const areaPath = document.createElementNS(SVG_NS, "path");
+		areaPath.setAttribute(
+			"d",
+			`M ${x - 3},${y} L ${x + 3},${y} L ${x + 3},${bl} L ${x - 3},${bl} Z`
+		);
+		areaPath.setAttribute("class", "pulse-log-area");
+		svg.appendChild(areaPath);
+
+		const c = document.createElementNS(SVG_NS, "circle");
+		c.setAttribute("cx", String(x));
+		c.setAttribute("cy", String(y));
+		c.setAttribute("r", "4");
+		c.setAttribute("class", "pulse-log-dot");
+		svg.appendChild(c);
+		return svg;
+	}
+
+	const denom = e1rmData.length - 1;
+	const dateIdxs = [...new Set([0, Math.floor(e1rmData.length / 2), e1rmData.length - 1])].sort((a, b) => a - b);
 	for (const idx of dateIdxs) {
-		const x = pad.left + (idx / (e1rmData.length - 1)) * plotW;
+		const x = xAt(idx, e1rmData.length);
 		const label = document.createElementNS(SVG_NS, "text");
 		label.setAttribute("x", String(x));
 		label.setAttribute("y", String(height - 2));
 		label.setAttribute("class", "pulse-log-date-label");
-		label.textContent = e1rmData[idx].date.slice(5); // MM-DD
+		label.textContent = e1rmData[idx].date.slice(5);
 		svg.appendChild(label);
 	}
 
-	// Gradient fill
 	const defs = document.createElementNS(SVG_NS, "defs");
 	const grad = document.createElementNS(SVG_NS, "linearGradient");
 	grad.setAttribute("id", "pulse-e1rm-gradient");
-	grad.setAttribute("x1", "0"); grad.setAttribute("x2", "0");
-	grad.setAttribute("y1", "0"); grad.setAttribute("y2", "1");
+	grad.setAttribute("x1", "0");
+	grad.setAttribute("x2", "0");
+	grad.setAttribute("y1", "0");
+	grad.setAttribute("y2", "1");
 	const stop1 = document.createElementNS(SVG_NS, "stop");
 	stop1.setAttribute("offset", "0%");
 	stop1.setAttribute("class", "pulse-log-grad-top");
@@ -125,13 +186,11 @@ export function buildProgressSvg(entries: ExerciseLogEntry[], width: number, hei
 	defs.appendChild(grad);
 	svg.appendChild(defs);
 
-	// Build points
 	const pts = e1rmData.map((d, i) => ({
-		x: pad.left + (i / (e1rmData.length - 1)) * plotW,
+		x: pad.left + (i / denom) * plotW,
 		y: pad.top + plotH - ((d.e1rm - minV) / range) * plotH,
 	}));
 
-	// Area fill
 	const areaPath = document.createElementNS(SVG_NS, "path");
 	const areaD = `M${pts[0].x},${pts[0].y} ` +
 		pts.slice(1).map(p => `L${p.x},${p.y}`).join(" ") +
@@ -140,13 +199,11 @@ export function buildProgressSvg(entries: ExerciseLogEntry[], width: number, hei
 	areaPath.setAttribute("class", "pulse-log-area");
 	svg.appendChild(areaPath);
 
-	// Line
 	const line = document.createElementNS(SVG_NS, "polyline");
 	line.setAttribute("points", pts.map(p => `${p.x},${p.y}`).join(" "));
 	line.setAttribute("class", "pulse-log-line");
 	svg.appendChild(line);
 
-	// Dots
 	for (const p of pts) {
 		const c = document.createElementNS(SVG_NS, "circle");
 		c.setAttribute("cx", String(p.x));
@@ -159,41 +216,19 @@ export function buildProgressSvg(entries: ExerciseLogEntry[], width: number, hei
 	return svg;
 }
 
-export function buildActivityStrip(entries: ExerciseLogEntry[]): HTMLElement {
-	const container = document.createElement("div");
-	container.addClass("pulse-log-activity");
-
-	const dateSet = new Set(entries.map(e => e.date));
-	const today = new Date();
-	today.setHours(0, 0, 0, 0);
-	const weeks = 26;
-	const totalDays = weeks * 7;
-
-	const monthLabels = container.createDiv({ cls: "pulse-log-activity-months" });
-	const strip = container.createDiv({ cls: "pulse-log-activity-strip" });
-
-	let lastMonth = -1;
-	for (let d = totalDays - 1; d >= 0; d--) {
-		const date = new Date(today);
-		date.setDate(date.getDate() - d);
-		const dateStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
-		const hit = dateSet.has(dateStr);
-
-		const cell = strip.createDiv({
-			cls: `pulse-log-activity-cell ${hit ? "pulse-log-activity-hit" : ""}`,
-		});
-		cell.setAttribute("title", `${dateStr}${hit ? " ✓" : ""}`);
-
-		if (date.getMonth() !== lastMonth && date.getDate() <= 7) {
-			const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-			const label = monthLabels.createSpan({ text: monthNames[date.getMonth()], cls: "pulse-log-month-label" });
-			const offset = totalDays - 1 - d;
-			label.style.left = `${(offset / totalDays) * 100}%`;
-			lastMonth = date.getMonth();
-		}
+/**
+ * Same layout as Orbit person profiles / Stats: `suite-heatmap-wrap` with month + weekday labels.
+ */
+export function buildActivityHeatmap(entries: ExerciseLogEntry[]): HTMLElement {
+	const counts = new Map<string, number>();
+	for (const e of entries) {
+		counts.set(e.date, (counts.get(e.date) ?? 0) + 1);
 	}
-
-	return container;
+	const wrap = createSuiteWorkoutHeatmap(counts, {
+		ariaLabel: "Logged sets for this exercise in the last year",
+	});
+	wrap.addClass("pulse-log-activity-heatmap");
+	return wrap;
 }
 
 export function renderExerciseLogBlock(source: string, el: HTMLElement, plugin: PulsePlugin): void {
@@ -249,17 +284,14 @@ export function renderExerciseLogBlock(source: string, el: HTMLElement, plugin: 
 
 	// ── E1RM progress chart ──
 	const weightEntries = entries.filter(e => e.sets.some(s => s.weight != null && s.reps != null && s.weight! > 0));
-	if (weightEntries.length >= 2) {
-		const chartSection = container.createDiv({ cls: "pulse-log-section" });
-		chartSection.createDiv({ text: "Estimated 1RM Progress", cls: "pulse-log-section-title" });
-		const svg = buildProgressSvg(weightEntries, 500, 140);
-		chartSection.appendChild(svg);
-	}
+	const chartSection = container.createDiv({ cls: "pulse-log-section" });
+	chartSection.createDiv({ text: "Estimated 1RM Progress", cls: "pulse-log-section-title" });
+	chartSection.appendChild(buildProgressSvg(weightEntries, 500, 140));
 
-	// ── Activity strip (last 6 months) ──
+	// ── Activity heatmap (last ~52 weeks, same layout as Stats) ──
 	const activitySection = container.createDiv({ cls: "pulse-log-section" });
 	activitySection.createDiv({ text: "Activity", cls: "pulse-log-section-title" });
-	activitySection.appendChild(buildActivityStrip(entries));
+	activitySection.appendChild(buildActivityHeatmap(entries));
 
 	// ── Recent log table ──
 	const tableSection = container.createDiv({ cls: "pulse-log-section" });
@@ -301,7 +333,12 @@ export function renderExerciseLogBlock(source: string, el: HTMLElement, plugin: 
 	}
 }
 
-export function renderSessionBlock(source: string, el: HTMLElement, plugin: PulsePlugin): void {
+export function renderSessionBlock(
+	source: string,
+	el: HTMLElement,
+	plugin: PulsePlugin,
+	sourcePath?: string,
+): void {
 	let data: SessionData;
 	try {
 		data = JSON.parse(source);
@@ -325,16 +362,21 @@ export function renderSessionBlock(source: string, el: HTMLElement, plugin: Puls
 	});
 
 	const tbody = table.createEl("tbody");
-	for (const exercise of data.exercises) {
-		const row = tbody.createEl("tr");
-		const name = exercise.exercisePath.split("/").pop()?.replace(".md", "") ?? exercise.exercisePath;
-		row.createEl("td", { text: name });
-		row.createEl("td", { text: String(exercise.sets.length) });
+	const comp = new Component();
+	plugin.addChild(comp);
+	void (async () => {
+		for (const exercise of data.exercises) {
+			const row = tbody.createEl("tr");
+			const td = row.createEl("td", { cls: "pulse-workout-session-exercise" });
+			const p = plugin.workoutDataManager.resolveExerciseVaultPath(exercise.exercisePath).replace(/\.md$/i, "");
+			await MarkdownRenderer.render(plugin.app, `[[${p}]]`, td, sourcePath ?? "", comp);
+			row.createEl("td", { text: String(exercise.sets.length) });
 
-		const volume = exercise.sets.reduce((sum, s) => {
-			if (s.weight != null && s.reps != null) return sum + s.weight * s.reps;
-			return sum;
-		}, 0);
-		row.createEl("td", { text: volume > 0 ? `${volume.toLocaleString()} ${unit}` : "—" });
-	}
+			const volume = exercise.sets.reduce((sum, s) => {
+				if (s.weight != null && s.reps != null) return sum + s.weight * s.reps;
+				return sum;
+			}, 0);
+			row.createEl("td", { text: volume > 0 ? `${volume.toLocaleString()} ${unit}` : "—" });
+		}
+	})();
 }
