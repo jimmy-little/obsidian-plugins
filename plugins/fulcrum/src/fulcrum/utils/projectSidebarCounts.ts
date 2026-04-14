@@ -35,3 +35,45 @@ export function projectReviewIsOverdue(project: IndexedProject): boolean {
 	const d = daysUntilCalendar(project.nextReview);
 	return d !== null && d < 0;
 }
+
+/** Dashboard “Needs attention”: each project appears in at most one bucket (priority: review → tasks → meetings). */
+export type DashboardAttentionBuckets = {
+	needsReview: IndexedProject[];
+	openActionItems: IndexedProject[];
+	upcomingMeetings: IndexedProject[];
+};
+
+export function bucketDashboardAttentionProjects(
+	candidates: IndexedProject[],
+	counts: Map<string, {openTasks: number; upcomingMeetings: number}>,
+): DashboardAttentionBuckets {
+	const needsReview: IndexedProject[] = [];
+	const openActionItems: IndexedProject[] = [];
+	const upcomingMeetings: IndexedProject[] = [];
+
+	for (const p of candidates) {
+		const c = counts.get(p.file.path);
+		const openTasks = c?.openTasks ?? 0;
+		const meetings = c?.upcomingMeetings ?? 0;
+
+		if (projectReviewIsOverdue(p)) {
+			needsReview.push(p);
+			continue;
+		}
+		if (openTasks > 0) {
+			openActionItems.push(p);
+			continue;
+		}
+		if (meetings > 0) {
+			upcomingMeetings.push(p);
+		}
+	}
+
+	const byName = (a: IndexedProject, b: IndexedProject): number =>
+		a.name.localeCompare(b.name, undefined, {sensitivity: "base"});
+	needsReview.sort(byName);
+	openActionItems.sort(byName);
+	upcomingMeetings.sort(byName);
+
+	return {needsReview, openActionItems, upcomingMeetings};
+}

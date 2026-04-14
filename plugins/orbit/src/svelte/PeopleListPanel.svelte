@@ -3,7 +3,13 @@
 	import type {TFile} from "obsidian";
 	import type {OrbitHost} from "../orbit/pluginHost";
 	import {collectPeopleMarkdownFiles} from "../orbit/collectPeopleFiles";
-	import {readPersonFrontmatter, displayNameForPerson, formatPersonWorkLocationLine} from "../orbit/personModel";
+	import {resolvePersonAvatarSrc} from "../orbit/personAvatar";
+	import {
+		readPersonFrontmatter,
+		displayNameForPerson,
+		formatPersonWorkLocationLine,
+		stripWikiLinkDisplay,
+	} from "../orbit/personModel";
 	import OrbitPersonListRow from "./OrbitPersonListRow.svelte";
 
 	export let plugin: OrbitHost;
@@ -25,6 +31,17 @@
 		return displayNameForPerson(fm, f.basename);
 	}
 
+	function initialsFor(f: TFile): string {
+		const label = labelFor(f);
+		const parts = label.split(/\s+/).filter(Boolean);
+		if (parts.length >= 2) return (parts[0]![0] + parts[parts.length - 1]![0]).toUpperCase();
+		return label.slice(0, 2).toUpperCase() || "?";
+	}
+
+	function avatarSrcFor(f: TFile): string | null {
+		return resolvePersonAvatarSrc(plugin.app, f, plugin.settings.avatarFrontmatterField);
+	}
+
 	function sublineFor(f: TFile): string {
 		const fm = readPersonFrontmatter(plugin.app.metadataCache.getFileCache(f));
 		return formatPersonWorkLocationLine(fm);
@@ -42,7 +59,9 @@
 		const q = searchQuery.trim().toLowerCase();
 		if (!q) return sorted;
 		return sorted.filter((f) => {
-			const line = `${labelFor(f)} ${sublineFor(f)}`.toLowerCase();
+			const fm = readPersonFrontmatter(plugin.app.metadataCache.getFileCache(f));
+			const pos = stripWikiLinkDisplay(fm.position?.trim() ?? "").trim();
+			const line = `${labelFor(f)} ${sublineFor(f)} ${pos}`.toLowerCase();
 			return line.includes(q);
 		});
 	})();
@@ -84,6 +103,9 @@
 						label={labelFor(f)}
 						subline={sublineFor(f)}
 						accentCss={accentForFile(f)}
+						avatarSrc={avatarSrcFor(f)}
+						initials={initialsFor(f)}
+						avatarStyle={plugin.settings.avatarStyle}
 						{selectedPath}
 						onSelect={onSelectPerson}
 					/>

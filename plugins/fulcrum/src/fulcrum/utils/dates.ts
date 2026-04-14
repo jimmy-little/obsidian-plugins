@@ -28,6 +28,23 @@ export function isISODateTodayOrFuture(iso: string | undefined): boolean {
 	return norm >= todayLocalISODate();
 }
 
+/** YYYY-MM-DD prefix strictly after local today (not including tomorrow as “today”). */
+export function isCalendarDayAfterToday(iso: string | undefined): boolean {
+	if (!iso?.trim()) return false;
+	const norm = iso.slice(0, 10);
+	if (norm.length < 10) return false;
+	if (Number.isNaN(Date.parse(norm + "T12:00:00"))) return false;
+	return norm > todayLocalISODate();
+}
+
+/** Local midnight at the start of tomorrow. Instants ≥ this are excluded from “today and past” activity feeds. */
+export function tomorrowMidnightLocalMs(): number {
+	const d = new Date();
+	d.setDate(d.getDate() + 1);
+	d.setHours(0, 0, 0, 0);
+	return d.getTime();
+}
+
 export function dayStartMs(d: Date = new Date()): number {
 	const x = new Date(d);
 	x.setHours(0, 0, 0, 0);

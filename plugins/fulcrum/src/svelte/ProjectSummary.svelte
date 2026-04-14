@@ -137,6 +137,10 @@
 		plugin.openMarkReviewedModal(projectPath, () => void loadLogActivity());
 	}
 
+	function openProjectProperties(): void {
+		plugin.openProjectNoteProperties(projectPath);
+	}
+
 	$: nextUpSeg = rollup
 		? buildNextUpSegments(rollup, doneTask, 8, plugin.settings.taskTag)
 		: {meetings: [], items: []};
@@ -314,6 +318,18 @@
 								>
 									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"camera"} aria-hidden="true"></span>
 								</button>
+							</div>
+							<div class="fulcrum-banner-btn-row">
+								<button
+									type="button"
+									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+									aria-label="Edit properties"
+									title="Edit properties (YAML)"
+									on:click={openProjectProperties}
+								>
+									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"file-json"} aria-hidden="true"></span>
+								</button>
+								<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
 							</div>
 							<div class="fulcrum-banner-btn-row">
 								<button

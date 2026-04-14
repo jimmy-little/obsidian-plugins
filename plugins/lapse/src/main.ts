@@ -169,6 +169,12 @@ interface TemplateGroupResult {
 	sortedProjects: string[];
 }
 
+/** Aggregated tracked time for the configured note-button period (single vault pass). */
+interface QuickStartDurationMaps {
+	byProject: Map<string, number>;
+	byNoteBase: Map<string, number>;
+}
+
 interface NoteEntryGroup {
 	file: TFile;
 	entries: TimeEntry[];
@@ -2506,6 +2512,53 @@ export default class LapsePlugin extends Plugin {
 		return { startTime: startDate.getTime(), endTime: endDate.getTime() };
 	}
 
+	/** Portion of each entry's duration that falls inside [periodStart, periodEnd] (ms). */
+	private sumEntryDurationsInPeriod(entries: TimeEntry[], periodStart: number, periodEnd: number): number {
+		let totalDuration = 0;
+		for (const entry of entries) {
+			if (!entry.startTime) continue;
+			const entryStart = entry.startTime;
+			const entryEnd = entry.endTime || Date.now();
+			if (entryStart > periodEnd || entryEnd < periodStart) continue;
+			const windowStart = Math.max(entryStart, periodStart);
+			const windowEnd = Math.min(entryEnd, periodEnd);
+			if (entry.endTime) {
+				const entryTotalDuration = entryEnd - entryStart;
+				if (entryTotalDuration > 0) {
+					const periodDuration = windowEnd - windowStart;
+					totalDuration += entry.duration * (periodDuration / entryTotalDuration);
+				}
+			} else {
+				totalDuration += windowEnd - windowStart;
+			}
+		}
+		return totalDuration;
+	}
+
+	/**
+	 * One vault pass for all Quick Start card durations (same period as note buttons).
+	 * Avoids O(timers × files) cost from calling getTemplateButtonDuration per card.
+	 */
+	async computeQuickStartDurationMaps(): Promise<QuickStartDurationMaps> {
+		const { startTime, endTime } = this.getDateRangeForPeriod(this.settings.noteButtonTimePeriod);
+		const byProject = new Map<string, number>();
+		const byNoteBase = new Map<string, number>();
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			const path = file.path;
+			if (this.isFileExcluded(path)) continue;
+			const { entries, project } = await this.getCachedOrLoadEntries(path);
+			if (entries.length === 0) continue;
+			const fileTotal = this.sumEntryDurationsInPeriod(entries, startTime, endTime);
+			if (fileTotal <= 0) continue;
+			if (project) {
+				byProject.set(project, (byProject.get(project) ?? 0) + fileTotal);
+			}
+			const baseName = this.getDefaultNoteName(path);
+			byNoteBase.set(baseName, (byNoteBase.get(baseName) ?? 0) + fileTotal);
+		}
+		return { byProject, byNoteBase };
+	}
+
 	/**
 	 * Calculate duration for a template button based on settings
 	 * Always aggregates across multiple notes based on the duration type
@@ -2519,118 +2572,31 @@ export default class LapsePlugin extends Plugin {
 			return 0;
 		}
 
-		// Get the time period for the calculation
 		const { startTime, endTime } = this.getDateRangeForPeriod(this.settings.noteButtonTimePeriod);
-		
-		let totalDuration = 0;
 		const markdownFiles = this.app.vault.getMarkdownFiles();
 		const durationType = opts?.mode ?? this.settings.noteButtonDurationType;
 
 		if (durationType === 'project') {
-			// Aggregate by project: include all notes with the same project
-			if (!templateProject) {
-				return 0; // No project, so no aggregate to show
-			}
-			
+			if (!templateProject) return 0;
+			let totalDuration = 0;
 			for (const file of markdownFiles) {
 				const currentFilePath = file.path;
-				
-				// Skip excluded folders
-				if (this.isFileExcluded(currentFilePath)) {
-					continue;
-				}
-				
-				// Get project for this file
-				const currentProject = await this.getProjectFromFrontmatter(currentFilePath);
-				
-				// Only include notes with the same project (and that have lapse frontmatter)
-				if (currentProject === templateProject) {
-					const { entries } = await this.getCachedOrLoadEntries(currentFilePath);
-					// Only count if the file has lapse entries (has frontmatter with lapse data)
-					if (entries.length > 0) {
-						for (const entry of entries) {
-							if (entry.startTime) {
-								// Count entries that overlap with the time period
-								const entryStart = entry.startTime;
-								const entryEnd = entry.endTime || Date.now();
-								
-								// Entry overlaps if it starts before period ends and ends after period starts
-								if (entryStart <= endTime && entryEnd >= startTime) {
-									// Calculate the portion of duration within the period
-									const periodStart = Math.max(entryStart, startTime);
-									const periodEnd = Math.min(entryEnd, endTime);
-									
-									if (entry.endTime) {
-										// Completed entry: use stored duration, but only count the portion within period
-										// entry.duration is the actual tracked duration (may include pauses)
-										const entryTotalDuration = entryEnd - entryStart;
-										if (entryTotalDuration > 0) {
-											// Calculate what portion of the entry's time span is within the period
-											const periodDuration = periodEnd - periodStart;
-											// Scale the stored duration proportionally
-											const scaledDuration = entry.duration * (periodDuration / entryTotalDuration);
-											totalDuration += scaledDuration;
-										}
-									} else {
-										// Active entry: use actual time within period
-										totalDuration += (periodEnd - periodStart);
-									}
-								}
-							}
-						}
-					}
-				}
+				if (this.isFileExcluded(currentFilePath)) continue;
+				const { entries, project } = await this.getCachedOrLoadEntries(currentFilePath);
+				if (project !== templateProject || entries.length === 0) continue;
+				totalDuration += this.sumEntryDurationsInPeriod(entries, startTime, endTime);
 			}
-		} else {
-			// Aggregate by note: include all notes that share the same base filename (template name, ignoring timestamp)
-			for (const file of markdownFiles) {
-				const currentFilePath = file.path;
-				
-				// Skip excluded folders
-				if (this.isFileExcluded(currentFilePath)) {
-					continue;
-				}
-				
-				// Get base name (without timestamp) for this file
-				const currentBaseName = this.getDefaultNoteName(currentFilePath);
-				
-				// Include all notes with the same base name as the template (ignoring timestamp)
-				if (currentBaseName === templateName) {
-					const { entries } = await this.getCachedOrLoadEntries(currentFilePath);
-					for (const entry of entries) {
-						if (entry.startTime) {
-							// Count entries that overlap with the time period
-							const entryStart = entry.startTime;
-							const entryEnd = entry.endTime || Date.now();
-							
-							// Entry overlaps if it starts before period ends and ends after period starts
-							if (entryStart <= endTime && entryEnd >= startTime) {
-								// Calculate the portion of duration within the period
-								const periodStart = Math.max(entryStart, startTime);
-								const periodEnd = Math.min(entryEnd, endTime);
-								
-								if (entry.endTime) {
-									// Completed entry: use stored duration, but only count the portion within period
-									// entry.duration is the actual tracked duration (may include pauses)
-									const entryTotalDuration = entryEnd - entryStart;
-									if (entryTotalDuration > 0) {
-										// Calculate what portion of the entry's time span is within the period
-										const periodDuration = periodEnd - periodStart;
-										// Scale the stored duration proportionally
-										const scaledDuration = entry.duration * (periodDuration / entryTotalDuration);
-										totalDuration += scaledDuration;
-									}
-								} else {
-									// Active entry: use actual time within period
-									totalDuration += (periodEnd - periodStart);
-								}
-							}
-						}
-					}
-				}
-			}
+			return totalDuration;
 		}
-		
+
+		let totalDuration = 0;
+		for (const file of markdownFiles) {
+			const currentFilePath = file.path;
+			if (this.isFileExcluded(currentFilePath)) continue;
+			if (this.getDefaultNoteName(currentFilePath) !== templateName) continue;
+			const { entries } = await this.getCachedOrLoadEntries(currentFilePath);
+			totalDuration += this.sumEntryDurationsInPeriod(entries, startTime, endTime);
+		}
 		return totalDuration;
 	}
 
@@ -4874,7 +4840,22 @@ function noteButtonPeriodShortLabel(period: LapseSettings['noteButtonTimePeriod'
 	}
 }
 
-async function appendQuickStartButton(container: HTMLElement, plugin: LapsePlugin, data: TemplateData, onNoteCreated?: () => void) {
+function quickStartDurationFromMaps(plugin: LapsePlugin, data: TemplateData, maps: QuickStartDurationMaps): number {
+	const mode = data.kind === 'project' ? 'project' : plugin.settings.noteButtonDurationType;
+	if (mode === 'project') {
+		if (!data.project) return 0;
+		return maps.byProject.get(data.project) ?? 0;
+	}
+	return maps.byNoteBase.get(data.templateName) ?? 0;
+}
+
+function appendQuickStartButton(
+	container: HTMLElement,
+	plugin: LapsePlugin,
+	data: TemplateData,
+	durationMaps: QuickStartDurationMaps,
+	onNoteCreated?: () => void
+) {
 	const button = container.createEl('button', {
 		cls: 'lapse-button lapse-button--timery',
 		attr: {
@@ -4916,12 +4897,7 @@ async function appendQuickStartButton(container: HTMLElement, plugin: LapsePlugi
 	meta.createSpan({ cls: 'lapse-button-period', text: noteButtonPeriodShortLabel(plugin.settings.noteButtonTimePeriod) });
 	// Timery cards always show time for the configured period (bypasses “show on inline buttons” setting).
 	try {
-		const durationMode =
-			data.kind === 'project' ? 'project' : plugin.settings.noteButtonDurationType;
-		const duration = await plugin.getTemplateButtonDuration(data.templateName, data.project, {
-			bypassShowSetting: true,
-			mode: durationMode
-		});
+		const duration = quickStartDurationFromMaps(plugin, data, durationMaps);
 		const durationText = plugin.formatTimeForButton(Math.max(0, duration));
 		meta.createSpan({ cls: 'lapse-button-meta-sep', text: '·' });
 		meta.createSpan({ cls: 'lapse-button-duration', text: durationText });
@@ -4938,6 +4914,7 @@ async function appendQuickStartButton(container: HTMLElement, plugin: LapsePlugi
 }
 
 async function renderTemplateGroups(container: HTMLElement, plugin: LapsePlugin, groupResult: TemplateGroupResult, onNoteCreated?: () => void) {
+	const durationMaps = await plugin.computeQuickStartDurationMaps();
 	for (const projectKey of groupResult.sortedProjects) {
 		const projectTemplates = groupResult.grouped.get(projectKey)!;
 		const details = container.createEl('details', { cls: 'lapse-buttons-project-section' });
@@ -4955,7 +4932,7 @@ async function renderTemplateGroups(container: HTMLElement, plugin: LapsePlugin,
 
 		const buttonsGrid = details.createDiv({ cls: 'lapse-buttons-grid' });
 		for (const data of projectTemplates) {
-			await appendQuickStartButton(buttonsGrid, plugin, data, onNoteCreated);
+			appendQuickStartButton(buttonsGrid, plugin, data, durationMaps, onNoteCreated);
 		}
 	}
 }

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type {FulcrumHost} from "../fulcrum/pluginBridge";
+	import {showFulcrumProjectCardContextMenu} from "../fulcrum/projectCardContextMenu";
 	import type {IndexedProject} from "../fulcrum/types";
 	import {daysUntilCalendar, formatShortMonthDay} from "../fulcrum/utils/dates";
 	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
@@ -10,6 +12,13 @@
 	export let upcomingMeetingCount = 0;
 	/** Larger card style for dashboard “needs attention” grid. */
 	export let tile = false;
+	/** When set (e.g. Dashboard / Kanban / Areas), right-click opens Fulcrum actions without opening the project. */
+	export let plugin: FulcrumHost | undefined = undefined;
+
+	function onContextMenu(ev: MouseEvent): void {
+		if (!plugin) return;
+		showFulcrumProjectCardContextMenu(ev, plugin, p);
+	}
 
 	function areaLabel(project: IndexedProject): string {
 		if (project.areaFiles.length === 0) return "—";
@@ -59,6 +68,7 @@
 	aria-label={overdue ? `${p.name}, review overdue` : p.name}
 	on:click={activateRow}
 	on:keydown={onRowKeydown}
+	on:contextmenu={onContextMenu}
 >
 	<div class="fulcrum-pl-row__inner">
 		<div class="fulcrum-pl-row__head">

@@ -6,10 +6,8 @@ import {
 	Setting,
 	TFile,
 } from "obsidian";
-import {
-	markProjectCompleteAndMove,
-	moveProjectToStatusFolder,
-} from "./projectCompletion";
+import {markProjectCompleteAndMove} from "./projectCompletion";
+import {applyProjectStatusChange, getProjectStatusOptions} from "./projectStatusApply";
 import {
 	appendFulcrumProjectLog,
 	formatFulcrumProjectLogLine,
@@ -19,7 +17,6 @@ import {
 import type {FulcrumHost} from "./pluginBridge";
 import {parseList, resolveProjectsRoot} from "./settingsDefaults";
 import type {IndexedProject} from "./types";
-import {getImmediateSubfolderNames} from "./utils/paths";
 
 export class ProjectPickerModal extends FuzzySuggestModal<IndexedProject> {
 	private readonly projects: IndexedProject[];
@@ -339,27 +336,7 @@ export class ChangeProjectStatusModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl("h2", {text: "Change project status"});
 
-		let statusOptions: string[];
-		const projectsRoot = resolveProjectsRoot(this.host.settings);
-		const useSubfolders =
-			this.host.settings.projectStatusIndication === "subfolder" &&
-			projectsRoot.trim().length > 0;
-		if (useSubfolders) {
-			const folderNames = getImmediateSubfolderNames(
-				this.app.vault,
-				projectsRoot,
-			);
-			const configured = parseList(this.host.settings.projectStatuses)
-				.map((s) => s.trim())
-				.filter(Boolean);
-			const folderSet = new Set(folderNames.map((n) => n.toLowerCase()));
-			const extra = configured.filter((s) => !folderSet.has(s.toLowerCase()));
-			statusOptions = folderNames.length > 0 ? [...folderNames, ...extra] : configured;
-		} else {
-			statusOptions = parseList(this.host.settings.projectStatuses)
-				.map((s) => s.trim())
-				.filter(Boolean);
-		}
+		const statusOptions = getProjectStatusOptions(this.app, this.host.settings);
 		if (statusOptions.length === 0) {
 			contentEl.createEl("p", {cls: "fulcrum-muted", text: "No statuses configured in settings."});
 			new Setting(contentEl).addButton((b) => b.setButtonText("Close").onClick(() => this.close()));
@@ -443,34 +420,14 @@ export class ChangeProjectStatusModal extends Modal {
 	private async submit(): Promise<void> {
 		if (!this.selectedStatus) return;
 
-		const f = this.app.vault.getAbstractFileByPath(this.projectPath);
-		if (!(f instanceof TFile)) {
-			new Notice("Project file not found.");
-			return;
-		}
-
 		try {
-			if (this.setFrontmatter) {
-				const statusKey =
-					this.host.settings.projectStatusField.trim().replace(/:+$/u, "") || "status";
-				const statusValue = this.selectedStatus.trim().toLowerCase();
-				await this.app.fileManager.processFrontMatter(f, (fm) => {
-					(fm as Record<string, unknown>)[statusKey] = statusValue;
-				});
-			}
-
-			let newPath: string | undefined;
-			if (this.updateFolder) {
-				newPath = await moveProjectToStatusFolder(
-					this.app,
-					f,
-					this.host.settings,
-					this.selectedStatus,
-				);
-			}
-
-			await this.host.vaultIndex.rebuild();
-			new Notice("Project status updated.");
+			const newPath = await applyProjectStatusChange(
+				this.app,
+				this.host,
+				this.projectPath,
+				this.selectedStatus,
+				{setFrontmatter: this.setFrontmatter, updateFolder: this.updateFolder},
+			);
 			this.close();
 			await this.onComplete?.(newPath);
 		} catch (e) {
@@ -553,5 +510,62 @@ export class MarkProjectCompleteModal extends Modal {
 			const msg = e instanceof Error ? e.message : String(e);
 			new Notice(msg.length < 120 ? msg : "Could not complete project or move the file.");
 		}
+	}
+}
+
+export class QuickProjectNoteModal extends Modal {
+	private text = "";
+
+	constructor(
+		app: App,
+		private readonly host: FulcrumHost,
+		private readonly projectPath: string,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {text: "Quick note"});
+		contentEl.createEl("p", {
+			cls: "fulcrum-muted",
+			text: "Adds a timestamped line to this project’s Fulcrum log section (same as the project page quick note).",
+		});
+
+		new Setting(contentEl)
+			.setName("Note")
+			.addTextArea((ta) => {
+				ta.setPlaceholder("e.g. called stakeholder — agreed to slip launch a week");
+				ta.inputEl.rows = 4;
+				ta.onChange((v) => {
+					this.text = v;
+				});
+			});
+
+		new Setting(contentEl).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+
+		new Setting(contentEl).addButton((b) =>
+			b
+				.setButtonText("Add to log")
+				.setCta()
+				.onClick(() => {
+					void this.submit();
+				}),
+		);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+
+	private async submit(): Promise<void> {
+		const trimmed = this.text.trim();
+		if (!trimmed) {
+			new Notice("Enter a note.");
+			return;
+		}
+		const ok = await this.host.appendProjectLogEntry(this.projectPath, trimmed);
+		if (ok) this.close();
 	}
 }

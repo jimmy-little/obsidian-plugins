@@ -11,14 +11,17 @@ export interface FulcrumHost {
 	readonly vaultIndex: VaultIndex;
 	openProjectSummary(path: string): Promise<void>;
 	openDashboard(): Promise<void>;
+	openReview(): Promise<void>;
 	openTimeTracked(): Promise<void>;
 	refreshIndex(): Promise<void>;
-	appendProjectLogEntry(projectPath: string, text: string): Promise<void>;
+	appendProjectLogEntry(projectPath: string, text: string): Promise<boolean>;
 	/** Opens modal: optional review note, updates review dates, appends Fulcrum log line. */
 	openMarkReviewedModal(
 		projectPath: string,
 		onComplete?: () => void | Promise<void>,
 	): void;
+	/** Modal: text → same log append as the project page quick note (does not open the project). */
+	openQuickProjectNoteModal(projectPath: string): void;
 	/** Confirm, optional note → done status, log line, move to completed folder, return to dashboard. */
 	openMarkProjectCompleteModal(
 		projectPath: string,
@@ -59,4 +62,6 @@ export interface FulcrumHost {
 	): void;
 	/** Renders markdown into a host element (e.g. activity note preview). */
 	renderActivityBodyPreview(el: HTMLElement, sourcePath: string, markdown: string): Promise<void>;
+	/** Edit project note YAML in the suite properties modal (same UI as Orbit). */
+	openProjectNoteProperties(projectPath: string): void;
 }

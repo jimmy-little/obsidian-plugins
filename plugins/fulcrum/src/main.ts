@@ -32,6 +32,7 @@ import {
 	LinkMeetingModal,
 	MarkProjectCompleteModal,
 	MarkReviewedModal,
+	QuickProjectNoteModal,
 	NewInlineTaskModal,
 	NewProjectModal,
 	ProjectPickerModal,
@@ -44,8 +45,9 @@ import {
 	revealOrCreateProjectManager,
 	revealOrCreateTimeTracked,
 	revealOrCreateTimeline,
+	revealOrCreateReview,
 } from "./fulcrum/openViews";
-import {NotePropertiesModal, revealOrCreateView} from "@obsidian-suite/core";
+import {openNotePropertiesModal, revealOrCreateView} from "@obsidian-suite/core";
 import {DEFAULT_SETTINGS, DASHBOARD_ACTIVITY_MAX_DAYS, type FulcrumSettings} from "./fulcrum/settingsDefaults";
 import {postTaskNotesToggleStatus} from "./fulcrum/taskNotesApi";
 import {toggleInlineTaskLine, toggleTaskNoteFrontmatter} from "./fulcrum/taskVaultToggle";
@@ -144,9 +146,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 				registerEvent: (r) => this.registerEvent(r),
 				startLapseInOpenNote: (file, meta) => runLapseTimerInOpenNote(this.app, file, meta),
 				openNoteProperties: (file) => {
-					new NotePropertiesModal(this.app, file, {
+					openNotePropertiesModal(this.app, file, {
 						displayTitleField: this.settings.atomicNoteEntryField,
-					}).open();
+					});
 				},
 				openProjectSummary: (path) => this.openProjectSummary(path),
 			},
@@ -183,6 +185,13 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			name: "Open areas",
 			callback: () => {
 				void this.openAreas();
+			},
+		});
+		this.addCommand({
+			id: "open-review",
+			name: "Open review",
+			callback: () => {
+				void this.openReview();
 			},
 		});
 		this.addCommand({
@@ -532,6 +541,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		await revealOrCreateDashboard(this.app, this.settings);
 	}
 
+	async openReview(): Promise<void> {
+		await revealOrCreateReview(this.app, this.settings);
+	}
+
 	async openTimeTracked(): Promise<void> {
 		await revealOrCreateTimeTracked(this.app, this.settings);
 	}
@@ -553,16 +566,16 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		new Notice("Fulcrum index rebuilt.");
 	}
 
-	async appendProjectLogEntry(projectPath: string, text: string): Promise<void> {
+	async appendProjectLogEntry(projectPath: string, text: string): Promise<boolean> {
 		const trimmed = text.trim();
 		if (!trimmed) {
 			new Notice("Write something to add to the project note.");
-			return;
+			return false;
 		}
 		const f = this.app.vault.getAbstractFileByPath(projectPath);
 		if (!(f instanceof TFile)) {
 			new Notice("Project file not found.");
-			return;
+			return false;
 		}
 		const stamp = new Date().toLocaleString(undefined, {
 			dateStyle: "short",
@@ -578,9 +591,11 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			);
 			await this.vaultIndex.rebuild();
 			new Notice("Appended to project note.");
+			return true;
 		} catch (e) {
 			console.error(e);
 			new Notice("Could not write to the project note.");
+			return false;
 		}
 	}
 
@@ -589,6 +604,19 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		onComplete?: () => void | Promise<void>,
 	): void {
 		new MarkReviewedModal(this.app, this, projectPath, onComplete).open();
+	}
+
+	openQuickProjectNoteModal(projectPath: string): void {
+		new QuickProjectNoteModal(this.app, this, projectPath).open();
+	}
+
+	openProjectNoteProperties(projectPath: string): void {
+		const f = this.app.vault.getAbstractFileByPath(projectPath);
+		if (!(f instanceof TFile)) {
+			new Notice("Project file not found.");
+			return;
+		}
+		openNotePropertiesModal(this.app, f, {displayTitleField: "name"});
 	}
 
 	openMarkProjectCompleteModal(

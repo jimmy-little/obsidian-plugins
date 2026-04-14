@@ -8,6 +8,8 @@ export type PersonFrontmatter = {
 	location?: string;
 	city?: string;
 	state?: string;
+	/** Job title / role — shown under the name in the profile banner. */
+	position?: string;
 	org_up?: string;
 	/** Wikilink lines or list entries from frontmatter. */
 	org_down?: string | string[];
@@ -30,6 +32,7 @@ export function readPersonFrontmatter(cache: CachedMetadata | null | undefined):
 		location: typeof fm.location === "string" ? fm.location : undefined,
 		city: typeof fm.city === "string" ? fm.city : undefined,
 		state: typeof fm.state === "string" ? fm.state : undefined,
+		position: typeof fm.position === "string" ? fm.position : undefined,
 		org_up: typeof fm.org_up === "string" ? fm.org_up : undefined,
 		org_down:
 			typeof orgDown === "string"

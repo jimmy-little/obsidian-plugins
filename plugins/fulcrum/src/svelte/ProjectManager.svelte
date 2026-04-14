@@ -6,6 +6,7 @@
 	import KanbanMain from "./KanbanMain.svelte";
 	import CalendarMain from "./CalendarMain.svelte";
 	import TimeTrackedMain from "./TimeTrackedMain.svelte";
+	import WeeklyReviewMain from "./WeeklyReviewMain.svelte";
 	import AreasMain from "./AreasMain.svelte";
 	import ProjectListPanel from "./ProjectListPanel.svelte";
 	import ProjectSummary from "./ProjectSummary.svelte";
@@ -13,7 +14,7 @@
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf;
-	export let mainMode: "dashboard" | "areas" | "project" | "kanban" | "calendar" | "time";
+	export let mainMode: "dashboard" | "review" | "areas" | "project" | "kanban" | "calendar" | "time";
 	export let projectPath: string | null;
 	export let onSelectDashboard: () => void;
 	export let onSelectAreas: () => void;
@@ -21,6 +22,7 @@
 	export let onSelectKanban: () => void;
 	export let onSelectCalendar: () => void;
 	export let onSelectTime: () => void;
+	export let onSelectWeeklyReview: () => void;
 	/** When set (project mode in Project Manager), project summary shows a back control. */
 	export let onBackFromProject: (() => void) | undefined = undefined;
 	export let projectBackTargetLabel = "";
@@ -50,6 +52,7 @@
 	let areasBtnEl: HTMLButtonElement | null = null;
 	let kanbanBtnEl: HTMLButtonElement | null = null;
 	let timeBtnEl: HTMLButtonElement | null = null;
+	let reviewBtnEl: HTMLButtonElement | null = null;
 
 	$: if (dashboardBtnEl && plugin) {
 		setIcon(dashboardBtnEl, "layout-dashboard");
@@ -62,6 +65,9 @@
 	}
 	$: if (timeBtnEl && plugin) {
 		setIcon(timeBtnEl, "clock");
+	}
+	$: if (reviewBtnEl && plugin) {
+		setIcon(reviewBtnEl, "glasses");
 	}
 
 	$: selectedProjectPath = mainMode === "project" ? projectPath : null;
@@ -164,6 +170,15 @@
 				<button
 					type="button"
 					class="fulcrum-pm__glyph-btn clickable-icon"
+					class:fulcrum-pm__glyph-btn--active={mainMode === "review"}
+					aria-label="Review"
+					title="Review"
+					bind:this={reviewBtnEl}
+					on:click={onSelectWeeklyReview}
+				></button>
+				<button
+					type="button"
+					class="fulcrum-pm__glyph-btn clickable-icon"
 					class:fulcrum-pm__glyph-btn--active={mainMode === "areas"}
 					aria-label="Areas"
 					title="Areas"
@@ -232,6 +247,12 @@
 				<FulcrumLeafToolbar {plugin} />
 			</header>
 			<DashboardMain {plugin} hoverParentLeaf={hoverParentLeaf} />
+		{:else if mainMode === "review"}
+			<header class="fulcrum-pm__main-head">
+				<h1 class="fulcrum-pm__main-title">Review</h1>
+				<FulcrumLeafToolbar {plugin} />
+			</header>
+			<WeeklyReviewMain {plugin} hoverParentLeaf={hoverParentLeaf} />
 		{:else if mainMode === "areas"}
 			<header class="fulcrum-pm__main-head">
 				<h1 class="fulcrum-pm__main-title">Areas</h1>

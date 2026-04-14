@@ -2410,6 +2410,26 @@ button.fulcrum-task-card__note-type:focus-visible {
 	letter-spacing: 0.01em;
 }
 
+/* Needs attention: three priority buckets (review → tasks → meetings) */
+.fulcrum-dashboard-attention-groups {
+	display: flex;
+	flex-direction: column;
+	gap: 1.35rem;
+}
+
+.fulcrum-dashboard-attention-group__title {
+	margin: 0 0 0.45rem;
+	font-size: var(--font-ui-medium);
+	font-weight: 700;
+	color: var(--text-normal);
+	letter-spacing: 0.01em;
+}
+
+.fulcrum-dashboard-attention-group__empty {
+	margin: 0.1rem 0 0;
+	font-size: var(--font-ui-smaller);
+}
+
 /* Needs attention: cards (rounded + thick left accent like sidebar rows) */
 .fulcrum-dashboard-attention-grid {
 	display: grid;
@@ -2892,82 +2912,17 @@ button.fulcrum-task-card__note-type:focus-visible {
 	box-sizing: border-box;
 }
 
-.fulcrum-kanban-card {
-	display: block;
+/* Kanban cards reuse dashboard tile: ProjectListRow + .fulcrum-pl-row--tile */
+.fulcrum-kanban__card-cell {
+	min-width: 0;
 	width: 100%;
-	margin: 0;
+	flex: 0 0 auto;
+	align-self: stretch;
 	box-sizing: border-box;
-	text-align: left;
-	font-family: inherit;
-	border-radius: var(--radius-s, 4px);
-	background: var(--background-primary);
-	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
-	padding: 0;
-	cursor: pointer;
-	border-left: 3px solid var(--fulcrum-card-accent, var(--background-modifier-border));
-	transition: box-shadow 0.12s ease, border-color 0.12s ease;
 }
 
-.fulcrum-kanban-card:hover {
-	box-shadow: 0 2px 8px color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
-	border-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
-}
-
-.fulcrum-kanban-card:focus-visible {
-	outline: 2px solid var(--interactive-accent);
-	outline-offset: -1px;
-}
-
-.fulcrum-kanban-card__inner {
-	padding: 0.5rem 0.6rem;
-}
-
-.fulcrum-kanban-card__title {
-	margin: 0;
-	font-size: var(--font-ui-small);
-	font-weight: 600;
-	color: var(--text-accent);
-	line-height: 1.35;
-}
-
-.fulcrum-kanban-card__area,
-.fulcrum-kanban-card__status-pill {
-	display: block;
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	margin-top: 0.2rem;
-	text-transform: capitalize;
-}
-
-.fulcrum-kanban-card__desc {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-faint);
-	margin: 0.25rem 0 0;
-	line-height: 1.35;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	display: -webkit-box;
-	-webkit-line-clamp: 3;
-	-webkit-box-orient: vertical;
-}
-
-.fulcrum-kanban-card__meta {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 0.15rem 0.35rem;
-	margin-top: 0.35rem;
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-}
-
-.fulcrum-kanban-card__meta--overdue {
-	color: var(--text-error, #c45c5c);
-	font-weight: 600;
-}
-
-.fulcrum-kanban-card--overdue {
-	border-left-color: var(--text-error, #c45c5c);
+.fulcrum-kanban__card-cell .fulcrum-pl-row {
+	width: 100%;
 }
 
 .fulcrum-kanban__add-col-wrap {
@@ -3366,6 +3321,8 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 .fulcrum-calendar__timed-event-title {
+	flex: 1 1 auto;
+	min-width: 0;
 	overflow: hidden;
 	display: -webkit-box;
 	-webkit-line-clamp: 3;
@@ -3408,9 +3365,13 @@ button.fulcrum-task-card__note-type:focus-visible {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
+	min-width: 0;
 	min-height: 0;
 	overflow: hidden;
 	background: var(--background-primary);
+	/* Same tokens as .fulcrum-calendar — timeline root is NOT .fulcrum-calendar, so define here or grid columns break */
+	--fulcrum-cal-hour-h: 2.75rem;
+	--fulcrum-cal-gutter-w: 2.6rem;
 }
 
 .fulcrum-timeline .fulcrum-calendar__toolbar {
@@ -3435,6 +3396,72 @@ button.fulcrum-task-card__note-type:focus-visible {
 
 .fulcrum-timeline__title--today {
 	color: var(--color-orange, #e67e22);
+}
+
+/* Timeline in a narrow sidebar: compact gutter, readable event track */
+.fulcrum-timeline .fulcrum-calendar__toolbar {
+	padding: 0.35rem 0.45rem 0.45rem;
+	gap: 0.3rem 0.45rem;
+}
+
+.fulcrum-timeline .fulcrum-calendar__time-grid-body,
+.fulcrum-timeline .fulcrum-calendar__time-grid-header,
+.fulcrum-timeline .fulcrum-calendar__allday-row {
+	grid-template-columns: var(--fulcrum-cal-gutter-w) minmax(0, 1fr);
+}
+
+.fulcrum-timeline .fulcrum-calendar__time-grid-hour-col {
+	min-width: 0;
+}
+
+.fulcrum-timeline .fulcrum-calendar__time-grid-hour-col > .fulcrum-calendar__time-grid-hour {
+	min-height: var(--fulcrum-cal-hour-h);
+	padding: 0 0.2rem 0 0;
+	justify-content: flex-end;
+	align-items: flex-start;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	line-height: 1.2;
+	color: var(--text-muted);
+}
+
+.fulcrum-timeline .fulcrum-calendar__allday-row > .fulcrum-calendar__time-grid-hour {
+	padding: 0.35rem 0.2rem 0.35rem 0;
+	font-size: calc(var(--font-ui-smaller) - 0.5px);
+}
+
+.fulcrum-timeline .fulcrum-calendar__time-grid-day-col {
+	min-width: 0;
+}
+
+.fulcrum-timeline .fulcrum-calendar__timed-event {
+	left: 1px;
+	right: 1px;
+	min-width: 0;
+	max-width: 100%;
+	padding: 2px 5px 2px 4px;
+	align-items: center;
+}
+
+.fulcrum-timeline .fulcrum-calendar__timed-event-title {
+	display: block;
+	-webkit-line-clamp: unset;
+	-webkit-box-orient: unset;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	word-break: normal;
+	line-height: 1.25;
+}
+
+.fulcrum-timeline .fulcrum-calendar__allday-cell {
+	min-width: 0;
+	padding: 0.35rem 0.25rem;
+}
+
+.fulcrum-timeline .fulcrum-calendar__allday-cell .fulcrum-calendar__event {
+	min-width: 0;
+	font-size: calc(var(--font-ui-smaller) - 0.5px);
+	padding: 0.35rem 0.45rem;
 }
 
 /* ── Toolbar (legacy nav row) ── */
@@ -4613,6 +4640,302 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 /* People cards + inline pills: shared suite styles in packages/theme/people.css (merged by tooling) */
+
+/* ── Review: stacked tracked-time bars (same total = 100% width each) ── */
+.fulcrum-review-charts {
+	max-width: 56rem;
+}
+
+.fulcrum-review-charts__h2 {
+	margin: 0 0 0.35rem;
+	font-size: var(--font-ui-medium);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.fulcrum-review-charts__empty {
+	margin: 0;
+	font-size: var(--font-ui-smaller);
+}
+
+.fulcrum-review-charts__grid {
+	display: flex;
+	flex-direction: column;
+	gap: 1.35rem;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.fulcrum-review-chart-row {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+	min-width: 0;
+}
+
+.fulcrum-review-chart-row__axis {
+	display: grid;
+	grid-template-columns: repeat(11, minmax(0, 1fr));
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.22rem 0 0;
+	font-size: 0.68rem;
+	line-height: 1.2;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.fulcrum-review-chart-row__axis span {
+	min-width: 0;
+	text-align: center;
+}
+
+.fulcrum-review-chart-row__axis span:first-child {
+	text-align: left;
+}
+
+.fulcrum-review-chart-row__axis span:last-child {
+	text-align: right;
+}
+
+.fulcrum-review-charts__heading {
+	margin: 0;
+	font-size: var(--font-ui-smaller);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+}
+
+.fulcrum-review-stacked-bar {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	width: 100%;
+	height: 1.35rem;
+	border-radius: var(--radius-s);
+	overflow: hidden;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+	background: color-mix(in srgb, var(--background-modifier-border) 55%, var(--background-primary));
+	box-sizing: border-box;
+}
+
+.fulcrum-review-stacked-bar--tall {
+	height: auto;
+	min-height: 2.65rem;
+}
+
+.fulcrum-review-stacked-bar__seg {
+	min-width: 0;
+	flex: 1 1 0;
+	box-sizing: border-box;
+	border-right: 1px solid color-mix(in srgb, var(--background-primary) 55%, transparent);
+}
+
+.fulcrum-review-stacked-bar__seg:last-child {
+	border-right: none;
+}
+
+.fulcrum-review-stacked-bar__seg--labeled {
+	container-type: inline-size;
+	container-name: reviewseg;
+	display: flex;
+	align-items: center;
+	padding: 0.22rem 0.4rem;
+	min-width: 3px;
+}
+
+.fulcrum-review-stacked-bar__label {
+	display: none;
+	flex-direction: column;
+	gap: 0.06rem;
+	min-width: 0;
+	width: 100%;
+	line-height: 1.18;
+	pointer-events: none;
+}
+
+@container reviewseg (min-width: 6.75rem) {
+	.fulcrum-review-stacked-bar__label {
+		display: flex;
+	}
+}
+
+.fulcrum-review-stacked-bar__label-name {
+	font-size: 0.72rem;
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.fulcrum-review-stacked-bar__label-time {
+	font-size: 0.62rem;
+	font-weight: 500;
+	opacity: 0.9;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.fulcrum-review-chart-tooltip {
+	position: fixed;
+	z-index: 100;
+	pointer-events: none;
+	margin: 0;
+	padding: 0.4rem 0.55rem;
+	max-width: min(18rem, calc(100vw - 1.5rem));
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35;
+	color: var(--text-normal);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	box-shadow:
+		0 2px 10px color-mix(in srgb, var(--background-modifier-border) 45%, transparent),
+		0 0 0 1px color-mix(in srgb, var(--background-primary) 70%, transparent);
+}
+
+.fulcrum-review-chart-tooltip__name {
+	font-weight: 600;
+}
+
+.fulcrum-review-chart-tooltip__meta {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-top: 0.12rem;
+}
+
+/* ── Review (Project Manager main pane) ── */
+.fulcrum-weekly-review__intro {
+	margin-bottom: 0.85rem;
+}
+
+.fulcrum-weekly-review__controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 1rem 1.5rem;
+	margin-bottom: 1rem;
+}
+
+.fulcrum-weekly-review__range {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem 0.75rem;
+}
+
+.fulcrum-weekly-review__range-label {
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-muted);
+}
+
+.fulcrum-weekly-review__days-input {
+	width: 4.25rem;
+	margin: 0;
+	padding: 0.28rem 0.45rem;
+	font-size: var(--font-ui-smaller);
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.fulcrum-weekly-review__presets {
+	display: inline-flex;
+	gap: 0.25rem;
+}
+
+.fulcrum-weekly-review__preset {
+	margin: 0;
+	padding: 0.28rem 0.5rem;
+	font-size: var(--font-ui-smaller);
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.fulcrum-weekly-review__preset:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.fulcrum-weekly-review__preset--on {
+	background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-secondary));
+	color: var(--text-accent);
+	border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+	font-weight: 600;
+}
+
+.fulcrum-weekly-review__group-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.fulcrum-weekly-review__group-label {
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-muted);
+	margin-right: 0.15rem;
+}
+
+.fulcrum-weekly-review__group-btn {
+	margin: 0;
+	padding: 0.32rem 0.55rem;
+	font-size: var(--font-ui-smaller);
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.fulcrum-weekly-review__group-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.fulcrum-weekly-review__group-btn--active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.fulcrum-weekly-review__group-btn--active:hover {
+	filter: brightness(0.97);
+}
+
+.fulcrum-weekly-review__metrics {
+	margin-top: 0.25rem;
+}
+
+.fulcrum-weekly-review__feed-title {
+	margin: 0 0 0.5rem;
+}
+
+.fulcrum-weekly-review__groups {
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+}
+
+.fulcrum-weekly-review__group-title {
+	margin: 0 0 0.45rem;
+	font-size: var(--font-ui-medium);
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+.fulcrum-weekly-review__cap-hint {
+	margin: 0.75rem 0 0;
+	font-size: var(--font-ui-smaller);
+}
 
 /*
  * Shared “suite people” UI — portrait cards + inline pills.

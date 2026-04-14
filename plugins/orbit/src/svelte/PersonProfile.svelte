@@ -16,7 +16,8 @@
 	}
 	import type {OrbitHost} from "../orbit/pluginHost";
 	import {resolveOrbitAccentCss} from "../orbit/accentCss";
-	import {normalizeVaultLinkPath, resolveBannerImageUrl} from "../orbit/bannerImage";
+	import {resolveBannerImageUrl} from "../orbit/bannerImage";
+	import {resolvePersonAvatarSrc} from "../orbit/personAvatar";
 	import {
 		readPersonFrontmatter,
 		displayNameForPerson,
@@ -94,6 +95,8 @@
 	let avatarSrc: string | null = null;
 	let initials = "";
 	let workLocationLine = "";
+	/** `position:` frontmatter (under name). */
+	let positionDisplay = "";
 	/** `pronouns:` frontmatter, display only (after name in banner). */
 	let pronounsDisplay = "";
 	let orgUpPaths: OrgPersonPill[] = [];
@@ -106,20 +109,6 @@
 	let quickDraft = "";
 	let unsub: (() => void) | null = null;
 
-	function resolveAvatarSrcForNote(raw: string | undefined, sourceNotePath: string): string | null {
-		if (!raw?.trim()) return null;
-		const s = normalizeVaultLinkPath(raw);
-		if (/^https?:\/\//i.test(s)) return s;
-		const dest = plugin.app.metadataCache.getFirstLinkpathDest(s, sourceNotePath);
-		if (dest) {
-			const af = plugin.app.vault.getAbstractFileByPath(dest);
-			if (af && af instanceof TFile) return plugin.app.vault.getResourcePath(af);
-		}
-		const direct = plugin.app.vault.getAbstractFileByPath(s);
-		if (direct && direct instanceof TFile) return plugin.app.vault.getResourcePath(direct);
-		return null;
-	}
-
 	function enrichOrgPerson(linkPath: string, linkLabel: string): OrgPersonPill {
 		const pf = plugin.app.vault.getAbstractFileByPath(linkPath);
 		if (!(pf instanceof TFile)) {
@@ -127,19 +116,11 @@
 		}
 		const c = plugin.app.metadataCache.getFileCache(pf);
 		const fm = readPersonFrontmatter(c);
-		const rf = c?.frontmatter as Record<string, unknown> | undefined;
-		const avKey = plugin.settings.avatarFrontmatterField;
-		const avatarRaw =
-			typeof rf?.[avKey] === "string"
-				? (rf[avKey] as string)
-				: typeof rf?.avatar === "string"
-					? rf.avatar
-					: fm.avatar;
 		return {
 			path: linkPath,
 			label: linkLabel,
 			displayName: displayNameForPerson(fm, pf.basename),
-			avatarSrc: resolveAvatarSrcForNote(avatarRaw, pf.path),
+			avatarSrc: resolvePersonAvatarSrc(plugin.app, pf, plugin.settings.avatarFrontmatterField),
 		};
 	}
 
@@ -151,6 +132,7 @@
 			stats = null;
 			orbitAccentCss = "";
 			bannerImageSrc = null;
+			positionDisplay = "";
 			pronounsDisplay = "";
 			return;
 		}
@@ -161,24 +143,18 @@
 		const cache = plugin.app.metadataCache.getFileCache(f);
 		const fm = readPersonFrontmatter(cache);
 		const rawFm = cache?.frontmatter as Record<string, unknown> | undefined;
-		const avKey = plugin.settings.avatarFrontmatterField;
-		const avatarRaw =
-			typeof rawFm?.[avKey] === "string"
-				? (rawFm[avKey] as string)
-				: typeof rawFm?.avatar === "string"
-					? rawFm.avatar
-					: fm.avatar;
 		displayName = displayNameForPerson(fm, f.basename);
 		orbitAccentCss = resolveOrbitAccentCss(fm.color, plugin.settings.defaultBannerColor);
 		const bannerRaw = typeof rawFm?.banner === "string" ? rawFm.banner : fm.banner;
 		bannerImageSrc = resolveBannerImageUrl(plugin.app, bannerRaw, f.path);
-		avatarSrc = resolveAvatarSrcForNote(avatarRaw, f.path);
+		avatarSrc = resolvePersonAvatarSrc(plugin.app, f, plugin.settings.avatarFrontmatterField);
 		const parts = displayName.split(/\s+/).filter(Boolean);
 		initials =
 			parts.length >= 2
 				? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 				: displayName.slice(0, 2).toUpperCase() || "?";
 		workLocationLine = formatPersonWorkLocationLine(fm);
+		positionDisplay = stripWikiLinkDisplay(fm.position?.trim() ?? "").trim();
 		const pronRaw = stripWikiLinkDisplay(fm.pronouns?.trim() ?? "").trim();
 		pronounsDisplay = pronRaw;
 
@@ -393,6 +369,9 @@
 					<h1 class="orbit-banner__title">
 						{displayName}{#if pronounsDisplay}<span class="orbit-banner__pronouns">{pronounsDisplay}</span>{/if}
 					</h1>
+					{#if positionDisplay}
+						<p class="orbit-banner__position">{positionDisplay}</p>
+					{/if}
 					{#if workLocationLine}
 						<p class="orbit-banner__company">{workLocationLine}</p>
 					{/if}
@@ -687,8 +666,8 @@
 		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 	}
 	.orbit-banner__pronouns {
-		margin-left: 0.5rem;
-		font-size: 0.68em;
+		margin-left: 0.45rem;
+		font-size: 0.52em;
 		font-weight: 500;
 		letter-spacing: 0.02em;
 		color: var(--text-muted);
@@ -696,6 +675,17 @@
 	.orbit-banner__inner--on-dark .orbit-banner__pronouns {
 		color: rgba(255, 255, 255, 0.52);
 		text-shadow: none;
+	}
+	.orbit-banner__position {
+		margin: 0.28rem 0 0;
+		font-size: var(--font-ui-small);
+		font-weight: 600;
+		color: var(--text-muted);
+		line-height: 1.35;
+	}
+	.orbit-banner__inner--on-dark .orbit-banner__position {
+		color: rgba(255, 255, 255, 0.9);
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 	}
 	.orbit-banner__company {
 		margin: 0.35rem 0 0;

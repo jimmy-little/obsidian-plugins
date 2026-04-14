@@ -2,7 +2,11 @@ import type { App, WorkspaceLeaf } from "obsidian";
 
 export type OpenViewsIn = "main" | "sidebar";
 
-export {NotePropertiesModal, type NotePropertiesModalOptions} from "./notePropertiesModal";
+export {
+	NotePropertiesModal,
+	openNotePropertiesModal,
+	type NotePropertiesModalOptions,
+} from "./notePropertiesModal";
 export {
 	gatherAllPropertyKeys,
 	gatherValueHistoryForKey,

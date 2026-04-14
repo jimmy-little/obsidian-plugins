@@ -5,15 +5,22 @@ import type {FulcrumHost} from "../fulcrum/pluginBridge";
 import ProjectManager from "../svelte/ProjectManager.svelte";
 
 export type ProjectManagerViewState = {
-	mode?: "dashboard" | "areas" | "project" | "kanban" | "calendar" | "time";
+	mode?: "dashboard" | "review" | "areas" | "project" | "kanban" | "calendar" | "time";
 	projectPath?: string;
 };
 
-export type ProjectManagerShellMode = "dashboard" | "areas" | "kanban" | "calendar" | "time";
+export type ProjectManagerShellMode =
+	| "dashboard"
+	| "review"
+	| "areas"
+	| "kanban"
+	| "calendar"
+	| "time";
 
 export function projectManagerShellLabel(mode: ProjectManagerShellMode): string {
 	const names: Record<ProjectManagerShellMode, string> = {
 		dashboard: "Dashboard",
+		review: "Review",
 		areas: "Areas",
 		kanban: "Kanban",
 		calendar: "Calendar",
@@ -25,7 +32,8 @@ export function projectManagerShellLabel(mode: ProjectManagerShellMode): string 
 export class ProjectManagerView extends ItemView {
 	private readonly host: FulcrumHost;
 	private component: SvelteComponent | null = null;
-	mainMode: "dashboard" | "areas" | "project" | "kanban" | "calendar" | "time" = "dashboard";
+	mainMode: "dashboard" | "review" | "areas" | "project" | "kanban" | "calendar" | "time" =
+		"dashboard";
 	projectPath: string | null = null;
 	/** Last non-project mode; used when leaving a project view (glyph bar or back). */
 	shellReturnTarget: ProjectManagerShellMode = "dashboard";
@@ -44,6 +52,7 @@ export class ProjectManagerView extends ItemView {
 			const p = this.host.vaultIndex.resolveProjectByPath(this.projectPath);
 			return p?.name ?? "Project";
 		}
+		if (this.mainMode === "review") return "Review";
 		if (this.mainMode === "areas") return "Areas";
 		if (this.mainMode === "kanban") return "Kanban";
 		if (this.mainMode === "calendar") return "Calendar";
@@ -59,6 +68,7 @@ export class ProjectManagerView extends ItemView {
 		if (this.mainMode === "project" && this.projectPath) {
 			return {mode: "project", projectPath: this.projectPath};
 		}
+		if (this.mainMode === "review") return {mode: "review"};
 		if (this.mainMode === "areas") return {mode: "areas"};
 		if (this.mainMode === "kanban") return {mode: "kanban"};
 		if (this.mainMode === "calendar") return {mode: "calendar"};
@@ -70,6 +80,10 @@ export class ProjectManagerView extends ItemView {
 		if (state?.mode === "project" && typeof state.projectPath === "string" && state.projectPath) {
 			this.mainMode = "project";
 			this.projectPath = state.projectPath;
+		} else if (state?.mode === "review") {
+			this.mainMode = "review";
+			this.projectPath = null;
+			this.shellReturnTarget = "review";
 		} else if (state?.mode === "areas") {
 			this.mainMode = "areas";
 			this.projectPath = null;
@@ -132,6 +146,13 @@ export class ProjectManagerView extends ItemView {
 						type: VIEW_PROJECT_MANAGER,
 						active: true,
 						state: {mode: "dashboard"},
+					});
+				},
+				onSelectWeeklyReview: () => {
+					void this.leaf.setViewState({
+						type: VIEW_PROJECT_MANAGER,
+						active: true,
+						state: {mode: "review"},
 					});
 				},
 				onSelectAreas: () => {

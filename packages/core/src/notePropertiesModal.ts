@@ -289,3 +289,17 @@ export class NotePropertiesModal extends Modal {
 		this.contentEl.empty();
 	}
 }
+
+/**
+ * Preferred entry for Orbit, Fulcrum, and other suite UIs so options stay consistent.
+ * @returns The modal instance (already opened), e.g. so hosts can close it from callbacks.
+ */
+export function openNotePropertiesModal(
+	app: App,
+	file: TFile,
+	opts?: NotePropertiesModalOptions,
+): NotePropertiesModal {
+	const m = new NotePropertiesModal(app, file, opts);
+	m.open();
+	return m;
+}

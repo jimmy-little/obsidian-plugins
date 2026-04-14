@@ -14,7 +14,8 @@ function resolveProjectManagerState(initial?: ProjectManagerViewState): ProjectM
 		initial.mode === "areas" ||
 		initial.mode === "kanban" ||
 		initial.mode === "calendar" ||
-		initial.mode === "time"
+		initial.mode === "time" ||
+		initial.mode === "review"
 	) {
 		return {mode: initial.mode};
 	}
@@ -66,6 +67,10 @@ export async function revealOrCreateAreas(
 	settings: FulcrumSettings,
 ): Promise<void> {
 	await revealOrCreateProjectManager(app, settings, {mode: "areas"});
+}
+
+export async function revealOrCreateReview(app: App, settings: FulcrumSettings): Promise<void> {
+	await revealOrCreateProjectManager(app, settings, {mode: "review"});
 }
 
 /** Single-day timeline (tasks + meetings); optional persisted focal date. */

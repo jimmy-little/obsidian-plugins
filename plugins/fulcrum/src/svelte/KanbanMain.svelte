@@ -6,8 +6,8 @@
 	import {buildAreaWorkRelatedMap, filterProjectsWorkRelated} from "../fulcrum/utils/workRelatedProjectFilter";
 	import {parseList} from "../fulcrum/settingsDefaults";
 	import {sortIndexedProjects} from "../fulcrum/utils/projectListSort";
-	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
-	import {formatShortMonthDay, daysUntilCalendar} from "../fulcrum/utils/dates";
+	import {buildProjectSidebarCounts} from "../fulcrum/utils/projectSidebarCounts";
+	import ProjectListRow from "./ProjectListRow.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -25,6 +25,8 @@
 
 	$: sRev = $settingsRevision;
 	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
+	$: doneTask = (void sRev, new Set(parseList(plugin.settings.taskDoneStatuses)));
+	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
 	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
@@ -249,11 +251,11 @@
 
 <div class="fulcrum-kanban" data-fulcrum-kanban-root>
 	<div class="fulcrum-kanban__toolbar">
-		<label class="fulcrum-kanban__toolbar-label">
+		<label class="fulcrum-kanban__toolbar-label" for="fulcrum-kanban-column-by">
 			<span>Columns by</span>
 			<select
+				id="fulcrum-kanban-column-by"
 				class="dropdown fulcrum-kanban__column-select"
-				aria-label="Kanban columns by"
 				value={columnBy}
 				on:change={(e) => void onColumnByChange(e)}
 			>
@@ -309,47 +311,17 @@
 				</div>
 				<div class="fulcrum-kanban__column-cards">
 					{#each col.projects as p (p.file.path)}
-						{@const accent = resolveProjectAccentCss(p.color)}
-						{@const reviewOverdue = p.nextReview ? (daysUntilCalendar(p.nextReview) ?? 0) < 0 : false}
-						{@const launchDisp = p.launchDate?.trim() ? formatShortMonthDay(p.launchDate) : ""}
-						{@const reviewDisp = p.nextReview?.trim() ? formatShortMonthDay(p.nextReview) : ""}
-						<button
-							type="button"
-							class="fulcrum-kanban-card"
-							class:fulcrum-kanban-card--overdue={reviewOverdue}
-							data-fulcrum-kanban-card
-							data-project-path={p.file.path}
-							style="--fulcrum-card-accent: {accent}"
-							on:click={() => openProject(p.file.path)}
-						>
-							<div class="fulcrum-kanban-card__inner">
-								<h3 class="fulcrum-kanban-card__title">{p.name}</h3>
-								{#if columnBy !== "area" && p.areaName?.trim()}
-									<span class="fulcrum-kanban-card__area">{p.areaName}</span>
-								{/if}
-								{#if columnBy !== "status" && p.status?.trim()}
-									<span class="fulcrum-kanban-card__status-pill">{p.status.replace(/\b\w/g, (c) => c.toUpperCase())}</span>
-								{/if}
-								{#if p.description?.trim()}
-									<p class="fulcrum-kanban-card__desc">{p.description}</p>
-								{/if}
-								{#if launchDisp || reviewDisp}
-									<div class="fulcrum-kanban-card__meta">
-										{#if launchDisp}
-											<span>Launch {launchDisp}</span>
-										{/if}
-										{#if launchDisp && reviewDisp}
-											<span class="fulcrum-meta-sep">·</span>
-										{/if}
-										{#if reviewDisp}
-											<span class:fulcrum-kanban-card__meta--overdue={reviewOverdue}>
-												Next {reviewDisp}
-											</span>
-										{/if}
-									</div>
-								{/if}
-							</div>
-						</button>
+						<div class="fulcrum-kanban__card-cell" data-fulcrum-kanban-card data-project-path={p.file.path}>
+							<ProjectListRow
+								{plugin}
+								{p}
+								tile={true}
+								selectedPath={null}
+								onSelectProject={openProject}
+								openTaskCount={projectCounts.get(p.file.path)?.openTasks ?? 0}
+								upcomingMeetingCount={projectCounts.get(p.file.path)?.upcomingMeetings ?? 0}
+							/>
+						</div>
 					{/each}
 				</div>
 			</div>

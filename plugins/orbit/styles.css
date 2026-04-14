@@ -511,7 +511,7 @@
 	--orbit-pl-accent: var(--background-modifier-border);
 	display: flex;
 	flex-direction: row;
-	align-items: stretch;
+	align-items: center;
 	width: 100%;
 	text-align: left;
 	margin: 0;
@@ -526,6 +526,44 @@
 	cursor: pointer;
 	box-sizing: border-box;
 	outline: none;
+}
+
+.orbit-pl-row__avatar {
+	flex: 0 0 auto;
+	width: 2.35rem;
+	height: 2.35rem;
+	margin: 0.4rem 0 0.4rem 0.5rem;
+	border-radius: 999px;
+	border: 2px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	background: var(--background-modifier-border);
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+}
+
+.orbit-pl-row__avatar--thumbnail {
+	border-radius: var(--radius-s, 6px);
+}
+
+.orbit-pl-row__avatar--cover img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.orbit-pl-row__avatar img {
+	max-width: 100%;
+	max-height: 100%;
+	object-fit: cover;
+}
+
+.orbit-pl-row__initials {
+	font-size: 0.68rem;
+	font-weight: 700;
+	color: var(--text-muted);
+	line-height: 1;
 }
 
 .orbit-pl-row:focus-visible {
@@ -551,7 +589,7 @@
 	display: flex;
 	flex-direction: column;
 	align-items: stretch;
-	padding: 0.48rem 0.45rem 0.52rem 0.55rem;
+	padding: 0.48rem 0.5rem 0.52rem 0.35rem;
 	box-sizing: border-box;
 }
 

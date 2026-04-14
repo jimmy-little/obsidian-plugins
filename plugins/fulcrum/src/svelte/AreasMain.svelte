@@ -254,6 +254,7 @@
 					<div class="fulcrum-area-dashboard__project-grid">
 						{#each projectsSorted as p (p.file.path)}
 							<ProjectListRow
+								{plugin}
 								{p}
 								selectedPath={null}
 								onSelectProject={onSelectProject}

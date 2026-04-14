@@ -8,7 +8,7 @@ import {
 	type ObsidianProtocolData,
 	type WorkspaceLeaf,
 } from "obsidian";
-import {revealOrCreateView} from "@obsidian-suite/core";
+import {openNotePropertiesModal, revealOrCreateView} from "@obsidian-suite/core";
 import {OrbitSettingTab} from "./OrbitSettingTab";
 import {VIEW_ORBIT_MAIN, VIEW_ORBIT_ORG_CHART, VIEW_ORBIT_PERSON} from "./orbit/constants";
 import type {OrbitHost} from "./orbit/pluginHost";
@@ -23,7 +23,6 @@ import {formatQuickNoteLine} from "./orbit/quickNoteFormat";
 import {DEFAULT_SETTINGS, normalizeSettings, type OrbitSettings} from "./orbit/settings";
 import {OrbitMainView} from "./views/OrbitMainView";
 import {ConfirmDeletePersonModal} from "./modals/ConfirmDeletePersonModal";
-import {PersonPropertiesModal} from "./modals/PersonPropertiesModal";
 import {OrgChartView} from "./views/OrgChartView";
 import {PersonView} from "./views/PersonView";
 
@@ -260,8 +259,7 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 	}
 
 	openPersonProperties(file: TFile): void {
-		let modal!: PersonPropertiesModal;
-		modal = new PersonPropertiesModal(this.app, file, {
+		const modal = openNotePropertiesModal(this.app, file, {
 			onDeletePage: () => {
 				modal.close();
 				new ConfirmDeletePersonModal(this.app, file, async () => {
@@ -269,7 +267,6 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 				}).open();
 			},
 		});
-		modal.open();
 	}
 
 	private async deletePersonNotePermanently(file: TFile): Promise<void> {

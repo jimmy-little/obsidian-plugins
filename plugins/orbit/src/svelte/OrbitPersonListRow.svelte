@@ -7,6 +7,10 @@
 	export let accentCss: string;
 	export let selectedPath: string | null;
 	export let onSelect: (path: string) => void;
+	export let avatarSrc: string | null = null;
+	export let initials: string;
+	/** Matches profile: `circle` | `cover` | `thumbnail`. */
+	export let avatarStyle: string;
 
 	function activateRow(): void {
 		onSelect(file.path);
@@ -29,6 +33,13 @@
 	on:click={activateRow}
 	on:keydown={onRowKeydown}
 >
+	<div class="orbit-pl-row__avatar orbit-pl-row__avatar--{avatarStyle}" aria-hidden="true">
+		{#if avatarSrc}
+			<img src={avatarSrc} alt="" />
+		{:else}
+			<span class="orbit-pl-row__initials">{initials}</span>
+		{/if}
+	</div>
 	<div class="orbit-pl-row__inner">
 		<div class="orbit-pl-row__head">
 			<span class="orbit-pl-row__name">{label}</span>

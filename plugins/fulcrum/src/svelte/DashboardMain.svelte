@@ -16,7 +16,11 @@
 		DASHBOARD_ACTIVITY_MAX_ROWS,
 	} from "../fulcrum/settingsDefaults";
 	import type {IndexedProject} from "../fulcrum/types";
-	import {buildProjectSidebarCounts, projectReviewIsOverdue} from "../fulcrum/utils/projectSidebarCounts";
+	import {
+		buildProjectSidebarCounts,
+		bucketDashboardAttentionProjects,
+		projectReviewIsOverdue,
+	} from "../fulcrum/utils/projectSidebarCounts";
 	import {
 		todayLocalISODate,
 		isDueToday,
@@ -59,25 +63,27 @@
 
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
 
-	/** Active projects with open tasks, upcoming meetings (rolling 7d), or overdue review — same signals as the sidebar. */
-	$: attentionProjects = ((): IndexedProject[] => {
-		const out: IndexedProject[] = [];
+	/** Active projects that qualify for any attention bucket; split by priority (review → tasks → meetings). */
+	$: attentionBuckets = (() => {
 		const candidates = filterProjectsWorkRelated(
 			snapshot.projects.filter((p) => !doneProject.has((p.status ?? "").trim().toLowerCase())),
 			onlyWork,
 			areaWorkMap,
 		);
-		for (const p of candidates) {
-			const overdue = projectReviewIsOverdue(p);
+		const withSignals = candidates.filter((p) => {
 			const c = projectCounts.get(p.file.path);
 			const openTasks = c?.openTasks ?? 0;
 			const upcomingMeetings = c?.upcomingMeetings ?? 0;
-			if (!overdue && openTasks === 0 && upcomingMeetings === 0) continue;
-			out.push(p);
-		}
-		out.sort((a, b) => a.name.localeCompare(b.name));
-		return out;
+			return projectReviewIsOverdue(p) || openTasks > 0 || upcomingMeetings > 0;
+		});
+		return bucketDashboardAttentionProjects(withSignals, projectCounts);
 	})();
+
+	$: attentionAny =
+		attentionBuckets.needsReview.length +
+			attentionBuckets.openActionItems.length +
+			attentionBuckets.upcomingMeetings.length >
+		0;
 
 	$: tasksDueToday = snapshot.tasks.filter(
 		(t) =>
@@ -389,24 +395,78 @@
 
 <section class="fulcrum-section">
 	<h2>Needs attention</h2>
-	{#if attentionProjects.length === 0}
+	{#if !attentionAny}
 		<p class="fulcrum-muted">
-			No active projects with open tasks, meetings in the next 7 days, or an overdue review.
+			No active projects with an overdue review, open tasks, or meetings in the next 7 days.
 		</p>
 	{:else}
-		<div class="fulcrum-dashboard-attention-grid">
-			{#each attentionProjects as p (p.file.path)}
-				<div class="fulcrum-dashboard-attention__cell">
-					<ProjectListRow
-						{p}
-						tile={true}
-						selectedPath={null}
-						onSelectProject={openProjectSummary}
-						openTaskCount={projectCounts.get(p.file.path)?.openTasks ?? 0}
-						upcomingMeetingCount={projectCounts.get(p.file.path)?.upcomingMeetings ?? 0}
-					/>
-				</div>
-			{/each}
+		<div class="fulcrum-dashboard-attention-groups">
+			<div class="fulcrum-dashboard-attention-group">
+				<h3 class="fulcrum-dashboard-attention-group__title">Needs review</h3>
+				{#if attentionBuckets.needsReview.length === 0}
+					<p class="fulcrum-muted fulcrum-dashboard-attention-group__empty">None right now.</p>
+				{:else}
+					<div class="fulcrum-dashboard-attention-grid">
+						{#each attentionBuckets.needsReview as p (p.file.path)}
+							<div class="fulcrum-dashboard-attention__cell">
+								<ProjectListRow
+									{plugin}
+									{p}
+									tile={true}
+									selectedPath={null}
+									onSelectProject={openProjectSummary}
+									openTaskCount={projectCounts.get(p.file.path)?.openTasks ?? 0}
+									upcomingMeetingCount={projectCounts.get(p.file.path)?.upcomingMeetings ?? 0}
+								/>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+			<div class="fulcrum-dashboard-attention-group">
+				<h3 class="fulcrum-dashboard-attention-group__title">Open action items</h3>
+				{#if attentionBuckets.openActionItems.length === 0}
+					<p class="fulcrum-muted fulcrum-dashboard-attention-group__empty">None right now.</p>
+				{:else}
+					<div class="fulcrum-dashboard-attention-grid">
+						{#each attentionBuckets.openActionItems as p (p.file.path)}
+							<div class="fulcrum-dashboard-attention__cell">
+								<ProjectListRow
+									{plugin}
+									{p}
+									tile={true}
+									selectedPath={null}
+									onSelectProject={openProjectSummary}
+									openTaskCount={projectCounts.get(p.file.path)?.openTasks ?? 0}
+									upcomingMeetingCount={projectCounts.get(p.file.path)?.upcomingMeetings ?? 0}
+								/>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+			<div class="fulcrum-dashboard-attention-group">
+				<h3 class="fulcrum-dashboard-attention-group__title">Upcoming meetings</h3>
+				{#if attentionBuckets.upcomingMeetings.length === 0}
+					<p class="fulcrum-muted fulcrum-dashboard-attention-group__empty">None right now.</p>
+				{:else}
+					<div class="fulcrum-dashboard-attention-grid">
+						{#each attentionBuckets.upcomingMeetings as p (p.file.path)}
+							<div class="fulcrum-dashboard-attention__cell">
+								<ProjectListRow
+									{plugin}
+									{p}
+									tile={true}
+									selectedPath={null}
+									onSelectProject={openProjectSummary}
+									openTaskCount={projectCounts.get(p.file.path)?.openTasks ?? 0}
+									upcomingMeetingCount={projectCounts.get(p.file.path)?.upcomingMeetings ?? 0}
+								/>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
 		</div>
 	{/if}
 </section>
