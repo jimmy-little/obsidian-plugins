@@ -134,14 +134,17 @@ function personChip(
 	app: App,
 	file: TFile,
 	avatarField: string,
-): {name: string; avatarSrc: string | null; path: string} {
+	bannerField: string,
+): {name: string; avatarSrc: string | null; bannerImageSrc: string | null; path: string} {
 	const cache = app.metadataCache.getFileCache(file);
 	const fm = cache?.frontmatter as Record<string, unknown> | undefined;
 	const name =
 		(typeof fm?.name === "string" && fm.name.trim()) || file.basename.replace(/\.md$/i, "");
 	const avatarRaw = fm && avatarField ? (fm[avatarField] as string | undefined) : undefined;
 	const avatarSrc = resolveBannerImageSrc(app, file, avatarRaw);
-	return {name, avatarSrc, path: file.path};
+	const bannerRaw = bannerField && fm ? (fm[bannerField] as string | undefined) : undefined;
+	const bannerImageSrc = bannerField ? resolveBannerImageSrc(app, file, bannerRaw) : null;
+	return {name, avatarSrc, bannerImageSrc, path: file.path};
 }
 
 function resolveLinkedProjectFile(
@@ -342,9 +345,10 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 	const peopleRow = el("div", "fulcrum-companion-people-row");
 
 	const avatarField = s.peopleAvatarField.trim() || "avatar";
+	const bannerField = s.projectBannerField.trim() || "banner";
 	const peopleFiles = collectPeopleFilesFromFm(app, file.path, fm, s);
 	for (const pf of peopleFiles) {
-		const p = personChip(app, pf, avatarField);
+		const p = personChip(app, pf, avatarField, bannerField);
 		const btn = el("button", "fulcrum-person-card fulcrum-companion-person-card");
 		btn.type = "button";
 		btn.setAttribute("aria-label", p.name);
@@ -352,6 +356,10 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 			void app.workspace.getLeaf("tab").openFile(pf);
 		});
 		const topZone = el("div", "fulcrum-person-card__top");
+		if (p.bannerImageSrc) {
+			topZone.classList.add("fulcrum-person-card__top--has-banner");
+			topZone.style.backgroundImage = `url(${JSON.stringify(p.bannerImageSrc)})`;
+		}
 		const av = el("div", "fulcrum-person-card__avatar");
 		if (p.avatarSrc) {
 			const img = document.createElement("img");

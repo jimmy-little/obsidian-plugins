@@ -652,7 +652,13 @@
 							aria-label={person.name}
 							on:click={() => openPath(person.file.path)}
 						>
-							<div class="fulcrum-person-card__top">
+							<div
+								class="fulcrum-person-card__top"
+								class:fulcrum-person-card__top--has-banner={!!person.bannerImageSrc}
+								style:background-image={person.bannerImageSrc
+									? `url(${JSON.stringify(person.bannerImageSrc)})`
+									: undefined}
+							>
 								<div class="fulcrum-person-card__avatar">
 									{#if person.avatarSrc}
 										<img src={person.avatarSrc} alt="" />

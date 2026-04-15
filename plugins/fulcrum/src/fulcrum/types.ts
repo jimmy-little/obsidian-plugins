@@ -94,6 +94,8 @@ export interface IndexedPerson {
 	file: TFile;
 	name: string;
 	avatarSrc: string | null;
+	/** Resolved `banner` (or configured project banner field) for the people note; card top only. */
+	bannerImageSrc: string | null;
 }
 
 export interface ProjectPageMeta {

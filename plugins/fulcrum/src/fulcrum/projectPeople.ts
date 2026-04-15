@@ -144,7 +144,8 @@ export function getPersonNameAndAvatar(
 	app: App,
 	file: TFile,
 	avatarField: string,
-): {name: string; avatarSrc: string | null} {
+	bannerField?: string,
+): {name: string; avatarSrc: string | null; bannerImageSrc: string | null} {
 	const cache = app.metadataCache.getFileCache(file);
 	const fm = cache?.frontmatter as Record<string, unknown> | undefined;
 	const name =
@@ -152,12 +153,15 @@ export function getPersonNameAndAvatar(
 		file.basename.replace(/\.md$/i, "");
 	const avatarRaw = fm && avatarField ? (fm[avatarField] as string | undefined) : undefined;
 	const avatarSrc = resolveBannerImageSrc(app, file, avatarRaw);
-	return {name, avatarSrc};
+	const bannerKey = bannerField?.trim();
+	const bannerRaw = bannerKey && fm ? (fm[bannerKey] as string | undefined) : undefined;
+	const bannerImageSrc = bannerKey ? resolveBannerImageSrc(app, file, bannerRaw) : null;
+	return {name, avatarSrc, bannerImageSrc};
 }
 
-function personFromFile(app: App, file: TFile, avatarField: string): IndexedPerson {
-	const {name, avatarSrc} = getPersonNameAndAvatar(app, file, avatarField);
-	return {file, name, avatarSrc};
+function personFromFile(app: App, file: TFile, avatarField: string, bannerField: string): IndexedPerson {
+	const {name, avatarSrc, bannerImageSrc} = getPersonNameAndAvatar(app, file, avatarField, bannerField);
+	return {file, name, avatarSrc, bannerImageSrc};
 }
 
 /**
@@ -176,11 +180,12 @@ export async function collectRelatedPeople(
 	const peopleFolder = normalizePath(s.peopleFolder.trim());
 	const peopleField = s.projectRelatedPeopleField.trim() || "relatedPeople";
 	const avatarField = s.peopleAvatarField.trim() || "avatar";
+	const bannerField = s.projectBannerField.trim() || "banner";
 	const byPath = new Map<string, IndexedPerson>();
 
 	function addPerson(file: TFile): void {
 		if (byPath.has(file.path)) return;
-		byPath.set(file.path, personFromFile(app, file, avatarField));
+		byPath.set(file.path, personFromFile(app, file, avatarField, bannerField));
 	}
 
 	function addIfUnderPeopleFolder(file: TFile): void {
