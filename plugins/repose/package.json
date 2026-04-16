@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-plugin-repose",
 	"version": "0.1.0",
-	"description": "Repose — media library (obsidian-suite monorepo)",
+	"description": "Trakt → Obsidian TV/movie notes (obsidian-suite monorepo)",
 	"main": "main.js",
 	"scripts": {
 		"prebuild": "node ../../tooling/merge-css.mjs",
@@ -10,11 +10,12 @@
 		"build:install": "npm run build && node ../../tooling/install-to-vault.mjs .",
 		"release": "node ../../tooling/release-plugin.mjs plugins/repose"
 	},
-	"keywords": ["obsidian", "obsidian-plugin"],
+	"keywords": ["obsidian", "obsidian-plugin", "trakt"],
 	"author": "Jimmy Little",
 	"license": "MIT",
 	"dependencies": {
-		"@obsidian-suite/core": "*"
+		"@obsidian-suite/core": "*",
+		"gray-matter": "^4.0.3"
 	},
 	"devDependencies": {
 		"@types/node": "^16.18.0",

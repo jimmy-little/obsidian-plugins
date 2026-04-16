@@ -1,64 +1,52 @@
-import type { MediaKind } from "./media";
-import { MEDIA_KINDS } from "./media";
-
-export type TypeMatchMode = "tag" | "folder" | "frontmatter";
-
-export interface TypeMatchRule {
-	mode: TypeMatchMode;
-	/** Tag name (no #), folder path, or key:value for frontmatter */
-	text: string;
-}
-
-export type OpenViewsIn = "main" | "sidebar";
-
 export interface ReposeSettings {
-	openViewsIn: OpenViewsIn;
-	/** When type rule is tag or frontmatter, new notes go here unless folder rule supplies a path */
-	defaultNewNoteFolder: string;
-	/** The Movie Database API v3 key (for poster, banner, logo, thumb on shows & movies). */
+	/** Trakt OAuth app (from Trakt API applications) */
+	traktClientId: string;
+	traktClientSecret: string;
+	/** TMDB API v3 key (images for posters / stills) */
 	tmdbApiKey: string;
-	typeRules: Record<MediaKind, TypeMatchRule>;
+	/** Vault-relative root for imported media notes (was OBSIDIAN_VAULT_PATH + `90 Media`) */
+	mediaRoot: string;
+	moviesSubfolder: string;
+	seriesSubfolder: string;
+	/** Frontmatter `project` wikilink for shows/episodes */
+	projectWikilink: string;
+	/** OAuth tokens (stored after device auth) */
+	traktAccessToken: string;
+	traktRefreshToken: string;
+	/** Epoch ms when access token expires */
+	traktTokenExpiresAt: number;
 }
-
-export const DEFAULT_TYPE_RULE = (): TypeMatchRule => ({
-	mode: "tag",
-	text: "",
-});
 
 export const DEFAULT_SETTINGS: ReposeSettings = {
-	openViewsIn: "main",
-	defaultNewNoteFolder: "",
+	traktClientId: "",
+	traktClientSecret: "",
 	tmdbApiKey: "",
-	typeRules: {
-		show: { mode: "tag", text: "show" },
-		movie: { mode: "tag", text: "movie" },
-		book: { mode: "tag", text: "book" },
-		podcast: { mode: "tag", text: "podcast" },
-		game: { mode: "tag", text: "game" },
-	},
+	mediaRoot: "90 Media",
+	moviesSubfolder: "Movies",
+	seriesSubfolder: "Series",
+	projectWikilink: "[[Downtime]]",
+	traktAccessToken: "",
+	traktRefreshToken: "",
+	traktTokenExpiresAt: 0,
 };
 
-export function normalizeLoadedSettings(raw: unknown): ReposeSettings {
-	const base = DEFAULT_SETTINGS;
-	if (!raw || typeof raw !== "object") return { ...base, typeRules: { ...base.typeRules } };
-	const o = raw as Record<string, unknown>;
-	const openViewsIn = o.openViewsIn === "sidebar" ? "sidebar" : "main";
-	const defaultNewNoteFolder =
-		typeof o.defaultNewNoteFolder === "string" ? o.defaultNewNoteFolder : "";
-	const tmdbApiKey = typeof o.tmdbApiKey === "string" ? o.tmdbApiKey : "";
-	const typeRules = { ...base.typeRules };
-	const tr = o.typeRules;
-	if (tr && typeof tr === "object") {
-		for (const k of MEDIA_KINDS) {
-			const r = (tr as Record<string, unknown>)[k];
-			if (r && typeof r === "object") {
-				const rr = r as Record<string, unknown>;
-				const mode =
-					rr.mode === "folder" || rr.mode === "frontmatter" ? rr.mode : "tag";
-				const text = typeof rr.text === "string" ? rr.text : "";
-				typeRules[k] = { mode, text };
-			}
-		}
-	}
-	return { openViewsIn, defaultNewNoteFolder, tmdbApiKey, typeRules };
+export function normalizeSettings(raw: unknown): ReposeSettings {
+	const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+	return {
+		traktClientId: typeof o.traktClientId === "string" ? o.traktClientId : DEFAULT_SETTINGS.traktClientId,
+		traktClientSecret:
+			typeof o.traktClientSecret === "string" ? o.traktClientSecret : DEFAULT_SETTINGS.traktClientSecret,
+		tmdbApiKey: typeof o.tmdbApiKey === "string" ? o.tmdbApiKey : DEFAULT_SETTINGS.tmdbApiKey,
+		mediaRoot: typeof o.mediaRoot === "string" ? o.mediaRoot : DEFAULT_SETTINGS.mediaRoot,
+		moviesSubfolder: typeof o.moviesSubfolder === "string" ? o.moviesSubfolder : DEFAULT_SETTINGS.moviesSubfolder,
+		seriesSubfolder: typeof o.seriesSubfolder === "string" ? o.seriesSubfolder : DEFAULT_SETTINGS.seriesSubfolder,
+		projectWikilink:
+			typeof o.projectWikilink === "string" ? o.projectWikilink : DEFAULT_SETTINGS.projectWikilink,
+		traktAccessToken:
+			typeof o.traktAccessToken === "string" ? o.traktAccessToken : DEFAULT_SETTINGS.traktAccessToken,
+		traktRefreshToken:
+			typeof o.traktRefreshToken === "string" ? o.traktRefreshToken : DEFAULT_SETTINGS.traktRefreshToken,
+		traktTokenExpiresAt:
+			typeof o.traktTokenExpiresAt === "number" ? o.traktTokenExpiresAt : DEFAULT_SETTINGS.traktTokenExpiresAt,
+	};
 }

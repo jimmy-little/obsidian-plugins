@@ -1,68 +1,76 @@
-import { Notice, Plugin } from "obsidian";
-import { revealOrCreateView } from "@obsidian-suite/core";
-import { syncImagesForNoteFile } from "./downloadReposeImages";
-import { classifyFile } from "./match";
-import { normalizeLoadedSettings, type ReposeSettings } from "./settings";
+import { Notice, Plugin, TFile, type ObsidianProtocolData } from "obsidian";
+import { refreshShowFromTrakt as runRefreshShowFromTrakt } from "./vault/showRefresh";
 import { ReposeSettingTab } from "./ReposeSettingTab";
-import { ReposeView, VIEW_TYPE_REPOSE } from "./ReposeView";
+import { ReposeShellView, VIEW_TYPE_REPOSE } from "./ReposeShellView";
+import { DEFAULT_SETTINGS, normalizeSettings, type ReposeSettings } from "./settings";
 
 export default class ReposePlugin extends Plugin {
 	settings!: ReposeSettings;
+	/** Device OAuth poll interval when connecting Trakt from settings */
+	traktDevicePollTimer: number | undefined;
+
+	clearTraktDevicePoll(): void {
+		if (this.traktDevicePollTimer) {
+			window.clearInterval(this.traktDevicePollTimer);
+			this.traktDevicePollTimer = undefined;
+		}
+	}
+
+	async refreshShowFromTrakt(file: TFile): Promise<{ ok: boolean; error?: string }> {
+		return runRefreshShowFromTrakt(this.app, this.settings, file);
+	}
+
+	async toggleWatchedFrontmatter(filePath: string): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(filePath);
+		if (!(f instanceof TFile)) return;
+		// `processFrontMatter` reads + writes YAML safely.
+		await this.app.fileManager.processFrontMatter(f, (fm) => {
+			const now = new Date();
+			const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+				now.getDate(),
+			).padStart(2, "0")}`;
+			const watched = typeof fm.watchedDate === "string" && fm.watchedDate.trim().length > 0;
+			if (watched) {
+				delete fm.watchedDate;
+				if (fm.reposeStatus === "watched") fm.reposeStatus = "watching";
+			} else {
+				fm.watchedDate = today;
+				fm.reposeStatus = "watched";
+			}
+		});
+	}
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
-		this.registerView(VIEW_TYPE_REPOSE, (leaf) => new ReposeView(leaf, this));
+		this.registerView(VIEW_TYPE_REPOSE, (leaf) => new ReposeShellView(leaf, this));
 
 		this.addRibbonIcon("clapperboard", "Repose", () => {
-			void this.openLibrary();
+			void this.openRepose();
 		});
 
 		this.addCommand({
-			id: "open-library",
-			name: "Open library",
-			callback: () => void this.openLibrary(),
-		});
-
-		this.addCommand({
-			id: "reset-library-panes",
-			name: "Reset Repose library (close all Repose tabs, then open one)",
-			callback: () => void this.resetAllReposePanes(),
-		});
-
-		this.addCommand({
-			id: "sync-tmdb-images",
-			name: "Download show/movie images (TMDB)",
-			callback: () => {
-				const f = this.app.workspace.getActiveFile();
-				if (!f || f.extension !== "md") {
-					new Notice("Open a markdown note.");
-					return;
-				}
-				const kinds = classifyFile(this.app, f, this.settings);
-				void syncImagesForNoteFile(this.app, this.settings, f, kinds);
-			},
+			id: "open-repose",
+			name: "Open Repose",
+			callback: () => void this.openRepose(),
 		});
 
 		this.addSettingTab(new ReposeSettingTab(this.app, this));
+
+		this.registerObsidianProtocolHandler("repose", (data) => {
+			void this.handleProtocol(data);
+		});
 	}
 
-	onunload(): void {
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_REPOSE);
+	private async handleProtocol(data: ObsidianProtocolData): Promise<void> {
+		if (data.action === "open" || data.screen === "main" || !data.action) {
+			await this.openRepose();
+			return;
+		}
+		new Notice(`Unknown Repose URI: ${data.action ?? ""}`);
 	}
 
-	async loadSettings(): Promise<void> {
-		this.settings = normalizeLoadedSettings(await this.loadData());
-	}
-
-	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
-	}
-
-	/**
-	 * Recover from workspace glitches that left multiple Repose leaves open (blank panes).
-	 * Keeps the first leaf; detaches the rest before revealing.
-	 */
+	/** Avoid duplicate Repose leaves from repeated opens / workspace glitches. */
 	private dedupeReposeLeaves(): void {
 		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_REPOSE);
 		for (let i = 1; i < leaves.length; i++) {
@@ -70,14 +78,29 @@ export default class ReposePlugin extends Plugin {
 		}
 	}
 
-	async openLibrary(): Promise<void> {
+	private async openRepose(state?: Record<string, unknown>): Promise<void> {
 		this.dedupeReposeLeaves();
-		await revealOrCreateView(this.app, VIEW_TYPE_REPOSE, this.settings.openViewsIn);
+		const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_REPOSE)[0];
+		if (existing) {
+			await existing.setViewState({ type: VIEW_TYPE_REPOSE, active: true, state });
+			await this.app.workspace.revealLeaf(existing);
+			return;
+		}
+		const leaf = this.app.workspace.getLeaf("tab");
+		await leaf.setViewState({ type: VIEW_TYPE_REPOSE, active: true, state });
+		await this.app.workspace.revealLeaf(leaf);
 	}
 
-	/** Hard reset if the workspace accumulated duplicate / blank Repose leaves. */
-	async resetAllReposePanes(): Promise<void> {
+	async loadSettings(): Promise<void> {
+		this.settings = normalizeSettings(await this.loadData());
+	}
+
+	async saveSettings(): Promise<void> {
+		await this.saveData(this.settings);
+	}
+
+	onunload(): void {
+		this.clearTraktDevicePoll();
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_REPOSE);
-		await revealOrCreateView(this.app, VIEW_TYPE_REPOSE, this.settings.openViewsIn);
 	}
 }
