@@ -1,0 +1,11 @@
+{
+	"id": "repose",
+	"name": "Repose",
+	"version": "0.1.0",
+	"minAppVersion": "1.1.0",
+	"description": "Media library for shows, movies, books, podcasts, and games.",
+	"author": "Jimmy Little",
+	"authorUrl": "https://github.com/jimmylittle",
+	"isDesktopOnly": false,
+	"styles": ["styles.css"]
+}
