@@ -51,7 +51,7 @@ export async function lookupShowInVault(
 	return f ? { found: true, path } : { found: false };
 }
 
-async function mergeTraktAndTmdbArt(
+export async function mergeTraktAndTmdbArt(
 	settings: ReposeSettings,
 	itemData: TraktShowOrMovie,
 	type: "movie" | "show",

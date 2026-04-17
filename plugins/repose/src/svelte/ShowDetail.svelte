@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { Notice, setIcon, TFile } from "obsidian";
 	import type ReposePlugin from "../main";
-	import { resolveBannerOrCoverFile, resolveLogoFile } from "../media/banner";
-	import { descriptionFromFrontmatter, readMediaItem } from "../media/mediaModel";
+	import type { MediaHeroPalette } from "../media/bannerSample";
+	import { resolveBannerOrCoverFile, resolveListThumbnailFile } from "../media/banner";
+	import {
+		descriptionFromFrontmatter,
+		genresFromFrontmatter,
+		readMediaItem,
+		releaseLabelFromFrontmatter,
+	} from "../media/mediaModel";
+	import MediaHero from "./MediaHero.svelte";
 	import {
 		collectEpisodeNoteFiles,
 		readEpisodeRow,
@@ -13,19 +20,13 @@
 
 	export let plugin: ReposePlugin;
 	export let showFile: TFile;
-
-	function reposeBannerIcon(node: HTMLElement, icon: string): { update: (next: string) => void } {
-		setIcon(node, icon);
-		return {
-			update(next: string) {
-				node.empty();
-				setIcon(node, next);
-			},
-		};
-	}
+	/** Games use the same hero banner as shows but no Trakt refresh or episode list. */
+	export let serialKind: "show" | "game" = "show";
+	/** Forwarded to MediaHero so the parent can tint the full detail pane. */
+	export let onPalette: ((p: MediaHeroPalette | null) => void) | undefined = undefined;
 
 	let bannerSrc: string | null = null;
-	let logoSrc: string | null = null;
+	let posterSrc: string | null = null;
 	let episodes: EpisodeRow[] = [];
 	let thumbByPath: Record<string, string | null> = {};
 	/** Season numbers with expanded episode lists (default: none → all collapsed). */
@@ -88,10 +89,10 @@
 		});
 	}
 
-	async function loadDetail(f: TFile): Promise<void> {
+	async function loadDetail(f: TFile, kind: typeof serialKind): Promise<void> {
 		const token = ++loadToken;
 		bannerSrc = null;
-		logoSrc = null;
+		posterSrc = null;
 		episodes = [];
 		thumbByPath = {};
 
@@ -99,10 +100,16 @@
 		const cache = app.metadataCache.getFileCache(f);
 		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
 
-		const img = resolveBannerOrCoverFile(app, fm, f.path);
-		bannerSrc = img ? app.vault.getResourcePath(img) : null;
-		const logoFile = resolveLogoFile(app, fm, f.path);
-		logoSrc = logoFile ? app.vault.getResourcePath(logoFile) : null;
+		const backdrop = resolveBannerOrCoverFile(app, fm, f.path);
+		bannerSrc = backdrop ? app.vault.getResourcePath(backdrop) : null;
+		const posterFile = resolveListThumbnailFile(app, fm, f.path);
+		posterSrc = posterFile ? app.vault.getResourcePath(posterFile) : null;
+
+		if (kind === "game") {
+			if (token !== loadToken) return;
+			expandedSeasonKeys = new Set();
+			return;
+		}
 
 		const files = collectEpisodeNoteFiles(app, f);
 		const rows = files.map((file) => readEpisodeRow(app, file));
@@ -153,7 +160,7 @@
 		expandedSeasonKeys = new Set();
 	}
 
-	$: void loadDetail(showFile);
+	$: void loadDetail(showFile, serialKind);
 
 	$: seasonGroups = groupEpisodesBySeason(episodes);
 
@@ -182,15 +189,27 @@
 		detailRefresh += 1;
 	}
 
+	function refreshSuccessNotice(): void {
+		new Notice(
+			serialKind === "game"
+				? "Updated game metadata and images."
+				: "Updated metadata and images.",
+		);
+	}
+
 	async function refreshData(): Promise<void> {
 		if (refreshBusy) return;
 		refreshBusy = true;
 		try {
-			const r = await plugin.refreshShowFromTrakt(showFile);
-			if (r.ok) new Notice("Refreshed show and episodes.");
-			else new Notice(r.error ?? "Could not refresh.");
-			detailRefresh += 1;
-			await loadDetail(showFile);
+			const bump = (): void => {
+				refreshSuccessNotice();
+				detailRefresh += 1;
+				void loadDetail(showFile, serialKind);
+			};
+			const r = await plugin.refreshMediaNote(showFile, { onComplete: bump });
+			if (r.deferred) return;
+			if (!r.ok) new Notice(r.error ?? "Could not refresh.");
+			else bump();
 		} finally {
 			refreshBusy = false;
 		}
@@ -198,94 +217,56 @@
 
 	$: item = (detailRefresh, readMediaItem(plugin.app, showFile, plugin.settings));
 	$: seriesWatchIcon = item.watchedDate ? "eye-off" : "eye";
+	$: watchedAria =
+		serialKind === "game"
+			? item.watchedDate
+				? "Mark unwatched"
+				: "Mark watched"
+			: item.watchedDate
+				? "Mark series as unwatched"
+				: "Mark series as watched";
 	$: bannerDescription = descriptionFromFrontmatter(
 		(detailRefresh, plugin.app.metadataCache.getFileCache(showFile)?.frontmatter ?? {}) as Record<
 			string,
 			unknown
 		>,
 	);
+	$: genrePills = genresFromFrontmatter(
+		(detailRefresh, plugin.app.metadataCache.getFileCache(showFile)?.frontmatter ?? {}) as Record<
+			string,
+			unknown
+		>,
+	);
+	$: releaseLabel = releaseLabelFromFrontmatter(
+		(detailRefresh, plugin.app.metadataCache.getFileCache(showFile)?.frontmatter ?? {}) as Record<
+			string,
+			unknown
+		>,
+		serialKind === "game" ? "game" : item.mediaType === "podcast" ? "podcast" : "show",
+	);
 </script>
 
 <div class="repose-show-detail">
-	<div
-		class="repose-show-banner"
-		class:repose-show-banner--image={!!bannerSrc}
-		class:repose-show-banner--placeholder={!bannerSrc}
-	>
-		{#if bannerSrc}
-			<img class="repose-show-banner__img" src={bannerSrc} alt="" />
-		{/if}
-		<div class="repose-show-banner__scrim" aria-hidden="true"></div>
-		<div class="repose-show-banner__inner repose-show-banner__inner--on-dark">
-			<div class="repose-show-banner__bottom">
-				<div class="repose-show-banner__hero-stack">
-					{#if logoSrc}
-						<div class="repose-show-banner__logo-wrap">
-							<img class="repose-show-banner__logo" src={logoSrc} alt={item.title} />
-						</div>
-					{:else}
-						<h2 class="repose-show-banner__title repose-show-banner__title--in-stack">{item.title}</h2>
-					{/if}
-					{#if bannerDescription}
-						<p class="repose-show-banner__description">{bannerDescription}</p>
-					{/if}
-				</div>
-				<div class="repose-show-banner__actions">
-					<div class="repose-banner-btn-row">
-						<button
-							type="button"
-							class="repose-banner-btn repose-banner-btn--icon-only"
-							aria-label="Open note"
-							title="Open note"
-							disabled={refreshBusy}
-							on:click={openShowNote}
-						>
-							<span
-								class="repose-banner-btn__icon"
-								use:reposeBannerIcon={"file-input"}
-								aria-hidden="true"
-							></span>
-						</button>
-						<button
-							type="button"
-							class="repose-banner-btn repose-banner-btn--icon-only"
-							aria-label={item.watchedDate ? "Mark series as unwatched" : "Mark series as watched"}
-							title={item.watchedDate ? "Mark series as unwatched" : "Mark series as watched"}
-							disabled={refreshBusy}
-							on:click={toggleShowWatched}
-						>
-							<span
-								class="repose-banner-btn__icon"
-								use:reposeBannerIcon={seriesWatchIcon}
-								aria-hidden="true"
-							></span>
-						</button>
-					</div>
-					<div class="repose-banner-btn-row">
-						<button
-							type="button"
-							class="repose-banner-btn repose-banner-btn--icon-only"
-							aria-label="Refresh data"
-							title="Refresh data from Trakt / TMDB"
-							disabled={refreshBusy}
-							on:click={() => void refreshData()}
-						>
-							<span
-								class="repose-banner-btn__icon"
-								use:reposeBannerIcon={"refresh-ccw"}
-								aria-hidden="true"
-							></span>
-						</button>
-						<span class="repose-banner-btn-slot" aria-hidden="true"></span>
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
+	<MediaHero
+		backdropSrc={bannerSrc}
+		posterSrc={posterSrc}
+		title={item.title}
+		releaseLabel={releaseLabel}
+		description={bannerDescription}
+		genres={genrePills}
+		busy={refreshBusy}
+		watchIcon={seriesWatchIcon}
+		watchedAria={watchedAria}
+		refreshTitle="Refresh metadata and images (Trakt / TMDB / IGDB)"
+		onPalette={onPalette}
+		onOpenNote={openShowNote}
+		onToggleWatched={toggleShowWatched}
+		onRefresh={() => void refreshData()}
+	/>
 
-	{#if episodes.length === 0}
+	{#if serialKind !== "game" && episodes.length === 0}
 		<p class="repose-muted repose-show-detail__empty">No episode notes in this series folder yet.</p>
-	{:else}
+	{:else if serialKind !== "game"}
 		<ul class="repose-show-episodes">
 			{#each seasonGroups as [seasonNum, seasonEps] (seasonNum)}
 				{@const total = seasonEps.length}

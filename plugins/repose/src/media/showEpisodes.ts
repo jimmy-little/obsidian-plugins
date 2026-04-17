@@ -16,6 +16,16 @@ export type EpisodeRow = {
 
 const EPISODE_FILENAME = /^(\d+)x(\d+)/i;
 
+/** YAML often yields strings (e.g. `episode: "06"`); Trakt sync needs numeric season/episode. */
+function intFromFrontmatter(val: unknown): number | undefined {
+	if (typeof val === "number" && Number.isFinite(val)) return Math.trunc(val);
+	if (typeof val === "string") {
+		const n = parseInt(val.trim(), 10);
+		if (Number.isFinite(n)) return n;
+	}
+	return undefined;
+}
+
 function isEpisodeLikeFile(app: App, file: TFile, showBasename: string): boolean {
 	if (file.basename === showBasename) return false;
 	const cache = app.metadataCache.getFileCache(file);
@@ -66,10 +76,8 @@ export function readEpisodeRow(app: App, file: TFile): EpisodeRow {
 	if (typeof fm.airDate === "string") airDate = fm.airDate.trim();
 	else if (typeof fm.releaseDate === "string") airDate = fm.releaseDate.trim();
 
-	let season: number | undefined =
-		typeof fm.season === "number" ? fm.season : undefined;
-	let episode: number | undefined =
-		typeof fm.episode === "number" ? fm.episode : undefined;
+	let season: number | undefined = intFromFrontmatter(fm.season);
+	let episode: number | undefined = intFromFrontmatter(fm.episode);
 
 	const m = EPISODE_FILENAME.exec(file.basename);
 	if (m) {

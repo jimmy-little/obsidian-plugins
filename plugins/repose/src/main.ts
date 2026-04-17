@@ -8,6 +8,7 @@ import {
 	removeEpisodeWatchedFromTrakt,
 	removeMovieWatchedFromTrakt,
 } from "./trakt/watchedSync";
+import { refreshMediaNote as runRefreshMediaNote } from "./vault/refreshMedia";
 import { refreshShowFromTrakt as runRefreshShowFromTrakt } from "./vault/showRefresh";
 import { ReposeSettingTab } from "./ReposeSettingTab";
 import { ReposeShellView, VIEW_TYPE_REPOSE } from "./ReposeShellView";
@@ -27,6 +28,16 @@ export default class ReposePlugin extends Plugin {
 
 	async refreshShowFromTrakt(file: TFile): Promise<{ ok: boolean; error?: string }> {
 		return runRefreshShowFromTrakt(this.app, this.settings, file, this);
+	}
+
+	/**
+	 * Refresh metadata/images from Trakt/TMDB/IGDB when ids exist; otherwise search by title and open a match picker.
+	 */
+	async refreshMediaNote(
+		file: TFile,
+		callbacks?: { onComplete?: () => void },
+	): Promise<{ ok: boolean; error?: string; deferred?: boolean }> {
+		return runRefreshMediaNote(this.app, this.settings, this, file, callbacks);
 	}
 
 	async toggleWatchedFrontmatter(filePath: string): Promise<void> {

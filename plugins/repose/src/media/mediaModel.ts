@@ -40,6 +40,43 @@ export function descriptionFromFrontmatter(fm: Record<string, unknown>): string 
 	return v.trim();
 }
 
+/** Genres from YAML array or comma/semicolon-separated string. */
+/**
+ * Human-readable release / air date for hero (uses `releaseDate` or `airDate`).
+ */
+export function releaseLabelFromFrontmatter(
+	fm: Record<string, unknown>,
+	kind: "show" | "podcast" | "movie" | "game",
+): string | null {
+	const raw = fm.releaseDate ?? fm.airDate;
+	if (typeof raw !== "string" || !raw.trim()) return null;
+	const d = new Date(raw.trim());
+	if (Number.isNaN(d.getTime())) return null;
+	const formatted = d.toLocaleDateString(undefined, {
+		year: "numeric",
+		month: "short",
+		day: "numeric",
+	});
+	if (kind === "show" || kind === "podcast") {
+		return `First aired ${formatted}`;
+	}
+	return `Released ${formatted}`;
+}
+
+export function genresFromFrontmatter(fm: Record<string, unknown>): string[] {
+	const g = fm.genres;
+	if (Array.isArray(g)) {
+		return g.map((x) => String(x).trim()).filter(Boolean);
+	}
+	if (typeof g === "string" && g.trim()) {
+		return g
+			.split(/[,;]/)
+			.map((s) => s.trim())
+			.filter(Boolean);
+	}
+	return [];
+}
+
 export function titleFromFrontmatterOrFile(fm: Record<string, unknown>, file: TFile): string {
 	const t = fm.title;
 	if (typeof t === "string" && t.trim()) return t.trim();

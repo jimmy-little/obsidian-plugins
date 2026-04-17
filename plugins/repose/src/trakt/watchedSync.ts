@@ -33,7 +33,8 @@ export async function ensureTraktAccessToken(store: TraktSettingsStore): Promise
 	if (!refresh) return access;
 
 	const r = await refreshAccessToken(cid, settings.traktClientSecret.trim(), refresh);
-	if (!r.success || !r.accessToken) return access;
+	/* Token was past skew; using a stale access token after a failed refresh yields 401 and no progress sync. */
+	if (!r.success || !r.accessToken) return null;
 
 	settings.traktAccessToken = r.accessToken;
 	if (r.refreshToken) settings.traktRefreshToken = r.refreshToken;
@@ -60,20 +61,62 @@ export type ShowWatchedProgress = {
 	episodeWatchedDates: Map<string, string>;
 };
 
+function finiteInt(v: unknown): number | undefined {
+	if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v);
+	if (typeof v === "string" && v.trim()) {
+		const n = parseInt(v.trim(), 10);
+		if (Number.isFinite(n)) return n;
+	}
+	return undefined;
+}
+
 function episodeRowIsWatched(ep: {
 	completed?: boolean;
+	watched?: boolean;
 	last_watched_at?: string | null;
+	watched_at?: string | null;
 	plays?: number;
 }): boolean {
 	if (ep.completed === true) return true;
+	if (ep.watched === true) return true;
 	if (typeof ep.plays === "number" && ep.plays > 0) return true;
 	if (typeof ep.last_watched_at === "string" && ep.last_watched_at.length > 0) return true;
+	if (typeof ep.watched_at === "string" && ep.watched_at.length > 0) return true;
 	return false;
+}
+
+function traktSeasonIndex(s: { number?: unknown; season?: unknown }): number | undefined {
+	return finiteInt(s.number) ?? finiteInt(s.season);
+}
+
+function traktEpisodeIndex(ep: { number?: unknown; episode?: unknown }): number | undefined {
+	return finiteInt(ep.number) ?? finiteInt(ep.episode);
 }
 
 function isoDateFromTrakt(iso: string | null | undefined): string {
 	if (!iso) return new Date().toISOString().split("T")[0];
 	return iso.split("T")[0];
+}
+
+function lastWatchedFromEpisodeRow(
+	ep: { last_watched_at?: string | null; watched_at?: string | null },
+	fallback: string | null | undefined,
+): string {
+	const raw =
+		(typeof ep.last_watched_at === "string" && ep.last_watched_at.length > 0
+			? ep.last_watched_at
+			: undefined) ??
+		(typeof ep.watched_at === "string" && ep.watched_at.length > 0 ? ep.watched_at : undefined) ??
+		fallback;
+	return isoDateFromTrakt(raw ?? undefined);
+}
+
+function latestYyyyMmDd(dates: Map<string, string>): string | null {
+	let best: string | null = null;
+	for (const d of dates.values()) {
+		if (!best || d > best) best = d;
+	}
+	return best;
 }
 
 /** GET /shows/:id/progress/watched (requires auth). */
@@ -93,35 +136,59 @@ export async function fetchShowWatchedProgress(
 		});
 		if (res.status >= 400) return null;
 		const data = res.json as {
-			aired?: number;
-			completed?: number;
+			aired?: unknown;
+			completed?: unknown;
 			last_watched_at?: string | null;
 			seasons?: Array<{
-				number: number;
+				number?: unknown;
+				season?: unknown;
+				aired?: unknown;
+				completed?: unknown;
 				episodes?: Array<{
-					number: number;
+					number?: unknown;
+					episode?: unknown;
 					completed?: boolean;
+					watched?: boolean;
 					last_watched_at?: string | null;
+					watched_at?: string | null;
 					plays?: number;
 				}>;
 			}>;
 		};
+		let aired = finiteInt(data.aired) ?? 0;
+		let completed = finiteInt(data.completed) ?? 0;
 		const episodeWatchedDates = new Map<string, string>();
+		const rootLast = typeof data.last_watched_at === "string" ? data.last_watched_at : null;
+
 		if (Array.isArray(data.seasons)) {
+			let airedFromSeasons = 0;
+			let completedFromSeasons = 0;
 			for (const s of data.seasons) {
+				const sn = traktSeasonIndex(s);
+				const bs = s as { aired?: unknown; completed?: unknown };
+				if (finiteInt(bs.aired) != null) airedFromSeasons += finiteInt(bs.aired)!;
+				if (finiteInt(bs.completed) != null) completedFromSeasons += finiteInt(bs.completed)!;
+
 				if (!Array.isArray(s.episodes)) continue;
 				for (const ep of s.episodes) {
-					if (!episodeRowIsWatched(ep)) continue;
-					const key = `${s.number}:${ep.number}`;
-					const d = isoDateFromTrakt(ep.last_watched_at ?? data.last_watched_at ?? undefined);
-					episodeWatchedDates.set(key, d);
+					const en = traktEpisodeIndex(ep);
+					if (sn != null && en != null) {
+						const key = `${sn}:${en}`;
+						if (episodeRowIsWatched(ep)) {
+							const d = lastWatchedFromEpisodeRow(ep, rootLast ?? undefined);
+							const prev = episodeWatchedDates.get(key);
+							if (!prev || d > prev) episodeWatchedDates.set(key, d);
+						}
+					}
 				}
 			}
+			if (aired === 0 && airedFromSeasons > 0) aired = airedFromSeasons;
+			if (completed === 0 && completedFromSeasons > 0) completed = completedFromSeasons;
 		}
 		return {
-			aired: typeof data.aired === "number" ? data.aired : 0,
-			completed: typeof data.completed === "number" ? data.completed : 0,
-			lastWatchedAt: typeof data.last_watched_at === "string" ? data.last_watched_at : null,
+			aired,
+			completed,
+			lastWatchedAt: rootLast,
 			episodeWatchedDates,
 		};
 	} catch {
@@ -136,8 +203,10 @@ export function applyShowWatchedFromTraktProgress(
 ): void {
 	const aired = progress.aired;
 	const completed = progress.completed;
-	if (aired > 0 && completed >= aired && progress.lastWatchedAt) {
-		fm.watchedDate = isoDateFromTrakt(progress.lastWatchedAt);
+	if (aired > 0 && completed >= aired) {
+		const fromRoot = progress.lastWatchedAt ? isoDateFromTrakt(progress.lastWatchedAt) : null;
+		const fromEpisodes = latestYyyyMmDd(progress.episodeWatchedDates);
+		fm.watchedDate = fromRoot ?? fromEpisodes ?? isoDateFromTrakt(undefined);
 		fm.reposeStatus = "watched";
 	} else {
 		delete fm.watchedDate;

@@ -19,7 +19,7 @@ import {
 	type TraktShowOrMovie,
 } from "./traktNotes";
 
-function applyMergedFm(
+export function applyMergedFm(
 	fm: Record<string, unknown>,
 	merged: Record<string, unknown>,
 	preserveDate: boolean,

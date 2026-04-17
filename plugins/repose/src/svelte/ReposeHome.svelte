@@ -5,12 +5,16 @@
 	import MediaListPanel from "./MediaListPanel.svelte";
 	import MediaDetail from "./MediaDetail.svelte";
 	import SearchAddPanel from "./SearchAddPanel.svelte";
+	import ReposeLanding from "./ReposeLanding.svelte";
 
 	export let plugin: ReposePlugin;
 	/** When false, only the picker column is shown (sidebar dock); selection opens in the main area. */
 	export let fullView: boolean;
 	export let selectedPath: string | null;
+	/** Main pane shows the landing placeholder instead of a media note. */
+	export let landing = false;
 	export let onSelectPath: (path: string) => void;
+	export let onGoHome: () => void;
 
 	const LEFT_WIDTH_LS = "repose-pm-left-col-px";
 	const LEFT_MIN = 220;
@@ -25,9 +29,19 @@
 	let pmEl: HTMLDivElement | null = null;
 	let leftWidthPx: number | null = readStoredLeftWidth();
 	let addToggleBtnEl: HTMLButtonElement | null = null;
+	let collapseBtnEl: HTMLButtonElement | null = null;
+	let homeBtnEl: HTMLButtonElement | null = null;
 
 	$: if (addToggleBtnEl) {
 		setIcon(addToggleBtnEl, addPanelOpen ? "arrow-left" : "plus");
+	}
+
+	$: if (collapseBtnEl) {
+		setIcon(collapseBtnEl, leftCollapsed ? "panel-left" : "panel-left-close");
+	}
+
+	$: if (homeBtnEl) {
+		setIcon(homeBtnEl, "home");
 	}
 
 	function readStoredLeftWidth(): number | null {
@@ -131,14 +145,21 @@
 			<div class="repose-pm__glyph-bar" role="toolbar" aria-label="Media sidebar">
 				<button
 					type="button"
-					class="repose-pm__glyph-btn clickable-icon"
+					class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
+					bind:this={collapseBtnEl}
 					aria-label={leftCollapsed ? "Expand media list" : "Collapse media list"}
 					title={leftCollapsed ? "Expand" : "Collapse"}
 					on:click={() => (leftCollapsed = !leftCollapsed)}
-				>
-					{leftCollapsed ? "›" : "‹"}
-				</button>
+				></button>
 				<span class="repose-pm__glyph-spacer" aria-hidden="true"></span>
+				<button
+					type="button"
+					class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
+					bind:this={homeBtnEl}
+					aria-label="Repose home"
+					title="Home"
+					on:click={() => onGoHome()}
+				></button>
 				<button
 					type="button"
 					class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
@@ -174,7 +195,11 @@
 
 	{#if fullView}
 		<main class="repose-pm__main repose-view-root">
-			<MediaDetail {plugin} {selectedPath} />
+			{#if landing}
+				<ReposeLanding />
+			{:else}
+				<MediaDetail {plugin} {selectedPath} />
+			{/if}
 		</main>
 	{/if}
 </div>

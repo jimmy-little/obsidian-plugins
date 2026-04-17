@@ -184,7 +184,8 @@ export interface NoteFolderArtResult {
 }
 
 /**
- * Download Trakt/TMDB art into `{parent-of-note}/images/` (poster, banner, logo, thumb).
+ * Download Trakt/TMDB art into `{parent-of-note}/images/{note-stem}/` (poster, banner, logo, thumb).
+ * The per-note folder avoids collisions when several notes share one parent (e.g. flat `Games/*.md`).
  */
 export async function downloadTraktArtToNoteFolder(
 	vault: Vault,
@@ -201,7 +202,10 @@ export async function downloadTraktArtToNoteFolder(
 	const parts = norm.split("/");
 	if (parts.length < 2) return result;
 	const parent = parts.slice(0, -1).join("/");
-	const imagesDir = normalizePath(`${parent}/images`);
+	const fileName = parts[parts.length - 1] ?? "";
+	const noteStem = fileName.replace(/\.md$/i, "");
+	const noteKey = sanitizeFilename(noteStem) || "note";
+	const imagesDir = normalizePath(`${parent}/images/${noteKey}`);
 	await ensureFolder(vault, imagesDir);
 
 	const save = async (slot: keyof NoteFolderArtResult, url: string | null | undefined): Promise<void> => {

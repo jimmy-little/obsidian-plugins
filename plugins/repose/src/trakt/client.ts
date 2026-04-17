@@ -275,6 +275,109 @@ export async function getTraktArtUrls(
 	}
 }
 
+export async function getTraktMovie(
+	clientId: string,
+	movieTraktId: number,
+): Promise<{
+	title?: string;
+	year?: number;
+	overview?: string;
+	rating?: number;
+	runtime?: number;
+	released?: string;
+	genres?: string[];
+	certification?: string;
+	ids?: { trakt?: number; imdb?: string; tmdb?: number; tvdb?: number };
+} | null> {
+	try {
+		const data = (await traktJson(clientId, `/movies/${movieTraktId}?extended=full`)) as {
+			title?: string;
+			year?: number;
+			overview?: string;
+			rating?: number;
+			runtime?: number;
+			released?: string;
+			genres?: unknown;
+			certification?: string;
+			ids?: { trakt?: number; imdb?: string; tmdb?: number; tvdb?: number };
+		};
+		let genres: string[] | undefined;
+		if (Array.isArray(data.genres)) {
+			genres = data.genres
+				.map((g) =>
+					typeof g === "string"
+						? g
+						: typeof g === "object" && g && "name" in g
+							? String((g as { name: string }).name)
+							: "",
+				)
+				.filter((s) => s.length > 0);
+			if (genres.length === 0) genres = undefined;
+		}
+		return {
+			title: data.title,
+			year: data.year,
+			overview: data.overview,
+			rating: data.rating,
+			runtime: data.runtime,
+			released: data.released,
+			genres,
+			certification: data.certification,
+			ids: data.ids,
+		};
+	} catch {
+		return null;
+	}
+}
+
+/** Resolve a Trakt search row from a TVDB id (shows; movies rarely have TVDB on Trakt). */
+export async function searchTraktByTvdb(
+	clientId: string,
+	tvdbId: number,
+	kind: "show" | "movie",
+): Promise<TraktSearchHit[]> {
+	if (!clientId.trim() || !Number.isFinite(tvdbId)) return [];
+	try {
+		const data = (await traktJson(
+			clientId,
+			`/search/tvdb/${tvdbId}?type=${kind}&extended=full`,
+		)) as TraktSearchHit[];
+		return data.map((result) => ({
+			score: result.score,
+			type: result.type,
+			movie: result.movie,
+			show: result.show,
+			episode: result.episode,
+		}));
+	} catch {
+		return [];
+	}
+}
+
+/** Lookup Trakt listing by TMDB id (movies or shows). */
+export async function searchTraktByTmdb(
+	clientId: string,
+	tmdbNumericId: number,
+	kind: "show" | "movie",
+): Promise<TraktSearchHit[]> {
+	if (!clientId.trim() || !Number.isFinite(tmdbNumericId)) return [];
+	try {
+		const data = (await traktJson(
+			clientId,
+			`/search/tmdb/${tmdbNumericId}?type=${kind}&extended=full`,
+		)) as TraktSearchHit[];
+		return data.map((result) => ({
+			score: result.score,
+			type: result.type,
+			movie: result.movie,
+			show: result.show,
+			episode: result.episode,
+		}));
+	} catch {
+		return [];
+	}
+}
+
 export async function getTraktShow(
 	clientId: string,
 	showTraktId: number,
