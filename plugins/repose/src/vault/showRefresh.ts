@@ -1,24 +1,23 @@
 import type { App, TFile } from "obsidian";
-import { getSeasonEpisodes, getTraktShow } from "../trakt/client";
+import { getSeasonEpisodes, getTraktArtUrls, getTraktShow, type TraktArtUrls } from "../trakt/client";
+import {
+	applyEpisodeWatchedFromTraktProgress,
+	applyShowWatchedFromTraktProgress,
+	fetchShowWatchedProgress,
+	readTraktIdFromFrontmatter,
+	type ShowWatchedProgress,
+	type TraktSettingsStore,
+} from "../trakt/watchedSync";
 import { collectEpisodeNoteFiles, readEpisodeRow } from "../media/showEpisodes";
 import type { ReposeSettings } from "../settings";
 import { fetchEpisodeStill, fetchImagesForItem } from "./reposeImport";
 import {
 	downloadObsidianImages,
+	downloadTraktArtToNoteFolder,
 	traktToObsidianFrontmatter,
 	type TraktEpisode,
 	type TraktShowOrMovie,
 } from "./traktNotes";
-
-function traktIdFromFrontmatter(fm: Record<string, unknown>): number | undefined {
-	const v = fm.traktId ?? fm.trakt;
-	if (typeof v === "number" && Number.isFinite(v)) return v;
-	if (typeof v === "string") {
-		const n = parseInt(v.trim(), 10);
-		if (Number.isFinite(n)) return n;
-	}
-	return undefined;
-}
 
 function applyMergedFm(
 	fm: Record<string, unknown>,
@@ -38,6 +37,7 @@ export async function refreshShowFromTrakt(
 	app: App,
 	settings: ReposeSettings,
 	showFile: TFile,
+	tokenStore?: TraktSettingsStore,
 ): Promise<{ ok: boolean; error?: string }> {
 	const clientId = settings.traktClientId.trim();
 	if (!clientId) {
@@ -46,7 +46,7 @@ export async function refreshShowFromTrakt(
 
 	const cache0 = app.metadataCache.getFileCache(showFile);
 	const fm0 = (cache0?.frontmatter ?? {}) as Record<string, unknown>;
-	const showTraktId = traktIdFromFrontmatter(fm0);
+	const showTraktId = readTraktIdFromFrontmatter(fm0);
 	if (showTraktId == null) {
 		return { ok: false, error: "This show note needs a traktId in frontmatter to sync from Trakt." };
 	}
@@ -62,35 +62,46 @@ export async function refreshShowFromTrakt(
 		firstAired: showApi.first_aired,
 	};
 
+	let progress: ShowWatchedProgress | null = null;
+	if (tokenStore) {
+		progress = await fetchShowWatchedProgress(tokenStore, showTraktId);
+	}
+
 	await app.fileManager.processFrontMatter(showFile, (fm) => {
 		const prevWatched = fm.watchedDate;
 		const prevRepose = fm.reposeStatus;
 		const merged = traktToObsidianFrontmatter(showData, "show", {}, settings.projectWikilink);
 		applyMergedFm(fm as Record<string, unknown>, merged, true);
-		fm.watchedDate = prevWatched;
-		fm.reposeStatus = prevRepose;
+		if (progress) {
+			applyShowWatchedFromTraktProgress(fm as Record<string, unknown>, progress);
+		} else {
+			fm.watchedDate = prevWatched;
+			fm.reposeStatus = prevRepose;
+		}
 	});
+
+	let artUrls: TraktArtUrls = { poster: null, banner: null, fanart: null, logo: null, thumb: null };
+	const traktArt = await getTraktArtUrls(clientId, "show", showTraktId);
+	if (traktArt) artUrls = traktArt;
 
 	const tmdbKey = settings.tmdbApiKey.trim();
 	const tmdbId = showData.ids?.tmdb;
 	if (tmdbKey && tmdbId != null) {
 		const images = await fetchImagesForItem(tmdbKey, tmdbId, "show");
 		if (images) {
-			const paths = await downloadObsidianImages(
-				app.vault,
-				{
-					poster: images.posterLarge || images.poster,
-					backdrop: images.backdropLarge || images.backdrop,
-				},
-				showApi.title || "show",
-			);
-			if (paths.banner) {
-				await app.fileManager.processFrontMatter(showFile, (fm) => {
-					fm.banner = `[[${paths.banner}]]`;
-				});
-			}
+			if (!artUrls.poster) artUrls.poster = images.posterLarge ?? images.poster ?? null;
+			if (!artUrls.banner) artUrls.banner = images.backdropLarge ?? images.backdrop ?? null;
+			if (!artUrls.logo) artUrls.logo = images.logo ?? null;
 		}
 	}
+	if (!artUrls.banner && artUrls.fanart) artUrls.banner = artUrls.fanart;
+
+	const artPaths = await downloadTraktArtToNoteFolder(app.vault, showFile.path, artUrls);
+	await app.fileManager.processFrontMatter(showFile, (fm) => {
+		if (artPaths.banner) fm.banner = `[[${artPaths.banner}]]`;
+		if (artPaths.poster) fm.poster = `[[${artPaths.poster}]]`;
+		if (artPaths.logo) fm.logo = `[[${artPaths.logo}]]`;
+	});
 
 	const episodeFiles = collectEpisodeNoteFiles(app, showFile);
 	const seasonsNeeded = new Set<number>();
@@ -137,8 +148,17 @@ export async function refreshShowFromTrakt(
 			const prevRepose = fm.reposeStatus;
 			const merged = traktToObsidianFrontmatter(epPayload, "episode", {}, settings.projectWikilink);
 			applyMergedFm(fm as Record<string, unknown>, merged, true);
-			fm.watchedDate = prevWatched;
-			fm.reposeStatus = prevRepose;
+			if (progress && row.season != null && row.episode != null) {
+				applyEpisodeWatchedFromTraktProgress(
+					fm as Record<string, unknown>,
+					row.season,
+					row.episode,
+					progress,
+				);
+			} else {
+				fm.watchedDate = prevWatched;
+				fm.reposeStatus = prevRepose;
+			}
 		});
 
 		if (tmdbKey && showTmdbForStills != null) {

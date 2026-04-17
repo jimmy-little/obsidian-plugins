@@ -1,8 +1,18 @@
 import { normalizePath, type Vault } from "obsidian";
-import { getTMDBEpisodeImage, getTMDBImages } from "../trakt/client";
-import type { ReposeSettings } from "../settings";
+import { getTMDBEpisodeImage, getTMDBImages, getTraktArtUrls } from "../trakt/client";
+import {
+	applyEpisodeWatchedFromTraktProgress,
+	fetchShowWatchedProgress,
+	fetchWatchedMoviesMap,
+	type ShowWatchedProgress,
+	type TraktSettingsStore,
+} from "../trakt/watchedSync";
+import { artUrlsForIgdbGame, normalizeGenres, type IgdbGame } from "../igdb/client";
+import { folderSegmentsForType, type ReposeSettings } from "../settings";
 import {
 	downloadObsidianImages,
+	downloadTraktArtToNoteFolder,
+	igdbGameToObsidianFrontmatter,
 	readableMediaName,
 	stringifyNote,
 	traktToObsidianFrontmatter,
@@ -15,9 +25,20 @@ function mediaBase(settings: ReposeSettings): string {
 	return settings.mediaRoot.replace(/^\/+|\/+$/g, "");
 }
 
+function pathUnderMedia(settings: ReposeSettings, ...segments: string[]): string {
+	return normalizePath([mediaBase(settings), ...segments].join("/"));
+}
+
 export function vaultPathForShowNote(settings: ReposeSettings, showTitle: string): string {
 	const name = readableMediaName(showTitle);
-	return normalizePath(`${mediaBase(settings)}/${settings.seriesSubfolder}/${name}/${name}.md`);
+	const segs = folderSegmentsForType(settings, "show");
+	return pathUnderMedia(settings, ...segs, name, `${name}.md`);
+}
+
+export function vaultPathForPodcastShowNote(settings: ReposeSettings, showTitle: string): string {
+	const name = readableMediaName(showTitle);
+	const segs = folderSegmentsForType(settings, "podcast");
+	return pathUnderMedia(settings, ...segs, name, `${name}.md`);
 }
 
 export async function lookupShowInVault(
@@ -28,6 +49,54 @@ export async function lookupShowInVault(
 	const path = vaultPathForShowNote(settings, showTitle);
 	const f = vault.getAbstractFileByPath(path);
 	return f ? { found: true, path } : { found: false };
+}
+
+async function mergeTraktAndTmdbArt(
+	settings: ReposeSettings,
+	itemData: TraktShowOrMovie,
+	type: "movie" | "show",
+	tmdbImages: {
+		poster?: string | null;
+		posterLarge?: string | null;
+		backdrop?: string | null;
+		backdropLarge?: string | null;
+		logo?: string | null;
+	} | null,
+): Promise<{
+	poster: string | null;
+	banner: string | null;
+	logo: string | null;
+	thumb: string | null;
+}> {
+	let poster: string | null = null;
+	let banner: string | null = null;
+	let logo: string | null = null;
+	let thumb: string | null = null;
+	let fanart: string | null = null;
+
+	const cid = settings.traktClientId.trim();
+	const traktId = itemData.ids?.trakt;
+	if (cid && traktId != null) {
+		const a = await getTraktArtUrls(cid, type, traktId);
+		if (a) {
+			poster = a.poster;
+			banner = a.banner;
+			logo = a.logo;
+			thumb = a.thumb;
+			fanart = a.fanart;
+		}
+	}
+
+	const tp = tmdbImages?.posterLarge ?? tmdbImages?.poster ?? null;
+	const tb = tmdbImages?.backdropLarge ?? tmdbImages?.backdrop ?? null;
+	const tLogo = tmdbImages?.logo ?? null;
+	if (!poster) poster = tp;
+	// Trakt “fanart” is scenic wallpaper; TMDB backdrop is usually a better hero image.
+	if (!banner) banner = tb;
+	if (!banner && fanart) banner = fanart;
+	if (!logo) logo = tLogo;
+
+	return { poster, banner, logo, thumb };
 }
 
 export async function addTraktShowOrMovieToVault(
@@ -41,19 +110,18 @@ export async function addTraktShowOrMovieToVault(
 		backdrop?: string | null;
 		backdropLarge?: string | null;
 	} | null,
+	tokenStore?: TraktSettingsStore,
 ): Promise<{ path: string }> {
 	const frontmatter = traktToObsidianFrontmatter(itemData, type, {}, settings.projectWikilink);
 
-	const imagesToDownload = {
-		poster: images?.posterLarge || images?.poster || null,
-		backdrop: images?.backdropLarge || images?.backdrop || null,
-	};
-
-	const imagePaths = await downloadObsidianImages(
-		vault,
-		imagesToDownload,
-		itemData.title || "untitled",
-	);
+	if (type === "movie" && tokenStore && itemData.ids?.trakt != null) {
+		const watchedMovies = await fetchWatchedMoviesMap(tokenStore);
+		const d = watchedMovies?.get(itemData.ids.trakt);
+		if (d) {
+			frontmatter.watchedDate = d;
+			frontmatter.reposeStatus = "watched";
+		}
+	}
 
 	let content = "";
 
@@ -85,15 +153,22 @@ export async function addTraktShowOrMovieToVault(
 
 	if (type === "movie") {
 		const readableTitle = readableMediaName(title);
-		relativePath = normalizePath(`${mediaBase(settings)}/${settings.moviesSubfolder}/${readableTitle}.md`);
+		const segs = folderSegmentsForType(settings, "movie");
+		relativePath = pathUnderMedia(settings, ...segs, readableTitle, `${readableTitle}.md`);
 	} else {
 		const readableShowName = readableMediaName(title);
-		relativePath = normalizePath(
-			`${mediaBase(settings)}/${settings.seriesSubfolder}/${readableShowName}/${readableShowName}.md`,
-		);
+		const segs = folderSegmentsForType(settings, "show");
+		relativePath = pathUnderMedia(settings, ...segs, readableShowName, `${readableShowName}.md`);
 	}
 
-	const md = stringifyNote(frontmatter, content, imagePaths.banner);
+	const artUrls = await mergeTraktAndTmdbArt(settings, itemData, type, images);
+	const artPaths = await downloadTraktArtToNoteFolder(vault, relativePath, artUrls);
+
+	const md = stringifyNote(frontmatter, content, {
+		banner: artPaths.banner,
+		poster: artPaths.poster,
+		logo: artPaths.logo,
+	});
 	await writeMarkdownFile(vault, relativePath, md);
 	return { path: relativePath };
 }
@@ -104,10 +179,30 @@ export async function addTraktEpisodeToVault(
 	episodeData: TraktEpisode,
 	showData: TraktShowOrMovie,
 	episodeStillUrl: string | null,
+	tokenStore?: TraktSettingsStore,
+	/** When provided (including null), skips fetching; use for batch imports after one progress call. */
+	cachedShowProgress?: ShowWatchedProgress | null,
 ): Promise<{ path: string }> {
 	const images = episodeStillUrl ? { episodeStill: episodeStillUrl } : null;
 
 	const frontmatter = traktToObsidianFrontmatter(episodeData, "episode", {}, settings.projectWikilink);
+
+	if (showData.ids?.trakt != null && episodeData.season != null && episodeData.number != null) {
+		let progress: ShowWatchedProgress | null = null;
+		if (cachedShowProgress !== undefined) {
+			progress = cachedShowProgress;
+		} else if (tokenStore) {
+			progress = await fetchShowWatchedProgress(tokenStore, showData.ids.trakt);
+		}
+		if (progress) {
+			applyEpisodeWatchedFromTraktProgress(
+				frontmatter,
+				episodeData.season,
+				episodeData.number,
+				progress,
+			);
+		}
+	}
 
 	if (showData.title) {
 		const readableShowName = readableMediaName(showData.title);
@@ -157,11 +252,53 @@ export async function addTraktEpisodeToVault(
 	const filename = `${season}x${String(episode).padStart(2, "0")} ${sanitizedEpisodeTitle}.md`;
 
 	const readableShowName = readableMediaName(showData.title || "");
-	const relativePath = normalizePath(
-		`${mediaBase(settings)}/${settings.seriesSubfolder}/${readableShowName}/${filename}`,
-	);
+	const showSegs = folderSegmentsForType(settings, "show");
+	const relativePath = pathUnderMedia(settings, ...showSegs, readableShowName, filename);
 
-	const md = stringifyNote(frontmatter, content, imagePaths.banner);
+	const md = stringifyNote(frontmatter, content, { banner: imagePaths.banner });
+	await writeMarkdownFile(vault, relativePath, md);
+	return { path: relativePath };
+}
+
+export async function addIgdbGameToVault(vault: Vault, settings: ReposeSettings, game: IgdbGame): Promise<{ path: string }> {
+	const genres = normalizeGenres(game);
+	const frontmatter = igdbGameToObsidianFrontmatter(game, genres);
+	const title = game.name || "untitled";
+	const readableTitle = readableMediaName(title);
+	const segs = folderSegmentsForType(settings, "game");
+	const relativePath = pathUnderMedia(settings, ...segs, readableTitle, `${readableTitle}.md`);
+
+	const { poster, banner } = artUrlsForIgdbGame(game);
+	const artPaths = await downloadTraktArtToNoteFolder(vault, relativePath, {
+		poster,
+		banner,
+		logo: null,
+		thumb: poster,
+	});
+
+	const r10 =
+		game.rating != null && Number.isFinite(game.rating)
+			? game.rating
+			: game.total_rating != null && Number.isFinite(game.total_rating)
+				? game.total_rating / 10
+				: null;
+
+	let content = "";
+	const metadataLines: string[] = [];
+	if (r10 != null) metadataLines.push(`**Rating:** ${r10.toFixed(1)}/10`);
+	if (metadataLines.length > 0) content += metadataLines.join(" • ") + "\n\n";
+
+	const idLines: string[] = [];
+	if (game.id != null) idLines.push(`**IGDB:** ${game.id}`);
+	if (idLines.length > 0) content += idLines.join("\n") + "\n\n";
+
+	if (game.summary) content += `## Overview\n\n${game.summary}\n\n`;
+
+	const md = stringifyNote(frontmatter, content, {
+		banner: artPaths.banner,
+		poster: artPaths.poster,
+		logo: artPaths.logo,
+	});
 	await writeMarkdownFile(vault, relativePath, md);
 	return { path: relativePath };
 }
@@ -175,6 +312,7 @@ export async function fetchImagesForItem(
 	posterLarge?: string | null;
 	backdrop?: string | null;
 	backdropLarge?: string | null;
+	logo?: string | null;
 } | null> {
 	if (!tmdbId || !tmdbApiKey.trim()) return null;
 	return getTMDBImages(tmdbId, type, tmdbApiKey);

@@ -2,6 +2,7 @@ import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import { generateDeviceCode, pollDeviceToken } from "./trakt/client";
 import { TRAKT_OAUTH_APP_NAME } from "./trakt/constants";
 import type ReposePlugin from "./main";
+import { RULE_MEDIA_TYPES, type MediaTypeRuleMode, type ReposeRuleMediaType } from "./settings";
 
 export class ReposeSettingTab extends PluginSettingTab {
 	private traktStatusEl!: HTMLElement;
@@ -65,6 +66,33 @@ export class ReposeSettingTab extends PluginSettingTab {
 				});
 			});
 
+		containerEl.createEl("h3", { text: "IGDB (games)" });
+		containerEl.createEl("p", {
+			text: "Create a Twitch developer application (dev.twitch.tv), enable IGDB access for that app, then paste Client ID and Client Secret. Used for game search in the + panel.",
+			cls: "setting-item-description",
+		});
+
+		new Setting(containerEl)
+			.setName("Twitch Client ID (IGDB)")
+			.setDesc("From your Twitch application — same Client ID you use for IGDB API requests.")
+			.addText((t) =>
+				t.setValue(this.plugin.settings.twitchClientId).onChange(async (v) => {
+					this.plugin.settings.twitchClientId = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Twitch Client Secret (IGDB)")
+			.setDesc("App secret — stored locally to obtain short-lived app tokens for IGDB only.")
+			.addText((t) => {
+				t.inputEl.type = "password";
+				t.setValue(this.plugin.settings.twitchClientSecret).onChange(async (v) => {
+					this.plugin.settings.twitchClientSecret = v;
+					await this.plugin.saveSettings();
+				});
+			});
+
 		new Setting(containerEl)
 			.setName("Media folder (vault-relative)")
 			.setDesc("Root folder for imported notes, e.g. 90 Media")
@@ -75,23 +103,54 @@ export class ReposeSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		new Setting(containerEl)
-			.setName("Movies subfolder")
-			.addText((t) =>
-				t.setValue(this.plugin.settings.moviesSubfolder).onChange(async (v) => {
-					this.plugin.settings.moviesSubfolder = v;
-					await this.plugin.saveSettings();
-				}),
-			);
+		containerEl.createEl("h3", { text: "Detecting media type" });
+		containerEl.createEl("p", {
+			text: "When a note has no type or mediaType in frontmatter, Repose uses these rules in order: movie → TV show → podcast → book → game (first match wins).",
+			cls: "setting-item-description",
+		});
 
-		new Setting(containerEl)
-			.setName("Series subfolder")
-			.addText((t) =>
-				t.setValue(this.plugin.settings.seriesSubfolder).onChange(async (v) => {
-					this.plugin.settings.seriesSubfolder = v;
-					await this.plugin.saveSettings();
-				}),
-			);
+		const typeLabels: Record<ReposeRuleMediaType, string> = {
+			movie: "Movies",
+			show: "TV shows",
+			podcast: "Podcasts",
+			book: "Books",
+			game: "Games",
+		};
+
+		const ruleDesc =
+			"Folder: path under the media root (e.g. Movies or Archive/Movies). Tag: e.g. #movie or movie. Frontmatter: key and value like mediaType: movie.";
+
+		for (const kind of RULE_MEDIA_TYPES) {
+			const rule = this.plugin.settings.typeRules[kind];
+			new Setting(containerEl)
+				.setName(typeLabels[kind])
+				.setDesc(ruleDesc)
+				.addDropdown((d) => {
+					d.addOption("folder", "Folder").addOption("tag", "Tag").addOption("frontmatter", "Frontmatter");
+					d.setValue(rule.mode).onChange(async (v) => {
+						const mode = v as MediaTypeRuleMode;
+						this.plugin.settings.typeRules[kind].mode = mode;
+						await this.plugin.saveSettings();
+					});
+				})
+				.addText((t) => {
+					t.setPlaceholder(
+						kind === "movie"
+							? "Movies"
+							: kind === "show"
+								? "Series"
+								: kind === "podcast"
+									? "Podcasts"
+									: kind === "book"
+										? "Books"
+										: "Games",
+					);
+					t.setValue(rule.value).onChange(async (v) => {
+						this.plugin.settings.typeRules[kind].value = v;
+						await this.plugin.saveSettings();
+					});
+				});
+		}
 
 		new Setting(containerEl)
 			.setName("Project wikilink")

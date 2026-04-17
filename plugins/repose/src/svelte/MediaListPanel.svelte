@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import type { TFile } from "obsidian";
+	import { setIcon, type TFile } from "obsidian";
 	import type ReposePlugin from "../main";
 	import { resolveListThumbnailFile } from "../media/banner";
 	import { collectMediaMarkdownFiles } from "../media/collectMediaFiles";
@@ -14,6 +14,28 @@
 	let searchQuery = "";
 	let filterType: ReposeMediaType | "all" = "all";
 	let listRev = 0;
+
+	const FILTER_OPTIONS: { type: ReposeMediaType; icon: string; label: string }[] = [
+		{ type: "movie", icon: "clapperboard", label: "Movies" },
+		{ type: "show", icon: "tv", label: "TV shows" },
+		{ type: "podcast", icon: "podcast", label: "Podcasts" },
+		{ type: "book", icon: "book-open", label: "Books" },
+		{ type: "game", icon: "gamepad-2", label: "Games" },
+	];
+
+	function onFilterClick(t: ReposeMediaType): void {
+		filterType = filterType === t ? "all" : t;
+	}
+
+	function filterTypeIcon(node: HTMLElement, icon: string): { update: (next: string) => void } {
+		setIcon(node, icon);
+		return {
+			update(next: string) {
+				node.empty();
+				setIcon(node, next);
+			},
+		};
+	}
 
 	type ListRow = {
 		file: TFile;
@@ -60,20 +82,13 @@
 		return img ? plugin.app.vault.getResourcePath(img) : null;
 	}
 
-	function labelForType(mt: string): string {
-		if (mt === "show") return "Shows";
-		if (mt === "movie") return "Movies";
-		if (mt === "book") return "Books";
-		if (mt === "game") return "Games";
-		if (mt === "podcast") return "Podcasts";
-		return "All";
-	}
-
 	$: files = (listRev, collectMediaMarkdownFiles(plugin.app, plugin.settings));
 	$: sortedFiles = [...files].sort((a, b) =>
-		readMediaItem(plugin.app, a).title.localeCompare(readMediaItem(plugin.app, b).title, undefined, {
-			sensitivity: "base",
-		}),
+		readMediaItem(plugin.app, a, plugin.settings).title.localeCompare(
+			readMediaItem(plugin.app, b, plugin.settings).title,
+			undefined,
+			{ sensitivity: "base" },
+		),
 	);
 
 	$: rows = ((): ListRow[] => {
@@ -81,7 +96,7 @@
 		const q = searchQuery.trim().toLowerCase();
 		const out: ListRow[] = [];
 		for (const file of sortedFiles) {
-			const item = readMediaItem(app, file);
+			const item = readMediaItem(app, file, plugin.settings);
 			if (filterType !== "all" && item.mediaType !== filterType) continue;
 			if (!q) {
 				/* keep */
@@ -90,7 +105,7 @@
 			}
 
 			let headRight: string;
-			if (item.mediaType === "show") {
+			if (item.mediaType === "show" || item.mediaType === "podcast") {
 				headRight = formatShowCounts(countShowSeasonsAndEpisodes(app, file));
 			} else {
 				headRight = shortMediaTypeLabel(item.mediaType);
@@ -139,15 +154,20 @@
 			bind:value={searchQuery}
 		/>
 	</div>
-	<div class="repose-media-panel__filters">
-		<select bind:value={filterType} aria-label="Filter by media type">
-			<option value="all">{labelForType("all")}</option>
-			<option value="show">{labelForType("show")}</option>
-			<option value="movie">{labelForType("movie")}</option>
-			<option value="book">{labelForType("book")}</option>
-			<option value="game">{labelForType("game")}</option>
-			<option value="podcast">{labelForType("podcast")}</option>
-		</select>
+	<div class="repose-media-panel__filters" role="toolbar" aria-label="Filter by media type">
+		{#each FILTER_OPTIONS as opt (opt.type)}
+			<button
+				type="button"
+				class="repose-media-panel__filter-btn clickable-icon"
+				class:repose-media-panel__filter-btn--active={filterType === opt.type}
+				aria-label={opt.label}
+				title={opt.label}
+				aria-pressed={filterType === opt.type}
+				on:click={() => onFilterClick(opt.type)}
+			>
+				<span class="repose-media-panel__filter-icon" use:filterTypeIcon={opt.icon} aria-hidden="true"></span>
+			</button>
+		{/each}
 	</div>
 
 	{#if rows.length === 0}

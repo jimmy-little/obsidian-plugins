@@ -8,6 +8,7 @@ import {
 	searchTrakt,
 	type TraktSearchHit,
 } from "./trakt/client";
+import { fetchShowWatchedProgress } from "./trakt/watchedSync";
 import type ReposePlugin from "./main";
 import {
 	addTraktEpisodeToVault,
@@ -400,6 +401,7 @@ export class ReposeView extends ItemView {
 				this.selectedItem as TraktShowOrMovie,
 				this.selectedKind,
 				this.selectedImages,
+				this.plugin,
 			);
 			new Notice(`Saved: ${path}`);
 		} catch (e) {
@@ -417,7 +419,14 @@ export class ReposeView extends ItemView {
 			still = await fetchEpisodeStill(tmdb, this.currentShowTmdbId, ep.season, ep.number);
 		}
 		try {
-			const { path } = await addTraktEpisodeToVault(this.app.vault, this.plugin.settings, ep, show, still);
+			const { path } = await addTraktEpisodeToVault(
+				this.app.vault,
+				this.plugin.settings,
+				ep,
+				show,
+				still,
+				this.plugin,
+			);
 			new Notice(`Saved: ${path}`);
 		} catch (e) {
 			new Notice(e instanceof Error ? e.message : String(e));
@@ -534,6 +543,9 @@ export class ReposeView extends ItemView {
 		const showData = show as TraktShowOrMovie;
 		const tmdb = this.plugin.settings.tmdbApiKey.trim();
 		const showTmdb = (showData.ids as { tmdb?: number } | undefined)?.tmdb;
+		const showTrakt = (showData.ids as { trakt?: number } | undefined)?.trakt;
+		const progressOnce =
+			showTrakt != null ? await fetchShowWatchedProgress(this.plugin, showTrakt) : undefined;
 		let ok = 0;
 		let failed = 0;
 		for (const epRow of episodes) {
@@ -544,7 +556,15 @@ export class ReposeView extends ItemView {
 				still = await fetchEpisodeStill(tmdb, showTmdb, episode.season, episode.number);
 			}
 			try {
-				await addTraktEpisodeToVault(this.app.vault, this.plugin.settings, episode, showData, still);
+				await addTraktEpisodeToVault(
+					this.app.vault,
+					this.plugin.settings,
+					episode,
+					showData,
+					still,
+					this.plugin,
+					progressOnce,
+				);
 				ok++;
 			} catch {
 				failed++;

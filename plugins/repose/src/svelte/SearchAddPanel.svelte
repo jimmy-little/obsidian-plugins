@@ -2,6 +2,12 @@
 	import { Notice } from "obsidian";
 	import type ReposePlugin from "../main";
 	import {
+		artUrlsForIgdbGame,
+		getIgdbGameById,
+		searchIgdbGames,
+		type IgdbGame,
+	} from "../igdb/client";
+	import {
 		getEpisodeRowStillThumb,
 		getSeasonEpisodes,
 		getShowSeasons,
@@ -9,6 +15,7 @@
 		searchTrakt,
 		type TraktSearchHit,
 	} from "../trakt/client";
+	import { fetchShowWatchedProgress } from "../trakt/watchedSync";
 	import {
 		dedupeTraktSearchResults,
 		episodeFromSeasonRow,
@@ -17,6 +24,7 @@
 		type ParsedSearchSelection,
 	} from "../trakt/searchSelection";
 	import {
+		addIgdbGameToVault,
 		addTraktEpisodeToVault,
 		addTraktShowOrMovieToVault,
 		fetchEpisodeStill,
@@ -27,6 +35,8 @@
 
 	export let plugin: ReposePlugin;
 
+	let addTab: "trakt" | "games" = "trakt";
+
 	function stableSearchRowKey(row: TraktSearchHit, i: number): string {
 		const mv = row.movie as { ids?: { trakt?: number } } | undefined;
 		const sh = row.show as { ids?: { trakt?: number } } | undefined;
@@ -35,6 +45,10 @@
 		if (sh?.ids?.trakt != null) return `s-${sh.ids.trakt}`;
 		if (ep?.ids?.trakt != null) return `e-${ep.ids.trakt}`;
 		return `i-${i}-${row.type}`;
+	}
+
+	function stableGameRowKey(g: IgdbGame): string {
+		return `igdb-${g.id}`;
 	}
 
 	type PanelView = "search" | "detail" | "seasons" | "episodes" | "episodeAdd";
@@ -61,6 +75,99 @@
 	let episodeRowThumbs: (string | null)[] = [];
 	let episodeAddBusy = false;
 	let pickedEpisode: TraktEpisode | null = null;
+
+	let gameQuery = "";
+	let gameBusy = false;
+	let gameResults: IgdbGame[] = [];
+	let gameThumbs: (string | null)[] = [];
+	let gameSubView: "search" | "detail" = "search";
+	let gameDetailGame: IgdbGame | null = null;
+	let gameDetailBusy = false;
+
+	function setAddTab(tab: "trakt" | "games"): void {
+		addTab = tab;
+		if (tab === "trakt") {
+			gameSubView = "search";
+			gameDetailGame = null;
+			gameResults = [];
+			gameThumbs = [];
+			gameQuery = "";
+		} else {
+			goSearchList();
+		}
+	}
+
+	function resetGameList(): void {
+		gameResults = [];
+		gameThumbs = [];
+		gameSubView = "search";
+		gameDetailGame = null;
+	}
+
+	async function runGameSearch(): Promise<void> {
+		const clientId = plugin.settings.twitchClientId.trim();
+		const secret = plugin.settings.twitchClientSecret.trim();
+		if (!clientId || !secret) {
+			new Notice("Set Twitch Client ID and Client Secret (IGDB) in Repose settings.");
+			return;
+		}
+		const q = gameQuery.trim();
+		if (!q) {
+			new Notice("Enter a game name to search.");
+			return;
+		}
+		gameBusy = true;
+		try {
+			gameResults = await searchIgdbGames(clientId, secret, q, 20);
+			gameThumbs = gameResults.map((g) => artUrlsForIgdbGame(g).poster);
+			gameSubView = "search";
+			gameDetailGame = null;
+		} catch (e) {
+			new Notice(e instanceof Error ? e.message : String(e));
+			gameResults = [];
+			gameThumbs = [];
+		} finally {
+			gameBusy = false;
+		}
+	}
+
+	async function openGameDetail(row: IgdbGame): Promise<void> {
+		const clientId = plugin.settings.twitchClientId.trim();
+		const secret = plugin.settings.twitchClientSecret.trim();
+		if (!clientId || !secret) {
+			new Notice("Set Twitch Client ID and Client Secret (IGDB) in Repose settings.");
+			return;
+		}
+		gameDetailBusy = true;
+		try {
+			const full = await getIgdbGameById(clientId, secret, row.id);
+			gameDetailGame = full ?? row;
+			gameSubView = "detail";
+		} catch (e) {
+			new Notice(e instanceof Error ? e.message : String(e));
+			gameDetailGame = row;
+			gameSubView = "detail";
+		} finally {
+			gameDetailBusy = false;
+		}
+	}
+
+	function backGame(): void {
+		if (gameSubView === "detail") {
+			gameSubView = "search";
+			gameDetailGame = null;
+		}
+	}
+
+	async function addGameToVault(): Promise<void> {
+		if (!gameDetailGame) return;
+		try {
+			const { path } = await addIgdbGameToVault(plugin.app.vault, plugin.settings, gameDetailGame);
+			new Notice(`Saved: ${path}`);
+		} catch (e) {
+			new Notice(e instanceof Error ? e.message : String(e));
+		}
+	}
 
 	async function runSearch(): Promise<void> {
 		const clientId = plugin.settings.traktClientId.trim();
@@ -184,6 +291,7 @@
 				parsed.item as TraktShowOrMovie,
 				parsed.kind,
 				imagesForAdd,
+				plugin,
 			);
 			new Notice(`Saved: ${path}`);
 			if ((parsed.item as TraktShowOrMovie).title) {
@@ -209,7 +317,14 @@
 			still = await fetchEpisodeStill(tmdb, parsed.showTmdbId, ep.season, ep.number);
 		}
 		try {
-			const { path } = await addTraktEpisodeToVault(plugin.app.vault, plugin.settings, ep, show, still);
+			const { path } = await addTraktEpisodeToVault(
+				plugin.app.vault,
+				plugin.settings,
+				ep,
+				show,
+				still,
+				plugin,
+			);
 			new Notice(`Saved: ${path}`);
 		} catch (e) {
 			new Notice(e instanceof Error ? e.message : String(e));
@@ -270,6 +385,8 @@
 		}
 		const tmdb = plugin.settings.tmdbApiKey.trim();
 		const showTmdb = show.ids?.tmdb;
+		const progressOnce =
+			show.ids?.trakt != null ? await fetchShowWatchedProgress(plugin, show.ids.trakt) : undefined;
 		let ok = 0;
 		let failed = 0;
 		for (const epRow of episodesList) {
@@ -279,7 +396,15 @@
 				still = await fetchEpisodeStill(tmdb, showTmdb, episode.season, episode.number);
 			}
 			try {
-				await addTraktEpisodeToVault(plugin.app.vault, plugin.settings, episode, show, still);
+				await addTraktEpisodeToVault(
+					plugin.app.vault,
+					plugin.settings,
+					episode,
+					show,
+					still,
+					plugin,
+					progressOnce,
+				);
 				ok++;
 			} catch {
 				failed++;
@@ -310,6 +435,7 @@
 				pickedEpisode,
 				contextShow,
 				still,
+				plugin,
 			);
 			new Notice(`Saved: ${path}`);
 			panelView = "episodes";
@@ -330,178 +456,273 @@
 </script>
 
 <div class="repose-search-add">
-	{#if panelView === "search"}
-		<div class="repose-search-add__controls">
-			<input
-				class="search-input"
-				type="search"
-				placeholder="Search Trakt…"
-				aria-label="Search Trakt"
-				bind:value={searchQuery}
-				on:keydown={(e) => e.key === "Enter" && void runSearch()}
-			/>
-			<div class="repose-search-add__type-row">
-				<select bind:value={typeFilter} aria-label="Result type">
-					<option value="">All</option>
-					<option value="show">Shows</option>
-					<option value="movie">Movies</option>
-					<option value="episode">Episodes</option>
-				</select>
-				<button type="button" class="mod-cta" disabled={searchBusy} on:click={() => void runSearch()}>
-					{searchBusy ? "…" : "Search"}
-				</button>
+	<div class="repose-search-add__source-tabs" role="tablist" aria-label="Add from">
+		<button
+			type="button"
+			class="repose-search-add__source-tab"
+			class:repose-search-add__source-tab--active={addTab === "trakt"}
+			role="tab"
+			aria-selected={addTab === "trakt"}
+			on:click={() => setAddTab("trakt")}
+		>
+			TV & movies
+		</button>
+		<button
+			type="button"
+			class="repose-search-add__source-tab"
+			class:repose-search-add__source-tab--active={addTab === "games"}
+			role="tab"
+			aria-selected={addTab === "games"}
+			on:click={() => setAddTab("games")}
+		>
+			Games
+		</button>
+	</div>
+
+	{#if addTab === "trakt"}
+		{#if panelView === "search"}
+			<div class="repose-search-add__controls">
+				<input
+					class="search-input"
+					type="search"
+					placeholder="Search Trakt…"
+					aria-label="Search Trakt"
+					bind:value={searchQuery}
+					on:keydown={(e) => e.key === "Enter" && void runSearch()}
+				/>
+				<div class="repose-search-add__type-row">
+					<select bind:value={typeFilter} aria-label="Result type">
+						<option value="">All</option>
+						<option value="show">Shows</option>
+						<option value="movie">Movies</option>
+						<option value="episode">Episodes</option>
+					</select>
+					<button type="button" class="mod-cta" disabled={searchBusy} on:click={() => void runSearch()}>
+						{searchBusy ? "…" : "Search"}
+					</button>
+				</div>
 			</div>
-		</div>
-		{#if results.length === 0 && !searchBusy}
-			<p class="repose-muted repose-search-add__hint">Search Trakt to add a show or movie to your vault.</p>
-		{:else}
-			<ul class="repose-sidebar-media-list repose-search-add__results">
-				{#each results as row, i (stableSearchRowKey(row, i))}
+			{#if results.length === 0 && !searchBusy}
+				<p class="repose-muted repose-search-add__hint">Search Trakt to add a show or movie to your vault.</p>
+			{:else}
+				<ul class="repose-sidebar-media-list repose-search-add__results">
+					{#each results as row, i (stableSearchRowKey(row, i))}
+						<li>
+							<div
+								role="button"
+								tabindex="0"
+								class="repose-ml-row"
+								on:click={() => void openDetail(row)}
+								on:keydown={(e) => {
+									if (e.key === "Enter" || e.key === " ") {
+										e.preventDefault();
+										void openDetail(row);
+									}
+								}}
+							>
+								<div class="repose-ml-row__thumb-wrap">
+									{#if thumbs[i]}
+										<img class="repose-ml-row__thumb" src={thumbs[i] ?? ""} alt="" />
+									{:else}
+										<div class="repose-ml-row__thumb repose-ml-row__thumb--placeholder" aria-hidden="true"></div>
+									{/if}
+								</div>
+								<div class="repose-ml-row__inner">
+									<div class="repose-ml-row__head">
+										<span class="repose-ml-row__name">{labelForSearchHit(row)}</span>
+										<span class="repose-ml-row__area">{row.type}</span>
+									</div>
+								</div>
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		{:else if panelView === "detail" && parsed}
+			<div class="repose-search-add__nav">
+				<button type="button" class="repose-search-add__back" on:click={back}>← Results</button>
+			</div>
+			<div class="repose-search-add__detail">
+				<h3 class="repose-search-add__detail-title">{detailTitle || "Result"}</h3>
+				{#if vaultPathHint}
+					<p class="repose-muted repose-search-add__vault-hint">{vaultPathHint}</p>
+				{/if}
+				<div class="repose-search-add__actions">
+					{#if parsed.kind === "movie" || parsed.kind === "show"}
+						<button type="button" class="mod-cta" on:click={() => void addMovieOrShow()}>Add to vault</button>
+					{/if}
+					{#if parsed.kind === "show" && parsed.showTraktId != null}
+						<button type="button" on:click={() => void openSeasonsBrowse()} disabled={seasonsBusy}>
+							{seasonsBusy ? "…" : "Browse seasons"}
+						</button>
+					{/if}
+					{#if parsed.kind === "episode" && parsed.showForEpisode}
+						<button type="button" class="mod-cta" on:click={() => void addEpisodeFromSearch()}>Add episode note</button>
+					{/if}
+				</div>
+			</div>
+		{:else if panelView === "seasons" && contextShow}
+			<div class="repose-search-add__nav">
+				<button type="button" class="repose-search-add__back" on:click={back}>← Result</button>
+			</div>
+			<h3 class="repose-search-add__subhead">Seasons · {contextShow.title ?? ""}</h3>
+			<ul class="repose-sidebar-media-list">
+				{#each seasonsFiltered as season (season.number)}
 					<li>
 						<div
 							role="button"
 							tabindex="0"
 							class="repose-ml-row"
-							on:click={() => void openDetail(row)}
+							on:click={() => void openEpisodesForSeason(season.number)}
 							on:keydown={(e) => {
 								if (e.key === "Enter" || e.key === " ") {
 									e.preventDefault();
-									void openDetail(row);
+									void openEpisodesForSeason(season.number);
 								}
 							}}
 						>
 							<div class="repose-ml-row__thumb-wrap">
-								{#if thumbs[i]}
-									<img class="repose-ml-row__thumb" src={thumbs[i] ?? ""} alt="" />
-								{:else}
-									<div class="repose-ml-row__thumb repose-ml-row__thumb--placeholder" aria-hidden="true"></div>
-								{/if}
+								<div class="repose-ml-row__thumb repose-ml-row__thumb--placeholder" aria-hidden="true"></div>
 							</div>
 							<div class="repose-ml-row__inner">
 								<div class="repose-ml-row__head">
-									<span class="repose-ml-row__name">{labelForSearchHit(row)}</span>
-									<span class="repose-ml-row__area">{row.type}</span>
+									<span class="repose-ml-row__name">Season {season.number}</span>
+									<span class="repose-ml-row__area">{season.episodeCount} ep</span>
 								</div>
 							</div>
 						</div>
 					</li>
 				{/each}
 			</ul>
-		{/if}
-	{:else if panelView === "detail" && parsed}
-		<div class="repose-search-add__nav">
-			<button type="button" class="repose-search-add__back" on:click={back}>← Results</button>
-		</div>
-		<div class="repose-search-add__detail">
-			<h3 class="repose-search-add__detail-title">{detailTitle || "Result"}</h3>
-			{#if vaultPathHint}
-				<p class="repose-muted repose-search-add__vault-hint">{vaultPathHint}</p>
-			{/if}
-			<div class="repose-search-add__actions">
-				{#if parsed.kind === "movie" || parsed.kind === "show"}
-					<button type="button" class="mod-cta" on:click={() => void addMovieOrShow()}>Add to vault</button>
-				{/if}
-				{#if parsed.kind === "show" && parsed.showTraktId != null}
-					<button type="button" on:click={() => void openSeasonsBrowse()} disabled={seasonsBusy}>
-						{seasonsBusy ? "…" : "Browse seasons"}
-					</button>
-				{/if}
-				{#if parsed.kind === "episode" && parsed.showForEpisode}
-					<button type="button" class="mod-cta" on:click={() => void addEpisodeFromSearch()}>Add episode note</button>
-				{/if}
+		{:else if panelView === "episodes" && contextShow}
+			<div class="repose-search-add__nav repose-search-add__nav--split">
+				<button type="button" class="repose-search-add__back" on:click={back}>← Seasons</button>
+				<button type="button" on:click={() => void importSeasonBatch()} disabled={episodesBusy || episodesList.length === 0}>
+					Add all in season
+				</button>
 			</div>
-		</div>
-	{:else if panelView === "seasons" && contextShow}
-		<div class="repose-search-add__nav">
-			<button type="button" class="repose-search-add__back" on:click={back}>← Result</button>
-		</div>
-		<h3 class="repose-search-add__subhead">Seasons · {contextShow.title ?? ""}</h3>
-		<ul class="repose-sidebar-media-list">
-			{#each seasonsFiltered as season (season.number)}
-				<li>
-					<div
-						role="button"
-						tabindex="0"
-						class="repose-ml-row"
-						on:click={() => void openEpisodesForSeason(season.number)}
-						on:keydown={(e) => {
-							if (e.key === "Enter" || e.key === " ") {
-								e.preventDefault();
-								void openEpisodesForSeason(season.number);
-							}
-						}}
-					>
-						<div class="repose-ml-row__thumb-wrap">
-							<div class="repose-ml-row__thumb repose-ml-row__thumb--placeholder" aria-hidden="true"></div>
-						</div>
-						<div class="repose-ml-row__inner">
-							<div class="repose-ml-row__head">
-								<span class="repose-ml-row__name">Season {season.number}</span>
-								<span class="repose-ml-row__area">{season.episodeCount} ep</span>
+			<h3 class="repose-search-add__subhead">{contextShow.title ?? ""} · S{browseSeasonNumber}</h3>
+			<ul class="repose-sidebar-media-list repose-search-add__ep-list">
+				{#each episodesList as ep, i (ep.number + "-" + ep.season)}
+					<li>
+						<div
+							role="button"
+							tabindex="0"
+							class="repose-ml-row"
+							on:click={() => pickEpisodeFromList(ep)}
+							on:keydown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									pickEpisodeFromList(ep);
+								}
+							}}
+						>
+							<div class="repose-ml-row__thumb-wrap repose-ml-row__thumb-wrap--wide">
+								{#if episodeRowThumbs[i]}
+									<img
+										class="repose-ml-row__thumb repose-ml-row__thumb--still"
+										src={episodeRowThumbs[i] ?? ""}
+										alt=""
+									/>
+								{:else}
+									<div class="repose-ml-row__thumb repose-ml-row__thumb--placeholder repose-ml-row__thumb--still" aria-hidden="true"></div>
+								{/if}
+							</div>
+							<div class="repose-ml-row__inner">
+								<div class="repose-ml-row__head">
+									<span class="repose-ml-row__name">{ep.number}. {ep.title}</span>
+								</div>
 							</div>
 						</div>
-					</div>
-				</li>
-			{/each}
-		</ul>
-	{:else if panelView === "episodes" && contextShow}
-		<div class="repose-search-add__nav repose-search-add__nav--split">
-			<button type="button" class="repose-search-add__back" on:click={back}>← Seasons</button>
-			<button type="button" on:click={() => void importSeasonBatch()} disabled={episodesBusy || episodesList.length === 0}>
-				Add all in season
-			</button>
-		</div>
-		<h3 class="repose-search-add__subhead">{contextShow.title ?? ""} · S{browseSeasonNumber}</h3>
-		<ul class="repose-sidebar-media-list repose-search-add__ep-list">
-			{#each episodesList as ep, i (ep.number + "-" + ep.season)}
-				<li>
-					<div
-						role="button"
-						tabindex="0"
-						class="repose-ml-row"
-						on:click={() => pickEpisodeFromList(ep)}
-						on:keydown={(e) => {
-							if (e.key === "Enter" || e.key === " ") {
-								e.preventDefault();
-								pickEpisodeFromList(ep);
-							}
-						}}
-					>
-						<div class="repose-ml-row__thumb-wrap repose-ml-row__thumb-wrap--wide">
-							{#if episodeRowThumbs[i]}
-								<img
-									class="repose-ml-row__thumb repose-ml-row__thumb--still"
-									src={episodeRowThumbs[i] ?? ""}
-									alt=""
-								/>
-							{:else}
-								<div class="repose-ml-row__thumb repose-ml-row__thumb--placeholder repose-ml-row__thumb--still" aria-hidden="true"></div>
-							{/if}
-						</div>
-						<div class="repose-ml-row__inner">
-							<div class="repose-ml-row__head">
-								<span class="repose-ml-row__name">{ep.number}. {ep.title}</span>
+					</li>
+				{/each}
+			</ul>
+		{:else if panelView === "episodeAdd" && pickedEpisode && contextShow}
+			<div class="repose-search-add__nav">
+				<button type="button" class="repose-search-add__back" on:click={back}>← Episodes</button>
+			</div>
+			<div class="repose-search-add__detail">
+				<h3 class="repose-search-add__detail-title">{pickedEpisode.title}</h3>
+				<p class="repose-muted">S{pickedEpisode.season}E{pickedEpisode.number} · {contextShow.title ?? ""}</p>
+				<button
+					type="button"
+					class="mod-cta"
+					disabled={episodeAddBusy}
+					on:click={() => void addPickedEpisodeNote()}
+				>
+					{episodeAddBusy ? "…" : "Add episode note"}
+				</button>
+			</div>
+		{/if}
+	{:else}
+		{#if gameSubView === "search"}
+			<div class="repose-search-add__controls">
+				<input
+					class="search-input"
+					type="search"
+					placeholder="Search IGDB…"
+					aria-label="Search games"
+					bind:value={gameQuery}
+					on:keydown={(e) => e.key === "Enter" && void runGameSearch()}
+				/>
+				<div class="repose-search-add__type-row">
+					<span class="repose-muted repose-search-add__igdb-hint">IGDB via Twitch API</span>
+					<button type="button" class="mod-cta" disabled={gameBusy} on:click={() => void runGameSearch()}>
+						{gameBusy ? "…" : "Search"}
+					</button>
+				</div>
+			</div>
+			{#if gameResults.length === 0 && !gameBusy}
+				<p class="repose-muted repose-search-add__hint">Search for a game to add a note under your Games folder.</p>
+			{:else}
+				<ul class="repose-sidebar-media-list repose-search-add__results">
+					{#each gameResults as g, gi (stableGameRowKey(g))}
+						<li>
+							<div
+								role="button"
+								tabindex="0"
+								class="repose-ml-row"
+								on:click={() => void openGameDetail(g)}
+								on:keydown={(e) => {
+									if (e.key === "Enter" || e.key === " ") {
+										e.preventDefault();
+										void openGameDetail(g);
+									}
+								}}
+							>
+								<div class="repose-ml-row__thumb-wrap">
+									{#if gameThumbs[gi]}
+										<img class="repose-ml-row__thumb" src={gameThumbs[gi] ?? ""} alt="" />
+									{:else}
+										<div class="repose-ml-row__thumb repose-ml-row__thumb--placeholder" aria-hidden="true"></div>
+									{/if}
+								</div>
+								<div class="repose-ml-row__inner">
+									<div class="repose-ml-row__head">
+										<span class="repose-ml-row__name">{g.name ?? "Game"}</span>
+										<span class="repose-ml-row__area">game</span>
+									</div>
+								</div>
 							</div>
-						</div>
-					</div>
-				</li>
-			{/each}
-		</ul>
-	{:else if panelView === "episodeAdd" && pickedEpisode && contextShow}
-		<div class="repose-search-add__nav">
-			<button type="button" class="repose-search-add__back" on:click={back}>← Episodes</button>
-		</div>
-		<div class="repose-search-add__detail">
-			<h3 class="repose-search-add__detail-title">{pickedEpisode.title}</h3>
-			<p class="repose-muted">S{pickedEpisode.season}E{pickedEpisode.number} · {contextShow.title ?? ""}</p>
-			<button
-				type="button"
-				class="mod-cta"
-				disabled={episodeAddBusy}
-				on:click={() => void addPickedEpisodeNote()}
-			>
-				{episodeAddBusy ? "…" : "Add episode note"}
-			</button>
-		</div>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		{:else if gameSubView === "detail" && gameDetailGame}
+			<div class="repose-search-add__nav">
+				<button type="button" class="repose-search-add__back" on:click={backGame}>← Results</button>
+			</div>
+			<div class="repose-search-add__detail">
+				<h3 class="repose-search-add__detail-title">{gameDetailGame.name ?? "Game"}</h3>
+				{#if gameDetailBusy}
+					<p class="repose-muted repose-search-add__vault-hint">Loading details…</p>
+				{:else if gameDetailGame.summary}
+					<p class="repose-muted repose-search-add__vault-hint">{gameDetailGame.summary.slice(0, 280)}{gameDetailGame.summary.length > 280 ? "…" : ""}</p>
+				{/if}
+				<div class="repose-search-add__actions">
+					<button type="button" class="mod-cta" disabled={gameDetailBusy} on:click={() => void addGameToVault()}>Add to vault</button>
+				</div>
+			</div>
+		{/if}
 	{/if}
 </div>

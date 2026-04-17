@@ -1,4 +1,13 @@
 import { Notice, Plugin, TFile, type ObsidianProtocolData } from "obsidian";
+import { resolveMediaTypeForFile } from "./media/mediaDetect";
+import {
+	ensureTraktAccessToken,
+	pushEpisodeWatchedToTrakt,
+	pushMovieWatchedToTrakt,
+	readTraktIdFromFrontmatter,
+	removeEpisodeWatchedFromTrakt,
+	removeMovieWatchedFromTrakt,
+} from "./trakt/watchedSync";
 import { refreshShowFromTrakt as runRefreshShowFromTrakt } from "./vault/showRefresh";
 import { ReposeSettingTab } from "./ReposeSettingTab";
 import { ReposeShellView, VIEW_TYPE_REPOSE } from "./ReposeShellView";
@@ -17,13 +26,19 @@ export default class ReposePlugin extends Plugin {
 	}
 
 	async refreshShowFromTrakt(file: TFile): Promise<{ ok: boolean; error?: string }> {
-		return runRefreshShowFromTrakt(this.app, this.settings, file);
+		return runRefreshShowFromTrakt(this.app, this.settings, file, this);
 	}
 
 	async toggleWatchedFrontmatter(filePath: string): Promise<void> {
 		const f = this.app.vault.getAbstractFileByPath(filePath);
 		if (!(f instanceof TFile)) return;
-		// `processFrontMatter` reads + writes YAML safely.
+
+		const cacheBefore = this.app.metadataCache.getFileCache(f);
+		const fmBefore = (cacheBefore?.frontmatter ?? {}) as Record<string, unknown>;
+		const wasWatched = typeof fmBefore.watchedDate === "string" && fmBefore.watchedDate.trim().length > 0;
+		const mediaType = resolveMediaTypeForFile(this.app, f, this.settings);
+		const traktId = readTraktIdFromFrontmatter(fmBefore);
+
 		await this.app.fileManager.processFrontMatter(f, (fm) => {
 			const now = new Date();
 			const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
@@ -38,6 +53,29 @@ export default class ReposePlugin extends Plugin {
 				fm.reposeStatus = "watched";
 			}
 		});
+
+		if (mediaType !== "movie" && mediaType !== "episode") return;
+		if (traktId == null) return;
+		const token = await ensureTraktAccessToken(this);
+		if (!token) return;
+
+		const cacheAfter = this.app.metadataCache.getFileCache(f);
+		const fmAfter = (cacheAfter?.frontmatter ?? {}) as Record<string, unknown>;
+		const nowWatched = typeof fmAfter.watchedDate === "string" && fmAfter.watchedDate.trim().length > 0;
+		const dateStr =
+			typeof fmAfter.watchedDate === "string" ? fmAfter.watchedDate.trim().split("T")[0] : "";
+
+		try {
+			if (!wasWatched && nowWatched && dateStr) {
+				if (mediaType === "movie") await pushMovieWatchedToTrakt(this, traktId, dateStr);
+				else await pushEpisodeWatchedToTrakt(this, traktId, dateStr);
+			} else if (wasWatched && !nowWatched) {
+				if (mediaType === "movie") await removeMovieWatchedFromTrakt(this, traktId);
+				else await removeEpisodeWatchedFromTrakt(this, traktId);
+			}
+		} catch (e) {
+			new Notice(e instanceof Error ? e.message : "Could not update Trakt watch state.");
+		}
 	}
 
 	async onload(): Promise<void> {

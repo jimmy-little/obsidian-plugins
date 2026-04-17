@@ -16,18 +16,18 @@
 	const LEFT_MIN = 220;
 	const MAIN_MIN = 320;
 	const SPLIT_PX = 5;
-	const SIDEBAR_TAB_LS = "repose-pm-sidebar-tab";
+	const ADD_PANEL_LS = "repose-pm-add-panel";
 
-	type SidebarTab = "library" | "add";
-	let sidebarTab: SidebarTab = "library";
+	/** When true, sidebar shows Trakt search / add instead of library list. */
+	let addPanelOpen = false;
 
 	let leftCollapsed = false;
 	let pmEl: HTMLDivElement | null = null;
 	let leftWidthPx: number | null = readStoredLeftWidth();
-	let collapseBtnEl: HTMLButtonElement | null = null;
+	let addToggleBtnEl: HTMLButtonElement | null = null;
 
-	$: if (collapseBtnEl) {
-		setIcon(collapseBtnEl, "chevrons-left-right");
+	$: if (addToggleBtnEl) {
+		setIcon(addToggleBtnEl, addPanelOpen ? "arrow-left" : "plus");
 	}
 
 	function readStoredLeftWidth(): number | null {
@@ -89,17 +89,17 @@
 	onMount(() => {
 		if (typeof localStorage === "undefined") return;
 		try {
-			const s = localStorage.getItem(SIDEBAR_TAB_LS);
-			if (s === "library" || s === "add") sidebarTab = s;
+			if (localStorage.getItem(ADD_PANEL_LS) === "1") addPanelOpen = true;
 		} catch {
 			/* ignore */
 		}
 	});
 
-	function setSidebarTab(tab: SidebarTab): void {
-		sidebarTab = tab;
+	function toggleAddPanel(): void {
+		addPanelOpen = !addPanelOpen;
 		try {
-			localStorage.setItem(SIDEBAR_TAB_LS, tab);
+			if (addPanelOpen) localStorage.setItem(ADD_PANEL_LS, "1");
+			else localStorage.removeItem(ADD_PANEL_LS);
 		} catch {
 			/* ignore */
 		}
@@ -139,42 +139,22 @@
 					{leftCollapsed ? "›" : "‹"}
 				</button>
 				<span class="repose-pm__glyph-spacer" aria-hidden="true"></span>
+				<button
+					type="button"
+					class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
+					bind:this={addToggleBtnEl}
+					aria-label={addPanelOpen ? "Back to library" : "Add media (Trakt search)"}
+					title={addPanelOpen ? "Library" : "Add"}
+					disabled={leftCollapsed}
+					on:click={() => toggleAddPanel()}
+				></button>
 			</div>
 			{#if !leftCollapsed}
-				<div class="repose-pm__sidebar-tabs" role="tablist" aria-label="Sidebar section">
-					<button
-						type="button"
-						class="repose-pm__sidebar-tab"
-						role="tab"
-						aria-selected={sidebarTab === "library"}
-						id="repose-tab-library"
-						aria-controls="repose-tabpanel-sidebar"
-						on:click={() => setSidebarTab("library")}
-					>
-						Library
-					</button>
-					<button
-						type="button"
-						class="repose-pm__sidebar-tab"
-						role="tab"
-						aria-selected={sidebarTab === "add"}
-						id="repose-tab-add"
-						aria-controls="repose-tabpanel-sidebar"
-						on:click={() => setSidebarTab("add")}
-					>
-						Add
-					</button>
-				</div>
-				<div
-					class="repose-pm__left-scroll"
-					id="repose-tabpanel-sidebar"
-					role="tabpanel"
-					aria-labelledby={sidebarTab === "library" ? "repose-tab-library" : "repose-tab-add"}
-				>
-					{#if sidebarTab === "library"}
-						<MediaListPanel {plugin} {selectedPath} {onSelectPath} />
-					{:else}
+				<div class="repose-pm__left-scroll" id="repose-sidebar-panel">
+					{#if addPanelOpen}
 						<SearchAddPanel {plugin} />
+					{:else}
+						<MediaListPanel {plugin} {selectedPath} {onSelectPath} />
 					{/if}
 				</div>
 			{/if}

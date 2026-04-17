@@ -116,6 +116,40 @@ export function traktToObsidianFrontmatter(
 	return frontmatter;
 }
 
+/** IGDB game note — uses the same keys as Trakt/TMDB imports (`description`, `banner`/`poster` wikilinks via stringifyNote, `releaseDate`, `rating`, `genres`). */
+export function igdbGameToObsidianFrontmatter(
+	game: { id: number; name?: string; summary?: string; first_release_date?: number; rating?: number; total_rating?: number },
+	genreNames: string[],
+): Record<string, unknown> {
+	const frontmatter: Record<string, unknown> = {};
+	if (game.name) frontmatter.title = game.name;
+	frontmatter.type = "Video Game";
+	frontmatter.mediaType = "game";
+	const today = new Date();
+	frontmatter.date = today.toISOString().split("T")[0];
+
+	if (game.summary) frontmatter.description = game.summary;
+
+	/* IGDB `rating` is 0–10; `total_rating` is 0–100 — store ~Trakt-style /10 in YAML. */
+	const r10 =
+		game.rating != null && Number.isFinite(game.rating)
+			? game.rating
+			: game.total_rating != null && Number.isFinite(game.total_rating)
+				? game.total_rating / 10
+				: null;
+	if (r10 != null) frontmatter.rating = Math.round(r10 * 10) / 10;
+
+	if (typeof game.first_release_date === "number" && game.first_release_date > 0) {
+		frontmatter.releaseDate = new Date(game.first_release_date * 1000).toISOString().split("T")[0];
+	}
+
+	if (genreNames.length > 0) frontmatter.genres = genreNames;
+
+	frontmatter.igdbId = game.id;
+
+	return frontmatter;
+}
+
 async function ensureFolder(vault: Vault, dirPath: string): Promise<void> {
 	const normalized = normalizePath(dirPath);
 	if (vault.getAbstractFileByPath(normalized)) return;
@@ -140,6 +174,54 @@ async function downloadToVaultPath(vault: Vault, url: string, vaultRelativePath:
 export interface ImageDownloadResult {
 	banner: string | null;
 	poster: string | null;
+}
+
+export interface NoteFolderArtResult {
+	poster: string | null;
+	banner: string | null;
+	logo: string | null;
+	thumb: string | null;
+}
+
+/**
+ * Download Trakt/TMDB art into `{parent-of-note}/images/` (poster, banner, logo, thumb).
+ */
+export async function downloadTraktArtToNoteFolder(
+	vault: Vault,
+	noteMdPath: string,
+	urls: {
+		poster?: string | null;
+		banner?: string | null;
+		logo?: string | null;
+		thumb?: string | null;
+	},
+): Promise<NoteFolderArtResult> {
+	const result: NoteFolderArtResult = { poster: null, banner: null, logo: null, thumb: null };
+	const norm = normalizePath(noteMdPath);
+	const parts = norm.split("/");
+	if (parts.length < 2) return result;
+	const parent = parts.slice(0, -1).join("/");
+	const imagesDir = normalizePath(`${parent}/images`);
+	await ensureFolder(vault, imagesDir);
+
+	const save = async (slot: keyof NoteFolderArtResult, url: string | null | undefined): Promise<void> => {
+		if (!url || !/^https?:\/\//i.test(url)) return;
+		try {
+			const ext = getExtension(url);
+			const filename = `${String(slot)}${ext}`;
+			const rel = normalizePath(`${imagesDir}/${filename}`);
+			await downloadToVaultPath(vault, url, rel);
+			result[slot] = rel;
+		} catch (e) {
+			console.error(`[Repose] ${String(slot)} download:`, e);
+		}
+	};
+
+	await save("poster", urls.poster);
+	await save("banner", urls.banner);
+	await save("logo", urls.logo);
+	await save("thumb", urls.thumb);
+	return result;
 }
 
 /**
@@ -209,12 +291,12 @@ export async function downloadObsidianImages(
 export function stringifyNote(
 	frontmatter: Record<string, unknown>,
 	content: string,
-	bannerVaultPath: string | null,
+	imagePaths: { banner?: string | null; poster?: string | null; logo?: string | null } = {},
 ): string {
 	const fm = { ...frontmatter };
-	if (bannerVaultPath) {
-		fm.banner = `[[${bannerVaultPath}]]`;
-	}
+	if (imagePaths.banner) fm.banner = `[[${imagePaths.banner}]]`;
+	if (imagePaths.poster) fm.poster = `[[${imagePaths.poster}]]`;
+	if (imagePaths.logo) fm.logo = `[[${imagePaths.logo}]]`;
 	return matter.stringify(content || "", fm);
 }
 

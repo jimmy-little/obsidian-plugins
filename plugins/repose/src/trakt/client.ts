@@ -172,6 +172,109 @@ export async function searchTrakt(clientId: string, query: string, type = ""): P
 }
 
 /** Trakt show summary (`/shows/:id?extended=full`). */
+/** First image URL from Trakt `images` arrays (strings or `{ full, medium, thumb }`). */
+export function firstTraktImageUrl(entry: unknown): string | null {
+	if (typeof entry === "string" && /^https?:\/\//i.test(entry)) return entry;
+	if (!entry || typeof entry !== "object") return null;
+	const o = entry as Record<string, unknown>;
+	for (const k of ["full", "medium", "thumb"]) {
+		const v = o[k];
+		if (typeof v === "string" && /^https?:\/\//i.test(v)) return v;
+	}
+	return null;
+}
+
+function firstFromImageList(arr: unknown): string | null {
+	if (!Array.isArray(arr) || arr.length === 0) return null;
+	for (const item of arr) {
+		const u = firstTraktImageUrl(item);
+		if (u) return u;
+	}
+	return null;
+}
+
+/**
+ * Trakt `images` values can be a URL string, `{ full, medium, thumb }`, an array of those,
+ * or locale buckets like `{ "en": [...], "null": [...] }`.
+ */
+function firstUrlFromTraktImageValue(val: unknown): string | null {
+	if (val == null) return null;
+	if (typeof val === "string" && /^https?:\/\//i.test(val)) return val;
+	if (Array.isArray(val)) {
+		for (const item of val) {
+			const u = firstTraktImageUrl(item);
+			if (u) return u;
+		}
+		return null;
+	}
+	if (typeof val === "object") {
+		const direct = firstTraktImageUrl(val);
+		if (direct) return direct;
+		const o = val as Record<string, unknown>;
+		const keys = Object.keys(o);
+		if (keys.length === 0) return null;
+		const priority = (k: string): number => {
+			const lower = k.toLowerCase();
+			if (lower === "en") return 0;
+			if (lower === "null" || k === "") return 1;
+			return 2;
+		};
+		const sorted = [...keys].sort((a, b) => priority(a) - priority(b));
+		for (const k of sorted) {
+			const u = firstUrlFromTraktImageValue(o[k]);
+			if (u) return u;
+		}
+	}
+	return null;
+}
+
+export type TraktArtUrls = {
+	poster: string | null;
+	/** Trakt horizontal “banner” art only (not fanart). */
+	banner: string | null;
+	/** Wide scenic art from Trakt; used for hero only if no TMDB backdrop. */
+	fanart: string | null;
+	logo: string | null;
+	thumb: string | null;
+};
+
+/** Parse Trakt `images` object from `?extended=images` movie/show payloads. */
+export function parseTraktImagesPayload(images: unknown): TraktArtUrls {
+	const empty: TraktArtUrls = { poster: null, banner: null, fanart: null, logo: null, thumb: null };
+	if (!images || typeof images !== "object") return empty;
+	const im = images as Record<string, unknown>;
+	const poster = firstUrlFromTraktImageValue(im.poster);
+	const banner = firstUrlFromTraktImageValue(im.banner);
+	const fanart = firstUrlFromTraktImageValue(im.fanart);
+	const logo =
+		firstUrlFromTraktImageValue(im.logo) ?? firstUrlFromTraktImageValue(im.clearart);
+	const thumb = firstUrlFromTraktImageValue(im.thumb);
+	return { poster, banner, fanart, logo, thumb };
+}
+
+/**
+ * Poster, banner, fanart, logo, and thumb from Trakt (`extended=images`).
+ * Hero/backdrop should prefer TMDB backdrop, then Trakt fanart (see merge in import/refresh).
+ * No OAuth required — uses `trakt-api-key` header.
+ */
+export async function getTraktArtUrls(
+	clientId: string,
+	kind: "movie" | "show",
+	traktId: number,
+): Promise<TraktArtUrls | null> {
+	if (!clientId.trim() || !Number.isFinite(traktId)) return null;
+	const path =
+		kind === "movie"
+			? `/movies/${traktId}?extended=images`
+			: `/shows/${traktId}?extended=images`;
+	try {
+		const data = (await traktJson(clientId, path)) as { images?: unknown };
+		return parseTraktImagesPayload(data.images);
+	} catch {
+		return null;
+	}
+}
+
 export async function getTraktShow(
 	clientId: string,
 	showTraktId: number,
@@ -230,6 +333,30 @@ export async function getTraktShow(
 	}
 }
 
+type TmdbImageFile = {
+	file_path?: string | null;
+	iso_639_1?: string | null;
+	vote_average?: number;
+	width?: number;
+};
+
+function pickTmdbLogoUrl(logos: TmdbImageFile[] | undefined): string | null {
+	if (!logos?.length) return null;
+	const baseUrl = "https://image.tmdb.org/t/p/original";
+	const candidates = logos.filter((l) => l.file_path);
+	if (!candidates.length) return null;
+	const rank = (l: TmdbImageFile): number => {
+		let r = (l.vote_average ?? 0) * 1e6 + (l.width ?? 0);
+		const lang = l.iso_639_1;
+		if (lang === "en") r += 1e9;
+		else if (lang == null) r += 5e8;
+		return r;
+	};
+	candidates.sort((a, b) => rank(b) - rank(a));
+	const path = candidates[0].file_path;
+	return path ? `${baseUrl}${path}` : null;
+}
+
 export async function getTMDBImages(
 	tmdbId: number,
 	type: "movie" | "show",
@@ -239,6 +366,7 @@ export async function getTMDBImages(
 	posterLarge: string | null;
 	backdrop: string | null;
 	backdropLarge: string | null;
+	logo: string | null;
 } | null> {
 	if (!tmdbId || !tmdbApiKey) return null;
 	const mediaType = type === "show" ? "tv" : "movie";
@@ -252,6 +380,7 @@ export async function getTMDBImages(
 		const data = res.json as {
 			poster_path?: string | null;
 			backdrop_path?: string | null;
+			images?: { logos?: TmdbImageFile[] };
 		};
 		const baseUrl = "https://image.tmdb.org/t/p/";
 		return {
@@ -259,6 +388,7 @@ export async function getTMDBImages(
 			posterLarge: data.poster_path ? `${baseUrl}original${data.poster_path}` : null,
 			backdrop: data.backdrop_path ? `${baseUrl}w1280${data.backdrop_path}` : null,
 			backdropLarge: data.backdrop_path ? `${baseUrl}original${data.backdrop_path}` : null,
+			logo: pickTmdbLogoUrl(data.images?.logos),
 		};
 	} catch {
 		return null;

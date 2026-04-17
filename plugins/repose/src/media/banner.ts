@@ -39,6 +39,27 @@ export function resolveBannerOrCoverFile(
 	return null;
 }
 
+/** Title / wordmark image from `logo` frontmatter (Repose: `images/logo.*`). */
+export function resolveLogoFile(
+	app: App,
+	fm: Record<string, unknown>,
+	sourcePath?: string,
+): TFile | null {
+	const v = fm.logo;
+	const pathOrLink = typeof v === "string" ? v : null;
+	if (!pathOrLink) return null;
+	const inner = parseVaultImageLink(pathOrLink) ?? pathOrLink.trim();
+	if (!inner) return null;
+	const p = normalizePath(inner.replace(/^\[\[/, "").replace(/\]\]$/, ""));
+	let f = app.vault.getAbstractFileByPath(p);
+	if (f instanceof TFile) return f;
+	if (sourcePath) {
+		const dest = app.metadataCache.getFirstLinkpathDest(p, sourcePath);
+		if (dest instanceof TFile) return dest;
+	}
+	return null;
+}
+
 /** Poster-first (portrait) for small sidebar thumbnails; then cover / image / banner. */
 export function resolveListThumbnailFile(
 	app: App,

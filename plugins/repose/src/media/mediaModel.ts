@@ -1,6 +1,10 @@
 import type { App, TFile } from "obsidian";
+import type { ReposeSettings } from "../settings";
+import { mediaTypeFromFrontmatter, resolveMediaTypeForFile } from "./mediaDetect";
+import type { ReposeMediaType } from "./mediaKinds";
 
-export type ReposeMediaType = "show" | "movie" | "episode" | "book" | "game" | "podcast" | "unknown";
+export type { ReposeMediaType } from "./mediaKinds";
+export { mediaTypeFromFrontmatter };
 
 export type ReposeStatus = "watching" | "backlog" | "watched" | "";
 
@@ -16,18 +20,6 @@ function normalizeType(raw: unknown): string {
 	return typeof raw === "string" ? raw.trim().toLowerCase() : "";
 }
 
-export function mediaTypeFromFrontmatter(fm: Record<string, unknown>): ReposeMediaType {
-	// Legacy/current Repose imports write `type: "TV Show"|"Movie"|"Episode"`
-	const t = normalizeType(fm.mediaType) || normalizeType(fm.type);
-	if (t === "tv show" || t === "show" || t === "series") return "show";
-	if (t === "movie") return "movie";
-	if (t === "episode") return "episode";
-	if (t === "book") return "book";
-	if (t === "game" || t === "video game") return "game";
-	if (t === "podcast") return "podcast";
-	return "unknown";
-}
-
 export function statusFromFrontmatter(fm: Record<string, unknown>): ReposeStatus {
 	const s = normalizeType(fm.reposeStatus) || normalizeType(fm.status);
 	if (s === "watching") return "watching";
@@ -41,19 +33,26 @@ export function watchedDateFromFrontmatter(fm: Record<string, unknown>): string 
 	return typeof v === "string" && v.trim() ? v.trim() : undefined;
 }
 
+/** Trakt overview / synopsis stored as `description` (optional `summary`). */
+export function descriptionFromFrontmatter(fm: Record<string, unknown>): string | null {
+	const v = fm.description ?? fm.summary;
+	if (typeof v !== "string" || !v.trim()) return null;
+	return v.trim();
+}
+
 export function titleFromFrontmatterOrFile(fm: Record<string, unknown>, file: TFile): string {
 	const t = fm.title;
 	if (typeof t === "string" && t.trim()) return t.trim();
 	return file.basename;
 }
 
-export function readMediaItem(app: App, file: TFile): MediaItem {
+export function readMediaItem(app: App, file: TFile, settings: ReposeSettings): MediaItem {
 	const cache = app.metadataCache.getFileCache(file);
 	const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
 	return {
 		path: file.path,
 		title: titleFromFrontmatterOrFile(fm, file),
-		mediaType: mediaTypeFromFrontmatter(fm),
+		mediaType: resolveMediaTypeForFile(app, file, settings),
 		status: statusFromFrontmatter(fm),
 		watchedDate: watchedDateFromFrontmatter(fm),
 	};
