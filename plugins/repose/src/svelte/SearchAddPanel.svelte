@@ -25,17 +25,23 @@
 	} from "../trakt/searchSelection";
 	import {
 		addIgdbGameToVault,
+		addOpenLibraryBookToVault,
 		addTraktEpisodeToVault,
 		addTraktShowOrMovieToVault,
 		fetchEpisodeStill,
 		fetchImagesForItem,
 		lookupShowInVault,
 	} from "../vault/reposeImport";
+	import {
+		coverUrlForOlSearchDoc,
+		extractOlDescription,
+		fetchOpenLibraryWork,
+		type OlSearchDoc,
+		searchOpenLibraryBooks,
+	} from "../openlibrary/client";
 	import type { TraktEpisode, TraktShowOrMovie } from "../vault/traktNotes";
 
 	export let plugin: ReposePlugin;
-
-	let addTab: "trakt" | "games" = "trakt";
 
 	function stableSearchRowKey(row: TraktSearchHit, i: number): string {
 		const mv = row.movie as { ids?: { trakt?: number } } | undefined;
@@ -49,6 +55,10 @@
 
 	function stableGameRowKey(g: IgdbGame): string {
 		return `igdb-${g.id}`;
+	}
+
+	function stableBookRowKey(doc: OlSearchDoc, i: number): string {
+		return doc.key ?? `ol-book-${i}`;
 	}
 
 	type PanelView = "search" | "detail" | "seasons" | "episodes" | "episodeAdd";
@@ -84,18 +94,14 @@
 	let gameDetailGame: IgdbGame | null = null;
 	let gameDetailBusy = false;
 
-	function setAddTab(tab: "trakt" | "games"): void {
-		addTab = tab;
-		if (tab === "trakt") {
-			gameSubView = "search";
-			gameDetailGame = null;
-			gameResults = [];
-			gameThumbs = [];
-			gameQuery = "";
-		} else {
-			goSearchList();
-		}
-	}
+	let bookQuery = "";
+	let bookBusy = false;
+	let bookResults: OlSearchDoc[] = [];
+	let bookThumbs: (string | null)[] = [];
+	let bookSubView: "search" | "detail" = "search";
+	let bookDetailDoc: OlSearchDoc | null = null;
+	let bookDetailWork: Record<string, unknown> | null = null;
+	let bookDetailBusy = false;
 
 	function resetGameList(): void {
 		gameResults = [];
@@ -167,6 +173,80 @@
 		} catch (e) {
 			new Notice(e instanceof Error ? e.message : String(e));
 		}
+	}
+
+	async function runBookSearch(): Promise<void> {
+		const q = bookQuery.trim();
+		if (!q) {
+			new Notice("Enter a book title or author to search.");
+			return;
+		}
+		bookBusy = true;
+		try {
+			bookResults = await searchOpenLibraryBooks(q, 18);
+			bookThumbs = bookResults.map((d) => coverUrlForOlSearchDoc(d, "M"));
+			bookSubView = "search";
+			bookDetailDoc = null;
+			bookDetailWork = null;
+		} catch (e) {
+			new Notice(e instanceof Error ? e.message : String(e));
+			bookResults = [];
+			bookThumbs = [];
+		} finally {
+			bookBusy = false;
+		}
+	}
+
+	async function openBookDetail(doc: OlSearchDoc): Promise<void> {
+		bookDetailDoc = doc;
+		bookDetailWork = null;
+		bookSubView = "detail";
+		bookDetailBusy = true;
+		try {
+			if (doc.key) {
+				bookDetailWork = await fetchOpenLibraryWork(doc.key);
+			}
+		} catch {
+			bookDetailWork = null;
+		} finally {
+			bookDetailBusy = false;
+		}
+	}
+
+	function backBook(): void {
+		if (bookSubView === "detail") {
+			bookSubView = "search";
+			bookDetailDoc = null;
+			bookDetailWork = null;
+		}
+	}
+
+	async function addBookToVault(): Promise<void> {
+		if (!bookDetailDoc) return;
+		try {
+			const { path } = await addOpenLibraryBookToVault(
+				plugin.app.vault,
+				plugin.settings,
+				bookDetailDoc,
+				bookDetailWork,
+			);
+			new Notice(`Saved: ${path}`);
+		} catch (e) {
+			new Notice(e instanceof Error ? e.message : String(e));
+		}
+	}
+
+	function labelForOlDoc(doc: OlSearchDoc): string {
+		return doc.title?.trim() || "Book";
+	}
+
+	function subtitleForOlDoc(doc: OlSearchDoc): string {
+		const parts: string[] = [];
+		if (doc.author_name && doc.author_name.length > 0) {
+			parts.push(doc.author_name.slice(0, 3).join(", ") + (doc.author_name.length > 3 ? "…" : ""));
+		}
+		if (doc.first_publish_year != null) parts.push(String(doc.first_publish_year));
+		return parts.join(" · ");
 	}
 
 	async function runSearch(): Promise<void> {
@@ -456,30 +536,9 @@
 </script>
 
 <div class="repose-search-add">
-	<div class="repose-search-add__source-tabs" role="tablist" aria-label="Add from">
-		<button
-			type="button"
-			class="repose-search-add__source-tab"
-			class:repose-search-add__source-tab--active={addTab === "trakt"}
-			role="tab"
-			aria-selected={addTab === "trakt"}
-			on:click={() => setAddTab("trakt")}
-		>
-			TV & movies
-		</button>
-		<button
-			type="button"
-			class="repose-search-add__source-tab"
-			class:repose-search-add__source-tab--active={addTab === "games"}
-			role="tab"
-			aria-selected={addTab === "games"}
-			on:click={() => setAddTab("games")}
-		>
-			Games
-		</button>
-	</div>
-
-	{#if addTab === "trakt"}
+	<div class="repose-search-add__stack">
+		<section class="repose-search-add__card" aria-labelledby="repose-search-add-tv">
+			<h2 id="repose-search-add-tv" class="repose-search-add__card-title">TV & movies</h2>
 		{#if panelView === "search"}
 			<div class="repose-search-add__controls">
 				<input
@@ -654,7 +713,10 @@
 				</button>
 			</div>
 		{/if}
-	{:else}
+		</section>
+
+		<section class="repose-search-add__card" aria-labelledby="repose-search-add-games">
+			<h2 id="repose-search-add-games" class="repose-search-add__card-title">Games</h2>
 		{#if gameSubView === "search"}
 			<div class="repose-search-add__controls">
 				<input
@@ -724,5 +786,89 @@
 				</div>
 			</div>
 		{/if}
-	{/if}
+		</section>
+
+		<section class="repose-search-add__card" aria-labelledby="repose-search-add-books">
+			<h2 id="repose-search-add-books" class="repose-search-add__card-title">Books</h2>
+			{#if bookSubView === "search"}
+				<div class="repose-search-add__controls">
+					<input
+						class="search-input"
+						type="search"
+						placeholder="Search Open Library…"
+						aria-label="Search books"
+						bind:value={bookQuery}
+						on:keydown={(e) => e.key === "Enter" && void runBookSearch()}
+					/>
+					<div class="repose-search-add__type-row">
+						<span class="repose-muted repose-search-add__igdb-hint">openlibrary.org</span>
+						<button type="button" class="mod-cta" disabled={bookBusy} on:click={() => void runBookSearch()}>
+							{bookBusy ? "…" : "Search"}
+						</button>
+					</div>
+				</div>
+				{#if bookResults.length === 0 && !bookBusy}
+					<p class="repose-muted repose-search-add__hint">Search Open Library to add a book note under your Books folder.</p>
+				{:else}
+					<ul class="repose-sidebar-media-list repose-search-add__results">
+						{#each bookResults as doc, bi (stableBookRowKey(doc, bi))}
+							<li>
+								<div
+									role="button"
+									tabindex="0"
+									class="repose-ml-row"
+									on:click={() => void openBookDetail(doc)}
+									on:keydown={(e) => {
+										if (e.key === "Enter" || e.key === " ") {
+											e.preventDefault();
+											void openBookDetail(doc);
+										}
+									}}
+								>
+									<div class="repose-ml-row__thumb-wrap">
+										{#if bookThumbs[bi]}
+											<img class="repose-ml-row__thumb" src={bookThumbs[bi] ?? ""} alt="" />
+										{:else}
+											<div class="repose-ml-row__thumb repose-ml-row__thumb--placeholder" aria-hidden="true"></div>
+										{/if}
+									</div>
+									<div class="repose-ml-row__inner">
+										<div class="repose-ml-row__head repose-ml-row__head--stack">
+											<div class="repose-ml-row__title-stack">
+												<span class="repose-ml-row__name">{labelForOlDoc(doc)}</span>
+												{#if subtitleForOlDoc(doc)}
+													<span class="repose-muted repose-ml-row__subline">{subtitleForOlDoc(doc)}</span>
+												{/if}
+											</div>
+											<span class="repose-ml-row__area">book</span>
+										</div>
+									</div>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			{:else if bookSubView === "detail" && bookDetailDoc}
+				<div class="repose-search-add__nav">
+					<button type="button" class="repose-search-add__back" on:click={backBook}>← Results</button>
+				</div>
+				<div class="repose-search-add__detail">
+					<h3 class="repose-search-add__detail-title">{labelForOlDoc(bookDetailDoc)}</h3>
+					{#if bookDetailBusy}
+						<p class="repose-muted repose-search-add__vault-hint">Loading details…</p>
+					{:else}
+						{@const blurb = extractOlDescription(bookDetailWork)}
+						{#if blurb}
+							<p class="repose-muted repose-search-add__vault-hint">
+								{blurb.slice(0, 280)}{blurb.length > 280 ? "…" : ""}
+							</p>
+						{/if}
+					{/if}
+					<div class="repose-search-add__actions">
+						<button type="button" class="mod-cta" disabled={bookDetailBusy} on:click={() => void addBookToVault()}>Add to vault</button>
+					</div>
+				</div>
+			{/if}
+		</section>
+	</div>
 </div>

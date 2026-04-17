@@ -8,11 +8,17 @@ import {
 	type TraktSettingsStore,
 } from "../trakt/watchedSync";
 import { artUrlsForIgdbGame, normalizeGenres, type IgdbGame } from "../igdb/client";
+import {
+	coverUrlForOlSearchDoc,
+	coverUrlForOlWork,
+	type OlSearchDoc,
+} from "../openlibrary/client";
 import { folderSegmentsForType, type ReposeSettings } from "../settings";
 import {
 	downloadObsidianImages,
 	downloadTraktArtToNoteFolder,
 	igdbGameToObsidianFrontmatter,
+	openLibraryBookToObsidianFrontmatter,
 	readableMediaName,
 	stringifyNote,
 	traktToObsidianFrontmatter,
@@ -27,6 +33,18 @@ function mediaBase(settings: ReposeSettings): string {
 
 function pathUnderMedia(settings: ReposeSettings, ...segments: string[]): string {
 	return normalizePath([mediaBase(settings), ...segments].join("/"));
+}
+
+/**
+ * Vault path for a movie note the same way as {@link addTraktShowOrMovieToVault}:
+ * `{mediaRoot}/{movie folder…}/{readableTitle}/{readableTitle}.md`.
+ * Use this (not the current file path) when downloading art so images always live under
+ * `…/MovieTitle/images/…` even if the note file is still a legacy `Movies/Title.md`.
+ */
+export function canonicalMovieNotePath(settings: ReposeSettings, movieTitle: string): string {
+	const readableTitle = readableMediaName(movieTitle || "untitled");
+	const segs = folderSegmentsForType(settings, "movie");
+	return pathUnderMedia(settings, ...segs, readableTitle, `${readableTitle}.md`);
 }
 
 export function vaultPathForShowNote(settings: ReposeSettings, showTitle: string): string {
@@ -293,6 +311,59 @@ export async function addIgdbGameToVault(vault: Vault, settings: ReposeSettings,
 	if (idLines.length > 0) content += idLines.join("\n") + "\n\n";
 
 	if (game.summary) content += `## Overview\n\n${game.summary}\n\n`;
+
+	const md = stringifyNote(frontmatter, content, {
+		banner: artPaths.banner,
+		poster: artPaths.poster,
+		logo: artPaths.logo,
+	});
+	await writeMarkdownFile(vault, relativePath, md);
+	return { path: relativePath };
+}
+
+export async function addOpenLibraryBookToVault(
+	vault: Vault,
+	settings: ReposeSettings,
+	doc: OlSearchDoc,
+	work: Record<string, unknown> | null,
+): Promise<{ path: string }> {
+	const frontmatter = openLibraryBookToObsidianFrontmatter(doc, work);
+	const title = String(frontmatter.title ?? "untitled");
+	const readableTitle = readableMediaName(title);
+	const segs = folderSegmentsForType(settings, "book");
+	const relativePath = pathUnderMedia(settings, ...segs, readableTitle, `${readableTitle}.md`);
+
+	const posterUrl = coverUrlForOlSearchDoc(doc, "L") ?? coverUrlForOlWork(work, "L");
+	const artPaths = await downloadTraktArtToNoteFolder(vault, relativePath, {
+		poster: posterUrl,
+		banner: null,
+		logo: null,
+		thumb: posterUrl,
+	});
+
+	const authors = frontmatter.authors;
+	const authorLine =
+		Array.isArray(authors) && authors.length > 0
+			? `**Authors:** ${authors.map((a) => String(a)).join(", ")}`
+			: null;
+	const y = frontmatter.year;
+	const yearLine = typeof y === "number" && Number.isFinite(y) ? `**First published:** ${y}` : null;
+	const isbn = frontmatter.isbn;
+	const isbnLine = typeof isbn === "string" && isbn.trim() ? `**ISBN:** ${isbn.trim()}` : null;
+
+	let content = "";
+	const metaLines = [authorLine, yearLine, isbnLine].filter(Boolean) as string[];
+	if (metaLines.length > 0) content += metaLines.join(" • ") + "\n\n";
+
+	const olKey = frontmatter.openLibraryWorkKey;
+	if (typeof olKey === "string" && olKey.trim()) {
+		content += `**Open Library:** https://openlibrary.org/works/${olKey.trim()}\n\n`;
+	}
+
+	const desc = frontmatter.description;
+	if (typeof desc === "string" && desc.trim()) {
+		content += `## Overview\n\n${desc.trim()}\n\n`;
+	}
 
 	const md = stringifyNote(frontmatter, content, {
 		banner: artPaths.banner,

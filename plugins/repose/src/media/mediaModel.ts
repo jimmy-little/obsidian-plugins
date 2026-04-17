@@ -33,6 +33,38 @@ export function watchedDateFromFrontmatter(fm: Record<string, unknown>): string 
 	return typeof v === "string" && v.trim() ? v.trim() : undefined;
 }
 
+/** Milliseconds for sorting / calendar (release or first air). */
+export function releaseTimeFromFrontmatter(fm: Record<string, unknown>): number | null {
+	const raw = fm.releaseDate ?? fm.airDate;
+	if (typeof raw !== "string" || !raw.trim()) return null;
+	const t = new Date(raw.trim()).getTime();
+	return Number.isNaN(t) ? null : t;
+}
+
+/** Milliseconds for "recently finished" ordering (newest first). */
+export function watchedTimeFromFrontmatter(fm: Record<string, unknown>): number | null {
+	const raw = watchedDateFromFrontmatter(fm);
+	if (!raw) return null;
+	const t = new Date(raw).getTime();
+	return Number.isNaN(t) ? null : t;
+}
+
+/** Year for display e.g. "Title (2024)" — explicit `year` / release / air date. */
+export function displayYearFromFrontmatter(fm: Record<string, unknown>): number | null {
+	const raw = fm.year ?? fm.releaseYear ?? fm.publishedYear;
+	if (typeof raw === "number" && Number.isFinite(raw) && raw >= 1800 && raw <= 2200) return raw;
+	if (typeof raw === "string" && /^\s*\d{4}\s*$/.test(raw)) {
+		const y = Number.parseInt(raw.trim(), 10);
+		if (y >= 1800 && y <= 2200) return y;
+	}
+	const t = releaseTimeFromFrontmatter(fm);
+	if (t != null) {
+		const y = new Date(t).getFullYear();
+		if (y >= 1800 && y <= 2200) return y;
+	}
+	return null;
+}
+
 /** Trakt overview / synopsis stored as `description` (optional `summary`). */
 export function descriptionFromFrontmatter(fm: Record<string, unknown>): string | null {
 	const v = fm.description ?? fm.summary;

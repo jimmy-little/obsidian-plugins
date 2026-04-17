@@ -1,5 +1,13 @@
 import matter from "gray-matter";
 import { normalizePath, requestUrl, TFile, type Vault } from "obsidian";
+import type { OlSearchDoc } from "../openlibrary/client";
+import {
+	extractOlDescription,
+	extractOlSubjectStrings,
+	extractYearFromOlWork,
+	parseOpenLibraryWorkId,
+	pickPrimaryIsbn,
+} from "../openlibrary/client";
 
 /** Match Noma server: readable names for paths */
 export function readableMediaName(title: string): string {
@@ -146,6 +154,45 @@ export function igdbGameToObsidianFrontmatter(
 	if (genreNames.length > 0) frontmatter.genres = genreNames;
 
 	frontmatter.igdbId = game.id;
+
+	return frontmatter;
+}
+
+/** Open Library book note — aligns with other imports (`mediaType`, `description`, cover via `stringifyNote`). */
+export function openLibraryBookToObsidianFrontmatter(
+	doc: OlSearchDoc,
+	work: Record<string, unknown> | null,
+): Record<string, unknown> {
+	const frontmatter: Record<string, unknown> = {};
+	const titleFromWork = work && typeof work.title === "string" ? work.title.trim() : "";
+	const title = (doc.title?.trim() || titleFromWork || "Untitled").trim();
+	frontmatter.title = title;
+	frontmatter.type = "Book";
+	frontmatter.mediaType = "book";
+	const today = new Date();
+	frontmatter.date = today.toISOString().split("T")[0];
+
+	if (doc.author_name && doc.author_name.length > 0) {
+		frontmatter.authors = doc.author_name.map((a) => String(a).trim()).filter(Boolean);
+	}
+
+	const y = doc.first_publish_year ?? extractYearFromOlWork(work);
+	if (y != null && Number.isFinite(y)) {
+		frontmatter.year = y;
+		frontmatter.releaseDate = `${y}-01-01`;
+	}
+
+	const desc = extractOlDescription(work);
+	if (desc) frontmatter.description = desc;
+
+	const subjects = extractOlSubjectStrings(work);
+	if (subjects.length > 0) frontmatter.genres = subjects.slice(0, 16);
+
+	const isbn = pickPrimaryIsbn(doc);
+	if (isbn) frontmatter.isbn = isbn;
+
+	const wk = parseOpenLibraryWorkId(doc.key);
+	if (wk) frontmatter.openLibraryWorkKey = wk;
 
 	return frontmatter;
 }

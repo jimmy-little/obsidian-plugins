@@ -1,4 +1,6 @@
 import { type App, TFile } from "obsidian";
+import type { ReposeSettings } from "../settings";
+import { resolveMediaTypeForFile } from "./mediaDetect";
 import {
 	titleFromFrontmatterOrFile,
 	watchedDateFromFrontmatter,
@@ -38,17 +40,19 @@ function isEpisodeLikeFile(app: App, file: TFile, showBasename: string): boolean
 
 /**
  * Episode notes live in the same folder as the series note (`Series/ShowName/ShowName.md`).
+ * Podcasts use the same layout: every markdown file in the folder except `ShowName.md` is an episode.
  */
-export function collectEpisodeNoteFiles(app: App, showFile: TFile): TFile[] {
+export function collectEpisodeNoteFiles(app: App, showFile: TFile, settings: ReposeSettings): TFile[] {
 	const folder = showFile.parent;
 	if (!folder) return [];
 	const showBase = showFile.basename;
+	const podcastLayout = resolveMediaTypeForFile(app, showFile, settings) === "podcast";
 	const out: TFile[] = [];
 	for (const child of folder.children) {
 		if (!(child instanceof TFile)) continue;
 		if (child.extension !== "md") continue;
 		if (child.path === showFile.path) continue;
-		if (!isEpisodeLikeFile(app, child, showBase)) continue;
+		if (!podcastLayout && !isEpisodeLikeFile(app, child, showBase)) continue;
 		out.push(child);
 	}
 	out.sort((a, b) => {
@@ -59,7 +63,8 @@ export function collectEpisodeNoteFiles(app: App, showFile: TFile): TFile[] {
 		if (sa !== sb) return sa - sb;
 		const ea = ra.episode ?? 0;
 		const eb = rb.episode ?? 0;
-		return ea - eb;
+		if (ea !== eb) return ea - eb;
+		return a.basename.localeCompare(b.basename, undefined, { sensitivity: "base" });
 	});
 	return out;
 }
@@ -97,11 +102,11 @@ export function readEpisodeRow(app: App, file: TFile): EpisodeRow {
 }
 
 /** Distinct season numbers and total episode notes under the series folder. */
-export function countShowSeasonsAndEpisodes(app: App, showFile: TFile): {
+export function countShowSeasonsAndEpisodes(app: App, showFile: TFile, settings: ReposeSettings): {
 	seasonCount: number;
 	episodeCount: number;
 } {
-	const files = collectEpisodeNoteFiles(app, showFile);
+	const files = collectEpisodeNoteFiles(app, showFile, settings);
 	const seasons = new Set<number>();
 	for (const f of files) {
 		const row = readEpisodeRow(app, f);

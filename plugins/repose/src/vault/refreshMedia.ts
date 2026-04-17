@@ -31,7 +31,7 @@ import {
 	type TraktSettingsStore,
 } from "../trakt/watchedSync";
 import { applyMergedFm, refreshShowFromTrakt } from "./showRefresh";
-import { fetchImagesForItem, mergeTraktAndTmdbArt } from "./reposeImport";
+import { canonicalMovieNotePath, fetchImagesForItem, mergeTraktAndTmdbArt } from "./reposeImport";
 import {
 	readIgdbIdFromFrontmatter,
 	readTmdbIdFromFrontmatter,
@@ -149,7 +149,11 @@ async function runRefreshMovieFromTrakt(
 			: null;
 
 	const artUrls = await mergeTraktAndTmdbArt(settings, movieData, "movie", tmdbImages);
-	const artPaths = await downloadTraktArtToNoteFolder(app.vault, file.path, artUrls);
+	const notePathForArt = canonicalMovieNotePath(
+		settings,
+		movieData.title || file.basename.replace(/\.md$/i, ""),
+	);
+	const artPaths = await downloadTraktArtToNoteFolder(app.vault, notePathForArt, artUrls);
 
 	await app.fileManager.processFrontMatter(file, (fm) => {
 		if (artPaths.banner) fm.banner = `[[${artPaths.banner}]]`;

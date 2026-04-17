@@ -68,6 +68,12 @@
 		expandedSeasonKeys = next;
 	}
 
+	function onSeasonHeaderKeydown(seasonNum: number, ev: KeyboardEvent): void {
+		if (ev.key !== "Enter" && ev.key !== " ") return;
+		ev.preventDefault();
+		toggleSeasonExpanded(seasonNum);
+	}
+
 	function seasonChevron(node: HTMLElement, expanded: boolean): { update: (ex: boolean) => void } {
 		setIcon(node, expanded ? "chevron-down" : "chevron-right");
 		return {
@@ -111,7 +117,7 @@
 			return;
 		}
 
-		const files = collectEpisodeNoteFiles(app, f);
+		const files = collectEpisodeNoteFiles(app, f, plugin.settings);
 		const rows = files.map((file) => readEpisodeRow(app, file));
 		if (token !== loadToken) return;
 		episodes = rows;
@@ -273,13 +279,16 @@
 				{@const watchedCount = seasonEps.filter((e) => !!e.watchedDate).length}
 				{@const expanded = expandedSeasonKeys.has(seasonNum)}
 				<li class="repose-show-season">
-					<button
-						type="button"
+					<!-- div, not button: Obsidian’s default button surface stays pale until :hover and overrides our bar styles -->
+					<div
+						role="button"
+						tabindex="0"
 						class="repose-show-season__header"
 						aria-expanded={expanded}
 						aria-controls={`repose-season-${String(seasonNum)}`}
 						id={`repose-season-h-${String(seasonNum)}`}
 						on:click={() => toggleSeasonExpanded(seasonNum)}
+						on:keydown={(e) => onSeasonHeaderKeydown(seasonNum, e)}
 					>
 						<span class="repose-show-season__header-text">
 							<strong class="repose-show-season__title">{seasonHeading(seasonNum)}</strong>
@@ -292,7 +301,7 @@
 							use:seasonChevron={expanded}
 							aria-hidden="true"
 						></span>
-					</button>
+					</div>
 					{#if expanded}
 						<ul class="repose-show-season__list" id={`repose-season-${String(seasonNum)}`} role="list">
 							{#each seasonEps as ep (ep.path)}

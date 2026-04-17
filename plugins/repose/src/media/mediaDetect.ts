@@ -130,15 +130,11 @@ function isStructuralEpisode(app: App, file: TFile, settings: ReposeSettings): b
 	const showPath = normalizePath(`${parent.path}/${bundle}.md`);
 	const showFile = app.vault.getAbstractFileByPath(showPath);
 	if (!(showFile instanceof TFile) || file.path === showPath) return false;
-	if (!isEpisodeLikeSibling(app, file, bundle)) return false;
 
-	const showCache = app.metadataCache.getFileCache(showFile);
-	const showFm = (showCache?.frontmatter ?? {}) as Record<string, unknown>;
-	const direct = mediaTypeFromFrontmatter(showFm);
-	if (direct === "show" || direct === "podcast") return true;
-	if (direct === "episode") return false;
-	const inferred = mediaTypeFromRules(app, showFile, settings);
-	return inferred === "show" || inferred === "podcast";
+	const showMt = resolveMediaTypeForFile(app, showFile, settings);
+	if (showMt === "podcast") return file.extension === "md";
+	if (showMt !== "show") return false;
+	return isEpisodeLikeSibling(app, file, bundle);
 }
 
 /**

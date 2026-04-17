@@ -106,7 +106,7 @@
 
 			let headRight: string;
 			if (item.mediaType === "show" || item.mediaType === "podcast") {
-				headRight = formatShowCounts(countShowSeasonsAndEpisodes(app, file));
+				headRight = formatShowCounts(countShowSeasonsAndEpisodes(app, file, plugin.settings));
 			} else {
 				headRight = shortMediaTypeLabel(item.mediaType);
 			}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Notice, type TFile } from "obsidian";
+	import { Notice, setIcon, type TFile } from "obsidian";
 	import type { MediaHeroPalette } from "../media/bannerSample";
 	import type ReposePlugin from "../main";
 	import { resolveBannerOrCoverFile, resolveListThumbnailFile } from "../media/banner";
@@ -14,8 +14,10 @@
 
 	export let plugin: ReposePlugin;
 	export let selectedPath: string | null;
+	export let onGoHome: () => void;
 
 	let detailRev = 0;
+	let homeBtnEl: HTMLButtonElement | null = null;
 	let movieRefreshBusy = false;
 	let mediaSurfaceStyle = "";
 	let mediaHasTint = false;
@@ -62,6 +64,8 @@
 		mediaHasTint = false;
 	}
 
+	$: if (homeBtnEl) setIcon(homeBtnEl, "home");
+
 	async function openNote(): Promise<void> {
 		if (!file) return;
 		await plugin.app.workspace.getLeaf("tab").openFile(file);
@@ -97,6 +101,18 @@
 	data-repose-tint={mediaHasTint ? "1" : undefined}
 	style={mediaSurfaceStyle}
 >
+	{#if item && file}
+		<div class="repose-media-detail__home-wrap">
+			<button
+				type="button"
+				bind:this={homeBtnEl}
+				class="repose-media-detail__home-btn clickable-icon"
+				aria-label="Repose home"
+				title="Home"
+				on:click={() => onGoHome()}
+			></button>
+		</div>
+	{/if}
 	{#if !item || !file}
 		<p class="repose-muted">Pick an item from the list.</p>
 	{:else if item.mediaType === "show" || item.mediaType === "podcast"}

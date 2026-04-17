@@ -22,7 +22,7 @@
 	const SPLIT_PX = 5;
 	const ADD_PANEL_LS = "repose-pm-add-panel";
 
-	/** When true, sidebar shows Trakt search / add instead of library list. */
+	/** When true, sidebar shows add panel (search) instead of library list. */
 	let addPanelOpen = false;
 
 	let leftCollapsed = false;
@@ -164,7 +164,7 @@
 					type="button"
 					class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
 					bind:this={addToggleBtnEl}
-					aria-label={addPanelOpen ? "Back to library" : "Add media (Trakt search)"}
+					aria-label={addPanelOpen ? "Back to library" : "Add media"}
 					title={addPanelOpen ? "Library" : "Add"}
 					disabled={leftCollapsed}
 					on:click={() => toggleAddPanel()}
@@ -196,9 +196,9 @@
 	{#if fullView}
 		<main class="repose-pm__main repose-view-root">
 			{#if landing}
-				<ReposeLanding />
+				<ReposeLanding {plugin} {onSelectPath} />
 			{:else}
-				<MediaDetail {plugin} {selectedPath} />
+				<MediaDetail {plugin} {selectedPath} onGoHome={() => onGoHome()} />
 			{/if}
 		</main>
 	{/if}

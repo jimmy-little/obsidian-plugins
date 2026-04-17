@@ -103,7 +103,7 @@ export async function refreshShowFromTrakt(
 		if (artPaths.logo) fm.logo = `[[${artPaths.logo}]]`;
 	});
 
-	const episodeFiles = collectEpisodeNoteFiles(app, showFile);
+	const episodeFiles = collectEpisodeNoteFiles(app, showFile, settings);
 	const seasonsNeeded = new Set<number>();
 	for (const f of episodeFiles) {
 		const row = readEpisodeRow(app, f);
