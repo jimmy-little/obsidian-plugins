@@ -1,5 +1,5 @@
 <script lang="ts">
-	import {setIcon} from "obsidian";
+	import {Platform, setIcon} from "obsidian";
 	import type {OrbitHost} from "../orbit/pluginHost";
 	import PeopleListPanel from "./PeopleListPanel.svelte";
 	import PersonProfile from "./PersonProfile.svelte";
@@ -32,6 +32,11 @@
 	let pmEl: HTMLDivElement | null = null;
 	let leftWidthPx: number | null = readStoredLeftWidth();
 	let orgChartBtnEl: HTMLButtonElement | null = null;
+	let collapseBtnEl: HTMLButtonElement | null = null;
+
+	$: if (collapseBtnEl) {
+		setIcon(collapseBtnEl, leftCollapsed ? "panel-left" : "panel-left-close");
+	}
 
 	$: if (orgChartBtnEl) {
 		setIcon(orgChartBtnEl, "git-branch");
@@ -101,6 +106,18 @@
 		if (!selectedPersonPath) return;
 		void plugin.openOrgChartForAnchor(selectedPersonPath);
 	}
+
+	function collapseLeftIfNarrow(): void {
+		if (typeof window === "undefined") return;
+		if (Platform.isMobile || window.matchMedia("(max-width: 768px)").matches) {
+			leftCollapsed = true;
+		}
+	}
+
+	function onPersonSelected(path: string): void {
+		collapseLeftIfNarrow();
+		onSelectPersonPath(path);
+	}
 </script>
 
 <div
@@ -123,12 +140,11 @@
 				<button
 					type="button"
 					class="orbit-pm__glyph-btn clickable-icon"
+					bind:this={collapseBtnEl}
 					aria-label={leftCollapsed ? "Expand people list" : "Collapse people list"}
 					title={leftCollapsed ? "Expand" : "Collapse"}
 					on:click={() => (leftCollapsed = !leftCollapsed)}
-				>
-					{leftCollapsed ? "›" : "‹"}
-				</button>
+				></button>
 				<span class="orbit-pm__glyph-spacer" aria-hidden="true"></span>
 				<button
 					type="button"
@@ -142,7 +158,7 @@
 			</div>
 			{#if !leftCollapsed}
 				<div class="orbit-pm__left-scroll">
-					<PeopleListPanel {plugin} selectedPath={selectedPersonPath} onSelectPerson={onSelectPersonPath} />
+					<PeopleListPanel {plugin} selectedPath={selectedPersonPath} onSelectPerson={onPersonSelected} />
 				</div>
 			{/if}
 		</div>

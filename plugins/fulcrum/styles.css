@@ -5260,7 +5260,8 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 
 /*
  * Shared “suite shell” UI — loaded after each plugin’s src/plugin.css.
- * Fulcrum + future plugins: use the same variables from tokens.css for icon rows.
+ * Fulcrum + Pulse + Orbit + Repose: same tokens for the top glyph row, collapse,
+ * and collapsed → vertical glyph stack.
  */
 
 /* Generic: optional class for non-Fulcrum plugins */
@@ -5283,18 +5284,45 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 	flex-shrink: 0;
 }
 
-/* Fulcrum ProjectManager — top icon row + collapse */
-.fulcrum-pm__glyph-bar {
+/* —— PM top row: shared sizing (matches Pulse / Fulcrum reference) —— */
+.fulcrum-pm__glyph-bar,
+.pulse-pm__glyph-bar,
+.orbit-pm__glyph-bar,
+.repose-pm__glyph-bar {
 	gap: var(--suite-glyph-bar-gap);
 	padding: var(--suite-glyph-bar-padding-y) var(--suite-glyph-bar-padding-x);
 }
 
-.fulcrum-pm-left-collapsed .fulcrum-pm__glyph-bar {
+.fulcrum-pm-left-collapsed .fulcrum-pm__glyph-bar,
+.pulse-pm-left-collapsed .pulse-pm__glyph-bar,
+.orbit-pm-left-collapsed .orbit-pm__glyph-bar,
+.repose-pm-left-collapsed .repose-pm__glyph-bar {
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
 	gap: 0.35rem;
 	padding: 0.45rem 0.2rem;
 }
 
-.fulcrum-pm__glyph-btn {
+.fulcrum-pm__glyph-spacer,
+.pulse-pm__glyph-spacer,
+.orbit-pm__glyph-spacer,
+.repose-pm__glyph-spacer {
+	flex: 1 1 auto;
+	min-width: 0.2rem;
+}
+
+.fulcrum-pm-left-collapsed .fulcrum-pm__glyph-spacer,
+.pulse-pm-left-collapsed .pulse-pm__glyph-spacer,
+.orbit-pm-left-collapsed .orbit-pm__glyph-spacer,
+.repose-pm-left-collapsed .repose-pm__glyph-spacer {
+	display: none;
+}
+
+.fulcrum-pm__glyph-btn,
+.pulse-pm__glyph-btn,
+.orbit-pm__glyph-btn,
+.repose-pm__glyph-btn {
 	width: var(--suite-glyph-btn-size);
 	height: var(--suite-glyph-btn-size);
 	min-width: var(--suite-glyph-btn-size);
@@ -5302,16 +5330,20 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 	font-size: var(--suite-glyph-collapse-font-size);
 	font-weight: 600;
 	line-height: 1;
+	border-radius: var(--radius-s);
 }
 
-.fulcrum-pm__glyph-btn svg {
+.fulcrum-pm__glyph-btn svg,
+.pulse-pm__glyph-btn svg,
+.orbit-pm__glyph-btn svg,
+.repose-pm__glyph-btn svg {
 	width: var(--suite-glyph-icon-size);
 	height: var(--suite-glyph-icon-size);
 	display: block;
 	flex-shrink: 0;
 }
 
-/* Right sidebar collapse / expand — match glyph row */
+/* Right sidebar collapse / expand — Fulcrum only */
 .fulcrum-pm__sidebar-edge-btn {
 	flex: 0 0 var(--suite-glyph-edge-size);
 	width: var(--suite-glyph-edge-size);

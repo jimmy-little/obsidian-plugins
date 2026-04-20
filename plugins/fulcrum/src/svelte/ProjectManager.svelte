@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type {WorkspaceLeaf} from "obsidian";
-	import {setIcon} from "obsidian";
+	import {Platform, setIcon} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import DashboardMain from "./DashboardMain.svelte";
 	import KanbanMain from "./KanbanMain.svelte";
@@ -53,6 +53,11 @@
 	let kanbanBtnEl: HTMLButtonElement | null = null;
 	let timeBtnEl: HTMLButtonElement | null = null;
 	let reviewBtnEl: HTMLButtonElement | null = null;
+	let collapseBtnEl: HTMLButtonElement | null = null;
+
+	$: if (collapseBtnEl) {
+		setIcon(collapseBtnEl, leftCollapsed ? "panel-left" : "panel-left-close");
+	}
 
 	$: if (dashboardBtnEl && plugin) {
 		setIcon(dashboardBtnEl, "layout-dashboard");
@@ -117,6 +122,18 @@
 		window.addEventListener("pointercancel", up);
 	}
 
+	function collapseLeftIfNarrow(): void {
+		if (typeof window === "undefined") return;
+		if (Platform.isMobile || window.matchMedia("(max-width: 768px)").matches) {
+			leftCollapsed = true;
+		}
+	}
+
+	function onProjectSelected(path: string): void {
+		collapseLeftIfNarrow();
+		onSelectProject(path);
+	}
+
 	function onSplitKeydown(ev: KeyboardEvent): void {
 		if (leftCollapsed) return;
 		if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
@@ -152,12 +169,11 @@
 				<button
 					type="button"
 					class="fulcrum-pm__glyph-btn clickable-icon"
+					bind:this={collapseBtnEl}
 					aria-label={leftCollapsed ? "Expand project list" : "Collapse project list"}
 					title={leftCollapsed ? "Expand" : "Collapse"}
 					on:click={() => (leftCollapsed = !leftCollapsed)}
-				>
-					{leftCollapsed ? "›" : "‹"}
-				</button>
+				></button>
 				<button
 					type="button"
 					class="fulcrum-pm__glyph-btn clickable-icon"
@@ -221,7 +237,7 @@
 						{plugin}
 						{hoverParentLeaf}
 						selectedPath={selectedProjectPath}
-						onSelectProject={onSelectProject}
+						onSelectProject={onProjectSelected}
 					/>
 				</div>
 			{/if}
@@ -261,7 +277,7 @@
 			<AreasMain
 				{plugin}
 				hoverParentLeaf={hoverParentLeaf}
-				onSelectProject={onSelectProject}
+				onSelectProject={onProjectSelected}
 			/>
 		{:else if mainMode === "kanban"}
 			<header class="fulcrum-pm__main-head">

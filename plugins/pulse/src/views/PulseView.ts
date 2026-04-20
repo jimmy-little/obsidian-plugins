@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, setIcon, type ViewStateResult } from "obsidian";
+import { ItemView, Platform, WorkspaceLeaf, setIcon, type ViewStateResult } from "obsidian";
 import type PulsePlugin from "../main";
 import { PulseSidebar } from "./PulseSidebar";
 import { PulseMainContent } from "./PulseMainContent";
@@ -65,7 +65,17 @@ export class PulseView extends ItemView {
 		this.main = null;
 	}
 
-	navigate(mode: PulseViewMode, path?: string): void {
+	/**
+	 * @param collapseSidebarOnNarrow — after picking from the sidebar list on a phone/narrow pane, collapse the rail so the main pane is visible.
+	 */
+	navigate(mode: PulseViewMode, path?: string, collapseSidebarOnNarrow = false): void {
+		if (
+			collapseSidebarOnNarrow &&
+			typeof window !== "undefined" &&
+			(Platform.isMobile || window.matchMedia("(max-width: 768px)").matches)
+		) {
+			this.leftCollapsed = true;
+		}
 		void this.leaf.setViewState({
 			type: VIEW_TYPE_PULSE,
 			active: true,
@@ -118,8 +128,14 @@ export class PulseView extends ItemView {
 		];
 
 		const collapseBtn = bar.createDiv({ cls: "pulse-pm__glyph-btn clickable-icon" });
-		setIcon(collapseBtn, "panel-left-close");
-		collapseBtn.setAttribute("aria-label", "Toggle sidebar");
+		const syncCollapseIcon = (): void => {
+			setIcon(collapseBtn, this.leftCollapsed ? "panel-left" : "panel-left-close");
+			collapseBtn.setAttribute(
+				"aria-label",
+				this.leftCollapsed ? "Expand workout sidebar" : "Collapse workout sidebar",
+			);
+		};
+		syncCollapseIcon();
 		collapseBtn.addEventListener("click", () => {
 			this.leftCollapsed = !this.leftCollapsed;
 			const shell = this.contentEl.querySelector(".pulse-pm");
@@ -128,6 +144,7 @@ export class PulseView extends ItemView {
 			}
 			const split = this.contentEl.querySelector(".pulse-pm__split") as HTMLButtonElement | null;
 			if (split) split.disabled = this.leftCollapsed;
+			syncCollapseIcon();
 		});
 
 		const spacer = bar.createDiv({ cls: "pulse-pm__glyph-spacer" });

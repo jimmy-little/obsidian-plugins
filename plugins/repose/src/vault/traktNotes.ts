@@ -158,6 +158,18 @@ export function igdbGameToObsidianFrontmatter(
 	return frontmatter;
 }
 
+/** One author name → `[[Note title]]` for Graph / backlinks (strip stray brackets from API text). */
+function authorNamesAsWikiLinks(names: string[]): string[] {
+	const out: string[] = [];
+	for (const n of names) {
+		const t = n.trim();
+		if (!t) continue;
+		const safe = t.replace(/\[\[/g, "").replace(/\]\]/g, "").trim();
+		if (safe) out.push(`[[${safe}]]`);
+	}
+	return out;
+}
+
 /** Open Library book note — aligns with other imports (`mediaType`, `description`, cover via `stringifyNote`). */
 export function openLibraryBookToObsidianFrontmatter(
 	doc: OlSearchDoc,
@@ -173,7 +185,8 @@ export function openLibraryBookToObsidianFrontmatter(
 	frontmatter.date = today.toISOString().split("T")[0];
 
 	if (doc.author_name && doc.author_name.length > 0) {
-		frontmatter.authors = doc.author_name.map((a) => String(a).trim()).filter(Boolean);
+		const raw = doc.author_name.map((a) => String(a).trim()).filter(Boolean);
+		frontmatter.authors = authorNamesAsWikiLinks(raw);
 	}
 
 	const y = doc.first_publish_year ?? extractYearFromOlWork(work);
@@ -192,7 +205,10 @@ export function openLibraryBookToObsidianFrontmatter(
 	if (isbn) frontmatter.isbn = isbn;
 
 	const wk = parseOpenLibraryWorkId(doc.key);
-	if (wk) frontmatter.openLibraryWorkKey = wk;
+	if (wk) {
+		frontmatter.openLibraryWorkKey = wk;
+		frontmatter.url = `https://openlibrary.org/works/${wk}`;
+	}
 
 	return frontmatter;
 }
@@ -232,7 +248,8 @@ export interface NoteFolderArtResult {
 
 /**
  * Download Trakt/TMDB art into `{parent-of-note}/images/{note-stem}/` (poster, banner, logo, thumb).
- * The per-note folder avoids collisions when several notes share one parent (e.g. flat `Games/*.md`).
+ * The per-note subfolder avoids collisions when several notes share one parent (e.g. flat `Books/*.md`
+ * or `Games/*.md`) — each note gets its own `images/{sanitized-title}/` directory.
  */
 export async function downloadTraktArtToNoteFolder(
 	vault: Vault,

@@ -54,6 +54,20 @@ export async function fetchOpenLibraryWork(workKey: string): Promise<Record<stri
 	return res.json as Record<string, unknown>;
 }
 
+/** Subtitle for pick lists (search UI, refresh match modal). */
+export function olSearchDocPickMetaLine(doc: OlSearchDoc): string {
+	const parts: string[] = [];
+	if (doc.author_name && doc.author_name.length > 0) {
+		parts.push(
+			doc.author_name.slice(0, 3).join(", ") + (doc.author_name.length > 3 ? "…" : ""),
+		);
+	}
+	if (doc.first_publish_year != null) parts.push(String(doc.first_publish_year));
+	const id = doc.key?.replace(/^\/works\//, "") ?? "";
+	if (id) parts.push(id);
+	return parts.join(" · ");
+}
+
 export function coverUrlForOlSearchDoc(
 	doc: OlSearchDoc,
 	size: "S" | "M" | "L" = "M",
@@ -101,15 +115,29 @@ export function pickPrimaryIsbn(doc: OlSearchDoc): string | undefined {
 	return best10;
 }
 
+/**
+ * Normalize OL prose for YAML/frontmatter: CRLF, stray NULs, and huge blobs can break Obsidian's
+ * metadata parser so keys after `description` never load (hero looks empty except title).
+ */
+export function sanitizeBookDescriptionForYaml(s: string): string {
+	let t = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+	t = t.replace(/\u0000/g, "");
+	const max = 12000;
+	if (t.length > max) t = `${t.slice(0, max).trimEnd()}…`;
+	return t.trim();
+}
+
 export function extractOlDescription(work: Record<string, unknown> | null | undefined): string | undefined {
 	if (!work) return undefined;
 	const d = work.description;
-	if (typeof d === "string" && d.trim()) return d.trim();
-	if (d && typeof d === "object" && "value" in d && typeof (d as { value?: unknown }).value === "string") {
+	let raw: string | undefined;
+	if (typeof d === "string" && d.trim()) raw = d.trim();
+	else if (d && typeof d === "object" && "value" in d && typeof (d as { value?: unknown }).value === "string") {
 		const v = (d as { value: string }).value.trim();
-		if (v) return v;
+		if (v) raw = v;
 	}
-	return undefined;
+	if (!raw) return undefined;
+	return sanitizeBookDescriptionForYaml(raw);
 }
 
 export function extractOlSubjectStrings(work: Record<string, unknown> | null | undefined): string[] {

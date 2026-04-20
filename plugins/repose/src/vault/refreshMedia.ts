@@ -1,6 +1,16 @@
 import type { App, TFile } from "obsidian";
 import { Notice } from "obsidian";
 import {
+	coverUrlForOlSearchDoc,
+	coverUrlForOlWork,
+	extractYearFromOlWork,
+	fetchOpenLibraryWork,
+	olSearchDocPickMetaLine,
+	parseOpenLibraryWorkId,
+	searchOpenLibraryBooks,
+	type OlSearchDoc,
+} from "../openlibrary/client";
+import {
 	artUrlsForIgdbGame,
 	getIgdbGameById,
 	igdbGamePickMetaLine,
@@ -10,7 +20,7 @@ import {
 	type IgdbGame,
 } from "../igdb/client";
 import { RefreshMatchModal } from "../modals/RefreshMatchModal";
-import { resolveMediaTypeForFile } from "../media/mediaDetect";
+import { resolveMediaTypeForFile, resolveSerialHostFile } from "../media/mediaDetect";
 import { titleFromFrontmatterOrFile } from "../media/mediaModel";
 import type { ReposeSettings } from "../settings";
 import {
@@ -27,10 +37,17 @@ import {
 } from "../trakt/searchSelection";
 import {
 	fetchWatchedMoviesMap,
+	calendarDateFromLatestWatchedIsos,
+	fetchMovieWatchHistoryIsos,
 	readTraktIdFromFrontmatter,
 	type TraktSettingsStore,
 } from "../trakt/watchedSync";
-import { applyMergedFm, refreshShowFromTrakt } from "./showRefresh";
+import {
+	applyMergedFm,
+	type RefreshShowFromTraktOptions,
+	refreshShowFromTrakt,
+	refreshTvEpisodeFromTrakt,
+} from "./showRefresh";
 import { canonicalMovieNotePath, fetchImagesForItem, mergeTraktAndTmdbArt } from "./reposeImport";
 import {
 	readIgdbIdFromFrontmatter,
@@ -40,6 +57,7 @@ import {
 import {
 	downloadTraktArtToNoteFolder,
 	igdbGameToObsidianFrontmatter,
+	openLibraryBookToObsidianFrontmatter,
 	traktToObsidianFrontmatter,
 	type TraktShowOrMovie,
 } from "./traktNotes";
@@ -49,6 +67,131 @@ export type RefreshMediaCallbacks = {
 };
 
 export type RefreshMediaResult = { ok: boolean; error?: string; deferred?: boolean };
+
+/**
+ * Series bundle "Update": refresh show + episode metadata; add missing episode notes;
+ * apply Trakt watch dates / status onto existing episode notes when Trakt is connected.
+ */
+const SERIES_REFRESH_OPTS: RefreshShowFromTraktOptions = {
+	syncWatchStateToExistingNotes: true,
+	createMissingEpisodeNotes: true,
+};
+
+async function applyOpenLibraryBookToFile(
+	app: App,
+	file: TFile,
+	doc: OlSearchDoc,
+	work: Record<string, unknown>,
+): Promise<RefreshMediaResult> {
+	const merged = openLibraryBookToObsidianFrontmatter(doc, work);
+
+	await app.fileManager.processFrontMatter(file, (fm) => {
+		const prevW = fm.watchedDate;
+		const prevR = fm.reposeStatus;
+		applyMergedFm(fm as Record<string, unknown>, merged, true);
+		fm.watchedDate = prevW;
+		fm.reposeStatus = prevR;
+	});
+
+	const posterUrl = coverUrlForOlWork(work, "L") ?? coverUrlForOlSearchDoc(doc, "L");
+	const artPaths = await downloadTraktArtToNoteFolder(app.vault, file.path, {
+		poster: posterUrl,
+		banner: null,
+		logo: null,
+		thumb: posterUrl,
+	});
+	await app.fileManager.processFrontMatter(file, (fm) => {
+		if (artPaths.poster) fm.poster = `[[${artPaths.poster}]]`;
+	});
+
+	return { ok: true };
+}
+
+async function refreshBookWithWorkKey(
+	app: App,
+	settings: ReposeSettings,
+	file: TFile,
+	workKey: string,
+): Promise<RefreshMediaResult> {
+	const id = parseOpenLibraryWorkId(workKey);
+	if (!id) {
+		return { ok: false, error: "Could not parse openLibraryWorkKey for Open Library." };
+	}
+	const work = await fetchOpenLibraryWork(workKey);
+	if (!work) {
+		return { ok: false, error: "Could not load this book from Open Library." };
+	}
+	const titleFromWork = typeof work.title === "string" ? work.title.trim() : "";
+	const doc: OlSearchDoc = {
+		key: `/works/${id}`,
+		title: titleFromWork || file.basename,
+		first_publish_year: extractYearFromOlWork(work),
+	};
+	return applyOpenLibraryBookToFile(app, file, doc, work);
+}
+
+async function refreshBookFromSearchDoc(
+	app: App,
+	settings: ReposeSettings,
+	file: TFile,
+	doc: OlSearchDoc,
+): Promise<RefreshMediaResult> {
+	const rawKey = doc.key?.trim();
+	if (!rawKey) return { ok: false, error: "Search result has no Open Library work key." };
+	const work = await fetchOpenLibraryWork(rawKey);
+	if (!work) {
+		return { ok: false, error: "Could not load this book from Open Library." };
+	}
+	const titleFromWork = typeof work.title === "string" ? work.title.trim() : "";
+	const fullDoc: OlSearchDoc = {
+		...doc,
+		title: doc.title?.trim() || titleFromWork || file.basename,
+		first_publish_year: doc.first_publish_year ?? extractYearFromOlWork(work),
+	};
+	return applyOpenLibraryBookToFile(app, file, fullDoc, work);
+}
+
+async function refreshBookFlow(
+	app: App,
+	settings: ReposeSettings,
+	file: TFile,
+	fm: Record<string, unknown>,
+	callbacks?: RefreshMediaCallbacks,
+): Promise<RefreshMediaResult> {
+	const workKey = typeof fm.openLibraryWorkKey === "string" ? fm.openLibraryWorkKey.trim() : "";
+	if (workKey) {
+		return refreshBookWithWorkKey(app, settings, file, workKey);
+	}
+
+	const title = titleFromFrontmatterOrFile(fm, file).trim();
+	if (!title) return { ok: false, error: "Add a title to search Open Library." };
+
+	const results = await searchOpenLibraryBooks(title, 15);
+	if (results.length === 0) {
+		return { ok: false, error: "No Open Library results for this title." };
+	}
+
+	if (results.length === 1) {
+		return refreshBookFromSearchDoc(app, settings, file, results[0]!);
+	}
+
+	new RefreshMatchModal(
+		app,
+		"Match book",
+		results.map((d) => ({
+			label: d.title?.trim() ? d.title.trim() : "Book",
+			meta: olSearchDocPickMetaLine(d),
+			thumbUrl: coverUrlForOlSearchDoc(d, "M"),
+			value: d,
+		})),
+		async (d) => {
+			const r = await refreshBookFromSearchDoc(app, settings, file, d);
+			if (!r.ok) new Notice(r.error ?? "Could not refresh book.");
+			else callbacks?.onComplete?.();
+		},
+	).open();
+	return { ok: true, deferred: true };
+}
 
 async function writeTraktIdsFromItem(app: App, file: TFile, item: TraktShowOrMovie): Promise<void> {
 	const ids = item.ids;
@@ -122,10 +265,14 @@ async function runRefreshMovieFromTrakt(
 
 	const movieData: TraktShowOrMovie = { ...movieApi };
 
-	let watchedDate: string | undefined;
+	let watchedDateFromMap: string | undefined;
+	let historyIsos: string[] | null = null;
 	if (tokenStore) {
-		const watchedMovies = await fetchWatchedMoviesMap(tokenStore);
-		watchedDate = watchedMovies?.get(movieTraktId) ?? undefined;
+		historyIsos = await fetchMovieWatchHistoryIsos(tokenStore, movieTraktId);
+		if (historyIsos === null) {
+			const watchedMovies = await fetchWatchedMoviesMap(tokenStore);
+			watchedDateFromMap = watchedMovies?.get(movieTraktId) ?? undefined;
+		}
 	}
 
 	await app.fileManager.processFrontMatter(file, (fm) => {
@@ -133,9 +280,19 @@ async function runRefreshMovieFromTrakt(
 		const prevRepose = fm.reposeStatus;
 		const merged = traktToObsidianFrontmatter(movieData, "movie", {}, settings.projectWikilink);
 		applyMergedFm(fm as Record<string, unknown>, merged, true);
-		if (watchedDate) {
-			fm.watchedDate = watchedDate;
+		if (historyIsos !== null && historyIsos.length > 0) {
+			fm.watchedDates = [...historyIsos];
+			const cal = calendarDateFromLatestWatchedIsos(historyIsos);
+			if (cal) fm.watchedDate = cal;
 			fm.reposeStatus = "watched";
+		} else if (watchedDateFromMap) {
+			fm.watchedDate = watchedDateFromMap;
+			delete fm.watchedDates;
+			fm.reposeStatus = "watched";
+		} else if (historyIsos !== null) {
+			delete fm.watchedDate;
+			delete fm.watchedDates;
+			if (fm.reposeStatus === "watched") fm.reposeStatus = "watching";
 		} else {
 			fm.watchedDate = prevWatched;
 			fm.reposeStatus = prevRepose;
@@ -268,7 +425,7 @@ async function pickShowAndRefresh(
 	const item = p.item as TraktShowOrMovie;
 	if (item.ids?.trakt == null) return { ok: false, error: "This result has no Trakt id." };
 	await writeTraktIdsFromItem(app, file, item);
-	return refreshShowFromTrakt(app, settings, file, tokenStore);
+	return refreshShowFromTrakt(app, settings, file, tokenStore, SERIES_REFRESH_OPTS);
 }
 
 async function refreshMovieFlow(
@@ -315,7 +472,7 @@ async function refreshMovieFlow(
 	return { ok: true, deferred: true };
 }
 
-async function refreshShowLikeFlow(
+async function refreshTvShowBundleFlow(
 	app: App,
 	settings: ReposeSettings,
 	tokenStore: TraktSettingsStore | undefined,
@@ -330,7 +487,7 @@ async function refreshShowLikeFlow(
 
 	const tid = await resolveShowTraktId(app, file, clientId, fm);
 	if (tid != null) {
-		return refreshShowFromTrakt(app, settings, file, tokenStore);
+		return refreshShowFromTrakt(app, settings, file, tokenStore, SERIES_REFRESH_OPTS);
 	}
 
 	const title = titleFromFrontmatterOrFile(fm, file).trim();
@@ -408,8 +565,8 @@ async function refreshGameFlow(
 }
 
 /**
- * Refresh metadata and images from Trakt/TMDB (shows, movies, podcasts) or IGDB (games).
- * Uses traktId / tvdbId / igdbId when present; otherwise searches by title and may open a picker modal.
+ * Refresh metadata/images: behavior depends on note type (episode vs series vs movie vs book vs game).
+ * Podcast bundle refresh is not implemented yet.
  */
 export async function refreshMediaNote(
 	app: App,
@@ -428,12 +585,34 @@ export async function refreshMediaNote(
 	if (mt === "movie") {
 		return refreshMovieFlow(app, settings, tokenStore, file, fm, callbacks);
 	}
-	if (mt === "show" || mt === "podcast") {
-		return refreshShowLikeFlow(app, settings, tokenStore, file, fm, callbacks);
+	if (mt === "episode") {
+		const host = resolveSerialHostFile(app, file, settings);
+		if (host) {
+			const hostMt = resolveMediaTypeForFile(app, host, settings);
+			if (hostMt === "podcast") {
+				return { ok: false, error: "Podcast refresh isn’t available yet." };
+			}
+			if (hostMt === "book") {
+				return { ok: false, error: "Book chapter refresh isn’t available yet." };
+			}
+			if (hostMt === "show") {
+				return refreshTvEpisodeFromTrakt(app, settings, tokenStore, file, host);
+			}
+		}
+		return { ok: false, error: "Could not refresh this note." };
+	}
+	if (mt === "book") {
+		return refreshBookFlow(app, settings, file, fm, callbacks);
+	}
+	if (mt === "podcast") {
+		return { ok: false, error: "Podcast refresh isn’t available yet." };
+	}
+	if (mt === "show") {
+		return refreshTvShowBundleFlow(app, settings, tokenStore, file, fm, callbacks);
 	}
 
 	return {
 		ok: false,
-		error: "Refresh is only available for movies, TV shows, podcasts, and games.",
+		error: "Refresh isn’t available for this note type.",
 	};
 }

@@ -1,5 +1,12 @@
-import { Notice, Plugin, TFile, type ObsidianProtocolData } from "obsidian";
+import { Notice, Plugin, TFile, type ObsidianProtocolData, type WorkspaceLeaf } from "obsidian";
+import {
+	ensureReposeCompanionMarkdownPane,
+	openBookCompanionSinglePane,
+	registerReposeCompanionMarkdown,
+} from "./reposeCompanionMarkdown";
 import { resolveMediaTypeForFile } from "./media/mediaDetect";
+import { isEffectivelyWatchedFromFrontmatter, watchedDatesIsoFromFrontmatter } from "./media/mediaModel";
+import { resolveEpisodeTraktIdForFile } from "./trakt/resolveEpisodeTraktId";
 import {
 	ensureTraktAccessToken,
 	pushEpisodeWatchedToTrakt,
@@ -9,7 +16,10 @@ import {
 	removeMovieWatchedFromTrakt,
 } from "./trakt/watchedSync";
 import { refreshMediaNote as runRefreshMediaNote } from "./vault/refreshMedia";
-import { refreshShowFromTrakt as runRefreshShowFromTrakt } from "./vault/showRefresh";
+import {
+	refreshShowFromTrakt as runRefreshShowFromTrakt,
+	refreshTvSeasonFromTrakt as runRefreshTvSeasonFromTrakt,
+} from "./vault/showRefresh";
 import { ReposeSettingTab } from "./ReposeSettingTab";
 import { ReposeShellView, VIEW_TYPE_REPOSE } from "./ReposeShellView";
 import { DEFAULT_SETTINGS, normalizeSettings, type ReposeSettings } from "./settings";
@@ -18,6 +28,13 @@ export default class ReposePlugin extends Plugin {
 	settings!: ReposeSettings;
 	/** Device OAuth poll interval when connecting Trakt from settings */
 	traktDevicePollTimer: number | undefined;
+	/** Markdown leaf beside Repose for book / episode notes (hero chrome prepended). */
+	reposeCompanionMarkdownLeaf: WorkspaceLeaf | null = null;
+	reposeCompanionMarkdownPath: string | null = null;
+	/** True when {@link reposeCompanionMarkdownLeaf} was created as a split; clear may detach it. */
+	reposeCompanionMarkdownOwnedSplit = false;
+	/** Chrome prev/next — opens book notes or syncs Repose + episode split. */
+	reposeRequestSelectPath: ((path: string) => void) | null = null;
 
 	clearTraktDevicePoll(): void {
 		if (this.traktDevicePollTimer) {
@@ -28,6 +45,14 @@ export default class ReposePlugin extends Plugin {
 
 	async refreshShowFromTrakt(file: TFile): Promise<{ ok: boolean; error?: string }> {
 		return runRefreshShowFromTrakt(this.app, this.settings, file, this);
+	}
+
+	/** Trakt/TMDB + watch state for every episode note in a TV season (vault files for that season). */
+	async refreshTvSeasonFromTrakt(
+		showFile: TFile,
+		seasonNumber: number,
+	): Promise<{ ok: boolean; error?: string }> {
+		return runRefreshTvSeasonFromTrakt(this.app, this.settings, this, showFile, seasonNumber);
 	}
 
 	/**
@@ -46,43 +71,58 @@ export default class ReposePlugin extends Plugin {
 
 		const cacheBefore = this.app.metadataCache.getFileCache(f);
 		const fmBefore = (cacheBefore?.frontmatter ?? {}) as Record<string, unknown>;
-		const wasWatched = typeof fmBefore.watchedDate === "string" && fmBefore.watchedDate.trim().length > 0;
+		const wasWatched = isEffectivelyWatchedFromFrontmatter(fmBefore);
 		const mediaType = resolveMediaTypeForFile(this.app, f, this.settings);
-		const traktId = readTraktIdFromFrontmatter(fmBefore);
 
 		await this.app.fileManager.processFrontMatter(f, (fm) => {
 			const now = new Date();
 			const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
 				now.getDate(),
 			).padStart(2, "0")}`;
-			const watched = typeof fm.watchedDate === "string" && fm.watchedDate.trim().length > 0;
+			const watched = isEffectivelyWatchedFromFrontmatter(fm);
 			if (watched) {
 				delete fm.watchedDate;
+				delete fm.watchedDates;
 				if (fm.reposeStatus === "watched") fm.reposeStatus = "watching";
 			} else {
+				const iso = now.toISOString();
+				const existing = watchedDatesIsoFromFrontmatter(fm);
+				fm.watchedDates = [...existing, iso];
 				fm.watchedDate = today;
 				fm.reposeStatus = "watched";
 			}
 		});
 
 		if (mediaType !== "movie" && mediaType !== "episode") return;
-		if (traktId == null) return;
-		const token = await ensureTraktAccessToken(this);
-		if (!token) return;
 
 		const cacheAfter = this.app.metadataCache.getFileCache(f);
 		const fmAfter = (cacheAfter?.frontmatter ?? {}) as Record<string, unknown>;
-		const nowWatched = typeof fmAfter.watchedDate === "string" && fmAfter.watchedDate.trim().length > 0;
+		const nowWatched = isEffectivelyWatchedFromFrontmatter(fmAfter);
 		const dateStr =
 			typeof fmAfter.watchedDate === "string" ? fmAfter.watchedDate.trim().split("T")[0] : "";
 
+		let traktIdForPush = readTraktIdFromFrontmatter(fmAfter);
+		if (traktIdForPush == null && mediaType === "episode") {
+			const resolved = await resolveEpisodeTraktIdForFile(this.app, this.settings, f);
+			if (resolved != null) {
+				traktIdForPush = resolved;
+				await this.app.fileManager.processFrontMatter(f, (fm) => {
+					(fm as Record<string, unknown>).traktId = resolved;
+				});
+			}
+		}
+		if (traktIdForPush == null) return;
+
+		const token = await ensureTraktAccessToken(this);
+		if (!token) return;
+
 		try {
 			if (!wasWatched && nowWatched && dateStr) {
-				if (mediaType === "movie") await pushMovieWatchedToTrakt(this, traktId, dateStr);
-				else await pushEpisodeWatchedToTrakt(this, traktId, dateStr);
+				if (mediaType === "movie") await pushMovieWatchedToTrakt(this, traktIdForPush, dateStr);
+				else await pushEpisodeWatchedToTrakt(this, traktIdForPush, dateStr);
 			} else if (wasWatched && !nowWatched) {
-				if (mediaType === "movie") await removeMovieWatchedFromTrakt(this, traktId);
-				else await removeEpisodeWatchedFromTrakt(this, traktId);
+				if (mediaType === "movie") await removeMovieWatchedFromTrakt(this, traktIdForPush);
+				else await removeEpisodeWatchedFromTrakt(this, traktIdForPush);
 			}
 		} catch (e) {
 			new Notice(e instanceof Error ? e.message : "Could not update Trakt watch state.");
@@ -93,6 +133,12 @@ export default class ReposePlugin extends Plugin {
 		await this.loadSettings();
 
 		this.registerView(VIEW_TYPE_REPOSE, (leaf) => new ReposeShellView(leaf, this));
+
+		registerReposeCompanionMarkdown(this);
+
+		this.reposeRequestSelectPath = (path: string) => {
+			void this.navigateCompanionMediaPath(path);
+		};
 
 		this.addRibbonIcon("clapperboard", "Repose", () => {
 			void this.openRepose();
@@ -127,7 +173,8 @@ export default class ReposePlugin extends Plugin {
 		}
 	}
 
-	private async openRepose(state?: Record<string, unknown>): Promise<void> {
+	/** Open or focus the Repose media list (ribbon, commands, book hero Home). */
+	async openRepose(state?: Record<string, unknown>): Promise<void> {
 		this.dedupeReposeLeaves();
 		const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_REPOSE)[0];
 		if (existing) {
@@ -140,6 +187,30 @@ export default class ReposePlugin extends Plugin {
 		await this.app.workspace.revealLeaf(leaf);
 	}
 
+	/** Chapter / episode navigation from markdown hero chrome. */
+	async navigateCompanionMediaPath(path: string): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(path);
+		if (!(f instanceof TFile)) return;
+		const mt = resolveMediaTypeForFile(this.app, f, this.settings);
+		if (mt !== "book" && mt !== "episode") return;
+
+		const reposeLeaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_REPOSE)[0];
+		if (reposeLeaf) {
+			await reposeLeaf.setViewState({
+				type: VIEW_TYPE_REPOSE,
+				active: true,
+				state: { selectedPath: path },
+			});
+			await this.app.workspace.revealLeaf(reposeLeaf);
+		}
+		const anchor = reposeLeaf ?? this.app.workspace.getLeaf("tab");
+		if (mt === "book") {
+			await openBookCompanionSinglePane(this, anchor, f);
+		} else {
+			await ensureReposeCompanionMarkdownPane(this, anchor, f);
+		}
+	}
+
 	async loadSettings(): Promise<void> {
 		this.settings = normalizeSettings(await this.loadData());
 	}
@@ -150,6 +221,7 @@ export default class ReposePlugin extends Plugin {
 
 	onunload(): void {
 		this.clearTraktDevicePoll();
+		this.reposeRequestSelectPath = null;
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_REPOSE);
 	}
 }

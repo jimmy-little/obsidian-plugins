@@ -132,9 +132,23 @@ function isStructuralEpisode(app: App, file: TFile, settings: ReposeSettings): b
 	if (!(showFile instanceof TFile) || file.path === showPath) return false;
 
 	const showMt = resolveMediaTypeForFile(app, showFile, settings);
-	if (showMt === "podcast") return file.extension === "md";
+	if (showMt === "podcast" || showMt === "book") return file.extension === "md";
 	if (showMt !== "show") return false;
 	return isEpisodeLikeSibling(app, file, bundle);
+}
+
+/**
+ * Series / podcast / book bundle note: `FolderName/FolderName.md` for a structural episode or chapter.
+ */
+export function resolveSerialHostFile(app: App, file: TFile, settings: ReposeSettings): TFile | null {
+	if (!isStructuralEpisode(app, file, settings)) return null;
+	const parent = file.parent;
+	if (!parent) return null;
+	const bundle = parent.name;
+	const hostPath = normalizePath(`${parent.path}/${bundle}.md`);
+	if (file.path === hostPath) return null;
+	const host = app.vault.getAbstractFileByPath(hostPath);
+	return host instanceof TFile ? host : null;
 }
 
 /**

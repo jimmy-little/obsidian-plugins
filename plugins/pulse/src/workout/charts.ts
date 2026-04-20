@@ -162,14 +162,44 @@ export async function renderCategoryChart(
 	} as Record<string, unknown>);
 }
 
-function readInteractiveAccentRgb(anchor: HTMLElement): { r: number; g: number; b: number } {
-	const el = document.createElement("span");
-	el.style.cssText = "position:absolute;left:-9999px;top:0;color:var(--interactive-accent)";
-	anchor.appendChild(el);
-	const rgb = getComputedStyle(el).color;
-	el.remove();
-	const m = rgb.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+/** Parse browser computed colors (rgb/rgba, including space-separated syntax, or #rrggbb). */
+function parseComputedRgb(cssColor: string): { r: number; g: number; b: number } | null {
+	const s = cssColor.trim();
+	if (!s || s === "transparent" || s === "rgba(0, 0, 0, 0)") return null;
+	let m = s.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
 	if (m) return { r: +m[1], g: +m[2], b: +m[3] };
+	m = s.match(/rgba?\(\s*(\d+)\s+(\d+)\s+(\d+)/);
+	if (m) return { r: +m[1], g: +m[2], b: +m[3] };
+	m = s.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+	if (m) return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+	return null;
+}
+
+function readThemeRgb(
+	anchor: HTMLElement,
+	style: string,
+	prop: "backgroundColor" | "color"
+): { r: number; g: number; b: number } | null {
+	const el = document.createElement("span");
+	el.style.cssText = `position:absolute;left:-9999px;top:0;${style}`;
+	anchor.appendChild(el);
+	const raw = getComputedStyle(el)[prop];
+	el.remove();
+	return parseComputedRgb(raw);
+}
+
+/**
+ * Resolves a visible stroke/fill RGB for canvas (Chart.js does not apply CSS to canvas pixels).
+ * Uses background-color for --interactive-accent (Obsidian uses accent as a fill); avoids reading
+ * accent via `color`, which can resolve to black in dark mode. Falls back to --text-normal if accent is too dark.
+ */
+function lineColorRgbForBodyChart(anchor: HTMLElement): { r: number; g: number; b: number } {
+	const fromAccentBg = readThemeRgb(anchor, "background-color:var(--interactive-accent)", "backgroundColor");
+	if (fromAccentBg && fromAccentBg.r + fromAccentBg.g + fromAccentBg.b > 80) return fromAccentBg;
+	const fromAccentColor = readThemeRgb(anchor, "color:var(--interactive-accent)", "color");
+	if (fromAccentColor && fromAccentColor.r + fromAccentColor.g + fromAccentColor.b > 80) return fromAccentColor;
+	const fromText = readThemeRgb(anchor, "color:var(--text-normal)", "color");
+	if (fromText) return fromText;
 	return { r: 124, g: 108, b: 255 };
 }
 
@@ -184,7 +214,7 @@ export async function renderSmoothLineChart(
 	if (!ctx) throw new Error("No canvas context");
 
 	const styleAnchor = (canvas.closest(".pulse-view-root") ?? canvas.parentElement ?? document.documentElement) as HTMLElement;
-	const accent = readInteractiveAccentRgb(styleAnchor);
+	const accent = lineColorRgbForBodyChart(styleAnchor);
 	const borderRgb = `rgb(${accent.r},${accent.g},${accent.b})`;
 
 	return new Chart(ctx, {

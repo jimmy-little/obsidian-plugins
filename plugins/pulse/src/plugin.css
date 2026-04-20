@@ -86,55 +86,28 @@
 	border-right: 1px solid var(--background-modifier-border);
 }
 
-/* ── Glyph bar (top toolbar) ── */
+/* ── Glyph bar — gap, padding, collapsed stack, icon size: packages/theme/shell.css ── */
 .pulse-pm__glyph-bar {
 	display: flex;
 	flex-direction: row;
 	flex-wrap: nowrap;
 	align-items: center;
 	justify-content: flex-start;
-	gap: 0.35rem;
 	width: 100%;
 	box-sizing: border-box;
-	padding: 0.45rem 0.4rem;
 	border-bottom: 1px solid var(--background-modifier-border);
 	flex-shrink: 0;
-}
-
-.pulse-pm-left-collapsed .pulse-pm__glyph-bar {
-	flex-direction: column;
-	align-items: center;
-	justify-content: flex-start;
-	gap: 0.35rem;
-	padding: 0.5rem 0.2rem;
-}
-
-.pulse-pm__glyph-spacer {
-	flex: 1 1 auto;
-	min-width: 0.2rem;
-}
-
-.pulse-pm-left-collapsed .pulse-pm__glyph-spacer {
-	display: none;
 }
 
 .pulse-pm__glyph-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	/* Mobile: ≥48px touch targets (Apple HIG) */
-	width: 48px;
-	height: 48px;
-	min-width: 48px;
-	min-height: 48px;
 	padding: 0;
 	margin: 0;
 	border: none;
-	border-radius: var(--radius-m, 10px);
 	background: transparent;
 	color: var(--text-muted);
-	font-size: 1.25rem;
-	line-height: 1;
 	cursor: pointer;
 	box-shadow: none;
 	touch-action: manipulation;
@@ -142,10 +115,7 @@
 }
 
 .pulse-pm__glyph-btn svg {
-	width: 24px;
-	height: 24px;
 	stroke-width: 2px;
-	flex-shrink: 0;
 }
 
 .pulse-pm__glyph-btn:hover:not(:disabled) {

@@ -2,22 +2,31 @@
 	import { Notice, setIcon, type TFile } from "obsidian";
 	import type { MediaHeroPalette } from "../media/bannerSample";
 	import type ReposePlugin from "../main";
-	import { resolveBannerOrCoverFile, resolveListThumbnailFile } from "../media/banner";
+	import {
+		resolveBannerOrCoverFile,
+		resolveExternalImageUrl,
+		resolveListThumbnailFile,
+	} from "../media/banner";
 	import {
 		descriptionFromFrontmatter,
 		genresFromFrontmatter,
 		readMediaItem,
 		releaseLabelFromFrontmatter,
+		watchedPlayDatesCommaDetail,
 	} from "../media/mediaModel";
 	import MediaHero from "./MediaHero.svelte";
 	import ShowDetail from "./ShowDetail.svelte";
+	import EpisodeDetail from "./EpisodeDetail.svelte";
+	import { resolveMediaTypeForFile, resolveSerialHostFile } from "../media/mediaDetect";
 
 	export let plugin: ReposePlugin;
 	export let selectedPath: string | null;
+	export let onSelectPath: (path: string) => void;
 	export let onGoHome: () => void;
 
 	let detailRev = 0;
 	let homeBtnEl: HTMLButtonElement | null = null;
+	let backBtnEl: HTMLButtonElement | null = null;
 	let movieRefreshBusy = false;
 	let mediaSurfaceStyle = "";
 	let mediaHasTint = false;
@@ -36,14 +45,19 @@
 		const cache = plugin.app.metadataCache.getFileCache(f);
 		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
 		const img = resolveBannerOrCoverFile(plugin.app, fm, f.path);
-		return img ? plugin.app.vault.getResourcePath(img) : null;
+		if (img) return plugin.app.vault.getResourcePath(img);
+		return resolveExternalImageUrl(fm, ["banner", "cover", "image", "poster"]);
 	}
 
 	function posterSrcForFile(f: TFile): string | null {
 		const cache = plugin.app.metadataCache.getFileCache(f);
 		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
-		const img = resolveListThumbnailFile(plugin.app, fm, f.path);
-		return img ? plugin.app.vault.getResourcePath(img) : null;
+		const mt = resolveMediaTypeForFile(plugin.app, f, plugin.settings);
+		const img = resolveListThumbnailFile(plugin.app, fm, f.path, {
+			bookBundle: mt === "book",
+		});
+		if (img) return plugin.app.vault.getResourcePath(img);
+		return resolveExternalImageUrl(fm);
 	}
 
 	$: file = selectedPath ? (plugin.app.vault.getAbstractFileByPath(selectedPath) as TFile | null) : null;
@@ -58,6 +72,11 @@
 	$: movieGenres = file && item?.mediaType === "movie" ? genresFromFrontmatter(movieFm) : [];
 	$: movieReleaseLabel =
 		file && item?.mediaType === "movie" ? releaseLabelFromFrontmatter(movieFm, "movie") : null;
+	$: movieWatchedDetailLine =
+		file && item?.mediaType === "movie" ? watchedPlayDatesCommaDetail(movieFm) : "";
+	$: movieDetailMetaRows = movieWatchedDetailLine
+		? [{ label: "Watched", value: movieWatchedDetailLine }]
+		: [];
 
 	$: if (!selectedPath || !file || !item) {
 		mediaSurfaceStyle = "";
@@ -65,6 +84,18 @@
 	}
 
 	$: if (homeBtnEl) setIcon(homeBtnEl, "home");
+	$: if (backBtnEl) setIcon(backBtnEl, "arrow-left");
+
+	$: hostForEpisode =
+		file && item?.mediaType === "episode"
+			? resolveSerialHostFile(plugin.app, file, plugin.settings)
+			: null;
+
+	$: companionPath = plugin.reposeCompanionMarkdownPath;
+	$: bookChromeEmbedded =
+		!!file && companionPath === file.path && item?.mediaType === "book";
+	$: episodeCompanionSuppress =
+		!!file && companionPath === file.path && item?.mediaType === "episode";
 
 	async function openNote(): Promise<void> {
 		if (!file) return;
@@ -103,22 +134,50 @@
 >
 	{#if item && file}
 		<div class="repose-media-detail__home-wrap">
-			<button
-				type="button"
-				bind:this={homeBtnEl}
-				class="repose-media-detail__home-btn clickable-icon"
-				aria-label="Repose home"
-				title="Home"
-				on:click={() => onGoHome()}
-			></button>
+			{#if hostForEpisode}
+				<button
+					type="button"
+					bind:this={backBtnEl}
+					class="repose-banner-btn repose-banner-btn--icon-only repose-media-detail__home-btn"
+					aria-label="Back to series"
+					title="Back to series"
+					on:click={() => onSelectPath(hostForEpisode.path)}
+				></button>
+			{/if}
+			{#if item.mediaType !== "podcast" && item.mediaType !== "book"}
+				<button
+					type="button"
+					bind:this={homeBtnEl}
+					class="repose-banner-btn repose-banner-btn--icon-only repose-media-detail__home-btn"
+					aria-label="Repose home"
+					title="Home"
+					on:click={() => onGoHome()}
+				></button>
+			{/if}
 		</div>
 	{/if}
 	{#if !item || !file}
 		<p class="repose-muted">Pick an item from the list.</p>
-	{:else if item.mediaType === "show" || item.mediaType === "podcast"}
-		<ShowDetail {plugin} showFile={file} onPalette={onMediaPalette} />
+	{:else if item.mediaType === "show" || item.mediaType === "podcast" || item.mediaType === "book"}
+		<ShowDetail
+			{plugin}
+			showFile={file}
+			{onSelectPath}
+			onPalette={onMediaPalette}
+			onGoHome={item.mediaType === "podcast" || item.mediaType === "book" ? onGoHome : undefined}
+			suppressReposeBookMirror={bookChromeEmbedded}
+		/>
 	{:else if item.mediaType === "game"}
-		<ShowDetail {plugin} showFile={file} serialKind="game" onPalette={onMediaPalette} />
+		<ShowDetail {plugin} showFile={file} serialKind="game" {onSelectPath} onPalette={onMediaPalette} />
+	{:else if item.mediaType === "episode"}
+		<EpisodeDetail
+			{plugin}
+			episodeFile={file}
+			hostFile={hostForEpisode}
+			{onSelectPath}
+			onPalette={onMediaPalette}
+			suppressDetail={episodeCompanionSuppress}
+		/>
 	{:else if item.mediaType === "movie"}
 		<div class="repose-show-detail">
 			<MediaHero
@@ -128,7 +187,7 @@
 				releaseLabel={movieReleaseLabel}
 				description={movieDescription}
 				genres={movieGenres}
-				busy={movieRefreshBusy}
+				refreshBusy={movieRefreshBusy}
 				watchIcon={movieWatchIcon}
 				watchedAria={item.watchedDate ? "Mark unwatched" : "Mark watched"}
 				refreshTitle="Refresh metadata and images (Trakt / TMDB)"
@@ -136,6 +195,7 @@
 				onOpenNote={openNote}
 				onToggleWatched={() => void toggleWatched()}
 				onRefresh={() => void refreshMovieData()}
+				detailMetaRows={movieDetailMetaRows}
 			/>
 			<p class="repose-muted repose-show-detail__movie-footnote">
 				Type: Movie{item.status ? ` · ${item.status}` : ""}

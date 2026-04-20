@@ -212,35 +212,17 @@
 	min-width: 0;
 }
 
+/* Glyph bar spacing + collapsed stack + icon size: packages/theme/shell.css */
 .orbit-pm__glyph-bar {
 	display: flex;
 	flex-direction: row;
 	flex-wrap: nowrap;
 	align-items: center;
 	justify-content: flex-start;
-	gap: 0.1rem;
 	width: 100%;
 	box-sizing: border-box;
-	padding: 0.3rem 0.35rem;
 	border-bottom: 1px solid var(--background-modifier-border);
 	flex-shrink: 0;
-}
-
-.orbit-pm-left-collapsed .orbit-pm__glyph-bar {
-	flex-direction: column;
-	align-items: center;
-	justify-content: flex-start;
-	gap: 0.2rem;
-	padding: 0.35rem 0.15rem;
-}
-
-.orbit-pm__glyph-spacer {
-	flex: 1 1 auto;
-	min-width: 0.2rem;
-}
-
-.orbit-pm-left-collapsed .orbit-pm__glyph-spacer {
-	display: none;
 }
 
 .orbit-pm__glyph-btn {
@@ -250,7 +232,6 @@
 	padding: 0;
 	margin: 0;
 	border: none;
-	border-radius: var(--radius-s);
 	background: transparent;
 	color: var(--text-muted);
 	line-height: 1;
@@ -267,11 +248,6 @@
 	opacity: 0.32;
 	cursor: default;
 	pointer-events: none;
-}
-
-.orbit-pm__glyph-btn svg {
-	width: 16px;
-	height: 16px;
 }
 
 .orbit-pm__left-scroll {

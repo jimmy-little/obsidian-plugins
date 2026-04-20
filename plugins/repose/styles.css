@@ -276,6 +276,20 @@
 	display: none;
 }
 
+/* Episode split leaf: one column — media detail only (Fulcrum-style companion pane). */
+.repose-pm.repose-pm--detail-only {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	min-width: 0;
+}
+
+.repose-pm--detail-only .repose-pm__main {
+	flex: 1;
+	min-height: 0;
+}
+
 .repose-pm__sidebar {
 	min-height: 0;
 	min-width: 0;
@@ -352,22 +366,28 @@
 	flex-wrap: nowrap;
 	align-items: center;
 	justify-content: flex-start;
-	gap: var(--suite-glyph-bar-gap);
-	padding: var(--suite-glyph-bar-padding-y) var(--suite-glyph-bar-padding-x);
+	flex-shrink: 0;
 	border-bottom: 1px solid var(--background-modifier-border);
 	background: var(--background-secondary);
+	/* gap / padding / collapsed stack: packages/theme/shell.css */
 }
 
 .repose-pm__glyph-btn {
-	width: var(--suite-glyph-btn-size);
-	height: var(--suite-glyph-btn-size);
-	min-width: var(--suite-glyph-btn-size);
-	min-height: var(--suite-glyph-btn-size);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	padding: 0;
-	box-sizing: border-box;
-	font-size: var(--suite-glyph-collapse-font-size);
-	font-weight: 600;
-	line-height: 1;
+	margin: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	box-shadow: none;
+}
+
+.repose-pm__glyph-btn:hover:not(:disabled) {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
 }
 
 .repose-pm__glyph-btn--icon {
@@ -379,10 +399,6 @@
 .repose-pm__glyph-btn--icon:disabled {
 	opacity: 0.35;
 	cursor: not-allowed;
-}
-
-.repose-pm__glyph-spacer {
-	flex: 1;
 }
 
 .repose-pm__left-scroll {
@@ -405,20 +421,20 @@
 	scrollbar-gutter: stable;
 }
 
-/* Home dashboard — full-bleed art-forward layout (always dark) */
+/* Home dashboard — dark canvas; rows use simple horizontal scroll (no nested flex/overflow tricks) */
 .repose-dash {
 	--repose-dash-fg: #f4f4f5;
 	--repose-dash-muted: rgba(244, 244, 245, 0.52);
 	--repose-dash-faint: rgba(244, 244, 245, 0.36);
-	/* Poster column height — drives width via 2:3 */
-	--repose-poster-h: clamp(11em, 14vmin, 15em);
 	position: relative;
-	margin: -0.9rem -1rem 0;
-	padding: 0 1rem 2.5rem;
-	min-height: min(70vh, 920px);
+	/* Horizontal bleed only — do not pull upward (keeps hero below leaf chrome comfortably) */
+	margin: 0 -1rem 0;
+	padding: 1.1rem 1rem 2rem;
 	box-sizing: border-box;
 	background: #0a0a0c;
 	color: var(--repose-dash-fg);
+	width: 100%;
+	min-width: 0;
 }
 
 .repose-dash__aurora {
@@ -451,169 +467,16 @@
 	z-index: 2;
 	display: flex;
 	flex-direction: column;
-	gap: 1.75rem;
+	gap: 1.25rem;
 	max-width: 1200px;
 	margin: 0 auto;
-}
-
-.repose-dash__hero {
-	margin: 0;
-	padding: 0;
-	border: none;
-}
-
-.repose-dash__hero-stage {
-	display: block;
-	width: 100%;
-	margin: 0;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-l);
-	overflow: hidden;
-	cursor: pointer;
-	text-align: left;
-	background: transparent;
-	box-shadow:
-		0 0 0 1px rgba(255, 255, 255, 0.06),
-		0 24px 48px -28px rgba(0, 0, 0, 0.65);
-	transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease;
-}
-
-.repose-dash__hero-stage:hover {
-	transform: translateY(-2px);
-	box-shadow:
-		0 0 0 1px rgba(255, 255, 255, 0.09),
-		0 32px 56px -22px rgba(0, 0, 0, 0.72);
-}
-
-.repose-dash__hero-stage:focus-visible {
-	outline: 2px solid var(--interactive-accent);
-	outline-offset: 3px;
-}
-
-.repose-dash__hero-stage--empty {
-	cursor: default;
-	pointer-events: none;
-}
-
-.repose-dash__hero-visual {
-	position: relative;
-	aspect-ratio: 21 / 9;
-	min-height: 160px;
-	max-height: 320px;
-	background: #141418;
-}
-
-@media (max-width: 700px) {
-	.repose-dash__hero-visual {
-		aspect-ratio: 16 / 10;
-		min-height: 200px;
-	}
-}
-
-.repose-dash__hero-img {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-	object-position: center top;
-	display: block;
-}
-
-.repose-dash__hero-img--mesh {
-	background:
-		conic-gradient(from 210deg at 70% 40%, hsl(var(--repose-hue, 220) 42% 22%), hsl(calc(var(--repose-hue, 220) + 40) 50% 18%), hsl(var(--repose-hue, 220) 35% 26%));
-}
-
-.repose-dash__hero-img--empty {
-	--repose-hue: 258;
-	background:
-		conic-gradient(from 180deg at 50% 120%, hsl(258 38% 18%), hsl(200 42% 20%), hsl(320 35% 22%));
-}
-
-.repose-dash__hero-scrim {
-	position: absolute;
-	inset: 0;
-	background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.25) 45%, transparent 100%);
-	pointer-events: none;
-}
-
-.repose-dash__hero-grain {
-	position: absolute;
-	inset: 0;
-	opacity: 0.12;
-	mix-blend-mode: overlay;
-	pointer-events: none;
-	background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
-}
-
-.repose-dash__hero-copy {
-	position: absolute;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	padding: 1.25rem 1.35rem 1.4rem;
-	pointer-events: none;
-}
-
-.repose-dash__eyebrow {
-	margin: 0 0 0.35rem 0;
-	font-size: var(--font-ui-smaller);
-	font-weight: 600;
-	letter-spacing: 0.12em;
-	text-transform: uppercase;
-	color: color-mix(in srgb, var(--text-on-accent, #fff) 88%, transparent);
-	display: flex;
-	align-items: center;
-	gap: 0.45rem;
-}
-
-.repose-dash__eyebrow-dot {
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
-	background: var(--interactive-accent);
-	box-shadow: 0 0 12px color-mix(in srgb, var(--interactive-accent) 80%, transparent);
-}
-
-.repose-dash__hero-title {
-	margin: 0;
-	font-size: clamp(1.45rem, 3.5vw, 2.15rem);
-	font-weight: 700;
-	line-height: 1.12;
-	letter-spacing: -0.02em;
-	color: var(--text-on-accent, #f4f4f5);
-	text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55);
-}
-
-.repose-dash__hero-tag {
-	margin: 0.45rem 0 0 0;
-	font-size: var(--font-ui-small);
-	line-height: 1.45;
-	color: color-mix(in srgb, var(--text-on-accent, #e4e4e7) 78%, transparent);
-	max-width: 42rem;
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
-
-.repose-dash__calendar-block {
-	padding: 1rem 1.1rem 1.15rem;
-	border-radius: var(--radius-l);
-	background: rgba(255, 255, 255, 0.04);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	backdrop-filter: blur(10px);
 }
 
 .repose-dash__section-head {
 	display: flex;
 	align-items: flex-start;
 	gap: 0.65rem;
-	margin-bottom: 0.65rem;
-}
-
-.repose-dash__section-head--cal {
-	margin-bottom: 0.85rem;
+	margin: 0 0 0.5rem 0;
 }
 
 .repose-dash__section-icon {
@@ -648,221 +511,110 @@
 	line-height: 1.35;
 }
 
-.repose-dash__cal-weekdays {
-	display: grid;
-	grid-template-columns: repeat(7, 1fr);
-	gap: 0.2rem;
-	margin-bottom: 0.35rem;
-}
-
-.repose-dash__cal-wd {
-	text-align: center;
-	font-size: 0.65rem;
-	font-weight: 600;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	color: var(--repose-dash-faint);
-}
-
-.repose-dash__cal-cells {
-	display: grid;
-	grid-template-columns: repeat(7, 1fr);
-	gap: 0.28rem;
-}
-
-.repose-dash__cal-cell {
-	position: relative;
-	min-height: 2.35rem;
-	border-radius: var(--radius-s);
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: flex-start;
-	padding: 0.28rem 0.15rem 0.2rem;
-	font-size: var(--font-ui-smaller);
-	background: rgba(255, 255, 255, 0.04);
-	border: 1px solid transparent;
-	transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-.repose-dash__cal-cell--muted {
-	opacity: 0.35;
-}
-
-.repose-dash__cal-cell--today {
-	border-color: rgba(167, 139, 250, 0.45);
-	background: rgba(167, 139, 250, 0.1);
-}
-
-.repose-dash__cal-num {
-	font-variant-numeric: tabular-nums;
-	font-weight: 600;
-	color: var(--repose-dash-fg);
-}
-
-.repose-dash__cal-dots {
-	display: flex;
-	gap: 3px;
-	margin-top: 2px;
-}
-
-.repose-dash__cal-dot {
-	width: 4px;
-	height: 4px;
-	border-radius: 50%;
-	background: var(--interactive-accent);
-	opacity: 0.85;
-}
-
 .repose-dash__strip {
 	display: flex;
 	flex-direction: column;
-	gap: 0.35rem;
+	gap: 0.65rem;
 	min-width: 0;
-	/* Let poster rows size to content; don’t shrink strip height to zero in nested flex layouts */
-	align-items: stretch;
+	margin-bottom: 0.25rem;
 }
 
-/*
- * Horizontal scrolling: overflow must NOT live on the same element as `display:flex` for the row —
- * that combo creates a scrollport that clips the cross axis (tall posters look “cut off”).
- * Outer shell: block + overflow-x only. Inner: inline-flex row (height = tallest poster + caption).
- */
-.repose-dash__scroll-shell {
-	display: block;
+/* Poster grids — div tiles (not <button>) so Obsidian’s button CSS can’t break grid */
+.repose-dash__grid {
+	display: grid !important;
 	width: 100%;
-	min-width: 0;
-	max-width: 100%;
-	flex: 0 0 auto;
-	align-self: stretch;
-	margin: 0 -0.15rem;
-	padding: 0.35rem 0.15rem 0.85rem;
-	overflow-x: auto;
-	overflow-y: visible;
-	scroll-snap-type: x proximity;
-	-webkit-overflow-scrolling: touch;
-	scrollbar-width: thin;
-	/* Minimum block height so the scrollport never clips portrait art before flex layout settles */
+	gap: 1.1rem 0.85rem;
 	box-sizing: border-box;
+	grid-auto-flow: row;
+	align-items: start;
+	justify-items: stretch;
 }
 
-.repose-dash__scroll-shell--poster-row {
-	min-height: calc(var(--repose-poster-h) + 5.75rem);
+.repose-dash__grid--poster {
+	grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
 }
 
-.repose-dash__scroll-shell--upcoming-row {
-	min-height: calc(min(20em, 72vw) * 9 / 16 + 7rem);
+.repose-dash__grid--sq {
+	grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
 }
 
-.repose-dash__scroll {
-	display: inline-flex;
-	flex-direction: row;
-	flex-wrap: nowrap;
-	align-items: flex-start;
-	justify-content: flex-start;
-	gap: 0.75rem;
-	vertical-align: top;
-	min-height: min-content;
-	width: max-content;
-	max-width: none;
-	/* No overflow here — shell scrolls horizontally */
+.repose-dash__grid--wide {
+	grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
 }
 
-.repose-dash__scroll--lib {
-	gap: 1.35rem;
-}
-
-.repose-dash__scroll--strip {
-	gap: 1.1rem;
-}
-
-.repose-dash .repose-dash__tile {
-	-webkit-appearance: none;
-	appearance: none;
-	flex: 0 0 auto;
-	scroll-snap-align: start;
-	align-self: flex-start;
-	width: auto;
-	min-width: 0;
-	margin: 0;
-	padding: 0;
-	border: none;
-	font: inherit;
-	color: inherit;
-	background: transparent;
-	cursor: pointer;
-	text-align: left;
+.repose-dash__tile {
 	display: flex;
 	flex-direction: column;
 	align-items: stretch;
-	gap: 0.5rem;
-	border-radius: 0;
-	overflow: visible;
-	transition: transform 0.22s ease;
+	justify-content: flex-start;
+	gap: 0.45rem;
+	width: 100%;
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+	font: inherit;
+	color: var(--repose-dash-fg);
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
 }
 
-.repose-dash .repose-dash__tile:hover {
-	transform: translateY(-2px);
+.repose-dash__tile:hover {
+	opacity: 0.92;
 }
 
-.repose-dash .repose-dash__tile:focus-visible {
+.repose-dash__tile:focus-visible {
 	outline: 2px solid var(--interactive-accent);
-	outline-offset: 3px;
+	outline-offset: 2px;
+	border-radius: var(--radius-s);
 }
 
-.repose-dash__tile--lib {
-	max-width: min(22em, 85vw);
-}
-
-.repose-dash__tile--upcoming {
-	max-width: min(26em, 92vw);
-}
-
-/* Frame: portrait poster (2:3), square podcast, or wide “upcoming” — no gray under real images */
-.repose-dash__lib-art {
+/* Thumbs fill grid column; aspect-ratio keeps poster shape */
+.repose-dash__thumb {
 	position: relative;
-	box-sizing: border-box;
 	flex-shrink: 0;
-	overflow: visible;
-	background: transparent;
+	align-self: stretch;
+	width: 100%;
+	overflow: hidden;
+	border-radius: var(--radius-s);
+	background: #141416;
 }
 
-.repose-dash__lib-art--poster {
-	height: var(--repose-poster-h);
-	width: calc(var(--repose-poster-h) * 2 / 3);
+.repose-dash__thumb--poster {
+	aspect-ratio: 2 / 3;
+	height: auto;
 }
 
-.repose-dash__lib-art--sq {
-	width: var(--repose-poster-h);
-	height: var(--repose-poster-h);
+.repose-dash__thumb--sq {
+	aspect-ratio: 1 / 1;
+	height: auto;
 }
 
-/* 16:9 strip for “on the horizon” — still contain-fit, no gray under photos */
-.repose-dash__lib-art--horiz {
-	width: min(20em, 72vw);
-	height: calc(min(20em, 72vw) * 9 / 16);
+.repose-dash__thumb--wide {
+	aspect-ratio: 16 / 9;
+	height: auto;
 }
 
-.repose-dash__lib-img {
-	position: absolute;
-	inset: 0;
-	box-sizing: border-box;
+.repose-dash__thumb > img {
+	position: static !important;
+	inset: auto !important;
+	display: block;
 	width: 100%;
 	height: 100%;
-	object-fit: contain;
-	object-position: center;
-	display: block;
+	max-width: none !important;
+	max-height: none !important;
+	object-fit: contain !important;
+	object-position: center center !important;
 }
 
-.repose-dash__lib-ph {
+.repose-dash__thumb-ph {
 	position: absolute;
 	inset: 0;
-	pointer-events: none;
 	background:
 		linear-gradient(145deg, hsl(var(--repose-hue, 220) 28% 20%), hsl(calc(var(--repose-hue, 220) + 55) 24% 14%));
 }
 
-.repose-dash__lib-badge {
+.repose-dash__badge {
 	position: absolute;
 	right: 6px;
 	bottom: 6px;
@@ -875,50 +627,57 @@
 	border-radius: 4px;
 	background: rgba(0, 0, 0, 0.72);
 	color: #fafafa;
-	backdrop-filter: blur(6px);
 }
 
-.repose-dash__lib-badge--tl {
+.repose-dash__badge--tl {
 	right: auto;
 	left: 6px;
 	top: 6px;
 	bottom: auto;
 }
 
-.repose-dash__tile-cap {
-	margin: 0;
-	width: 100%;
-	max-width: 100%;
-	font-size: max(var(--font-ui-small), 0.8125rem);
-	font-weight: 550;
-	line-height: 1.4;
-	letter-spacing: -0.015em;
-	color: var(--repose-dash-fg);
-	display: -webkit-box;
-	-webkit-line-clamp: 3;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
+.repose-dash__grid--episode {
+	grid-template-columns: repeat(auto-fill, minmax(10.25rem, 1fr));
 }
 
-.repose-dash__tile-sub {
-	margin: 0;
-	font-size: 0.65rem;
-	color: var(--repose-dash-muted);
-	line-height: 1.25;
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
+.repose-dash__thumb--ep {
+	position: relative;
+	aspect-ratio: 16 / 9;
+	width: 100%;
+	height: auto;
+	border-radius: var(--radius-m);
 	overflow: hidden;
+	background: rgba(0, 0, 0, 0.35);
+}
+
+.repose-dash__thumb--ep > img {
+	object-fit: cover !important;
+	object-position: center center !important;
+}
+
+.repose-dash__label {
+	display: block;
+	flex-shrink: 0;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	line-height: 1.35;
+	color: var(--repose-dash-fg);
+	max-width: 100%;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.repose-dash__sub {
+	display: block;
+	font-size: var(--font-ui-smaller);
+	color: var(--repose-dash-muted);
+	line-height: 1.3;
+	max-width: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.repose-dash__hero-stage,
-	.repose-dash .repose-dash__tile {
+	.repose-dash__tile {
 		transition: none;
-	}
-	.repose-dash__hero-stage:hover,
-	.repose-dash .repose-dash__tile:hover {
-		transform: none;
 	}
 }
 
@@ -1050,6 +809,31 @@
 
 .repose-ml-row--active:hover {
 	background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary));
+}
+
+/* TV / podcast library row: show-wide vault watch progress as bottom edge */
+.repose-ml-row--serial {
+	flex-wrap: wrap;
+	align-content: flex-start;
+	border-bottom: none;
+}
+
+.repose-ml-row__progress-edge {
+	flex: 1 1 100%;
+	align-self: stretch;
+	min-width: 0;
+	height: 4px;
+	box-sizing: border-box;
+	background: color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+	pointer-events: none;
+}
+
+.repose-ml-row__progress-fill {
+	height: 100%;
+	min-width: 0;
+	background: color-mix(in srgb, var(--interactive-accent) 72%, rgba(255, 255, 255, 0.22));
+	transition: width 0.2s ease;
 }
 
 .repose-ml-row__thumb-wrap {
@@ -1287,6 +1071,29 @@
 	word-break: break-word;
 }
 
+.repose-ml-row__meta-col {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.3rem;
+	flex: 0 1 auto;
+	max-width: 52%;
+	margin-left: auto;
+	min-width: 0;
+}
+
+.repose-ml-row__meta-col .repose-ml-row__area {
+	width: 100%;
+	max-width: 100%;
+	margin-left: 0;
+	text-align: right;
+	font-size: var(--font-ui-smaller);
+	font-weight: 400;
+	line-height: 1.35;
+	color: var(--text-muted);
+	word-break: break-word;
+}
+
 .repose-ml-row__area {
 	flex: 0 1 auto;
 	max-width: 52%;
@@ -1296,22 +1103,6 @@
 	font-weight: 400;
 	line-height: 1.35;
 	color: var(--text-muted);
-	word-break: break-word;
-}
-
-.repose-ml-row__desc {
-	width: 100%;
-	margin: 0.22rem 0 0;
-	padding: 0;
-	font-size: var(--font-ui-small);
-	font-weight: 400;
-	line-height: 1.4;
-	color: var(--text-muted);
-	display: -webkit-box;
-	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 2;
-	line-clamp: 2;
-	overflow: hidden;
 	word-break: break-word;
 }
 
@@ -1348,27 +1139,33 @@
 	left: 0.5rem;
 	z-index: 50;
 	pointer-events: none;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 0.35rem;
 }
 
-.repose-media-detail__home-btn {
+/* Match banner icon buttons (open note / watch / refresh) */
+.repose-media-detail__home-wrap .repose-media-detail__home-btn.repose-banner-btn--icon-only {
 	pointer-events: auto;
-	display: flex;
+	--input-shadow: none;
+	box-shadow: none;
+	border-radius: var(--radius-s);
+	display: inline-flex !important;
 	align-items: center;
 	justify-content: center;
-	width: 2.25rem;
-	height: 2.25rem;
-	margin: 0;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-m);
-	background: rgba(0, 0, 0, 0.5);
-	color: var(--text-on-accent, #f4f4f5);
-	box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
-	backdrop-filter: blur(8px);
+	padding: 0.3rem 0.4rem !important;
+	min-width: 2rem;
+	min-height: 2rem;
+	line-height: 0;
+	background: rgba(255, 255, 255, 0.14) !important;
+	border: 1px solid rgba(255, 255, 255, 0.38) !important;
+	color: rgba(255, 255, 255, 0.96) !important;
 }
 
-.repose-media-detail__home-btn:hover {
-	background: rgba(0, 0, 0, 0.62);
+.repose-media-detail__home-wrap .repose-media-detail__home-btn.repose-banner-btn--icon-only:hover:not(:disabled) {
+	background: rgba(255, 255, 255, 0.24) !important;
+	border-color: rgba(255, 255, 255, 0.55) !important;
 }
 
 /* Dominant color: full main-pane bleed + fill scroll height (see MediaHero + bannerSample.ts) */
@@ -1412,6 +1209,42 @@
 	margin-top: 0.5rem;
 }
 
+.repose-show-detail__episode-footnote {
+	margin-top: 0.5rem;
+}
+
+.repose-episode-nav {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 0.35rem;
+	margin: 0.5rem 0 0 0;
+}
+
+.repose-episode-nav__btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 2.1rem;
+	height: 2.1rem;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-m);
+	background: rgba(0, 0, 0, 0.35);
+	color: var(--text-on-accent, #f4f4f5);
+	box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.repose-episode-nav__btn:hover:not(:disabled) {
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.repose-episode-nav__btn:disabled {
+	opacity: 0.35;
+	cursor: not-allowed;
+}
+
 /* Edge-to-edge within the main pane (offsets .repose-pm__main padding) */
 .repose-show-detail__hero-bleed {
 	width: calc(100% + 2rem);
@@ -1448,6 +1281,264 @@
 		color-mix(in srgb, var(--interactive-accent) 18%, var(--background-secondary)),
 		var(--background-secondary)
 	);
+}
+
+/* Episode: no still — icon toolbar only (no tall gradient banner) */
+.repose-show-banner--toolbar-only {
+	aspect-ratio: auto;
+	min-height: 0;
+	margin-bottom: 0;
+	padding: 0.45rem 0.65rem 0.35rem;
+	background: transparent;
+	border-radius: 0;
+}
+
+.repose-show-banner--toolbar-only .repose-show-banner__top-actions--toolbar-row {
+	position: relative;
+	top: auto;
+	right: auto;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 0.5rem;
+	width: 100%;
+}
+
+.repose-show-banner--toolbar-only .repose-show-banner__top-actions--toolbar-split {
+	justify-content: space-between;
+}
+
+.repose-show-banner__toolbar-actions {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 0.4rem;
+	flex: 0 0 auto;
+}
+
+/* Toolbar strip: optional status line under icon buttons (Trakt sync) */
+.repose-show-banner--toolbar-only .repose-show-banner__toolbar-column {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.3rem;
+	width: 100%;
+}
+
+.repose-show-banner--toolbar-only .repose-show-banner__sync-status {
+	color: var(--text-muted);
+	max-width: 100%;
+}
+
+.repose-hero-dock--flush {
+	margin-top: 0.5rem;
+}
+
+/* Podcast / book bundle: no banner strip — cover left, metadata right */
+.repose-hero-dock--cover {
+	margin-top: 0.5rem;
+	padding: 0.65rem 0.85rem 0.75rem;
+	border-radius: var(--radius-m);
+	background: color-mix(in srgb, var(--background-primary) 78%, transparent);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	box-sizing: border-box;
+}
+
+.repose-hero-dock--cover .repose-hero-dock__inner {
+	gap: 1.1rem 1.35rem;
+	align-items: flex-start;
+}
+
+.repose-hero-dock--cover .repose-show-banner__poster-wrap {
+	max-width: 44%;
+}
+
+.repose-hero-dock--cover .repose-show-banner__hero-main {
+	min-width: 0;
+}
+
+/* Book bundle: no card on hero — page background shows through; theme text (not TV hero white) */
+.repose-hero-dock--cover.repose-hero-dock--book {
+	background: transparent;
+	border: none;
+	box-shadow: none;
+}
+
+.repose-hero-dock.repose-hero-dock--cover.repose-hero-dock--book {
+	padding: 1rem 1.15rem 1.05rem 1.2rem;
+}
+
+.repose-hero-dock--cover.repose-hero-dock--book .repose-show-banner__title--hero {
+	color: var(--text-normal);
+	text-shadow: none;
+}
+
+.repose-hero-dock--cover.repose-hero-dock--book .repose-show-banner__release {
+	color: var(--text-muted);
+	text-shadow: none;
+}
+
+.repose-hero-dock--cover.repose-hero-dock--book .repose-show-banner__description--panel {
+	color: var(--text-normal);
+	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+	border-color: var(--background-modifier-border);
+	text-shadow: none;
+}
+
+.repose-hero-dock--cover.repose-hero-dock--book .repose-show-banner__meta-label {
+	color: var(--text-muted);
+}
+
+.repose-hero-dock--cover.repose-hero-dock--book .repose-show-banner__meta-value {
+	color: var(--text-normal);
+}
+
+.repose-hero-dock--cover.repose-hero-dock--book .repose-show-banner__poster-wrap.repose-poster-wrap--book {
+	max-width: 48%;
+	padding: 0.45rem;
+	box-sizing: border-box;
+}
+
+.repose-hero-dock--cover.repose-hero-dock--book .repose-poster-wrap--book .repose-show-banner__poster,
+.repose-hero-dock--cover.repose-hero-dock--book .repose-poster-wrap--book .repose-show-banner__poster--placeholder {
+	width: clamp(7.5rem, 28vw, 12rem);
+	max-height: 19rem;
+	border-radius: var(--radius-m);
+	box-shadow:
+		0 6px 28px rgba(0, 0, 0, 0.22),
+		0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+/* Bundle page: in-note markdown below hero */
+.repose-bundle-notes {
+	margin: 0;
+	padding: 0;
+	min-width: 0;
+}
+
+.repose-bundle-notes__title {
+	margin: 1rem 0 0.45rem;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+	text-transform: uppercase;
+}
+
+.repose-show-detail__episodes-heading {
+	margin: 1.15rem 0 0.55rem;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+	text-transform: uppercase;
+}
+
+/* Prepended hero on MarkdownView — align toolbar row with Repose media detail (not flush to window top) */
+.repose-companion-chrome-host {
+	flex-shrink: 0;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.65rem 0.65rem 0;
+}
+
+@media (min-width: 640px) {
+	.repose-companion-chrome-host {
+		padding: 0.85rem 1rem 0;
+	}
+}
+
+/*
+ * Tint: variables live on MarkdownView.containerEl (see ReposeMarkdownChrome onPalette).
+ * Obsidian paints --background-primary on .view-content, so we override that element.
+ */
+.repose-companion-doc[data-repose-tint="1"] {
+	--repose-page-bg: color-mix(
+		in srgb,
+		rgb(var(--repose-sample-r) var(--repose-sample-g) var(--repose-sample-b)) 38%,
+		var(--background-primary)
+	);
+}
+
+.repose-companion-doc[data-repose-tint="1"] .view-content {
+	background-color: var(--repose-page-bg) !important;
+	transition: background-color 0.45s ease;
+}
+
+.repose-companion-doc[data-repose-tint="1"] .cm-editor,
+.repose-companion-doc[data-repose-tint="1"] .cm-scroller,
+.repose-companion-doc[data-repose-tint="1"] .markdown-preview-view,
+.repose-companion-doc[data-repose-tint="1"] .markdown-preview-sizer {
+	background: transparent !important;
+}
+
+/* Hero: avoid negative margins meant for .repose-pm__main padding */
+.repose-companion-doc .repose-show-detail__hero-bleed {
+	width: 100%;
+	margin: 0 0 0.75rem;
+	max-width: none;
+}
+
+/* Book / episode note beside Repose — hide duplicate Properties / YAML (hero shows metadata) */
+.repose-companion-doc .metadata-container,
+.repose-companion-doc .metadata-properties-heading,
+.repose-companion-doc .frontmatter-container,
+.repose-companion-doc .metadata-properties,
+.repose-companion-doc .inline-title {
+	display: none !important;
+}
+
+/* Editable bundle note body (podcast) — native Obsidian markdown source editor */
+.repose-bundle-note-editor {
+	margin: 0.5rem 0 1rem;
+	min-height: 8rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-primary);
+	overflow: hidden;
+}
+
+.repose-bundle-note-editor .cm-editor {
+	min-height: 7.5rem;
+}
+
+.repose-bundle-note-editor .cm-scroller {
+	font-size: var(--font-ui-medium);
+}
+
+.repose-poster-wrap--square .repose-show-banner__poster,
+.repose-poster-wrap--square .repose-show-banner__poster--placeholder {
+	aspect-ratio: 1 / 1;
+	width: clamp(6.5rem, 22vw, 10rem);
+	min-height: 0;
+	height: auto;
+}
+
+.repose-poster-wrap--book .repose-show-banner__poster,
+.repose-poster-wrap--book .repose-show-banner__poster--placeholder {
+	aspect-ratio: 2 / 3;
+	width: clamp(5.75rem, 18vw, 8.5rem);
+	max-height: 15rem;
+	min-height: 0;
+	height: auto;
+	object-fit: cover;
+}
+
+.repose-show-banner__poster--placeholder {
+	box-sizing: border-box;
+	aspect-ratio: 2 / 3;
+	min-height: 10.5rem;
+	width: clamp(6.75rem, 26vw, 11.25rem);
+	background: conic-gradient(
+		from 210deg at 70% 40%,
+		hsl(var(--repose-hue, 220) 42% 22%),
+		hsl(calc(var(--repose-hue, 220) + 40) 50% 18%),
+		hsl(var(--repose-hue, 220) 35% 26%)
+	);
+	border-radius: var(--radius-m);
+	border: 2px solid rgba(255, 255, 255, 0.18);
+	box-shadow:
+		0 12px 32px rgba(0, 0, 0, 0.45),
+		0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .repose-show-banner--image .repose-show-banner__img {
@@ -1515,13 +1606,56 @@
 	pointer-events: auto;
 }
 
+/* Backdrop banner: icon row + optional sync status stacked top-right */
+.repose-show-banner__actions-stack {
+	position: absolute;
+	top: 0.65rem;
+	right: 0.65rem;
+	z-index: 4;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.35rem;
+	max-width: min(calc(100% - 1.3rem), 22rem);
+	pointer-events: none;
+}
+
+.repose-show-banner__actions-stack .repose-show-banner__top-actions {
+	position: static;
+	top: auto;
+	right: auto;
+	pointer-events: auto;
+}
+
+.repose-show-banner__sync-status {
+	margin: 0;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35;
+	text-align: right;
+}
+
+.repose-show-banner__sync-status--backdrop {
+	color: rgba(255, 255, 255, 0.94);
+	text-shadow:
+		0 0 12px rgba(0, 0, 0, 0.65),
+		0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
 /* Poster + title: top-aligned; description + genres grow downward */
 .repose-hero-dock {
 	position: relative;
 	z-index: 3;
-	margin-top: clamp(-4.25rem, -11vw, -2.25rem);
 	padding: 0 1rem 0.35rem;
 	pointer-events: auto;
+}
+
+/* TV/movie backdrop overlap only — toolbar-only and cover bundles use --flush (no pull-up) */
+.repose-hero-dock:not(.repose-hero-dock--flush) {
+	margin-top: clamp(-4.25rem, -11vw, -2.25rem);
+}
+
+.repose-hero-dock.repose-hero-dock--cover {
+	padding: 0.65rem 0.85rem 0.75rem;
 }
 
 .repose-hero-dock__inner {
@@ -1534,10 +1668,76 @@
 	min-width: 0;
 }
 
+/* TV bundle: episode completion vs vault count; track shares row with counter, respects dock padding */
+.repose-hero-dock__progress-row {
+	display: flex;
+	align-items: center;
+	gap: 0.65rem;
+	width: 100%;
+	min-width: 0;
+	margin-top: 0.5rem;
+}
+
+.repose-hero-dock__progress {
+	box-sizing: border-box;
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 5px;
+	border-radius: var(--radius-s);
+	background: rgba(255, 255, 255, 0.12);
+	overflow: hidden;
+}
+
+.repose-hero-dock__progress-fill {
+	height: 100%;
+	min-width: 0;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--interactive-accent) 82%, white);
+	transition: width 0.25s ease;
+}
+
+.repose-hero-dock__progress-count {
+	flex: 0 0 auto;
+	font-size: var(--font-ui-small);
+	line-height: 1.2;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
 .repose-show-banner__poster-wrap {
 	flex: 0 0 auto;
 	align-self: flex-start;
 	max-width: 38%;
+}
+
+.repose-show-banner__poster-wrap--has-corner-badge {
+	position: relative;
+}
+
+.repose-show-banner__poster-corner-badge {
+	position: absolute;
+	right: 0.4rem;
+	bottom: 0.4rem;
+	z-index: 2;
+	max-width: calc(100% - 0.85rem);
+	padding: 0.2rem 0.42rem;
+	border-radius: 4px;
+	font-size: 0.62rem;
+	font-weight: 700;
+	line-height: 1.15;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	text-align: center;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: rgba(255, 255, 255, 0.96);
+	background: rgba(0, 0, 0, 0.72);
+	border: 1px solid rgba(255, 255, 255, 0.22);
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+	pointer-events: none;
 }
 
 @media (max-width: 520px) {
@@ -1599,6 +1799,19 @@
 	min-width: 0;
 }
 
+.repose-show-banner__title-cluster {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.45rem 0.65rem;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.repose-show-banner__title-cluster .repose-show-banner__title--hero {
+	flex: 0 1 auto;
+}
+
 .repose-show-banner__title--hero {
 	margin: 0;
 	flex: 1 1 auto;
@@ -1647,6 +1860,51 @@
 	align-items: flex-start;
 	gap: 0.35rem;
 	margin-top: 0.35rem;
+}
+
+/* Episode detail: Watch pill right-aligned vs genre pills (same control as episode list). */
+.repose-show-banner__meta-block--hero-watch {
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	column-gap: 0.85rem;
+	row-gap: 0.5rem;
+	width: 100%;
+}
+
+.repose-show-banner__meta-genres {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.35rem;
+}
+
+.repose-show-banner__meta-primary {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.35rem;
+}
+
+.repose-show-banner__meta-extra {
+	width: 100%;
+}
+
+.repose-show-banner__meta-value {
+	margin: 0.1rem 0 0;
+	font-size: clamp(0.8rem, 1.7vw, 0.95rem);
+	font-weight: 450;
+	line-height: 1.45;
+	color: rgba(255, 255, 255, 0.9);
+}
+
+.repose-show-banner__meta-block--hero-watch-pill-only {
+	justify-content: flex-end;
 }
 
 .repose-show-banner__meta-label {
@@ -1712,6 +1970,39 @@
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
+.repose-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.12rem 0.38rem;
+	border-radius: 4px;
+	font-size: 0.62rem;
+	font-weight: 700;
+	line-height: 1.15;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	flex-shrink: 0;
+	color: var(--text-muted);
+	background: color-mix(in srgb, var(--background-modifier-border) 55%, var(--background-primary));
+	border: 1px solid var(--background-modifier-border);
+}
+
+.repose-badge--serial-personal {
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.repose-badge--hero-title-status {
+	padding: 0.18rem 0.5rem;
+	font-size: 0.68rem;
+	color: rgba(255, 255, 255, 0.94);
+	background: rgba(0, 0, 0, 0.42);
+	border-color: rgba(255, 255, 255, 0.2);
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+
 .repose-show-banner__bottom {
 	display: flex;
 	flex-direction: row;
@@ -1773,6 +2064,13 @@
 	box-shadow: none;
 	border-radius: var(--radius-s);
 	cursor: pointer;
+}
+
+.repose-show-banner__top-actions a.repose-banner-btn,
+.repose-show-banner__toolbar-actions a.repose-banner-btn {
+	text-decoration: none;
+	color: inherit;
+	box-sizing: border-box;
 }
 
 .repose-show-banner .repose-banner-btn--icon-only {
@@ -1869,6 +2167,28 @@
 	outline-offset: 2px;
 }
 
+.repose-show-season__sync-hint {
+	flex: 0 0 auto;
+	align-self: center;
+	margin-right: 0.15rem;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	color: rgba(255, 210, 140, 0.98);
+	white-space: nowrap;
+	animation: repose-season-sync-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes repose-season-sync-pulse {
+	0%,
+	100% {
+		opacity: 0.88;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
 .repose-show-season__header-text {
 	display: flex;
 	flex-wrap: wrap;
@@ -1896,6 +2216,46 @@
 	opacity: 1;
 }
 
+.repose-show-season__header-end {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.2rem;
+	flex-shrink: 0;
+}
+
+.repose-show-season__refresh {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 0;
+	padding: 0.25rem;
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	color: rgba(255, 255, 255, 0.72);
+	box-shadow: none;
+	cursor: pointer;
+	--icon-size: 1rem;
+}
+
+.repose-show-season__refresh:hover:not(:disabled) {
+	background: rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.95);
+}
+
+.repose-show-season__refresh:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.repose-show-season__refresh-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
 .repose-show-season__chevron {
 	display: flex;
 	align-items: center;
@@ -1916,10 +2276,11 @@
 
 .repose-show-episode-row {
 	display: flex;
-	flex-direction: row;
-	align-items: flex-start;
-	gap: 0.75rem;
-	padding: 0.65rem 0.7rem;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 0;
+	padding: 0.85rem 0.95rem;
+	min-height: 6.25rem;
 	border: 1px solid rgba(255, 255, 255, 0.12);
 	border-radius: var(--radius-m);
 	background: rgba(0, 0, 0, 0.62);
@@ -1927,8 +2288,137 @@
 	color: rgba(255, 255, 255, 0.92);
 }
 
+/* TV season list */
+.repose-show-episode-row--tv {
+	overflow: hidden;
+}
+
+.repose-show-episode-row--text {
+	min-height: 0;
+}
+
+.repose-show-episode-row--text .repose-show-episode-row__hit--text-only {
+	display: block;
+	width: 100%;
+}
+
+.repose-show-episode-row--text .repose-show-episode-row__side {
+	width: 100%;
+	min-width: 0;
+}
+
+.repose-show-episode-row__date-line {
+	margin: 0.2rem 0 0;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35;
+	color: rgba(255, 255, 255, 0.62);
+}
+
+.repose-show-episode-row__stack {
+	display: flex;
+	flex-direction: column;
+	gap: 0.65rem;
+	width: 100%;
+	min-width: 0;
+}
+
+.repose-show-episode-row__side {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-width: 0;
+	gap: 0.4rem;
+}
+
+.repose-show-episode-row__head {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.35rem;
+	width: 100%;
+	min-width: 0;
+}
+
+.repose-show-episode-row__head--row {
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.65rem;
+}
+
+.repose-show-episode-row__meta-line {
+	margin: 0;
+	min-width: 0;
+	flex: 1 1 auto;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35;
+	color: rgba(255, 255, 255, 0.62);
+	text-align: left;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.repose-show-episode-row__meta-line-spacer {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+}
+
+.repose-show-episode-row__hit:not(.repose-show-episode-row__hit--text-only) {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 0.85rem;
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: none;
+	font: inherit;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+	box-shadow: none;
+	-webkit-tap-highlight-color: transparent;
+	user-select: none;
+}
+
+.repose-show-episode-row__hit--text-only {
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: none;
+	font: inherit;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+	box-shadow: none;
+	-webkit-tap-highlight-color: transparent;
+	user-select: none;
+}
+
+.repose-show-episode-row__hit:hover,
+.repose-show-episode-row__hit--text-only:hover {
+	filter: brightness(1.06);
+}
+
+.repose-show-episode-row__hit:focus-visible,
+.repose-show-episode-row__hit--text-only:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+	border-radius: var(--radius-s);
+}
+
 .repose-show-episode-row__thumb-wrap {
-	width: 7.5rem;
+	width: 10.5rem;
+	min-width: 8rem;
 	aspect-ratio: 16 / 9;
 	flex-shrink: 0;
 	border-radius: var(--radius-s);
@@ -1986,17 +2476,14 @@
 	font-size: var(--font-ui-smaller);
 	line-height: 1.45;
 	color: rgba(255, 255, 255, 0.78);
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 4;
+	overflow: hidden;
 }
 
-.repose-show-episode-row__actions {
-	display: flex;
-	flex-direction: column;
-	gap: 0.35rem;
-	flex-shrink: 0;
-	align-items: stretch;
-}
-
-.repose-show-episode-row__actions > button {
+.repose-show-episode-row__head .repose-show-episode-row__watch,
+.repose-show-banner__meta-block--hero-watch .repose-show-episode-row__watch {
 	--input-shadow: none;
 	margin: 0;
 	padding: 0.28rem 0.5rem;
@@ -2007,41 +2494,56 @@
 	color: rgba(255, 255, 255, 0.95);
 	box-shadow: none;
 	cursor: pointer;
+	flex-shrink: 0;
+	align-self: flex-end;
 }
 
-.repose-show-episode-row__actions > button:hover {
+.repose-show-episode-row__head .repose-show-episode-row__watch:hover,
+.repose-show-banner__meta-block--hero-watch .repose-show-episode-row__watch:hover {
 	background: rgba(255, 255, 255, 0.2);
 	border-color: rgba(255, 255, 255, 0.32);
 }
 
-.repose-show-episode-row__actions > button:focus-visible {
+.repose-show-episode-row__head .repose-show-episode-row__watch:focus-visible,
+.repose-show-banner__meta-block--hero-watch .repose-show-episode-row__watch:focus-visible {
 	outline: 2px solid rgba(255, 255, 255, 0.45);
 	outline-offset: 1px;
 }
 
-/* Phone / narrow pane: thumbnail + buttons on top row; title/description full width below */
+/* Narrow: thumbnail + watch/dates share one row; title/description full width below */
 @media (max-width: 480px) {
-	.repose-show-episode-row {
-		flex-wrap: wrap;
-		align-items: flex-start;
-	}
-
-	.repose-show-episode-row__thumb-wrap {
-		order: 1;
-		width: 6.25rem;
-	}
-
-	.repose-show-episode-row__actions {
-		order: 2;
-		margin-left: auto;
-	}
-
-	.repose-show-episode-row__body {
-		order: 3;
-		flex: 1 1 100%;
-		min-width: 0;
+	.repose-show-episode-row__hit:not(.repose-show-episode-row__hit--text-only) {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		grid-template-rows: auto auto;
+		gap: 0.5rem 0.65rem;
+		align-items: start;
 		width: 100%;
-		margin-top: 0.15rem;
+	}
+
+	.repose-show-episode-row__hit:not(.repose-show-episode-row__hit--text-only) .repose-show-episode-row__side {
+		display: contents;
+	}
+
+	.repose-show-episode-row__hit:not(.repose-show-episode-row__hit--text-only) .repose-show-episode-row__thumb-wrap {
+		grid-column: 1;
+		grid-row: 1;
+		width: 7.5rem;
+		min-width: 6.5rem;
+	}
+
+	.repose-show-episode-row__hit:not(.repose-show-episode-row__hit--text-only) .repose-show-episode-row__head {
+		grid-column: 2;
+		grid-row: 1;
+		justify-self: end;
+		width: auto;
+		max-width: 100%;
+	}
+
+	.repose-show-episode-row__hit:not(.repose-show-episode-row__hit--text-only) .repose-show-episode-row__body {
+		grid-column: 1 / -1;
+		grid-row: 2;
+		width: 100%;
 	}
 }
 
@@ -2088,6 +2590,13 @@
 	overflow-x: hidden;
 	-webkit-overflow-scrolling: touch;
 	box-sizing: border-box;
+}
+
+/* Mobile: space for Obsidian’s floating bottom toolbar + home indicator */
+@media (max-width: 768px) {
+	.repose-view-body {
+		padding-bottom: max(5rem, calc(env(safe-area-inset-bottom, 0px) + 4rem));
+	}
 }
 
 .repose-root {
@@ -2605,7 +3114,8 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 
 /*
  * Shared “suite shell” UI — loaded after each plugin’s src/plugin.css.
- * Fulcrum + future plugins: use the same variables from tokens.css for icon rows.
+ * Fulcrum + Pulse + Orbit + Repose: same tokens for the top glyph row, collapse,
+ * and collapsed → vertical glyph stack.
  */
 
 /* Generic: optional class for non-Fulcrum plugins */
@@ -2628,18 +3138,45 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 	flex-shrink: 0;
 }
 
-/* Fulcrum ProjectManager — top icon row + collapse */
-.fulcrum-pm__glyph-bar {
+/* —— PM top row: shared sizing (matches Pulse / Fulcrum reference) —— */
+.fulcrum-pm__glyph-bar,
+.pulse-pm__glyph-bar,
+.orbit-pm__glyph-bar,
+.repose-pm__glyph-bar {
 	gap: var(--suite-glyph-bar-gap);
 	padding: var(--suite-glyph-bar-padding-y) var(--suite-glyph-bar-padding-x);
 }
 
-.fulcrum-pm-left-collapsed .fulcrum-pm__glyph-bar {
+.fulcrum-pm-left-collapsed .fulcrum-pm__glyph-bar,
+.pulse-pm-left-collapsed .pulse-pm__glyph-bar,
+.orbit-pm-left-collapsed .orbit-pm__glyph-bar,
+.repose-pm-left-collapsed .repose-pm__glyph-bar {
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
 	gap: 0.35rem;
 	padding: 0.45rem 0.2rem;
 }
 
-.fulcrum-pm__glyph-btn {
+.fulcrum-pm__glyph-spacer,
+.pulse-pm__glyph-spacer,
+.orbit-pm__glyph-spacer,
+.repose-pm__glyph-spacer {
+	flex: 1 1 auto;
+	min-width: 0.2rem;
+}
+
+.fulcrum-pm-left-collapsed .fulcrum-pm__glyph-spacer,
+.pulse-pm-left-collapsed .pulse-pm__glyph-spacer,
+.orbit-pm-left-collapsed .orbit-pm__glyph-spacer,
+.repose-pm-left-collapsed .repose-pm__glyph-spacer {
+	display: none;
+}
+
+.fulcrum-pm__glyph-btn,
+.pulse-pm__glyph-btn,
+.orbit-pm__glyph-btn,
+.repose-pm__glyph-btn {
 	width: var(--suite-glyph-btn-size);
 	height: var(--suite-glyph-btn-size);
 	min-width: var(--suite-glyph-btn-size);
@@ -2647,16 +3184,20 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 	font-size: var(--suite-glyph-collapse-font-size);
 	font-weight: 600;
 	line-height: 1;
+	border-radius: var(--radius-s);
 }
 
-.fulcrum-pm__glyph-btn svg {
+.fulcrum-pm__glyph-btn svg,
+.pulse-pm__glyph-btn svg,
+.orbit-pm__glyph-btn svg,
+.repose-pm__glyph-btn svg {
 	width: var(--suite-glyph-icon-size);
 	height: var(--suite-glyph-icon-size);
 	display: block;
 	flex-shrink: 0;
 }
 
-/* Right sidebar collapse / expand — match glyph row */
+/* Right sidebar collapse / expand — Fulcrum only */
 .fulcrum-pm__sidebar-edge-btn {
 	flex: 0 0 var(--suite-glyph-edge-size);
 	width: var(--suite-glyph-edge-size);

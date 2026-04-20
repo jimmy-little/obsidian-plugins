@@ -99,7 +99,7 @@ export class PulseSidebar {
 				cls: "pulse-sidebar__row-meta",
 			});
 
-			const go = () => this.view.navigate("workout-edit", w.file.path);
+			const go = () => this.view.navigate("workout-edit", w.file.path, true);
 			row.addEventListener("click", go);
 			row.addEventListener("keydown", (e: KeyboardEvent) => {
 				if (e.key === "Enter" || e.key === " ") {
@@ -203,7 +203,7 @@ export class PulseSidebar {
 			meta.createSpan({ text: " · ", cls: "pulse-sidebar__meta-sep" });
 			meta.createSpan({ text: program.schedule.join(", ") });
 
-			const nav = () => this.view.navigate("program", program.file.path);
+			const nav = () => this.view.navigate("program", program.file.path, true);
 			programRow.addEventListener("click", nav);
 			programRow.addEventListener("keydown", (e: KeyboardEvent) => {
 				if (e.key === "Enter" || e.key === " ") {
@@ -229,7 +229,7 @@ export class PulseSidebar {
 				});
 
 				dayRow.addEventListener("click", () => {
-					this.view.navigate("program", program.file.path);
+					this.view.navigate("program", program.file.path, true);
 				});
 			}
 		}
@@ -355,12 +355,12 @@ export class PulseSidebar {
 					}
 
 					row.addEventListener("click", () => {
-						this.view.navigate("exercise", ex.file.path);
+						this.view.navigate("exercise", ex.file.path, true);
 					});
 					row.addEventListener("keydown", (e: KeyboardEvent) => {
 						if (e.key === "Enter" || e.key === " ") {
 							e.preventDefault();
-							this.view.navigate("exercise", ex.file.path);
+							this.view.navigate("exercise", ex.file.path, true);
 						}
 					});
 				}

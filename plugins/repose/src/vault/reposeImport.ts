@@ -1,7 +1,10 @@
-import { normalizePath, type Vault } from "obsidian";
+import { normalizePath, type TFile, type Vault } from "obsidian";
 import { getTMDBEpisodeImage, getTMDBImages, getTraktArtUrls } from "../trakt/client";
 import {
-	applyEpisodeWatchedFromTraktProgress,
+	applyEpisodeWatchFieldsFromTrakt,
+	calendarDateFromLatestWatchedIsos,
+	fetchEpisodeWatchHistoryIsos,
+	fetchMovieWatchHistoryIsos,
 	fetchShowWatchedProgress,
 	fetchWatchedMoviesMap,
 	type ShowWatchedProgress,
@@ -133,11 +136,19 @@ export async function addTraktShowOrMovieToVault(
 	const frontmatter = traktToObsidianFrontmatter(itemData, type, {}, settings.projectWikilink);
 
 	if (type === "movie" && tokenStore && itemData.ids?.trakt != null) {
-		const watchedMovies = await fetchWatchedMoviesMap(tokenStore);
-		const d = watchedMovies?.get(itemData.ids.trakt);
-		if (d) {
-			frontmatter.watchedDate = d;
+		const hist = await fetchMovieWatchHistoryIsos(tokenStore, itemData.ids.trakt);
+		if (hist !== null && hist.length > 0) {
+			frontmatter.watchedDates = [...hist];
+			const cal = calendarDateFromLatestWatchedIsos(hist);
+			if (cal) frontmatter.watchedDate = cal;
 			frontmatter.reposeStatus = "watched";
+		} else {
+			const watchedMovies = await fetchWatchedMoviesMap(tokenStore);
+			const d = watchedMovies?.get(itemData.ids.trakt);
+			if (d) {
+				frontmatter.watchedDate = d;
+				frontmatter.reposeStatus = "watched";
+			}
 		}
 	}
 
@@ -212,12 +223,20 @@ export async function addTraktEpisodeToVault(
 		} else if (tokenStore) {
 			progress = await fetchShowWatchedProgress(tokenStore, showData.ids.trakt);
 		}
-		if (progress) {
-			applyEpisodeWatchedFromTraktProgress(
+		let hist: string[] | null = null;
+		const epTid = episodeData.ids?.trakt;
+		if (tokenStore && typeof epTid === "number" && Number.isFinite(epTid)) {
+			hist = await fetchEpisodeWatchHistoryIsos(tokenStore, epTid);
+		}
+		if (progress != null || hist !== null) {
+			applyEpisodeWatchFieldsFromTrakt(
 				frontmatter,
 				episodeData.season,
 				episodeData.number,
 				progress,
+				hist,
+				null,
+				null,
 			);
 		}
 	}
@@ -273,6 +292,105 @@ export async function addTraktEpisodeToVault(
 	const showSegs = folderSegmentsForType(settings, "show");
 	const relativePath = pathUnderMedia(settings, ...showSegs, readableShowName, filename);
 
+	const md = stringifyNote(frontmatter, content, { banner: imagePaths.banner });
+	await writeMarkdownFile(vault, relativePath, md);
+	return { path: relativePath };
+}
+
+/**
+ * Same as {@link addTraktEpisodeToVault}, but writes the episode note next to an existing bundle note
+ * (`Show/Show.md`) instead of inferring the folder from media settings alone.
+ */
+export async function addTraktEpisodeNextToShowBundle(
+	vault: Vault,
+	settings: ReposeSettings,
+	showFile: TFile,
+	episodeData: TraktEpisode,
+	showData: TraktShowOrMovie,
+	episodeStillUrl: string | null,
+	tokenStore?: TraktSettingsStore,
+	cachedShowProgress?: ShowWatchedProgress | null,
+): Promise<{ path: string }> {
+	const parent = showFile.parent;
+	if (!parent) throw new Error("Show note has no parent folder.");
+
+	const images = episodeStillUrl ? { episodeStill: episodeStillUrl } : null;
+
+	const frontmatter = traktToObsidianFrontmatter(episodeData, "episode", {}, settings.projectWikilink);
+
+	if (showData.ids?.trakt != null && episodeData.season != null && episodeData.number != null) {
+		let progress: ShowWatchedProgress | null = null;
+		if (cachedShowProgress !== undefined) {
+			progress = cachedShowProgress;
+		} else if (tokenStore) {
+			progress = await fetchShowWatchedProgress(tokenStore, showData.ids.trakt);
+		}
+		let hist: string[] | null = null;
+		const epTid = episodeData.ids?.trakt;
+		if (tokenStore && typeof epTid === "number" && Number.isFinite(epTid)) {
+			hist = await fetchEpisodeWatchHistoryIsos(tokenStore, epTid);
+		}
+		if (progress != null || hist != null) {
+			applyEpisodeWatchFieldsFromTrakt(
+				frontmatter,
+				episodeData.season,
+				episodeData.number,
+				progress,
+				hist,
+				null,
+				null,
+			);
+		}
+	}
+
+	if (showData.title) {
+		const readableShowName = readableMediaName(showData.title);
+		frontmatter.showTitle = `[[${readableShowName}]]`;
+	}
+
+	const showTitleForImages = showData.title || "Episode";
+	const imagePaths = await downloadObsidianImages(vault, images, showTitleForImages, {
+		showName: showData.title ?? null,
+		season: episodeData.season,
+		episode: episodeData.number,
+	});
+
+	let content = "";
+	if (episodeData.overview) content += `${episodeData.overview}\n\n`;
+
+	const metadataLines: string[] = [];
+	if (showData.title) metadataLines.push(`**Show:** ${showData.title}`);
+	if (episodeData.season != null && episodeData.number != null) {
+		metadataLines.push(
+			`**Episode:** S${String(episodeData.season).padStart(2, "0")}E${String(episodeData.number).padStart(2, "0")}`,
+		);
+	}
+	const fa = episodeData.firstAired ?? episodeData.first_aired;
+	if (fa) metadataLines.push(`**Air Date:** ${new Date(fa).toLocaleDateString()}`);
+	if (episodeData.runtime != null) metadataLines.push(`**Runtime:** ${episodeData.runtime} minutes`);
+	if (episodeData.rating != null) metadataLines.push(`**Rating:** ${episodeData.rating.toFixed(1)}/10`);
+
+	if (metadataLines.length > 0) content += metadataLines.join("\n") + "\n\n";
+
+	if (episodeData.ids) {
+		const idLines: string[] = [];
+		if (episodeData.ids.imdb) idLines.push(`**IMDB:** ${episodeData.ids.imdb}`);
+		if (episodeData.ids.tmdb != null) idLines.push(`**TMDB:** ${episodeData.ids.tmdb}`);
+		if (episodeData.ids.trakt != null) idLines.push(`**Trakt:** ${episodeData.ids.trakt}`);
+		if (episodeData.ids.tvdb != null) idLines.push(`**TVDB:** ${episodeData.ids.tvdb}`);
+		if (idLines.length > 0) content += idLines.join("\n") + "\n\n";
+	}
+
+	const season = episodeData.season ?? 0;
+	const episode = episodeData.number ?? 0;
+	const episodeTitleText = episodeData.title || `Episode ${episodeData.number}`;
+	const sanitizedEpisodeTitle = episodeTitleText
+		.replace(/[^\w\s]/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+	const filename = `${season}x${String(episode).padStart(2, "0")} ${sanitizedEpisodeTitle}.md`;
+
+	const relativePath = normalizePath(`${parent.path}/${filename}`);
 	const md = stringifyNote(frontmatter, content, { banner: imagePaths.banner });
 	await writeMarkdownFile(vault, relativePath, md);
 	return { path: relativePath };
@@ -354,11 +472,6 @@ export async function addOpenLibraryBookToVault(
 	let content = "";
 	const metaLines = [authorLine, yearLine, isbnLine].filter(Boolean) as string[];
 	if (metaLines.length > 0) content += metaLines.join(" • ") + "\n\n";
-
-	const olKey = frontmatter.openLibraryWorkKey;
-	if (typeof olKey === "string" && olKey.trim()) {
-		content += `**Open Library:** https://openlibrary.org/works/${olKey.trim()}\n\n`;
-	}
 
 	const desc = frontmatter.description;
 	if (typeof desc === "string" && desc.trim()) {

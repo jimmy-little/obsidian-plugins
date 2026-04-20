@@ -4,8 +4,13 @@
 	import type ReposePlugin from "../main";
 	import { resolveListThumbnailFile } from "../media/banner";
 	import { collectMediaMarkdownFiles } from "../media/collectMediaFiles";
+	import { resolveMediaTypeForFile } from "../media/mediaDetect";
 	import { readMediaItem, type MediaItem, type ReposeMediaType } from "../media/mediaModel";
-	import { countShowSeasonsAndEpisodes } from "../media/showEpisodes";
+	import {
+		countShowSeasonsAndEpisodes,
+		personalSerialWatchBadgeLabel,
+		showEpisodeWatchProgress,
+	} from "../media/showEpisodes";
 
 	export let plugin: ReposePlugin;
 	export let selectedPath: string | null;
@@ -43,8 +48,10 @@
 		thumbUrl: string | null;
 		/** Right column: season/episode counts (shows) or short type label. */
 		headRight: string;
-		/** Subline: status / watched, etc. */
-		desc: string;
+		/** TV / podcast: vault watched vs total episodes for bottom bar; null if no episodes. */
+		serialProgress: { watched: number; total: number } | null;
+		/** TV shows only: NOT STARTED / WATCHING / CAUGHT UP from vault episode notes. */
+		serialPersonalBadge: string | null;
 	};
 
 	function shortMediaTypeLabel(mt: ReposeMediaType): string {
@@ -68,17 +75,13 @@
 		return `${s} · ${e}`;
 	}
 
-	function metaLine(it: MediaItem): string {
-		const bits: string[] = [];
-		if (it.status) bits.push(it.status);
-		if (it.watchedDate) bits.push(`watched ${it.watchedDate}`);
-		return bits.join(" · ");
-	}
-
 	function thumbUrlForFile(file: TFile): string | null {
 		const cache = plugin.app.metadataCache.getFileCache(file);
 		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
-		const img = resolveListThumbnailFile(plugin.app, fm, file.path);
+		const mt = resolveMediaTypeForFile(plugin.app, file, plugin.settings);
+		const img = resolveListThumbnailFile(plugin.app, fm, file.path, {
+			bookBundle: mt === "book",
+		});
 		return img ? plugin.app.vault.getResourcePath(img) : null;
 	}
 
@@ -105,18 +108,25 @@
 			}
 
 			let headRight: string;
+			let serialProgress: { watched: number; total: number } | null = null;
+			let serialPersonalBadge: string | null = null;
 			if (item.mediaType === "show" || item.mediaType === "podcast") {
 				headRight = formatShowCounts(countShowSeasonsAndEpisodes(app, file, plugin.settings));
+				const ep = showEpisodeWatchProgress(app, file, plugin.settings);
+				if (ep.total > 0) serialProgress = ep;
+				if (item.mediaType === "show") {
+					serialPersonalBadge = personalSerialWatchBadgeLabel(ep.watched, ep.total, item.status);
+				}
 			} else {
 				headRight = shortMediaTypeLabel(item.mediaType);
 			}
-			const desc = metaLine(item);
 			out.push({
 				file,
 				item,
 				thumbUrl: thumbUrlForFile(file),
 				headRight,
-				desc,
+				serialProgress,
+				serialPersonalBadge,
 			});
 		}
 		return out;
@@ -177,13 +187,21 @@
 	{:else}
 		<ul class="repose-sidebar-media-list">
 			{#each rows as row (row.item.path)}
+				{@const sp = row.serialProgress}
+				{@const progressPct =
+					sp && sp.total > 0 ? Math.round((100 * sp.watched) / sp.total) : 0}
 				<li>
 					<div
 						role="button"
 						tabindex="0"
 						class="repose-ml-row"
+						class:repose-ml-row--serial={!!sp}
 						class:repose-ml-row--active={selectedPath === row.item.path}
-						aria-label={row.item.title}
+						aria-label={sp
+							? `${row.item.title}, ${sp.watched} of ${sp.total} episodes watched in vault${row.serialPersonalBadge ? `, ${row.serialPersonalBadge}` : ""}`
+							: row.serialPersonalBadge
+								? `${row.item.title}, ${row.serialPersonalBadge}`
+								: row.item.title}
 						on:click={() => activateRow(row.item.path)}
 						on:keydown={(e) => onRowKeydown(row.item.path, e)}
 					>
@@ -197,12 +215,22 @@
 						<div class="repose-ml-row__inner">
 							<div class="repose-ml-row__head">
 								<span class="repose-ml-row__name">{row.item.title}</span>
-								<span class="repose-ml-row__area">{row.headRight}</span>
+								<div class="repose-ml-row__meta-col">
+									<span class="repose-ml-row__area">{row.headRight}</span>
+									{#if row.serialPersonalBadge}
+										<span class="repose-badge repose-badge--serial-personal">{row.serialPersonalBadge}</span>
+									{/if}
+								</div>
 							</div>
-							{#if row.desc}
-								<p class="repose-ml-row__desc">{row.desc}</p>
-							{/if}
 						</div>
+						{#if sp}
+							<div class="repose-ml-row__progress-edge" aria-hidden="true">
+								<div
+									class="repose-ml-row__progress-fill"
+									style:width="{progressPct}%"
+								></div>
+							</div>
+						{/if}
 					</div>
 				</li>
 			{/each}
