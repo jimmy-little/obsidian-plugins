@@ -78,7 +78,6 @@ export async function ensureReposeCompanionMarkdownPane(
 	file: TFile,
 ): Promise<void> {
 	const app = plugin.app;
-	plugin.reposeCompanionMarkdownOwnedSplit = true;
 	plugin.reposeCompanionMarkdownPath = file.path;
 
 	let anchor = anchorLeaf;
@@ -92,12 +91,15 @@ export async function ensureReposeCompanionMarkdownPane(
 		plugin.reposeCompanionMarkdownLeaf !== anchor;
 
 	if (Platform.isMobile) {
+		// Mobile tabs are not "owned split panes"; detaching them can close the active tab unexpectedly.
+		plugin.reposeCompanionMarkdownOwnedSplit = false;
 		const leaf = app.workspace.getLeaf("tab");
 		await leaf.openFile(file, { active: true });
 		plugin.reposeCompanionMarkdownLeaf = leaf;
 		scheduleSyncAllMarkdownChrome(plugin);
 		return;
 	}
+	plugin.reposeCompanionMarkdownOwnedSplit = true;
 
 	if (reuse) {
 		await app.workspace.revealLeaf(plugin.reposeCompanionMarkdownLeaf!);
@@ -166,11 +168,30 @@ function syncChromeForMarkdownView(plugin: ReposePlugin, view: MarkdownView): vo
 	/* Class on container so tint + YAML hiding apply to the full leaf (view-content sits here, not on contentEl). */
 	view.containerEl.classList.add(DOC_CLASS);
 
-	let host = view.contentEl.querySelector(":scope > .repose-companion-chrome-host") as HTMLElement | null;
+	/**
+	 * Important: MarkdownView scroll is *inside* CM's `.cm-scroller` (edit) or `.markdown-preview-view` (read).
+	 * If we prepend chrome above that, it becomes a static header. Put it inside the scroll container so it
+	 * scrolls away with the note content (Fulcrum-style behavior).
+	 */
+	const scroller =
+		(view.contentEl.querySelector(".markdown-source-view .cm-scroller") as HTMLElement | null) ??
+		(view.contentEl.querySelector(".markdown-reading-view") as HTMLElement | null) ??
+		(view.contentEl.querySelector(".markdown-preview-view") as HTMLElement | null) ??
+		view.contentEl;
+
+	let host = view.contentEl.querySelector(".repose-companion-chrome-host") as HTMLElement | null;
 	if (!host) {
 		host = document.createElement("div");
 		host.className = "repose-companion-chrome-host";
-		view.contentEl.prepend(host);
+	}
+	// Ensure the host lives in the active scroll container (mode switches move the scroller node).
+	if (host.parentElement !== scroller) {
+		try {
+			host.remove();
+		} catch {
+			/* ignore */
+		}
+		scroller.prepend(host);
 	}
 
 	const existing = chromeByView.get(view);
