@@ -1,25 +1,20 @@
 {
-	"name": "obsidian-plugin-pulse",
-	"version": "0.2.0",
-	"description": "Workout tracker and health data importer for Obsidian (obsidian-suite monorepo)",
+	"name": "obsidian-plugin-chisel",
+	"version": "0.1.0",
+	"description": "Credit card payoff calculator (obsidian-suite monorepo)",
 	"main": "main.js",
 	"scripts": {
 		"prebuild": "node ../../tooling/merge-css.mjs",
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -p tsconfig.json --noEmit && node esbuild.config.mjs production",
 		"build:install": "npm run build && node ../../tooling/install-to-vault.mjs .",
-		"release": "node ../../tooling/release-plugin.mjs plugins/pulse"
+		"release": "node ../../tooling/release-plugin.mjs plugins/chisel"
 	},
-	"keywords": [
-		"obsidian",
-		"obsidian-plugin"
-	],
+	"keywords": ["obsidian", "obsidian-plugin"],
 	"author": "Jimmy Little",
 	"license": "MIT",
 	"dependencies": {
-		"@obsidian-suite/core": "*",
-		"@obsidian-suite/heatmap": "*",
-		"jszip": "^3.10.1"
+		"@obsidian-suite/core": "*"
 	},
 	"devDependencies": {
 		"@types/node": "^16.18.0",

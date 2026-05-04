@@ -1,14 +1,14 @@
-import { Component, MarkdownRenderer, Notice, setIcon } from "obsidian";
+import { setIcon, TFile, normalizePath } from "obsidian";
+import { openNotePropertiesModal } from "@obsidian-suite/core";
 import type PulsePlugin from "../main";
-import type { PulseView, PulseViewMode } from "./PulseView";
-import { TodayTab } from "../workout/TodayTab";
+import type { PulseView } from "./PulseView";
 import { HistoryTab } from "../workout/HistoryTab";
-import { ExercisesTab } from "../workout/ExercisesTab";
 import { StatsTab } from "../workout/StatsTab";
 import { BodyCompTab } from "../workout/BodyCompTab";
-import { WorkoutBuilder } from "./WorkoutBuilder";
-import { ProgramBuilder } from "./ProgramBuilder";
-import type { ExerciseNote, ExerciseLogEntry, SetEntry, SessionNote, ProgramNote, SessionExercise } from "../workout/types";
+import { parseFrontmatter } from "../import/parsers";
+import { durationSecondsFromWorkoutFrontmatter } from "../import/workoutDedup";
+import { renderSessionWorkoutBody } from "./renderSessionWorkoutBody";
+import type { ExerciseNote, ExerciseLogEntry } from "../workout/types";
 import { isStandaloneSession } from "../workout/types";
 import { renderProgressChart } from "../workout/charts";
 import {
@@ -21,7 +21,6 @@ export class PulseMainContent {
 	private view: PulseView;
 	private container: HTMLElement | null = null;
 
-	private todayTab: TodayTab | null = null;
 	private historyTab: HistoryTab | null = null;
 	private statsTab: StatsTab | null = null;
 	private bodyCompTab: BodyCompTab | null = null;
@@ -38,7 +37,7 @@ export class PulseMainContent {
 
 		switch (this.view.mode) {
 			case "today":
-				await this.renderToday(container);
+				await this.renderHome(container);
 				break;
 			case "history":
 				await this.renderHistory(container);
@@ -53,40 +52,46 @@ export class PulseMainContent {
 				await this.renderExercise(container);
 				break;
 			case "session":
-				await this.renderSession(container);
-				break;
 			case "workout-edit":
-				await this.renderWorkoutEdit(container);
+				await this.renderSession(container);
 				break;
 			case "program":
 				await this.renderProgram(container);
 				break;
-			case "new-exercise":
-				await this.renderNewExercise(container);
-				break;
-			case "workout-builder":
-				await this.renderWorkoutBuilder(container);
-				break;
-			case "program-builder":
-				await this.renderProgramBuilder(container);
-				break;
-			case "edit-program":
-				await this.renderEditProgram(container);
-				break;
 			default:
-				await this.renderToday(container);
+				await this.renderHistory(container);
 		}
 	}
 
-	// ── Today ──
+	// ── Home (import-focused; legacy URI screen=today) ──
 
-	private async renderToday(container: HTMLElement): Promise<void> {
+	private async renderHome(container: HTMLElement): Promise<void> {
 		const header = container.createDiv({ cls: "pulse-pm__main-head" });
-		header.createEl("h2", { text: "Today", cls: "pulse-pm__main-title" });
+		header.createEl("h2", { text: "Pulse", cls: "pulse-pm__main-title" });
 
-		const content = container.createDiv({ cls: "pulse-pm__main-body" });
-		this.todayTab = new TodayTab(this.plugin, {});
-		this.todayTab.render(content);
+		const body = container.createDiv({ cls: "pulse-pm__main-body" });
+		body.createEl("p", {
+			text: "Log workouts in your preferred app (with Apple Watch if you like). Pulse imports exports into this vault and shows them in History and Stats.",
+		});
+		const actions = body.createDiv({ cls: "pulse-pm__home-actions" });
+		const scanBtn = actions.createEl("button", {
+			text: "Scan for Health & workout imports",
+			cls: "pulse-workout-btn pulse-workout-btn-primary",
+		});
+		scanBtn.addEventListener("click", () => {
+			void this.plugin.importManager.scanAndImport();
+		});
+		const links = body.createDiv({ cls: "pulse-pm__home-links" });
+		const h = links.createEl("button", {
+			text: "Open History",
+			cls: "pulse-workout-btn pulse-workout-btn-link",
+		});
+		h.addEventListener("click", () => this.view.navigate("history"));
+		const s = links.createEl("button", {
+			text: "Open Stats",
+			cls: "pulse-workout-btn pulse-workout-btn-link",
+		});
+		s.addEventListener("click", () => this.view.navigate("stats"));
 	}
 
 	// ── History ──
@@ -139,15 +144,8 @@ export class PulseMainContent {
 		const unit = fm.unit;
 		const entries = exercise.log;
 
-		// ── Header with inline edit toggle ──
 		const header = container.createDiv({ cls: "pulse-pm__main-head" });
 		header.createEl("h2", { text: fm.name, cls: "pulse-pm__main-title" });
-
-		const editBtn = header.createEl("button", {
-			cls: "pulse-pm__glyph-btn clickable-icon",
-		});
-		setIcon(editBtn, "pencil");
-		editBtn.setAttribute("aria-label", "Edit exercise");
 
 		const meta = header.createDiv({ cls: "pulse-pm__main-meta" });
 		if (fm.movement) meta.createSpan({ text: fm.movement, cls: "pulse-pm__tag" });
@@ -161,18 +159,6 @@ export class PulseMainContent {
 		}
 
 		const body = container.createDiv({ cls: "pulse-pm__main-body" });
-
-		// ── Edit form (hidden by default) ──
-		const editSection = body.createDiv({ cls: "pulse-ex__edit-form" });
-		editSection.style.display = "none";
-		this.renderExerciseEditForm(editSection, exercise, path);
-
-		let editing = false;
-		editBtn.addEventListener("click", () => {
-			editing = !editing;
-			editSection.style.display = editing ? "flex" : "none";
-			editBtn.toggleClass("pulse-pm__glyph-btn--active", editing);
-		});
 
 		// ── Stat cards ──
 		const statsRow = body.createDiv({ cls: "pulse-log-stats" });
@@ -234,85 +220,6 @@ export class PulseMainContent {
 		}
 	}
 
-	private renderExerciseEditForm(container: HTMLElement, exercise: ExerciseNote, path: string): void {
-		container.addClass("pulse-ex__edit-form");
-
-		const MOVEMENTS = ["Push", "Pull", "Legs", "Core", "Cardio", "Olympic", "Isolation", "Compound", "Stretch", ""];
-		const BODY_PARTS = ["Chest", "Back", "Shoulders", "Arms", "Biceps", "Triceps", "Legs", "Glutes", "Core", "Full body", "Cardio", ""];
-		const EQUIPMENT = ["Barbell", "Dumbbell", "Bodyweight", "Cable", "Machine", "Kettlebell", "Band", "Smith Machine", ""];
-
-		// Name
-		const nameRow = container.createDiv({ cls: "pulse-ex__edit-row" });
-		nameRow.createEl("label", { text: "Name", cls: "pulse-builder__control-label" });
-		const nameInput = nameRow.createEl("input", {
-			type: "text",
-			cls: "pulse-builder__inline-input pulse-ex__edit-input",
-			value: exercise.frontmatter.name,
-		});
-
-		// Movement (dropdown with custom option)
-		const movRow = container.createDiv({ cls: "pulse-ex__edit-row" });
-		movRow.createEl("label", { text: "Movement", cls: "pulse-builder__control-label" });
-		const movSelect = movRow.createEl("select", { cls: "pulse-ex__edit-select" });
-		const currentMov = exercise.frontmatter.movement;
-		const movOptions = MOVEMENTS.includes(currentMov) ? MOVEMENTS : [currentMov, ...MOVEMENTS];
-		for (const m of movOptions) {
-			movSelect.createEl("option", { text: m || "(none)", value: m });
-		}
-		movSelect.value = currentMov;
-
-		// Body part
-		const bpRow = container.createDiv({ cls: "pulse-ex__edit-row" });
-		bpRow.createEl("label", { text: "Body part", cls: "pulse-builder__control-label" });
-		const bpSelect = bpRow.createEl("select", { cls: "pulse-ex__edit-select" });
-		const currentBp = exercise.frontmatter.body_part ?? "";
-		const bpOptions = BODY_PARTS.includes(currentBp) ? BODY_PARTS : [currentBp, ...BODY_PARTS];
-		for (const b of bpOptions) {
-			bpSelect.createEl("option", { text: b || "(none)", value: b });
-		}
-		bpSelect.value = currentBp;
-
-		// Equipment (dropdown with custom option)
-		const eqRow = container.createDiv({ cls: "pulse-ex__edit-row" });
-		eqRow.createEl("label", { text: "Equipment", cls: "pulse-builder__control-label" });
-		const eqSelect = eqRow.createEl("select", { cls: "pulse-ex__edit-select" });
-		const currentEq = exercise.frontmatter.equipment;
-		const eqOptions = EQUIPMENT.includes(currentEq) ? EQUIPMENT : [currentEq, ...EQUIPMENT];
-		for (const e of eqOptions) {
-			eqSelect.createEl("option", { text: e || "(none)", value: e });
-		}
-		eqSelect.value = currentEq;
-
-		// Tags
-		const tagRow = container.createDiv({ cls: "pulse-ex__edit-row" });
-		tagRow.createEl("label", { text: "Tags", cls: "pulse-builder__control-label" });
-		const tagInput = tagRow.createEl("input", {
-			type: "text",
-			cls: "pulse-builder__inline-input pulse-ex__edit-input",
-			value: (exercise.frontmatter.tags ?? []).join(", "),
-			placeholder: "comma-separated",
-		});
-
-		// Save button
-		const actions = container.createDiv({ cls: "pulse-ex__edit-actions" });
-		const saveBtn = actions.createEl("button", {
-			text: "Save Changes",
-			cls: "pulse-workout-btn pulse-workout-btn-primary pulse-workout-btn-small",
-		});
-		saveBtn.addEventListener("click", async () => {
-			const dm = this.plugin.workoutDataManager;
-			await dm.updateExercise(path, {
-				name: nameInput.value.trim() || exercise.frontmatter.name,
-				movement: movSelect.value,
-				body_part: bpSelect.value,
-				equipment: eqSelect.value,
-				tags: tagInput.value.split(",").map(t => t.trim()).filter(Boolean),
-			});
-			new Notice("Exercise updated");
-			this.view.navigate("exercise", path);
-		});
-	}
-
 	private renderExerciseLogEntry(parent: HTMLElement, entry: ExerciseLogEntry, unit: string, exercisePath: string): void {
 		const card = parent.createDiv({ cls: "pulse-ex__log-card" });
 
@@ -367,9 +274,9 @@ export class PulseMainContent {
 			const link = linkRow.createEl("span", { text: "View full session →", cls: "pulse-pm__link" });
 			link.addEventListener("click", async (e) => {
 				e.stopPropagation();
-				const sess = await this.plugin.workoutDataManager.getSession(entry.sessionPath!);
+				const sess = await this.plugin.workoutDataManager.getSessionForDisplay(entry.sessionPath!);
 				if (sess && isStandaloneSession(sess)) {
-					this.view.navigate("workout-edit", entry.sessionPath);
+					this.view.navigate("session", entry.sessionPath);
 				} else {
 					this.view.navigate("session", entry.sessionPath);
 				}
@@ -379,6 +286,19 @@ export class PulseMainContent {
 
 	// ── Session detail ──
 
+	private resolveWorkoutBannerSrc(bannerRaw: unknown): string | null {
+		const s = String(bannerRaw ?? "").trim();
+		if (!s) return null;
+		const m = s.match(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/);
+		if (!m) return null;
+		const inner = normalizePath(m[1]!.trim());
+		const f = this.plugin.app.vault.getAbstractFileByPath(inner);
+		if (f instanceof TFile) {
+			return this.plugin.app.vault.getResourcePath(f);
+		}
+		return null;
+	}
+
 	private async renderSession(container: HTMLElement): Promise<void> {
 		const path = this.view.activePath;
 		if (!path) {
@@ -387,317 +307,74 @@ export class PulseMainContent {
 		}
 
 		const dm = this.plugin.workoutDataManager;
-		const session = await dm.getSession(path);
+		const session = await dm.getSessionForDisplay(path);
 		if (!session) {
-			container.createEl("p", { text: "Session not found.", cls: "pulse-workout-muted" });
+			container.createEl("p", { text: "Session or workout note not found.", cls: "pulse-workout-muted" });
 			return;
+		}
+
+		const raw = await this.plugin.app.vault.read(session.file);
+		const { frontmatter: rawFm } = parseFrontmatter(raw);
+		const bannerSrc = this.resolveWorkoutBannerSrc(rawFm.banner);
+		if (bannerSrc) {
+			const wrap = container.createDiv({
+				cls: "pulse-session-banner pulse-session-banner--has-image",
+			});
+			wrap.createEl("img", {
+				cls: "pulse-session-banner__img",
+				attr: { src: bannerSrc, alt: "" },
+			});
+			wrap.createDiv({ cls: "pulse-session-banner__scrim" });
+			const actions = wrap.createDiv({ cls: "pulse-session-banner__actions" });
+			const row = actions.createDiv({ cls: "pulse-session-banner-btn-row" });
+			const mkBannerBtn = (icon: string, label: string, onClick: () => void) => {
+				const b = row.createEl("button", {
+					type: "button",
+					cls: "pulse-session-banner-btn pulse-session-banner-btn--icon-only",
+					attr: { "aria-label": label, title: label },
+				});
+				const iconEl = b.createSpan({ cls: "pulse-session-banner-btn__icon" });
+				setIcon(iconEl, icon);
+				b.addEventListener("click", onClick);
+			};
+			mkBannerBtn("file-input", "Open note", () => {
+				void this.plugin.app.workspace.getLeaf("tab").openFile(session.file);
+			});
+			mkBannerBtn("file-json", "Edit properties", () => {
+				openNotePropertiesModal(this.plugin.app, session.file, { displayTitleField: "name" });
+			});
 		}
 
 		const dayName = session.frontmatter.programDay ?? "Workout";
 		const header = container.createDiv({ cls: "pulse-pm__main-head" });
+		const title =
+			this.view.mode === "workout-edit"
+				? `${session.frontmatter.date} — ${dayName} (read-only)`
+				: `${session.frontmatter.date} — ${dayName}`;
 		header.createEl("h2", {
-			text: `${session.frontmatter.date} — ${dayName}`,
+			text: title,
 			cls: "pulse-pm__main-title",
 		});
 
 		const meta = header.createDiv({ cls: "pulse-pm__main-meta" });
-		if (session.frontmatter.duration) {
+		const durSec = durationSecondsFromWorkoutFrontmatter(rawFm as Record<string, unknown>);
+		if (durSec > 0) {
+			meta.createSpan({ text: `${Math.max(1, Math.round(durSec / 60))} min`, cls: "pulse-pm__tag" });
+		} else if (session.frontmatter.duration != null) {
 			meta.createSpan({ text: `${session.frontmatter.duration} min`, cls: "pulse-pm__tag" });
 		}
 		if (session.frontmatter.program) {
 			meta.createSpan({ text: session.frontmatter.program, cls: "pulse-pm__tag" });
 		}
+		if (session.frontmatter.startTime) {
+			meta.createSpan({ text: session.frontmatter.startTime, cls: "pulse-pm__tag" });
+		}
+		if (session.frontmatter.importedActivityType) {
+			meta.createSpan({ text: session.frontmatter.importedActivityType, cls: "pulse-pm__tag" });
+		}
 
 		const body = container.createDiv({ cls: "pulse-pm__main-body" });
-
-		if (session.session.exercises.length === 0) {
-			body.createEl("p", { text: "No exercises recorded.", cls: "pulse-workout-muted" });
-			return;
-		}
-
-		const mdComp = new Component();
-		this.plugin.addChild(mdComp);
-
-		for (const exercise of session.session.exercises) {
-			const exSection = body.createDiv({ cls: "pulse-pm__exercise-block" });
-
-			const exHeader = exSection.createDiv({ cls: "pulse-pm__exercise-block-head" });
-			const titleEl = exHeader.createEl("h4", { cls: "pulse-pm__exercise-block-title" });
-			const wikiPath = dm.resolveExerciseVaultPath(exercise.exercisePath).replace(/\.md$/i, "");
-			await MarkdownRenderer.render(this.plugin.app, `[[${wikiPath}]]`, titleEl, path, mdComp);
-
-			const table = exSection.createEl("table", { cls: "pulse-pm__table" });
-			const thead = table.createEl("thead");
-			const hRow = thead.createEl("tr");
-			["Set", "Weight", "Reps", "Note"].forEach(h => hRow.createEl("th", { text: h }));
-
-			const tbody = table.createEl("tbody");
-			for (const set of exercise.sets) {
-				const row = tbody.createEl("tr");
-				row.createEl("td", { text: String(set.set) });
-				row.createEl("td", {
-					text: set.weight != null ? `${set.weight} ${this.plugin.settings.weightUnit}` : "—",
-				});
-				row.createEl("td", { text: set.reps != null ? String(set.reps) : "—" });
-				row.createEl("td", { text: set.note ?? "" });
-			}
-		}
-	}
-
-	// ── Workout edit (standalone sessions) ──
-
-	private async renderWorkoutEdit(container: HTMLElement): Promise<void> {
-		const path = this.view.activePath;
-		if (!path) {
-			container.createEl("p", { text: "No workout selected.", cls: "pulse-workout-muted" });
-			return;
-		}
-
-		const dm = this.plugin.workoutDataManager;
-		const session = await dm.getSession(path);
-		if (!session) {
-			container.createEl("p", { text: "Workout not found.", cls: "pulse-workout-muted" });
-			return;
-		}
-
-		const unit = this.plugin.settings.weightUnit;
-		const dayName = session.frontmatter.programDay ?? "Workout";
-
-		const header = container.createDiv({ cls: "pulse-pm__main-head pulse-pm__main-head--split" });
-		const headRow = header.createDiv({ cls: "pulse-pm__main-title-row" });
-		headRow.createEl("h2", {
-			text: `Edit — ${session.frontmatter.date} — ${dayName}`,
-			cls: "pulse-pm__main-title",
-		});
-		if (isStandaloneSession(session)) {
-			const delBtn = headRow.createEl("button", {
-				cls: "pulse-pm__glyph-btn clickable-icon",
-				attr: { type: "button", "aria-label": "Delete workout" },
-			});
-			setIcon(delBtn, "trash-2");
-			delBtn.addEventListener("click", async () => {
-				if (
-					!window.confirm(
-						"Delete this workout? The note will be moved to Trash.",
-					)
-				) {
-					return;
-				}
-				await dm.deleteSession(path);
-				new Notice("Workout deleted");
-				this.view.navigate("today");
-			});
-		}
-
-		const body = container.createDiv({ cls: "pulse-pm__main-body pulse-pm__workout-edit" });
-
-		const fmRow = body.createDiv({ cls: "pulse-pm__workout-edit-fm" });
-		const dateField = fmRow.createDiv({ cls: "pulse-pm__workout-edit-field" });
-		dateField.createEl("label", {
-			cls: "pulse-builder__control-label",
-			text: "Date",
-			attr: { for: "pulse-workout-edit-date" },
-		});
-		const dateInput = dateField.createEl("input", {
-			type: "text",
-			cls: "pulse-builder__inline-input",
-			attr: { id: "pulse-workout-edit-date" },
-			value: session.frontmatter.date,
-		});
-
-		const durField = fmRow.createDiv({ cls: "pulse-pm__workout-edit-field" });
-		durField.createEl("label", {
-			cls: "pulse-builder__control-label",
-			text: "Duration (min)",
-			attr: { for: "pulse-workout-edit-dur" },
-		});
-		const durInput = durField.createEl("input", {
-			type: "text",
-			cls: "pulse-builder__inline-input",
-			attr: { id: "pulse-workout-edit-dur" },
-			value: session.frontmatter.duration != null ? String(session.frontmatter.duration) : "",
-			placeholder: "optional",
-		});
-
-		const bwField = fmRow.createDiv({ cls: "pulse-pm__workout-edit-field" });
-		bwField.createEl("label", {
-			cls: "pulse-builder__control-label",
-			text: "Bodyweight",
-			attr: { for: "pulse-workout-edit-bw" },
-		});
-		const bwInput = bwField.createEl("input", {
-			type: "text",
-			cls: "pulse-builder__inline-input",
-			attr: { id: "pulse-workout-edit-bw" },
-			value: session.frontmatter.bodyweight != null ? String(session.frontmatter.bodyweight) : "",
-			placeholder: "optional",
-		});
-
-		const notesWrap = body.createDiv({ cls: "pulse-pm__workout-edit-notes" });
-		notesWrap.createEl("label", { cls: "pulse-builder__control-label", text: "Notes", attr: { for: "pulse-workout-edit-notes" } });
-		const notesInput = notesWrap.createEl("textarea", {
-			cls: "pulse-builder__inline-input pulse-pm__workout-edit-notes-area",
-			attr: { id: "pulse-workout-edit-notes", rows: "3" },
-		});
-		notesInput.value = session.frontmatter.notes ?? "";
-
-		const exercisesHost = body.createDiv({ cls: "pulse-pm__workout-edit-ex-host" });
-
-		type SetFieldInputs = {
-			weight: HTMLInputElement;
-			reps: HTMLInputElement;
-			duration: HTMLInputElement;
-			distance: HTMLInputElement;
-			note: HTMLInputElement;
-		};
-		const draftExercises: SessionExercise[] = session.session.exercises.map(ex => ({
-			exercisePath: ex.exercisePath,
-			order: ex.order,
-			sets: ex.sets.map(s => ({ ...s })),
-		}));
-		const collectSetInputs: SetFieldInputs[][] = [];
-
-		const parseOptFloat = (s: string): number | undefined => {
-			const t = s.trim();
-			if (t === "") return undefined;
-			const n = parseFloat(t);
-			return Number.isFinite(n) ? n : undefined;
-		};
-		const parseOptInt = (s: string): number | undefined => {
-			const t = s.trim();
-			if (t === "") return undefined;
-			const n = parseInt(t, 10);
-			return Number.isFinite(n) ? n : undefined;
-		};
-
-		const renderExerciseBlocks = (): void => {
-			exercisesHost.empty();
-			collectSetInputs.length = 0;
-
-			for (let ei = 0; ei < draftExercises.length; ei++) {
-				const exercise = draftExercises[ei];
-				const exSection = exercisesHost.createDiv({ cls: "pulse-pm__exercise-block pulse-pm__workout-edit-ex" });
-				const name = exercise.exercisePath.split("/").pop()?.replace(".md", "") ?? exercise.exercisePath;
-
-				const exHeader = exSection.createDiv({ cls: "pulse-pm__exercise-block-head pulse-pm__exercise-block-head--row" });
-				const title = exHeader.createEl("h4", { text: name });
-				title.style.cursor = "pointer";
-				title.addEventListener("click", () => {
-					this.view.navigate("exercise", dm.resolveExerciseVaultPath(exercise.exercisePath));
-				});
-
-				const rmEx = exHeader.createEl("button", {
-					text: "Remove exercise",
-					cls: "pulse-workout-btn pulse-workout-btn-link pulse-workout-btn-small",
-					attr: { type: "button" },
-				});
-				rmEx.addEventListener("click", () => {
-					draftExercises.splice(ei, 1);
-					renderExerciseBlocks();
-				});
-
-				const table = exSection.createEl("table", { cls: "pulse-pm__table" });
-				const thead = table.createEl("thead");
-				const hRow = thead.createEl("tr");
-				for (const h of ["Set", `Weight (${unit})`, "Reps", "Duration (s)", "Distance", "Note", ""]) {
-					hRow.createEl("th", { text: h });
-				}
-
-				const tbody = table.createEl("tbody");
-				const rowInputs: SetFieldInputs[] = [];
-				for (let si = 0; si < exercise.sets.length; si++) {
-					const set = exercise.sets[si];
-					const row = tbody.createEl("tr");
-					row.createEl("td", { text: String(si + 1) });
-					const wIn = row.createEl("td").createEl("input", {
-						type: "text",
-						cls: "pulse-builder__inline-input",
-						value: set.weight != null ? String(set.weight) : "",
-					});
-					const rIn = row.createEl("td").createEl("input", {
-						type: "text",
-						cls: "pulse-builder__inline-input",
-						value: set.reps != null ? String(set.reps) : "",
-					});
-					const dIn = row.createEl("td").createEl("input", {
-						type: "text",
-						cls: "pulse-builder__inline-input",
-						value: set.duration != null ? String(set.duration) : "",
-					});
-					const distIn = row.createEl("td").createEl("input", {
-						type: "text",
-						cls: "pulse-builder__inline-input",
-						value: set.distance != null ? String(set.distance) : "",
-					});
-					const nIn = row.createEl("td").createEl("input", {
-						type: "text",
-						cls: "pulse-builder__inline-input",
-						value: set.note ?? "",
-					});
-					const actCell = row.createEl("td");
-					if (exercise.sets.length > 1) {
-						const rmSet = actCell.createEl("button", {
-							text: "Remove",
-							cls: "pulse-workout-btn pulse-workout-btn-link pulse-workout-btn-small",
-							attr: { type: "button" },
-						});
-						rmSet.addEventListener("click", () => {
-							exercise.sets.splice(si, 1);
-							exercise.sets.forEach((s, i) => { s.set = i + 1; });
-							renderExerciseBlocks();
-						});
-					}
-					rowInputs.push({ weight: wIn, reps: rIn, duration: dIn, distance: distIn, note: nIn });
-				}
-				collectSetInputs.push(rowInputs);
-			}
-		};
-
-		renderExerciseBlocks();
-
-		const actions = body.createDiv({ cls: "pulse-pm__workout-edit-actions" });
-		const saveBtn = actions.createEl("button", {
-			text: "Save workout",
-			cls: "pulse-workout-btn pulse-workout-btn-primary pulse-workout-btn-small",
-		});
-		saveBtn.addEventListener("click", async () => {
-			const dateStr = dateInput.value.trim() || session.frontmatter.date;
-			const durStr = durInput.value.trim();
-			const duration = durStr === "" ? undefined : parseOptFloat(durStr);
-			const bwStr = bwInput.value.trim();
-			const bodyweight = bwStr === "" ? undefined : parseOptFloat(bwStr);
-			const notes = notesInput.value.trim() || undefined;
-
-			const exercises: SessionExercise[] = draftExercises.map((ex, ei) => ({
-				exercisePath: ex.exercisePath,
-				order: ei + 1,
-				sets: collectSetInputs[ei].map((inputs, si) => ({
-					set: si + 1,
-					weight: parseOptFloat(inputs.weight.value),
-					reps: parseOptInt(inputs.reps.value),
-					duration: parseOptInt(inputs.duration.value),
-					distance: parseOptFloat(inputs.distance.value),
-					note: inputs.note.value.trim() || undefined,
-				})),
-			}));
-
-			const updated: SessionNote = {
-				file: session.file,
-				frontmatter: {
-					...session.frontmatter,
-					date: dateStr,
-					duration,
-					bodyweight,
-					notes,
-				},
-				session: { exercises },
-				...(session.bodySuffix ? { bodySuffix: session.bodySuffix } : {}),
-			};
-
-			await dm.saveSession(path, updated);
-			new Notice("Workout saved");
-			this.view.navigate("workout-edit", path);
-		});
+		await renderSessionWorkoutBody(this.plugin, body, session, path);
 	}
 
 	// ── Program detail ──
@@ -719,12 +396,6 @@ export class PulseMainContent {
 
 		const header = container.createDiv({ cls: "pulse-pm__main-head" });
 		header.createEl("h2", { text: program.name, cls: "pulse-pm__main-title" });
-
-		const editBtn = header.createEl("button", {
-			text: "Edit Program",
-			cls: "pulse-workout-btn pulse-workout-btn-secondary pulse-workout-btn-small",
-		});
-		editBtn.addEventListener("click", () => this.view.navigate("edit-program", path));
 
 		const meta = container.createDiv({ cls: "pulse-pm__main-meta" });
 		meta.createSpan({
@@ -765,60 +436,7 @@ export class PulseMainContent {
 		}
 	}
 
-	// ── New exercise form ──
-
-	private async renderNewExercise(container: HTMLElement): Promise<void> {
-		const header = container.createDiv({ cls: "pulse-pm__main-head" });
-		header.createEl("h2", { text: "New Exercise", cls: "pulse-pm__main-title" });
-
-		const body = container.createDiv({ cls: "pulse-pm__main-body" });
-		const exercisesTab = new ExercisesTab(this.plugin);
-		exercisesTab.renderNewExerciseForm(body, () => {
-			this.view.navigate("today");
-		});
-	}
-
-	// ── Workout Builder ──
-
-	private async renderWorkoutBuilder(container: HTMLElement): Promise<void> {
-		const header = container.createDiv({ cls: "pulse-pm__main-head" });
-		header.createEl("h2", { text: "Build Workout", cls: "pulse-pm__main-title" });
-
-		const body = container.createDiv({ cls: "pulse-pm__main-body" });
-		const builder = new WorkoutBuilder(this.plugin, this.view);
-		await builder.render(body);
-	}
-
-	// ── Program Builder ──
-
-	private async renderProgramBuilder(container: HTMLElement): Promise<void> {
-		const header = container.createDiv({ cls: "pulse-pm__main-head" });
-		header.createEl("h2", { text: "New Program", cls: "pulse-pm__main-title" });
-
-		const body = container.createDiv({ cls: "pulse-pm__main-body" });
-		const builder = new ProgramBuilder(this.plugin, this.view);
-		await builder.render(body);
-	}
-
-	// ── Edit Program ──
-
-	private async renderEditProgram(container: HTMLElement): Promise<void> {
-		const path = this.view.activePath;
-		if (!path) {
-			container.createEl("p", { text: "No program selected.", cls: "pulse-workout-muted" });
-			return;
-		}
-
-		const header = container.createDiv({ cls: "pulse-pm__main-head" });
-		header.createEl("h2", { text: "Edit Program", cls: "pulse-pm__main-title" });
-
-		const body = container.createDiv({ cls: "pulse-pm__main-body" });
-		const builder = new ProgramBuilder(this.plugin, this.view);
-		await builder.render(body, path);
-	}
-
 	destroy(): void {
-		this.todayTab?.destroy();
 		this.historyTab?.destroy();
 		this.statsTab?.destroy();
 		this.bodyCompTab?.destroy();

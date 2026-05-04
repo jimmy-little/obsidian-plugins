@@ -5,10 +5,20 @@ import {
 	parseAutoExportJson, isAutoExportJson, parseFITINDEXCsv,
 	isFITINDEXCsvFileName, isRENPHOCsvFileName, isHealthAutoExportWorkoutsCsv,
 	isHealthAutoExportDailyCsv, parseHealthAutoExportDailyCsv,
-	parseHealthAutoExportWorkoutsCsv, parseFrontmatter, stringifyFrontmatter,
+	parseHealthAutoExportWorkoutsCsv, parseGravlWorkoutsCsv, isGravlWorkoutsCsv, isFitbodWorkoutsCsv,
+	type PulseImportSetRow,
+	parseFrontmatter, stringifyFrontmatter,
 	frontmatterWithoutBlanks, getStatsNotePath, workoutIdFromWorkout,
 	parseCsvLine, toCamelCase, parseHeartRateExportFilename,
 } from "./parsers";
+import {
+	computePulseDedupKey,
+	dedupKeyFromFrontmatter,
+	inferWorkoutKindFromName,
+	mergeWorkoutImportBodies,
+	mergeWorkoutImportFrontmatter,
+	type WorkoutKind,
+} from "./workoutDedup";
 import {
 	AUTOEXPORT_METRIC_TO_FRONTMATTER,
 	WORKOUT_TYPE_TO_ICON,
@@ -18,12 +28,15 @@ import {
 import type { ImportedWorkoutData, RoutePoint } from "./types";
 import type { HealthAutoExportDailyRow } from "./parsers";
 import type { WorkoutDataManager } from "../workout/WorkoutDataManager";
+import type { SessionData, SessionExercise, ExerciseLogEntry } from "../workout/types";
 
 const DEFAULT_STATS_PATH_TEMPLATE = "60 Logs/{year}/Stats/{month}/{date}.md";
 
 export class ImportManager {
 	/** Maps `workoutId` frontmatter → note file (rebuilt when null). */
 	private workoutIdIndex: Map<string, TFile> | null = null;
+	/** Maps `pulseDedupKey` → note file for cross-source merge. */
+	private dedupKeyIndex: Map<string, TFile> | null = null;
 	/** Workout IDs already written in this import run (skips duplicate CSV rows). */
 	private currentImportWorkoutIds = new Set<string>();
 
@@ -37,25 +50,44 @@ export class ImportManager {
 
 	private clearImportCaches(): void {
 		this.workoutIdIndex = null;
+		this.dedupKeyIndex = null;
 		this.currentImportWorkoutIds.clear();
 	}
 
+	private workoutImportFileSortKey(f: TFile): number {
+		const n = f.name.toLowerCase();
+		if ((n.includes("gravl") || n.includes("fitbod")) && n.endsWith(".csv")) return 0;
+		if (n.endsWith(".json")) return 1;
+		if (n.startsWith("workouts") && n.endsWith(".csv")) return 2;
+		return 3;
+	}
+
 	private async ensureWorkoutIdIndex(): Promise<void> {
-		if (this.workoutIdIndex) return;
-		const map = new Map<string, TFile>();
+		if (this.workoutIdIndex && this.dedupKeyIndex) return;
+		const widMap = new Map<string, TFile>();
+		const dedupMap = new Map<string, TFile>();
 		for (const f of this.vault.getMarkdownFiles()) {
 			try {
 				const c = await this.vault.read(f);
 				const { frontmatter } = parseFrontmatter(c);
 				const wid = frontmatter.workoutId;
 				if (wid != null && String(wid).trim() !== "") {
-					map.set(String(wid), f);
+					widMap.set(String(wid), f);
+				}
+				const dk = dedupKeyFromFrontmatter(frontmatter as unknown as Record<string, unknown>);
+				if (dk) {
+					const prev = dedupMap.get(dk);
+					if (!prev) dedupMap.set(dk, f);
+					else if (prev.path !== f.path) {
+						console.warn("[Pulse] pulseDedupKey collision (keeping first):", dk, prev.path, f.path);
+					}
 				}
 			} catch {
 				/* skip */
 			}
 		}
-		this.workoutIdIndex = map;
+		this.workoutIdIndex = widMap;
+		this.dedupKeyIndex = dedupMap;
 	}
 
 	private async saveImportMeta(): Promise<void> {
@@ -133,8 +165,14 @@ export class ImportManager {
 			if (ext === "csv" && isRENPHOCsvFileName(f.name)) return true;
 			if (ext === "csv" && isHealthAutoExportDailyCsv(f.name)) return true;
 			if (ext === "csv" && isHealthAutoExportWorkoutsCsv(f.name)) return true;
+			if (ext === "csv" && f.name.toLowerCase().includes("gravl")) return true;
 			return false;
 		});
+		toProcess.sort(
+			(a, b) =>
+				this.workoutImportFileSortKey(a) - this.workoutImportFileSortKey(b) ||
+				a.path.localeCompare(b.path)
+		);
 		console.info("[Pulse] Import scan:", {
 			scanFolder: folder || "(whole vault)",
 			filesQueued: toProcess.length,
@@ -155,8 +193,8 @@ export class ImportManager {
 			}
 			new Notice(
 				folder
-					? `Pulse: nothing to import under ${folder}. Looks for JSON, HealthAutoExport-*.csv (daily metrics), Workouts-*.csv, FITINDEX/RENPHO.`
-					: "Pulse: nothing to import. Looks for JSON, HealthAutoExport-*.csv, Workouts-*.csv, FITINDEX/RENPHO."
+					? `Pulse: nothing to import under ${folder}. Looks for JSON, Gravl CSV, HealthAutoExport-*.csv, Workouts-*.csv, FITINDEX/RENPHO.`
+					: "Pulse: nothing to import. Looks for JSON, Gravl CSV, HealthAutoExport-*.csv, Workouts-*.csv, FITINDEX/RENPHO."
 			);
 			return;
 		}
@@ -255,6 +293,23 @@ export class ImportManager {
 						}
 					}
 					processed = workouts.length > 0;
+				} else if (ext === "csv") {
+					const headerLine = text.split(/\r?\n/).find((l) => l.trim()) ?? "";
+					if (isGravlWorkoutsCsv(file.name, headerLine) || isFitbodWorkoutsCsv(file.name, headerLine)) {
+						const workouts = parseGravlWorkoutsCsv(text);
+						const pulseImportSource = file.name.toLowerCase().includes("fitbod") ? "fitbod" : "gravl";
+						for (const workout of workouts) {
+							(workout as Record<string, unknown>).pulseImportSource = pulseImportSource;
+							try {
+								await this.processWorkout(workout, undefined, file.path);
+								success++;
+							} catch (error) {
+								console.error("Error processing workout from Gravl CSV:", error);
+								errors++;
+							}
+						}
+						processed = workouts.length > 0;
+					}
 				}
 				if (processed && this.settings.deleteSourceAfterImport) {
 					await this.vault.trash(file, false);
@@ -602,9 +657,97 @@ export class ImportManager {
 		return undefined;
 	}
 
+	private importWeightFromLb(lb: number | undefined): number | undefined {
+		if (lb == null || !Number.isFinite(lb)) return undefined;
+		if (this.settings.weightUnit === "kg") {
+			return Math.round(lb * 0.45359237 * 100) / 100;
+		}
+		return Math.round(lb * 100) / 100;
+	}
+
+	private applyPulseSessionMarkdown(body: string, sessionData: SessionData): string {
+		const json = JSON.stringify(sessionData, null, 2);
+		const block = "```pulse-session\n" + json + "\n```";
+		const re = /```pulse-session\n[\s\S]*?```/;
+		if (re.test(body)) {
+			return body.replace(re, block);
+		}
+		return body.trimEnd() + "\n\n## Sets\n\n" + block;
+	}
+
+	private async buildSessionDataFromImportRows(
+		rows: PulseImportSetRow[],
+		sessionKind: WorkoutKind
+	): Promise<SessionData> {
+		const order: string[] = [];
+		const seen = new Set<string>();
+		for (const r of rows) {
+			const name = r.exercise.trim();
+			if (!name) continue;
+			if (!seen.has(name)) {
+				seen.add(name);
+				order.push(name);
+			}
+		}
+		const byEx = new Map<string, PulseImportSetRow[]>();
+		for (const name of order) {
+			byEx.set(name, []);
+		}
+		for (const r of rows) {
+			const name = r.exercise.trim();
+			const list = byEx.get(name);
+			if (!list) continue;
+			list.push(r);
+		}
+		const exercises: SessionExercise[] = [];
+		let ord = 1;
+		for (const name of order) {
+			const list = byEx.get(name)!;
+			list.sort((a, b) => a.set - b.set);
+			const path = await this.workoutDataManager.ensureExerciseFromImport(name, {
+				sessionKind,
+			});
+			const sets = list.map((r) => ({
+				set: r.set,
+				weight: this.importWeightFromLb(r.weightLb),
+				reps: r.reps,
+				duration: r.setDurationSec,
+				distance: r.distanceMi,
+				note: r.setType && r.setType !== "Normal" ? r.setType : undefined,
+			}));
+			exercises.push({ exercisePath: path, order: ord++, sets });
+		}
+		return { exercises };
+	}
+
+	private async syncExerciseLogsFromSession(
+		data: SessionData,
+		sessionPath: string,
+		sessionDate: string
+	): Promise<void> {
+		for (const exercise of data.exercises) {
+			const logEntry: ExerciseLogEntry = {
+				date: sessionDate,
+				sessionPath,
+				sets: exercise.sets.filter(
+					(s) =>
+						s.weight != null ||
+						s.reps != null ||
+						s.duration != null ||
+						s.distance != null
+				),
+			};
+			if (logEntry.sets.length > 0) {
+				await this.workoutDataManager.appendSetToExercise(exercise.exercisePath, logEntry);
+			}
+		}
+	}
+
 	async processWorkout(workout: Record<string, unknown>, imageData?: string, sourcePath?: string): Promise<string> {
+		let sessionDataForImport: SessionData | null = null;
 		await this.ensureWorkoutIdIndex();
 		const workoutName = (workout.name as string) || "Unknown";
+		const pulseImportSource = String((workout as Record<string, unknown>).pulseImportSource ?? "").toLowerCase();
 		const template = this.settings.templates.find(
 			(t) => t.workoutType.toLowerCase() === workoutName.toLowerCase()
 		);
@@ -624,34 +767,65 @@ export class ImportManager {
 		if (isNaN(workoutDate.getTime())) workoutDate = new Date();
 		const workoutId = workoutIdFromWorkout(workout as { name?: string; start?: string });
 
+		const durationSec =
+			typeof workout.duration === "number" && !Number.isNaN(workout.duration)
+				? workout.duration
+				: Math.round(parseFloat(String(workout.duration ?? "NaN")) || 0);
+		const startIsoRaw = String(workout.start ?? "").trim();
+		const kind: WorkoutKind =
+			workout.gravlKind === "cardio" ||
+			workout.gravlKind === "strength" ||
+			workout.gravlKind === "other"
+				? (workout.gravlKind as WorkoutKind)
+				: inferWorkoutKindFromName(workoutName);
+		const dedupKey =
+			startIsoRaw && durationSec > 0
+				? computePulseDedupKey({ startIso: startIsoRaw, durationSec, kind })
+				: "";
+
 		if (this.currentImportWorkoutIds.has(workoutId)) {
 			const existing = this.workoutIdIndex?.get(workoutId);
 			return existing?.path ?? "";
 		}
 
-		const filePath = this.generateFilePath(workoutName, workoutDate);
-		let finalFilePath = filePath;
 		let targetFile: TFile | null = this.workoutIdIndex?.get(workoutId) ?? null;
+		if (!targetFile && dedupKey) {
+			targetFile = this.dedupKeyIndex?.get(dedupKey) ?? null;
+		}
+
+		let finalFilePath = "";
+		let existingFm: Record<string, string | number> = {};
+		let existingBody = "";
 
 		if (targetFile) {
 			finalFilePath = targetFile.path;
+			try {
+				const existingContent = await this.vault.read(targetFile);
+				const parsed = parseFrontmatter(existingContent);
+				existingFm = parsed.frontmatter;
+				existingBody = parsed.body;
+			} catch {
+				/* keep empty */
+			}
 		} else {
-			const existingAtPath = this.vault.getAbstractFileByPath(filePath);
+			finalFilePath = this.generateFilePath(workoutName, workoutDate);
+			const existingAtPath = this.vault.getAbstractFileByPath(finalFilePath);
 			if (existingAtPath instanceof TFile) {
 				const content = await this.vault.read(existingAtPath);
-				const { frontmatter } = parseFrontmatter(content);
+				const { frontmatter, body } = parseFrontmatter(content);
 				const exId = frontmatter.workoutId != null ? String(frontmatter.workoutId) : "";
 				if (!exId || exId === workoutId) {
 					targetFile = existingAtPath;
-					finalFilePath = filePath;
+					existingFm = frontmatter;
+					existingBody = body;
 				}
 			}
 			if (!targetFile) {
 				let counter = 1;
-				finalFilePath = filePath;
+				const basePath = finalFilePath;
 				while (this.vault.getAbstractFileByPath(finalFilePath)) {
-					const parts2 = filePath.split("/");
-					const fileName = parts2[parts2.length - 1];
+					const parts2 = basePath.split("/");
+					const fileName = parts2[parts2.length - 1]!;
 					const folder = parts2.slice(0, -1).join("/");
 					const baseName = fileName.replace(".md", "");
 					const newFileName = `${baseName} (${counter}).md`;
@@ -670,15 +844,19 @@ export class ImportManager {
 				}
 			}
 		}
-		const imageToSave = imageData ?? (await this.generateWorkoutBannerImage(workout));
+
+		const existingHasBanner = Boolean(targetFile && String(existingFm.banner ?? "").trim());
+		const skipNewBanner = Boolean(targetFile && existingHasBanner);
+		const imageToSave = skipNewBanner ? "" : (imageData ?? (await this.generateWorkoutBannerImage(workout)));
+
 		let relativeImagePath: string | undefined;
-		let savedImageExtension: string | undefined;
 		if (imageToSave) {
-			savedImageExtension = await this.saveImage(imageToSave, finalFilePath);
+			const savedImageExtension = await this.saveImage(imageToSave, finalFilePath);
 			const pathPartsImg = finalFilePath.split("/");
-			const noteFileName = pathPartsImg[pathPartsImg.length - 1].replace(".md", "");
+			const noteFileName = pathPartsImg[pathPartsImg.length - 1]!.replace(".md", "");
 			relativeImagePath = `assets/${noteFileName}.${savedImageExtension}`;
 		}
+
 		const mappedData: Record<string, unknown> = {};
 		for (const mapping of this.settings.keyMappings) {
 			if (!mapping.jsonKey || !mapping.yamlKey) continue;
@@ -693,12 +871,52 @@ export class ImportManager {
 		if (this.settings.keyMappings.length === 0) {
 			Object.assign(mappedData, workout);
 		}
+		delete mappedData.gravlKind;
+		delete mappedData.gravlWorkoutTitle;
+		delete mappedData.gravlSource;
+		delete mappedData.pulseImportSetRows;
+		delete mappedData.pulseImportSource;
+
 		const year = workoutDate.getFullYear();
 		const month = (workoutDate.getMonth() + 1).toString().padStart(2, "0");
 		const day = workoutDate.getDate().toString().padStart(2, "0");
 		mappedData["date"] = `${year}-${month}-${day}`;
-		mappedData["workoutId"] = workoutId;
-		const yamlFrontmatter = this.generateYAMLFrontmatter(mappedData, templatePathForYaml, relativeImagePath, workoutName);
+
+		const canonicalWorkoutId =
+			String(existingFm.workoutId ?? "").trim() || workoutId;
+		mappedData["workoutId"] = canonicalWorkoutId;
+		if (dedupKey) {
+			mappedData["pulseDedupKey"] = dedupKey;
+		}
+
+		const isStrengthApp = pulseImportSource === "gravl" || pulseImportSource === "fitbod";
+		mappedData["type"] =
+			isStrengthApp && kind === "strength"
+				? "[[Traditional Strength Training]]"
+				: `[[${workoutName}]]`;
+
+		let yamlData: Record<string, unknown>;
+		if (targetFile) {
+			const mergedFm = mergeWorkoutImportFrontmatter(
+				existingFm,
+				mappedData,
+				dedupKey || String(existingFm.pulseDedupKey ?? "")
+			);
+			yamlData = { ...mergedFm } as Record<string, unknown>;
+			if (relativeImagePath) {
+				delete yamlData.banner;
+			}
+		} else {
+			yamlData = { ...mappedData };
+		}
+
+		const yamlFrontmatter = this.generateYAMLFrontmatter(
+			yamlData,
+			templatePathForYaml,
+			relativeImagePath,
+			workoutName
+		);
+
 		let bodyContent = templateContent;
 		let heartRateChartBlock = "";
 		const workoutStartKey = this.getWorkoutStartKey(workout as { start?: string });
@@ -720,17 +938,18 @@ export class ImportManager {
 			const workoutDir = finalFilePath.includes("/") ? finalFilePath.split("/").slice(0, -1).join("/") : "";
 			const routesFolder = workoutDir ? `${workoutDir}/routes` : "routes";
 			const routeFile = this.getRouteFile(workoutName, workoutStartKey);
-			if (routeFile && workoutId) {
+			if (routeFile && canonicalWorkoutId) {
 				try {
 					const routeText = await this.vault.read(routeFile);
-					const points = routeFile.extension.toLowerCase() === "gpx"
-						? this.parseRouteGpx(routeText)
-						: this.parseRouteCsv(routeText);
+					const points =
+						routeFile.extension.toLowerCase() === "gpx"
+							? this.parseRouteGpx(routeText)
+							: this.parseRouteCsv(routeText);
 					if (points.length >= 2) {
-						await this.saveRouteData(workoutId, points, routesFolder);
+						await this.saveRouteData(canonicalWorkoutId, points, routesFolder);
 						const mapDataUrl = await this.generateRouteMapImage(points);
 						if (mapDataUrl) {
-							const routeImagePath = `${routesFolder}/${workoutId}.png`;
+							const routeImagePath = `${routesFolder}/${canonicalWorkoutId}.png`;
 							await this.saveImageToPath(mapDataUrl, routeImagePath);
 							const routeSection = `\n\n## Route\n\n![[${routeImagePath}]]\n`;
 							bodyContent = bodyContent.trimEnd() + routeSection;
@@ -741,6 +960,19 @@ export class ImportManager {
 				}
 			}
 		}
+
+		const importRows = (workout as { pulseImportSetRows?: PulseImportSetRow[] }).pulseImportSetRows;
+		if (Array.isArray(importRows) && importRows.length > 0) {
+			sessionDataForImport = await this.buildSessionDataFromImportRows(importRows, kind);
+		}
+
+		if (targetFile) {
+			bodyContent = mergeWorkoutImportBodies(existingBody, bodyContent);
+		}
+		if (sessionDataForImport?.exercises.length) {
+			bodyContent = this.applyPulseSessionMarkdown(bodyContent, sessionDataForImport);
+		}
+
 		const noteContent = `---\n${yamlFrontmatter}---\n\n${bodyContent}`;
 		if (targetFile) {
 			await this.vault.modify(targetFile, noteContent);
@@ -749,10 +981,23 @@ export class ImportManager {
 			const created = this.vault.getAbstractFileByPath(finalFilePath);
 			if (created instanceof TFile) targetFile = created;
 		}
+
 		if (targetFile) {
-			this.workoutIdIndex?.set(workoutId, targetFile);
+			this.workoutIdIndex?.set(canonicalWorkoutId, targetFile);
+			if (dedupKey) {
+				this.dedupKeyIndex?.set(dedupKey, targetFile);
+			}
 		}
 		this.currentImportWorkoutIds.add(workoutId);
+
+		const sessionDateStr = String(yamlData.date ?? mappedData["date"] ?? "");
+		if (sessionDataForImport?.exercises.length && sessionDateStr) {
+			try {
+				await this.syncExerciseLogsFromSession(sessionDataForImport, finalFilePath, sessionDateStr);
+			} catch (e) {
+				console.warn("Pulse: exercise log sync from import failed:", e);
+			}
+		}
 
 		try {
 			const importData = this.buildImportedWorkoutData(workout, sourcePath);
@@ -1349,9 +1594,6 @@ export class ImportManager {
 		}
 		if (relativeImagePath) {
 			lines.push(`banner: ${this.formatYAMLValue(`[[${relativeImagePath}]]`)}`);
-		}
-		if (workoutName) {
-			lines.push(`globalType: ${this.formatYAMLValue(`[[${workoutName}]]`)}`);
 		}
 		return lines.join("\n") + "\n";
 	}

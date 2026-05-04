@@ -1,6 +1,6 @@
 # Pulse
 
-Workout tracker and health import plugin for Obsidian.
+Health and workout **import** plugin for Obsidian: brings Auto Export, Workouts CSV, **Gravl** exports, and related files into markdown notes, with **read-only** history and stats in the Pulse view.
 
 ## URL schemes (Obsidian URI)
 
@@ -12,15 +12,15 @@ Do not use `?action=open` — the host must be `pulse`, not `open`.
 
 | Conceptual route | Notes |
 |------------------|--------|
-| `/pulse/today` | Default when `screen` is omitted |
+| `/pulse/history` | Default when `screen` is omitted |
+| `/pulse/today` | `screen=today` — Home (import CTA) |
 | `/pulse/program` | `screen=program` — alias **`screen=programs`** |
 | `/pulse/stats` | `screen=stats` |
-| `/pulse/history` | `screen=history` |
 | `/pulse/exercise` | `screen=exercise` |
 | `/pulse/session` | `screen=session` |
 
-Other valid `screen` values: `new-exercise`, `workout-builder`, `program-builder`, `edit-program`, `workout-edit`. Use `path=` when a mode needs a vault path.
+Other accepted `screen` values (mostly legacy): `workout-edit` (read-only; use `path=`), `new-exercise`, `workout-builder`, `program-builder`, `edit-program`.
 
-**Alternate:** `route=%2Fpulse%2Ftoday`.
+**Alternate:** `route=%2Fpulse%2Fhistory`.
 
 Details and examples: **Settings → Pulse → URL schemes**.

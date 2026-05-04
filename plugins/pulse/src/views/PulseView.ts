@@ -18,7 +18,7 @@ export interface PulseViewState {
 
 export class PulseView extends ItemView {
 	plugin: PulsePlugin;
-	mode: PulseViewMode = "today";
+	mode: PulseViewMode = "history";
 	activePath: string | null = null;
 
 	private sidebar: PulseSidebar | null = null;
@@ -49,7 +49,7 @@ export class PulseView extends ItemView {
 	}
 
 	async setState(state: PulseViewState, _result: ViewStateResult): Promise<void> {
-		this.mode = state?.mode ?? "today";
+		this.mode = state?.mode ?? "history";
 		this.activePath = state?.path ?? null;
 		await this.render();
 	}
@@ -121,8 +121,8 @@ export class PulseView extends ItemView {
 
 	private renderGlyphBar(bar: HTMLElement): void {
 		const items: { icon: string; label: string; mode: PulseViewMode }[] = [
-			{ icon: "dumbbell", label: "Today", mode: "today" },
 			{ icon: "history", label: "History", mode: "history" },
+			{ icon: "house", label: "Home", mode: "today" },
 			{ icon: "bar-chart-2", label: "Stats", mode: "stats" },
 			{ icon: "scale", label: "Body", mode: "body" },
 		];

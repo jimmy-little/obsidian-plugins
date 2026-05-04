@@ -270,16 +270,16 @@ export class PulseSettingTab extends PluginSettingTab {
 
 		containerEl.createEl("h3", { text: "URL schemes (Obsidian URI)" });
 		containerEl.createEl("p", {
-			text: "URI host must be pulse (plugin id). Use query params only — e.g. obsidian://pulse?screen=today. Do not use action=open; that targets the core “open” handler. Aliases: programs → program. Optional path= when needed.",
+			text: "URI host must be pulse (plugin id). Use query params only — e.g. obsidian://pulse?screen=history. Do not use action=open; that targets the core “open” handler. Aliases: programs → program. Optional path= when needed.",
 		});
 		const pulseUris: [string, string][] = [
-			["/pulse/today (default)", "obsidian://pulse?screen=today"],
+			["/pulse/history (default)", "obsidian://pulse?screen=history"],
+			["/pulse/today (Home / import)", "obsidian://pulse?screen=today"],
 			["/pulse/program — alias screen=programs", "obsidian://pulse?screen=programs"],
 			["/pulse/stats", "obsidian://pulse?screen=stats"],
-			["/pulse/history", "obsidian://pulse?screen=history"],
 			["/pulse/exercise", "obsidian://pulse?screen=exercise"],
-			["/pulse/session", "obsidian://pulse?screen=session"],
-			["route=/pulse/today", "obsidian://pulse?route=%2Fpulse%2Ftoday"],
+			["/pulse/session — optional path=", "obsidian://pulse?screen=session&path=…"],
+			["route=/pulse/history", "obsidian://pulse?route=%2Fpulse%2Fhistory"],
 		];
 		for (const [label, uri] of pulseUris) {
 			containerEl.createEl("p", { text: label, cls: "setting-item-description" });
@@ -289,7 +289,7 @@ export class PulseSettingTab extends PluginSettingTab {
 		}
 		containerEl.createEl("p", {
 			cls: "setting-item-description",
-			text: "Other screens (same pattern): new-exercise, workout-builder, program-builder, edit-program, workout-edit — use screen=… and path= when required.",
+			text: "Legacy screens (still accepted): workout-edit (read-only session view), new-exercise, workout-builder, program-builder, edit-program — use path= when required.",
 		});
 	}
 

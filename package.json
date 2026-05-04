@@ -15,7 +15,8 @@
 		"build:ratchet": "npm run build -w obsidian-plugin-ratchet",
 		"build:fulcrum": "npm run build -w obsidian-plugin-fulcrum",
 		"build:orbit": "npm run build -w obsidian-plugin-orbit",
-		"build:repose": "npm run build -w obsidian-plugin-repose"
+		"build:repose": "npm run build -w obsidian-plugin-repose",
+		"build:chisel": "npm run build -w obsidian-plugin-chisel"
 	},
 	"engines": {
 		"node": ">=18"

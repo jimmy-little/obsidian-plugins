@@ -1,4 +1,4 @@
-import { Component, MarkdownRenderer, setIcon } from "obsidian";
+import { normalizePath, setIcon } from "obsidian";
 import type PulsePlugin from "../main";
 import type { ProgramNote, SessionNote } from "./types";
 import {
@@ -58,7 +58,7 @@ export class HistoryTab {
 
 		if (sessions.length === 0) {
 			list.createEl("p", {
-				text: "No sessions yet. Start a workout from Today, or import from Health.",
+				text: "No sessions in the vault yet. Import workouts (Health Auto Export, Gravl CSV, etc.) or add session notes under your Sessions folder.",
 				cls: "pulse-workout-muted",
 			});
 			return;
@@ -224,16 +224,24 @@ export class HistoryTab {
 			return;
 		}
 
-		const mdComp = new Component();
-		this.plugin.addChild(mdComp);
-
 		for (const exercise of session.session.exercises) {
 			const exDiv = detail.createDiv({ cls: "pulse-workout-detail-exercise" });
 			const h4 = exDiv.createEl("h4");
-			const wikiPath = this.plugin.workoutDataManager
-				.resolveExerciseVaultPath(exercise.exercisePath)
-				.replace(/\.md$/i, "");
-			await MarkdownRenderer.render(this.plugin.app, `[[${wikiPath}]]`, h4, session.file.path, mdComp);
+			const resolvedPath = normalizePath(
+				this.plugin.workoutDataManager.resolveExerciseVaultPath(exercise.exercisePath)
+			);
+			const exNote = await this.plugin.workoutDataManager.getExercise(exercise.exercisePath);
+			const displayName =
+				exNote?.frontmatter.name?.trim() ||
+				resolvedPath.split("/").pop()?.replace(/\.md$/i, "") ||
+				"Exercise";
+			const label = h4.createSpan({
+				text: displayName,
+				cls: "pulse-pm__link pulse-pm__exercise-name-link",
+			});
+			label.addEventListener("click", () => {
+				void this.plugin.openPulseView("exercise", resolvedPath);
+			});
 
 			const table = exDiv.createEl("table", { cls: "pulse-workout-detail-table" });
 			const thead = table.createEl("thead");

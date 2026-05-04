@@ -372,6 +372,221 @@ export function getStatsNotePath(date: Date, pathTemplate: string): string {
 	return template.replace(/\{year\}/g, year).replace(/\{month\}/g, month).replace(/\{date\}/g, dateStr);
 }
 
+// ─── Gravl CSV (set-level export) ───
+
+function pad2(n: number): string {
+	return n.toString().padStart(2, "0");
+}
+
+/** Local ISO-like string for import keys (matches Health CSV style in many vaults). */
+export function gravlToLocalIsoString(d: Date): string {
+	if (isNaN(d.getTime())) return "";
+	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+/** Combine calendar date (2026/05/03) + time cell (1:00 PM). */
+export function combineGravlDateAndTime(dateCell: string, timeCell: string): Date | null {
+	const dn = dateCell.trim().replace(/\//g, "-").replace(/\uFEFF/g, "").replace(/\u202f/g, " ");
+	const pm = dn.match(/^(\d{4})-(\d{2})-(\d{2})/);
+	if (!pm) return null;
+	const y = parseInt(pm[1]!, 10);
+	const mo = parseInt(pm[2]!, 10) - 1;
+	const d = parseInt(pm[3]!, 10);
+	const t = timeCell.replace(/\u202f/g, " ").trim();
+	const m12 = t.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)/i);
+	if (!m12) return new Date(y, mo, d, 12, 0, 0, 0);
+	let hh = parseInt(m12[1]!, 10);
+	const mm = parseInt(m12[2]!, 10);
+	const ss = m12[3] ? parseInt(m12[3]!, 10) : 0;
+	const ap = m12[4]!.toUpperCase();
+	if (ap === "PM" && hh < 12) hh += 12;
+	if (ap === "AM" && hh === 12) hh = 0;
+	return new Date(y, mo, d, hh, mm, ss, 0);
+}
+
+export function isGravlWorkoutsCsv(fileName: string, headerLine: string): boolean {
+	const n = fileName.toLowerCase();
+	if (n.includes("gravl") && n.endsWith(".csv")) return true;
+	const h = headerLine.replace(/^\uFEFF/, "").toLowerCase();
+	return (
+		h.includes("workout duration (min)") &&
+		h.includes("start date") &&
+		h.includes("exercise") &&
+		h.includes("workout")
+	);
+}
+
+function gravlInferWorkoutName(workoutTitle: string, exercises: string[]): string {
+	const t = workoutTitle.trim();
+	const ex0 = (exercises[0] ?? "").trim();
+	if (/^q\s*-\s*/i.test(t) || /^q\s/i.test(t)) {
+		const m = t.match(/^q\s*-\s*(.+)$/i);
+		return (m ? m[1] : ex0 || t).trim() || "Workout";
+	}
+	if (t && !/^(mon|tue|wed|thu|fri|sat|sun)/i.test(t)) return t;
+	if (ex0) return ex0;
+	return t || "Workout";
+}
+
+function gravlInferKind(exerciseNames: string[]): "strength" | "cardio" | "other" {
+	const lower = exerciseNames.map((e) => e.toLowerCase());
+	if (lower.length === 1 && /walk|run|cycl|elliptical|swim|hike|yoga|rowing|stair/.test(lower[0]!)) {
+		return "cardio";
+	}
+	if (lower.some((e) => /walk|run|cycl|elliptical|swim|hike|yoga|rowing|stair/.test(e))) {
+		return lower.some((e) => /press|squat|curl|fly|row|deadlift|bench|pull|push|lift|extension|raise/.test(e))
+			? "strength"
+			: "cardio";
+	}
+	return "strength";
+}
+
+/** One set row from Gravl / Fitbod-style CSV (used to build `pulse-session` + exercise notes). */
+export interface PulseImportSetRow {
+	exercise: string;
+	set: number;
+	setType: string;
+	reps?: number;
+	weightLb?: number;
+	distanceMi?: number;
+	setDurationSec?: number;
+}
+
+export function isFitbodWorkoutsCsv(fileName: string, headerLine: string): boolean {
+	const n = (fileName || "").toLowerCase();
+	if (!n.includes("fitbod") || !n.endsWith(".csv")) return false;
+	return isGravlWorkoutsCsv("", headerLine);
+}
+
+/**
+ * Parse Gravl (or compatible) wide CSV: one row per set. Returns workout-shaped records for `processWorkout`.
+ */
+export function parseGravlWorkoutsCsv(csvText: string): Record<string, unknown>[] {
+	const lines = csvText.trim().split(/\r?\n/).filter((l) => l.trim());
+	if (lines.length < 2) return [];
+	const headerLine = lines[0]!.replace(/^\uFEFF/, "");
+	if (!isGravlWorkoutsCsv("", headerLine)) return [];
+
+	type Row = {
+		date: string;
+		startDate: string;
+		workout: string;
+		source: string;
+		durationMin: number;
+		calories?: number;
+		exercise: string;
+		set: number;
+		setType: string;
+		reps?: number;
+		weightLb?: number;
+		distanceMi?: number;
+		setDurationSec?: number;
+		workoutNotes?: string;
+	};
+
+	const headers = parseCsvLine(headerLine).map((h) => h.trim().toLowerCase());
+	const idx = (pred: (h: string) => boolean) => headers.findIndex(pred);
+	const iDate = idx((h) => h === "date");
+	const iStart = idx((h) => h.includes("start date"));
+	const iWorkout = idx((h) => h === "workout");
+	const iSource = idx((h) => h === "source");
+	const iDur = idx((h) => h.includes("workout duration"));
+	const iCal = idx((h) => h === "calories");
+	const iEx = idx((h) => h === "exercise");
+	const iSet = idx((h) => h === "set");
+	const iSetType = idx((h) => h.includes("set type"));
+	const iReps = idx((h) => h === "reps");
+	const iWt = idx((h) => h.includes("weight"));
+	const iDist = idx((h) => h.includes("distance"));
+	const iSetDur = idx((h) => h.includes("set duration"));
+	const iNotes = idx((h) => h.includes("workout notes"));
+
+	const parsedRows: Row[] = [];
+	for (let i = 1; i < lines.length; i++) {
+		const values = parseCsvLine(lines[i]!);
+		const get = (j: number) => (j >= 0 && values[j] !== undefined ? values[j]!.trim() : "");
+		const date = get(iDate >= 0 ? iDate : 0);
+		const startDate = get(iStart >= 0 ? iStart : 1);
+		const workout = get(iWorkout >= 0 ? iWorkout : 2);
+		const source = get(iSource >= 0 ? iSource : 3);
+		const durationMin = parseNum(get(iDur >= 0 ? iDur : 4)) ?? 0;
+		const calories = parseNum(get(iCal >= 0 ? iCal : 5));
+		const exercise = get(iEx >= 0 ? iEx : 6);
+		const setN = Math.round(parseNum(get(iSet >= 0 ? iSet : 7)) ?? 0);
+		const setType = get(iSetType >= 0 ? iSetType : 8) || "Normal";
+		const reps = parseNum(get(iReps >= 0 ? iReps : 9));
+		const weightLb = parseNum(get(iWt >= 0 ? iWt : 10));
+		const distanceMi = parseNum(get(iDist >= 0 ? iDist : 11));
+		const setDurationSec = parseNum(get(iSetDur >= 0 ? iSetDur : 12));
+		const workoutNotes = get(iNotes >= 0 ? iNotes : 13);
+		if (!date || !startDate) continue;
+		parsedRows.push({
+			date,
+			startDate,
+			workout,
+			source,
+			durationMin,
+			calories,
+			exercise,
+			set: setN,
+			setType,
+			reps,
+			weightLb,
+			distanceMi,
+			setDurationSec,
+			workoutNotes,
+		});
+	}
+
+	const byKey = new Map<string, Row[]>();
+	for (const r of parsedRows) {
+		const ck = `${r.date}|${r.startDate}|${r.workout}|${r.source}|${r.durationMin}|${Math.round(r.calories ?? 0)}`;
+		const arr = byKey.get(ck) ?? [];
+		arr.push(r);
+		byKey.set(ck, arr);
+	}
+
+	const workouts: Record<string, unknown>[] = [];
+	for (const [, group] of byKey) {
+		if (group.length === 0) continue;
+		const g0 = group[0]!;
+		const startD = combineGravlDateAndTime(g0.date, g0.startDate);
+		if (!startD) continue;
+		const startIso = gravlToLocalIsoString(startD);
+		const durSec = Math.max(60, Math.round(g0.durationMin * 60));
+		const endD = new Date(startD.getTime() + durSec * 1000);
+		const endIso = gravlToLocalIsoString(endD);
+		const exercises = [...new Set(group.map((x) => x.exercise))];
+		const name = gravlInferWorkoutName(g0.workout, exercises);
+		const kind = gravlInferKind(exercises);
+		const tableRows = group.map((r) => ({
+			exercise: r.exercise,
+			set: r.set,
+			setType: r.setType,
+			reps: r.reps,
+			weightLb: r.weightLb,
+			distanceMi: r.distanceMi,
+			setDurationSec: r.setDurationSec,
+		}));
+		const notes = group.map((r) => r.workoutNotes).find((n) => n && n.trim());
+		workouts.push({
+			name,
+			start: startIso,
+			end: endIso,
+			duration: durSec,
+			calories: g0.calories,
+			activeEnergyBurned: g0.calories != null ? { qty: g0.calories, units: "kcal" } : undefined,
+			gravlWorkoutTitle: g0.workout,
+			gravlSource: g0.source,
+			pulseImportSetRows: tableRows as PulseImportSetRow[],
+			gravlKind: kind,
+			...(notes ? { notes } : {}),
+		});
+	}
+
+	return workouts;
+}
+
 /**
  * Parse Health Auto Export per-workout files: `{Activity}-Heart Rate-{YYYYMMDD}_{HHMMSS}....csv`
  * Skips Heart Rate Recovery, Resting Energy, etc.

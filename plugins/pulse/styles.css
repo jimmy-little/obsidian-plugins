@@ -354,10 +354,17 @@
 	flex: 1;
 	min-width: 0;
 	min-height: 0;
-	overflow: auto;
+	overflow: hidden;
 	padding: 0 0 0.75rem 0;
 	width: 100%;
 	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+}
+
+.pulse-pm__left-scroll > .pulse-sidebar-panel {
+	min-height: 0;
+	flex: 1 1 auto;
 }
 
 .pulse-pm-left-collapsed .pulse-pm__left-scroll {
@@ -568,6 +575,59 @@
 .pulse-sidebar-panel {
 	width: 100%;
 	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.pulse-sidebar__segment-wrap {
+	flex-shrink: 0;
+	padding: 0.35rem 0.45rem 0.4rem;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+	background: color-mix(in srgb, var(--background-secondary) 65%, var(--background-primary));
+}
+
+.pulse-sidebar__segment {
+	display: flex;
+	width: 100%;
+	border-radius: var(--radius-s);
+	padding: 2px;
+	gap: 2px;
+	background: var(--background-modifier-border);
+	box-sizing: border-box;
+}
+
+.pulse-sidebar__segment-btn {
+	flex: 1 1 50%;
+	margin: 0;
+	padding: 0.32rem 0.4rem;
+	border: none;
+	border-radius: calc(var(--radius-s) - 1px);
+	background: transparent;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller, 0.78rem);
+	font-weight: 600;
+	cursor: pointer;
+	font-family: inherit;
+}
+
+.pulse-sidebar__segment-btn:hover {
+	color: var(--text-normal);
+	background: color-mix(in srgb, var(--background-primary) 50%, transparent);
+}
+
+.pulse-sidebar__segment-btn--active {
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+}
+
+.pulse-sidebar__segment-scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	width: 100%;
 }
 
 .pulse-sidebar__section {
@@ -3055,6 +3115,213 @@
 .pulse-stats__footer-date {
 	color: var(--text-normal);
 	font-weight: 500;
+}
+
+/* ===========================================================
+   Workout document leaf (imported workout summary)
+   ============================================================ */
+
+.workspace-leaf[data-type="pulse-workout-document"] .workspace-leaf-content {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.workspace-leaf[data-type="pulse-workout-document"] .view-content {
+	flex: 1 1 0%;
+	min-height: 0;
+	overflow: auto;
+}
+
+.pulse-workout-doc {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	min-height: 0;
+}
+
+.pulse-workout-doc__banner-wrap {
+	width: 100%;
+	max-height: 180px;
+	overflow: hidden;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
+}
+
+.pulse-workout-doc__banner-wrap.pulse-session-banner {
+	max-height: none;
+	border-bottom: none;
+	margin-bottom: 0.75rem;
+}
+
+.pulse-workout-doc__banner {
+	display: block;
+	width: 100%;
+	height: auto;
+	max-height: 180px;
+	object-fit: cover;
+}
+
+.pulse-workout-doc__toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+	align-items: center;
+	padding: 0.5rem 0.75rem;
+	background: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
+}
+
+.pulse-workout-doc__toolbar-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	cursor: pointer;
+}
+
+.pulse-workout-doc__toolbar-btn:hover {
+	background: var(--background-modifier-hover);
+}
+
+.pulse-workout-doc__toolbar--no-banner {
+	padding: 0.5rem 0.75rem;
+	background: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.pulse-workout-doc__toolbar--no-banner .pulse-session-banner-btn {
+	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	color: var(--text-normal);
+}
+
+.pulse-workout-doc__toolbar--no-banner .pulse-session-banner-btn:hover:not(:disabled) {
+	background: var(--background-modifier-hover);
+}
+
+.pulse-workout-doc__head {
+	padding: 0.75rem 1rem 0.25rem;
+}
+
+.pulse-workout-doc__title {
+	margin: 0;
+	font-size: 1.35rem;
+	font-weight: 600;
+}
+
+.pulse-workout-doc__body {
+	padding: 0.5rem 1rem 1.5rem;
+	flex: 1;
+	min-height: 0;
+}
+
+/* Session / workout detail — banner + Orbit-aligned icon buttons */
+.pulse-session-banner {
+	position: relative;
+	border-radius: var(--radius-l, 10px);
+	overflow: hidden;
+	margin: 0 0 0.75rem;
+	box-sizing: border-box;
+	background: var(--background-secondary);
+}
+
+.pulse-session-banner--has-image {
+	min-height: 9.5rem;
+}
+
+.pulse-session-banner__img {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	object-position: center;
+	pointer-events: none;
+}
+
+.pulse-session-banner__scrim {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 0;
+	background: linear-gradient(
+		105deg,
+		rgba(0, 0, 0, 0.55) 0%,
+		rgba(0, 0, 0, 0.35) 45%,
+		rgba(0, 0, 0, 0.2) 100%
+	);
+}
+
+.pulse-session-banner__actions {
+	position: absolute;
+	top: 1rem;
+	right: 1rem;
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.4rem;
+}
+
+.pulse-session-banner-btn-row {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	gap: 0.4rem;
+}
+
+.pulse-session-banner-btn {
+	--input-shadow: none;
+	box-shadow: none;
+	font: inherit;
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+	border-radius: var(--radius-s, 6px);
+	cursor: pointer;
+	background: rgba(255, 255, 255, 0.14);
+	border: 1px solid rgba(255, 255, 255, 0.38);
+	color: rgba(255, 255, 255, 0.96);
+}
+
+.pulse-session-banner-btn:hover:not(:disabled) {
+	background: rgba(255, 255, 255, 0.24);
+	border-color: rgba(255, 255, 255, 0.55);
+}
+
+.pulse-session-banner-btn--icon-only {
+	display: inline-flex !important;
+	align-items: center;
+	justify-content: center;
+	padding: 0.3rem 0.4rem !important;
+	min-width: 2rem;
+	min-height: 2rem;
+	line-height: 0;
+}
+
+.pulse-session-banner-btn__icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 1.05rem;
+	height: 1.05rem;
+}
+
+.pulse-session-banner-btn__icon svg {
+	width: 1.05rem;
+	height: 1.05rem;
+	display: block;
+}
+
+.pulse-pm__exercise-name-link {
+	cursor: pointer;
 }
 
 /*

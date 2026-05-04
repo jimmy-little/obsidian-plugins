@@ -1,0 +1,1221 @@
+/* @obsidian-suite/theme — shared tokens (merged into each plugin styles.css at build) */
+:root {
+	--suite-radius-s: 4px;
+	--suite-radius-m: 6px;
+	--suite-gap: 0.75rem;
+	--suite-card-border: 1px solid var(--background-modifier-border);
+
+	/* Sidebar glyph toolbar (dashboard / kanban / calendar + collapse) — touch-friendly */
+	--suite-glyph-btn-size: 44px;
+	--suite-glyph-icon-size: 24px;
+	--suite-glyph-collapse-font-size: 1.65rem;
+	--suite-glyph-edge-size: 44px;
+	--suite-glyph-bar-gap: 0.25rem;
+	--suite-glyph-bar-padding-y: 0.45rem;
+	--suite-glyph-bar-padding-x: 0.45rem;
+
+	/* People cards + inline pills (packages/theme/people.css); override per plugin in src/plugin.css if needed */
+	--suite-person-card-max-width: 5rem;
+	--suite-person-card-border: 1px solid color-mix(in srgb, var(--background-modifier-border) 92%, transparent);
+}
+
+/* @obsidian-suite/heatmap — GitHub-style contribution graph (merged into each plugin styles.css) */
+
+.suite-heatmap-wrap {
+	--suite-heatmap-cell: 11px;
+	--suite-heatmap-gap: 3px;
+	--suite-heatmap-accent: var(--interactive-accent);
+	--suite-heatmap-empty: color-mix(in srgb, var(--background-modifier-border) 72%, var(--background-primary));
+	--suite-heatmap-out: color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+	min-width: 0;
+}
+
+.suite-heatmap__top {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-end;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
+}
+
+.suite-heatmap__corner {
+	width: 1.15rem;
+	flex: 0 0 1.15rem;
+	min-height: 1rem;
+}
+
+.suite-heatmap__month-row {
+	position: relative;
+	flex: 0 1 auto;
+	min-width: 0;
+	height: 1.1rem;
+	box-sizing: border-box;
+}
+
+.suite-heatmap__month-label {
+	position: absolute;
+	top: 0;
+	left: 0;
+	font-size: 0.65rem;
+	line-height: 1;
+	font-weight: 600;
+	color: var(--text-muted);
+	letter-spacing: 0.02em;
+	pointer-events: none;
+	white-space: nowrap;
+}
+
+.suite-heatmap__bottom {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 6px;
+	min-width: 0;
+}
+
+.suite-heatmap__dow-col {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	justify-content: flex-start;
+	gap: var(--suite-heatmap-gap);
+	flex: 0 0 auto;
+	padding-top: 0;
+	min-width: 1.15rem;
+}
+
+.suite-heatmap__dow-label {
+	display: block;
+	width: 100%;
+	font-size: 0.58rem;
+	line-height: var(--suite-heatmap-cell);
+	height: var(--suite-heatmap-cell);
+	text-align: right;
+	color: var(--text-muted);
+	font-weight: 600;
+	user-select: none;
+}
+
+.suite-heatmap {
+	--suite-heatmap-accent: var(--interactive-accent);
+	--suite-heatmap-empty: color-mix(in srgb, var(--background-modifier-border) 72%, var(--background-primary));
+	--suite-heatmap-out: color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
+	display: inline-flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	gap: var(--suite-heatmap-gap);
+	padding: 0;
+	flex: 0 0 auto;
+	width: calc(
+		var(--suite-heatmap-cols, 1) * var(--suite-heatmap-cell) + (var(--suite-heatmap-cols, 1) - 1) * var(--suite-heatmap-gap)
+	);
+	box-sizing: border-box;
+}
+
+.suite-heatmap__week {
+	display: flex;
+	flex-direction: column;
+	gap: var(--suite-heatmap-gap);
+}
+
+.suite-heatmap__day {
+	width: var(--suite-heatmap-cell);
+	height: var(--suite-heatmap-cell);
+	border-radius: 2px;
+	box-sizing: border-box;
+	flex-shrink: 0;
+	background: var(--suite-heatmap-empty);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+}
+
+.suite-heatmap__day--clickable {
+	cursor: pointer;
+}
+
+.suite-heatmap__day--clickable:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+.suite-heatmap__day--out {
+	background: var(--suite-heatmap-out);
+	border-color: transparent;
+	opacity: 0.45;
+}
+
+.suite-heatmap__day:not(.suite-heatmap__day--out)[data-level="0"] {
+	background: var(--suite-heatmap-empty);
+}
+
+.suite-heatmap__day[data-level="1"] {
+	background: color-mix(in srgb, var(--suite-heatmap-accent) 28%, var(--suite-heatmap-empty));
+	border-color: color-mix(in srgb, var(--suite-heatmap-accent) 22%, var(--background-modifier-border));
+}
+
+.suite-heatmap__day[data-level="2"] {
+	background: color-mix(in srgb, var(--suite-heatmap-accent) 48%, var(--suite-heatmap-empty));
+	border-color: color-mix(in srgb, var(--suite-heatmap-accent) 35%, var(--background-modifier-border));
+}
+
+.suite-heatmap__day[data-level="3"] {
+	background: color-mix(in srgb, var(--suite-heatmap-accent) 68%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--suite-heatmap-accent) 48%, var(--background-modifier-border));
+}
+
+.suite-heatmap__day[data-level="4"] {
+	background: color-mix(in srgb, var(--suite-heatmap-accent) 88%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--suite-heatmap-accent) 62%, var(--background-modifier-border));
+}
+
+/* Chisel — credit payoff UI (merged into styles.css) */
+
+.chisel-modal-hidden {
+	display: none !important;
+}
+
+.chisel-delete-msg {
+	margin: 0.5rem 0 1rem;
+	color: var(--text-normal);
+}
+
+.workspace-leaf[data-type="chisel-main-view"] .workspace-leaf-content {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.workspace-leaf[data-type="chisel-main-view"] .view-content {
+	flex: 1 1 0%;
+	min-height: 0;
+	overflow: hidden;
+	position: relative;
+	box-sizing: border-box;
+}
+
+.workspace-leaf-content .view-content:has(.chisel-pm) {
+	position: relative;
+	height: 100%;
+	max-height: 100%;
+	min-height: 0;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.workspace-leaf-content .view-content .chisel-pm {
+	position: absolute;
+	inset: 0;
+	width: auto;
+	height: auto;
+	min-height: 0;
+	min-width: 0;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.chisel-pm {
+	--chisel-pm-left-w: 22rem;
+	--chisel-pm-split-w: 5px;
+	display: grid;
+	grid-template-columns: var(--chisel-pm-left-w) var(--chisel-pm-split-w) minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr);
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	align-items: stretch;
+	background: var(--background-primary);
+	box-sizing: border-box;
+}
+
+.chisel-pm > .chisel-pm__sidebar,
+.chisel-pm > .chisel-pm__main {
+	min-height: 0;
+}
+
+.chisel-pm.chisel-pm-left-collapsed {
+	--chisel-pm-left-w: 2.35rem;
+	--chisel-pm-split-w: 0px;
+}
+
+.chisel-pm__sidebar {
+	min-height: 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.chisel-pm__sidebar--left {
+	border-right: none;
+	background: var(--background-secondary);
+	overflow: hidden;
+}
+
+.chisel-pm-left-collapsed .chisel-pm__sidebar--left {
+	border-right: 1px solid var(--background-modifier-border);
+}
+
+.chisel-pm__left-stack {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+	min-width: 0;
+}
+
+.chisel-pm__glyph-bar {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: center;
+	justify-content: flex-start;
+	gap: var(--suite-glyph-bar-gap);
+	width: 100%;
+	box-sizing: border-box;
+	padding: var(--suite-glyph-bar-padding-y) var(--suite-glyph-bar-padding-x);
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
+}
+
+.chisel-pm-left-collapsed .chisel-pm__glyph-bar {
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 0.35rem;
+	padding: 0.45rem 0.2rem;
+}
+
+.chisel-pm__glyph-spacer {
+	flex: 1 1 auto;
+	min-width: 0.2rem;
+}
+
+.chisel-pm-left-collapsed .chisel-pm__glyph-spacer {
+	display: none;
+}
+
+.chisel-pm__glyph-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--suite-glyph-btn-size);
+	height: var(--suite-glyph-btn-size);
+	min-width: var(--suite-glyph-btn-size);
+	min-height: var(--suite-glyph-btn-size);
+	padding: 0;
+	margin: 0;
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	color: var(--text-muted);
+	font-size: var(--suite-glyph-collapse-font-size);
+	font-weight: 600;
+	line-height: 1;
+	cursor: pointer;
+	box-shadow: none;
+	touch-action: manipulation;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.chisel-pm__glyph-btn svg {
+	width: var(--suite-glyph-icon-size);
+	height: var(--suite-glyph-icon-size);
+	display: block;
+	flex-shrink: 0;
+}
+
+.chisel-pm__glyph-btn:hover:not(:disabled) {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.chisel-pm__glyph-btn--active {
+	color: var(--text-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+}
+
+.chisel-pm__split {
+	--input-shadow: none !important;
+	--shadow-s: none !important;
+	--shadow-l: none !important;
+	display: block;
+	min-width: 0;
+	width: 100%;
+	min-height: 0;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	border-left: 1px solid var(--background-modifier-border);
+	background: transparent;
+	box-shadow: none !important;
+	font-size: 0;
+	line-height: 0;
+	color: transparent;
+	cursor: col-resize;
+	touch-action: none;
+	box-sizing: border-box;
+	align-self: stretch;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.chisel-pm__split:hover:not(:disabled),
+.chisel-pm__split:focus-visible:not(:disabled) {
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+.chisel-pm__split:focus-visible:not(:disabled) {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+	z-index: 1;
+}
+
+.chisel-pm__split:disabled {
+	cursor: default;
+	border-left: none;
+	background: transparent;
+	opacity: 1;
+}
+
+.chisel-pm__left-scroll {
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
+	overflow: auto;
+	padding: 0 0 0.75rem 0;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.chisel-pm-left-collapsed .chisel-pm__left-scroll {
+	display: none;
+}
+
+.chisel-pm__sidebar-empty {
+	padding: 0.5rem 0.65rem;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	line-height: 1.35;
+}
+
+.chisel-pm__debt-row {
+	display: flex;
+	align-items: stretch;
+	gap: 0.15rem;
+	margin: 0.35rem 0.45rem 0;
+	padding: 0;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	overflow: hidden;
+}
+
+.chisel-pm__debt-row--selected {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+}
+
+.chisel-pm__debt-row-main {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 0.5rem 0.45rem;
+	cursor: pointer;
+}
+
+.chisel-pm__debt-row-main:hover {
+	background: var(--background-modifier-hover);
+}
+
+.chisel-pm__debt-name {
+	font-weight: 600;
+	font-size: var(--font-ui-small);
+	margin-bottom: 0.2rem;
+}
+
+.chisel-pm__debt-meta {
+	font-size: 0.8rem;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.chisel-pm__debt-promo {
+	font-size: 0.75rem;
+	color: var(--text-muted);
+	margin-top: 0.2rem;
+}
+
+.chisel-pm__debt-menu {
+	flex: 0 0 auto;
+	align-self: stretch;
+	width: 2rem;
+	border: none;
+	border-left: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	border-radius: 0;
+}
+
+.chisel-pm__debt-menu:hover {
+	background: var(--background-modifier-hover);
+}
+
+.chisel-pm__main {
+	min-height: 0;
+	min-width: 0;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	background: var(--background-primary);
+}
+
+.chisel-main-scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding: 0.75rem 1rem 1.25rem;
+	box-sizing: border-box;
+}
+
+.chisel-main-empty {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	padding: 1rem 0;
+}
+
+.chisel-main-header {
+	margin-bottom: 1rem;
+}
+
+.chisel-main-title {
+	margin: 0 0 0.35rem;
+	font-size: 1.25em;
+	font-weight: 600;
+}
+
+.chisel-main-sub {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	line-height: 1.4;
+	max-width: 42rem;
+}
+
+.chisel-main-controls {
+	margin-bottom: 1rem;
+	max-width: 28rem;
+}
+
+.chisel-main-actions {
+	margin-top: 0.5rem;
+}
+
+.chisel-main-actions .mod-cta {
+	padding: 0.4rem 0.85rem;
+	font-size: var(--font-ui-small);
+}
+
+.chisel-muted {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.chisel-summary-strip {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1rem 1.5rem;
+	margin-bottom: 1.25rem;
+	padding: 0.65rem 0.75rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+}
+
+.chisel-summary-col {
+	min-width: 5.5rem;
+}
+
+.chisel-summary-label {
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+	margin-bottom: 0.15rem;
+}
+
+.chisel-summary-value {
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	font-size: var(--font-ui-small);
+}
+
+.chisel-summary-compare {
+	width: 100%;
+	flex-basis: 100%;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	margin-top: 0.25rem;
+}
+
+.chisel-section-title {
+	margin: 0 0 0.5rem;
+	font-size: 0.95rem;
+	font-weight: 600;
+}
+
+.chisel-chart-wrap {
+	height: 220px;
+	max-width: 100%;
+	margin-bottom: 1.25rem;
+	position: relative;
+}
+
+.chisel-chart-canvas {
+	width: 100% !important;
+	height: 100% !important;
+	display: block;
+}
+
+.chisel-table-section {
+	margin-top: 0.5rem;
+}
+
+.chisel-table-scroll {
+	max-height: 320px;
+	overflow: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+}
+
+.chisel-am-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--font-ui-small);
+	font-variant-numeric: tabular-nums;
+}
+
+.chisel-am-table th,
+.chisel-am-table td {
+	padding: 0.35rem 0.5rem;
+	text-align: right;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.chisel-am-table th {
+	text-align: right;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-weight: 600;
+	position: sticky;
+	top: 0;
+	z-index: 1;
+}
+
+.chisel-am-table th:first-child,
+.chisel-am-table td:first-child {
+	text-align: left;
+}
+
+.chisel-am-table tbody tr:hover {
+	background: var(--background-modifier-hover);
+}
+
+/* ── Payment recommendation ── */
+.chisel-recommend-panel {
+	margin-bottom: 1.5rem;
+	padding-bottom: 1rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.chisel-recommend-desc {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	line-height: 1.45;
+	max-width: 44rem;
+	margin-bottom: 0.75rem;
+}
+
+.chisel-recommend-budget-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem 0.75rem;
+	margin-bottom: 0.65rem;
+}
+
+.chisel-recommend-label {
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+}
+
+.chisel-recommend-budget-input {
+	min-width: 7rem;
+}
+
+.chisel-recommend-alert {
+	font-size: var(--font-ui-small);
+	padding: 0.5rem 0.65rem;
+	border-radius: var(--radius-s);
+	margin: 0.5rem 0;
+	max-width: 44rem;
+	line-height: 1.4;
+}
+
+.chisel-recommend-alert--ok {
+	background: color-mix(in srgb, var(--interactive-success) 12%, var(--background-secondary));
+	border: 1px solid color-mix(in srgb, var(--interactive-success) 35%, var(--background-modifier-border));
+}
+
+.chisel-recommend-alert--warn {
+	background: color-mix(in srgb, var(--text-error) 10%, var(--background-secondary));
+	border: 1px solid color-mix(in srgb, var(--text-error) 28%, var(--background-modifier-border));
+}
+
+.chisel-recommend-warnings {
+	margin: 0.5rem 0 0.35rem 1.1rem;
+	padding: 0;
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	max-width: 44rem;
+}
+
+.chisel-recommend-warnings li {
+	margin-bottom: 0.25rem;
+}
+
+.chisel-recommend-table-wrap {
+	margin-top: 0.5rem;
+	max-height: 280px;
+}
+
+.chisel-recommend-table .chisel-recommend-notes {
+	font-size: 0.8rem;
+	color: var(--text-muted);
+	text-align: left;
+	max-width: 18rem;
+}
+
+/* ── Dashboard ── */
+.chisel-dash-header {
+	margin-bottom: 0.75rem;
+}
+
+.chisel-dash-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.65rem 1rem;
+	margin-bottom: 1rem;
+}
+
+.chisel-dash-toolbar-hint {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	max-width: 28rem;
+	line-height: 1.35;
+}
+
+.chisel-dash-analytics {
+	margin-bottom: 1.25rem;
+}
+
+.chisel-chart-wrap--compact {
+	height: 180px;
+}
+
+.chisel-dash-table-section {
+	margin-top: 0.5rem;
+}
+
+.chisel-dash-table-note {
+	font-size: 0.8rem;
+	color: var(--text-muted);
+	line-height: 1.4;
+	max-width: 48rem;
+	margin: 0.35rem 0 0.65rem;
+}
+
+.chisel-dash-debts-table .chisel-dash-pay-input {
+	width: 100%;
+	max-width: 7rem;
+	font-variant-numeric: tabular-nums;
+	padding: 0.25rem 0.35rem;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+}
+
+.chisel-debt-title-link {
+	display: inline;
+	padding: 0;
+	margin: 0;
+	border: none;
+	background: none;
+	color: var(--text-accent);
+	font: inherit;
+	font-weight: 600;
+	text-align: left;
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.chisel-debt-title-link:hover {
+	color: var(--interactive-accent);
+}
+
+.chisel-tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+.chisel-dash-tfoot td {
+	font-weight: 600;
+	background: var(--background-secondary);
+	border-top: 2px solid var(--background-modifier-border);
+}
+
+/* ── Detail inline edit ── */
+.chisel-detail-nav {
+	margin-bottom: 0.5rem;
+}
+
+.chisel-text-link {
+	display: inline-block;
+	padding: 0.15rem 0;
+	margin: 0;
+	border: none;
+	background: none;
+	color: var(--text-accent);
+	font-size: var(--font-ui-small);
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.chisel-text-link:hover {
+	color: var(--interactive-accent);
+}
+
+.chisel-detail-meta {
+	max-width: 36rem;
+	margin-bottom: 1rem;
+	padding-bottom: 0.75rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.chisel-detail-meta .setting-item {
+	border-top: none;
+}
+
+.chisel-detail-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem 0.75rem;
+	margin-top: 0.75rem;
+}
+
+.chisel-btn-danger {
+	padding: 0.35rem 0.65rem;
+	font-size: var(--font-ui-small);
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-error);
+	cursor: pointer;
+}
+
+.chisel-btn-danger:hover {
+	background: color-mix(in srgb, var(--text-error) 10%, var(--background-primary));
+}
+
+/*
+ * Shared “suite people” UI — portrait cards + inline pills.
+ * Used by Fulcrum (related people, companion chrome, markdown people links) and
+ * intended for Orbit, Fulcrum, and other plugins: reuse the same class names + markup shape.
+ *
+ * Markup (card): .fulcrum-person-card > .fulcrum-person-card__top > .fulcrum-person-card__avatar (+ img|svg) + .fulcrum-person-card__name
+ * Markup (inline pill): .fulcrum-person-inline-pill (a or span) > .fulcrum-person-inline-pill__avatar + .fulcrum-person-inline-pill__name
+ *
+ * Optional: set --suite-person-card-accent on an ancestor (e.g. Fulcrum .fulcrum-project, companion surface, Orbit profile)
+ * for a thin accent border on the card and avatar ring.
+ */
+
+.fulcrum-section--people {
+	margin-top: 1.25rem;
+}
+
+.fulcrum-section--people__title {
+	margin: 0 0 0.5rem;
+	font-size: var(--font-ui-medium);
+	font-weight: 700;
+}
+
+.fulcrum-people-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, var(--suite-person-card-max-width, 5rem));
+	gap: 0.65rem;
+	align-items: start;
+}
+
+/*
+ * Portrait card: circular avatar centered in the upper square; fixed 3-line name block below (wraps).
+ */
+.fulcrum-person-card:not(.fulcrum-companion-time-card) {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	margin: 0;
+	width: var(--suite-person-card-max-width, 5rem);
+	max-width: var(--suite-person-card-max-width, 5rem);
+	height: 7rem;
+	padding: 0;
+	gap: 0;
+	border: var(--suite-person-card-border, 1px solid color-mix(in srgb, var(--background-modifier-border) 92%, transparent));
+	border-color: var(--suite-person-card-accent);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+	box-shadow: none;
+	cursor: pointer;
+	font: inherit;
+	color: var(--text-normal);
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.fulcrum-person-card:not(.fulcrum-companion-time-card):hover {
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-person-card:not(.fulcrum-companion-time-card):focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+/*
+ * Square top: padding-bottom intrinsic ratio — aspect-ratio alone collapses in some grid/flex parents.
+ */
+.fulcrum-person-card__top {
+	position: relative;
+	flex: 0 0 auto;
+	width: 100%;
+	height: 0;
+	padding-bottom: 100%;
+	overflow: hidden;
+	background: color-mix(in srgb, var(--background-modifier-border) 35%, var(--background-primary));
+}
+
+/* People note `banner:` (or configured banner field): image only behind avatar square; name block unchanged. */
+.fulcrum-person-card__top.fulcrum-person-card__top--has-banner {
+	background-size: cover;
+	background-position: center center;
+	background-repeat: no-repeat;
+}
+
+.fulcrum-person-card:not(.fulcrum-companion-time-card) .fulcrum-person-card__avatar {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: 72%;
+	aspect-ratio: 1;
+	height: auto;
+	box-sizing: border-box;
+	border-radius: 50%;
+	overflow: hidden;
+	border: 1px solid
+		var(
+			--suite-person-card-accent,
+			color-mix(in srgb, var(--background-modifier-border) 88%, transparent)
+		);
+	background: color-mix(in srgb, var(--background-modifier-border) 35%, var(--background-primary));
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.fulcrum-person-card:not(.fulcrum-companion-time-card) .fulcrum-person-card__avatar img {
+	position: absolute;
+	inset: 0;
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	object-position: center center;
+	border-radius: 50%;
+}
+
+.fulcrum-person-card:not(.fulcrum-companion-time-card) .fulcrum-person-card__avatar svg {
+	position: relative;
+	width: 46%;
+	height: 46%;
+	flex-shrink: 0;
+	opacity: 0.45;
+	color: var(--text-muted);
+}
+
+.fulcrum-person-card__name {
+	--fulcrum-person-name-line: 1.15;
+	flex: 0 0 auto;
+	align-self: stretch;
+	box-sizing: border-box;
+	min-height: calc(var(--fulcrum-person-name-line) * 1em * 3);
+	max-height: calc(var(--fulcrum-person-name-line) * 1em * 3);
+	padding: 0.28rem 0.25rem 0.32rem;
+	margin: 0;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	line-clamp: 3;
+	overflow: hidden;
+	font-size: calc(var(--font-ui-smaller) - 2px);
+	font-weight: 600;
+	line-height: var(--fulcrum-person-name-line);
+	text-align: center;
+	white-space: normal;
+	word-break: normal;
+	overflow-wrap: anywhere;
+}
+
+/* Fulcrum companion chrome: horizontal strip */
+.fulcrum-companion-people-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: stretch;
+	gap: 0.5rem 0.6rem;
+	margin-top: 0.65rem;
+	padding-top: 0.65rem;
+	border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
+}
+
+/* Companion person cards intentionally inherit the exact same look as grid cards. */
+.fulcrum-companion-person-card.fulcrum-person-card:not(.fulcrum-companion-time-card) {
+	flex: 0 0 auto;
+	padding: 0;
+}
+
+.fulcrum-companion-time-card.fulcrum-person-card {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	min-width: 4.25rem;
+	max-width: 5.5rem;
+	min-height: 5.5rem;
+	padding: 0.4rem 0.35rem;
+	aspect-ratio: auto;
+}
+
+.fulcrum-companion-time-card__value {
+	font-size: var(--font-ui-medium);
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.2;
+}
+
+.fulcrum-companion-time-card__label {
+	margin-top: 0.2rem;
+	font-size: calc(var(--font-ui-smaller) - 1px);
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+/* Inline people chips: reading, Live Preview, and source (CodeMirror span.cm-hmd-internal-link) */
+.fulcrum-person-inline-pill {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-start;
+	vertical-align: baseline;
+	width: fit-content;
+	width: -moz-fit-content;
+	max-width: 100%;
+	min-width: 0;
+	min-height: 1.25em;
+	height: 1.35em;
+	margin: 0 0.1em;
+	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--background-secondary) 80%, var(--background-primary));
+	color: var(--text-normal);
+	font-size: inherit;
+	line-height: 1.2;
+	overflow: hidden;
+	box-sizing: border-box;
+	cursor: pointer;
+	flex: 0 0 auto;
+	/* Let the flex parent control cross-axis alignment (e.g. center in a row). Baseline
+	   alignment here made image vs SVG avatar pills sit at different heights. */
+	align-self: auto;
+}
+
+a.fulcrum-person-inline-pill {
+	text-decoration: none !important;
+}
+
+.fulcrum-person-inline-pill:hover {
+	background: var(--background-modifier-hover);
+	border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+	color: var(--text-normal);
+}
+
+.fulcrum-person-inline-pill:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+a.internal-link.fulcrum-person-inline-pill,
+span.cm-hmd-internal-link.fulcrum-person-inline-pill {
+	display: inline-flex !important;
+	width: fit-content !important;
+	max-width: 100% !important;
+}
+
+.fulcrum-person-inline-pill__avatar {
+	flex: 0 0 auto;
+	width: 1.35em;
+	height: 1.35em;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	overflow: hidden;
+	align-self: center;
+	background: color-mix(in srgb, var(--background-modifier-border) 40%, var(--background-primary));
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.fulcrum-person-inline-pill__avatar img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.fulcrum-person-inline-pill__avatar svg {
+	display: block;
+	width: 62%;
+	height: 62%;
+	margin: 0;
+	opacity: 0.5;
+	color: var(--text-muted);
+}
+
+.fulcrum-person-inline-pill__name {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 18rem;
+	padding: 0 0.4em 0 0.28em;
+	display: inline-flex;
+	align-items: center;
+	font-size: 0.92em;
+	font-weight: 600;
+	line-height: 1.2;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/*
+ * Shared “suite shell” UI — loaded after each plugin’s src/plugin.css.
+ * Fulcrum + Pulse + Orbit + Repose: same tokens for the top glyph row, collapse,
+ * and collapsed → vertical glyph stack.
+ */
+
+/* Generic: optional class for non-Fulcrum plugins */
+.suite-glyph-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--suite-glyph-btn-size);
+	height: var(--suite-glyph-btn-size);
+	min-width: var(--suite-glyph-btn-size);
+	min-height: var(--suite-glyph-btn-size);
+	padding: 0;
+	box-sizing: border-box;
+}
+
+.suite-glyph-btn svg {
+	width: var(--suite-glyph-icon-size);
+	height: var(--suite-glyph-icon-size);
+	display: block;
+	flex-shrink: 0;
+}
+
+/* —— PM top row: shared sizing (matches Pulse / Fulcrum reference) —— */
+.fulcrum-pm__glyph-bar,
+.pulse-pm__glyph-bar,
+.orbit-pm__glyph-bar,
+.repose-pm__glyph-bar {
+	gap: var(--suite-glyph-bar-gap);
+	padding: var(--suite-glyph-bar-padding-y) var(--suite-glyph-bar-padding-x);
+}
+
+.fulcrum-pm-left-collapsed .fulcrum-pm__glyph-bar,
+.pulse-pm-left-collapsed .pulse-pm__glyph-bar,
+.orbit-pm-left-collapsed .orbit-pm__glyph-bar,
+.repose-pm-left-collapsed .repose-pm__glyph-bar {
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 0.35rem;
+	padding: 0.45rem 0.2rem;
+}
+
+.fulcrum-pm__glyph-spacer,
+.pulse-pm__glyph-spacer,
+.orbit-pm__glyph-spacer,
+.repose-pm__glyph-spacer {
+	flex: 1 1 auto;
+	min-width: 0.2rem;
+}
+
+.fulcrum-pm-left-collapsed .fulcrum-pm__glyph-spacer,
+.pulse-pm-left-collapsed .pulse-pm__glyph-spacer,
+.orbit-pm-left-collapsed .orbit-pm__glyph-spacer,
+.repose-pm-left-collapsed .repose-pm__glyph-spacer {
+	display: none;
+}
+
+.fulcrum-pm__glyph-btn,
+.pulse-pm__glyph-btn,
+.orbit-pm__glyph-btn,
+.repose-pm__glyph-btn {
+	width: var(--suite-glyph-btn-size);
+	height: var(--suite-glyph-btn-size);
+	min-width: var(--suite-glyph-btn-size);
+	min-height: var(--suite-glyph-btn-size);
+	font-size: var(--suite-glyph-collapse-font-size);
+	font-weight: 600;
+	line-height: 1;
+	border-radius: var(--radius-s);
+}
+
+.fulcrum-pm__glyph-btn svg,
+.pulse-pm__glyph-btn svg,
+.orbit-pm__glyph-btn svg,
+.repose-pm__glyph-btn svg {
+	width: var(--suite-glyph-icon-size);
+	height: var(--suite-glyph-icon-size);
+	display: block;
+	flex-shrink: 0;
+}
+
+/* Right sidebar collapse / expand — Fulcrum only */
+.fulcrum-pm__sidebar-edge-btn {
+	flex: 0 0 var(--suite-glyph-edge-size);
+	width: var(--suite-glyph-edge-size);
+	min-width: var(--suite-glyph-edge-size);
+	min-height: var(--suite-glyph-btn-size);
+	font-size: var(--suite-glyph-collapse-font-size);
+	font-weight: 600;
+	line-height: 1;
+}
+

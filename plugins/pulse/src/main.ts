@@ -1,4 +1,5 @@
 import { Notice, Plugin, normalizePath, type ObsidianProtocolData } from "obsidian";
+import { WorkoutDocumentView, VIEW_TYPE_PULSE_WORKOUT_DOC } from "./views/WorkoutDocumentView";
 import { DEFAULT_SETTINGS, PulseSettingTab } from "./settings";
 import type { PulseSettings } from "./settings";
 import { ImportManager } from "./import/importManager";
@@ -26,6 +27,7 @@ export default class PulsePlugin extends Plugin {
 
 		// Register leaf view
 		this.registerView(VIEW_TYPE_PULSE, (leaf) => new PulseView(leaf, this));
+		this.registerView(VIEW_TYPE_PULSE_WORKOUT_DOC, (leaf) => new WorkoutDocumentView(leaf, this));
 
 		// Ribbon icon — opens the full-leaf view
 		if (this.settings.showRibbonIcon) {
@@ -42,8 +44,8 @@ export default class PulsePlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "open-pulse-today",
-			name: "Open Pulse — Today",
+			id: "open-pulse-home",
+			name: "Open Pulse — Home",
 			callback: () => this.openPulseView("today"),
 		});
 
@@ -108,7 +110,7 @@ export default class PulsePlugin extends Plugin {
 	}
 
 	private async applyPulseDeepLink(params: ObsidianProtocolData): Promise<void> {
-		const raw = String(params.screen ?? params.mode ?? params.leaf ?? "today")
+		const raw = String(params.screen ?? params.mode ?? params.leaf ?? "history")
 			.trim()
 			.toLowerCase();
 		const route = String(params.route ?? "")
@@ -119,7 +121,7 @@ export default class PulsePlugin extends Plugin {
 			const tail = route.replace(/^pulse\//i, "");
 			modeKey = (tail.split("/")[0] ?? "").toLowerCase();
 		}
-		if (!modeKey) modeKey = "today";
+		if (!modeKey) modeKey = "history";
 
 		const mode: PulseViewMode =
 			this.pulseModeAliases[modeKey] ?? (modeKey as PulseViewMode);
@@ -148,6 +150,19 @@ export default class PulsePlugin extends Plugin {
 
 	onunload(): void {
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_PULSE);
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_PULSE_WORKOUT_DOC);
+	}
+
+	/** Standalone workout leaf (banner + actions + sets), Orbit/Fulcrum-style. */
+	async openWorkoutDocumentLeaf(notePath: string): Promise<void> {
+		const norm = normalizePath(notePath);
+		const leaf = this.app.workspace.getLeaf("tab");
+		await leaf.setViewState({
+			type: VIEW_TYPE_PULSE_WORKOUT_DOC,
+			active: true,
+			state: { path: norm },
+		});
+		this.app.workspace.revealLeaf(leaf);
 	}
 
 	async openPulseView(mode?: string, path?: string): Promise<void> {
@@ -156,7 +171,7 @@ export default class PulsePlugin extends Plugin {
 			await existing.setViewState({
 				type: VIEW_TYPE_PULSE,
 				active: true,
-				state: { mode: mode ?? "today", path },
+				state: { mode: mode ?? "history", path },
 			});
 			this.app.workspace.revealLeaf(existing);
 			return;
@@ -166,7 +181,7 @@ export default class PulsePlugin extends Plugin {
 		await leaf.setViewState({
 			type: VIEW_TYPE_PULSE,
 			active: true,
-			state: { mode: mode ?? "today", path },
+			state: { mode: mode ?? "history", path },
 		});
 		this.app.workspace.revealLeaf(leaf);
 	}

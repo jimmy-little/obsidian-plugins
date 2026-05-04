@@ -1,0 +1,11 @@
+{
+	"id": "chisel",
+	"name": "Chisel",
+	"version": "0.1.0",
+	"minAppVersion": "0.15.0",
+	"description": "Credit card payoff calculator with amortization tables and charts.",
+	"author": "Jimmy Little",
+	"authorUrl": "https://github.com/jimmylittle",
+	"isDesktopOnly": false,
+	"styles": ["styles.css"]
+}

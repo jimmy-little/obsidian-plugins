@@ -64,6 +64,8 @@ export interface SessionFrontmatter {
 	hrAvg?: number;
 	hrMax?: number;
 	importedAt?: string;
+	/** Cross-source import merge key (time bucket + duration + kind). */
+	pulseDedupKey?: string;
 }
 
 export interface SessionNote {
