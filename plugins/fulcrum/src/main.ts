@@ -22,9 +22,11 @@ import {
 } from "./fulcrum/projectArchive";
 import {
 	FULCRUM_HOVER_SOURCE,
+	VIEW_ACTIVE_TIMERS,
 	VIEW_DASHBOARD,
 	VIEW_PROJECT,
 	VIEW_PROJECT_MANAGER,
+	VIEW_QUICK_START,
 	VIEW_TIMELINE,
 } from "./fulcrum/constants";
 import {
@@ -40,21 +42,23 @@ import {
 import type {FulcrumHost} from "./fulcrum/pluginBridge";
 import {
 	openProjectSummaryLeaf,
+	revealOrCreateActiveTimers,
 	revealOrCreateAreas,
 	revealOrCreateDashboard,
 	revealOrCreateProjectManager,
+	revealOrCreateQuickStart,
 	revealOrCreateTimeTracked,
 	revealOrCreateTimeline,
 	revealOrCreateReview,
 } from "./fulcrum/openViews";
 import {openNotePropertiesModal, revealOrCreateView} from "@obsidian-suite/core";
 import {DEFAULT_SETTINGS, DASHBOARD_ACTIVITY_MAX_DAYS, type FulcrumSettings} from "./fulcrum/settingsDefaults";
+import {migrateKanbanSettings} from "./fulcrum/kanban/settingsKey";
 import {postTaskNotesToggleStatus} from "./fulcrum/taskNotesApi";
 import {toggleInlineTaskLine, toggleTaskNoteFrontmatter} from "./fulcrum/taskVaultToggle";
 import {bumpSettingsRevision} from "./fulcrum/stores";
 import type {IndexedTask} from "./fulcrum/types";
 import {registerCompanionDocChrome} from "./fulcrum/companionDocChrome";
-import {runLapseTimerInOpenNote} from "./fulcrum/lapseIntegration";
 import {
 	registerInlinePeoplePills,
 	registerLivePreviewPeoplePillScan,
@@ -62,7 +66,14 @@ import {
 import {openMarkdownBesideFulcrum, type FulcrumCompanionLeaf} from "./fulcrum/openBesideFulcrum";
 import {createNewNoteFromTemplateForProject as runCreateNewNoteFromTemplate} from "./fulcrum/projectNewNoteFromTemplate";
 import {VaultIndex} from "./fulcrum/VaultIndex";
+import {injectFulcrumPluginStyles} from "./fulcrum/injectPluginStyles";
+import {FULCRUM_PLUGIN_CSS} from "./generated/pluginStyles";
 import {FulcrumSettingTab} from "./settings";
+import {TimerModule} from "./timer/TimerModule";
+import {migrateTimerSettings, mergeTimerDefaults} from "./timer/migration";
+import type {TimeModeTab} from "./timer/types";
+import {ActiveTimersView} from "./views/ActiveTimersView";
+import {QuickStartView} from "./views/QuickStartView";
 import {DashboardView} from "./views/DashboardView";
 import {ProjectManagerView} from "./views/ProjectManagerView";
 import {ProjectView} from "./views/ProjectView";
@@ -71,17 +82,39 @@ import {TimelineView} from "./views/TimelineView";
 export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	settings: FulcrumSettings = DEFAULT_SETTINGS;
 	vaultIndex!: VaultIndex;
+	timer!: TimerModule;
 	/** Reused markdown leaf for “open beside” from project / linked surfaces. */
 	private readonly fulcrumCompanionLeaf: FulcrumCompanionLeaf = {current: null};
 
 	async onload(): Promise<void> {
+		this.register(injectFulcrumPluginStyles(FULCRUM_PLUGIN_CSS));
+
 		await this.loadSettings();
 		this.vaultIndex = new VaultIndex(this.app, () => this.settings);
+		this.timer = new TimerModule(this);
+		const data = (await this.loadData()) as Record<string, unknown> | null;
+		const cacheRaw = data?.timerEntryCache ?? data?.entryCache;
+		const entryCache =
+			cacheRaw && typeof cacheRaw === "object"
+				? (cacheRaw as import("./timer/types").EntryCache)
+				: {};
+		const migrated = await migrateTimerSettings(this.app, this.settings.timer, entryCache);
+		this.settings.timer = migrated.timer;
+		this.timer.entryCache = migrated.entryCache;
 
 		this.registerView(VIEW_PROJECT_MANAGER, (leaf) => new ProjectManagerView(leaf, this));
 		this.registerView(VIEW_DASHBOARD, (leaf) => new DashboardView(leaf, this));
 		this.registerView(VIEW_PROJECT, (leaf) => new ProjectView(leaf, this));
 		this.registerView(VIEW_TIMELINE, (leaf) => new TimelineView(leaf, this));
+		this.registerView(VIEW_ACTIVE_TIMERS, (leaf) => new ActiveTimersView(leaf, this));
+		this.registerView(VIEW_QUICK_START, (leaf) => new QuickStartView(leaf, this));
+
+		try {
+			await this.timer.onload();
+		} catch (err) {
+			console.error("Fulcrum timer failed to load", err);
+			new Notice("Fulcrum timer failed to load — time tracking is unavailable.");
+		}
 
 		this.registerHoverLinkSource(FULCRUM_HOVER_SOURCE, {
 			display: this.manifest.name,
@@ -144,7 +177,11 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 				app: this.app,
 				getSettings: () => this.settings,
 				registerEvent: (r) => this.registerEvent(r),
-				startLapseInOpenNote: (file, meta) => runLapseTimerInOpenNote(this.app, file, meta),
+				startTimerInOpenNote: (file, meta) =>
+					this.startTimerInNote(file.path, {
+						projectName: meta.projectLabel,
+						noteTitle: meta.entryTitle,
+					}),
 				openNoteProperties: (file) => {
 					openNotePropertiesModal(this.app, file, {
 						displayTitleField: this.settings.atomicNoteEntryField,
@@ -254,6 +291,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	onunload(): void {
 		this.vaultIndex.cancelScheduledRebuild();
+		void this.timer?.onunload();
 	}
 
 	private handleFulcrumOpenUri(params: ObsidianProtocolData): void {
@@ -264,20 +302,46 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	}
 
 	private async applyFulcrumDeepLink(params: ObsidianProtocolData): Promise<void> {
-		const screenRaw = String(params.screen ?? params.leaf ?? "").trim().toLowerCase();
+		const screenRaw = String(params.screen ?? params.leaf ?? "")
+			.trim()
+			.toLowerCase()
+			.replace(/-/g, "_");
 		const route = String(params.route ?? "")
 			.trim()
 			.replace(/^\/+/, "");
 		let screen = screenRaw;
 		if (!screen && route) {
-			const tail = route.replace(/^fulcrum\//i, "");
+			const tail = route
+				.replace(/^fulcrum\//i, "")
+				.replace(/^lapse\//i, "")
+				.replace(/^fulcrum-timer-tracker\//i, "");
 			const seg = tail.split("/")[0] ?? "";
-			screen = seg.toLowerCase();
+			screen = seg.toLowerCase().replace(/-/g, "_");
 		}
 		if (!screen) screen = "dashboard";
 
 		const projectPath = String(params.projectPath ?? "").trim();
 		const focalDate = String(params.focalDate ?? params.date ?? "").trim();
+
+		const timerTabByScreen: Record<string, TimeModeTab> = {
+			reports: "sessions",
+			sessions: "sessions",
+			grid: "entryGrid",
+			entry_grid: "entryGrid",
+		};
+		if (screen === "activity" || screen === "sidebar") {
+			await this.openActiveTimers();
+			return;
+		}
+		if (screen === "quick_start" || screen === "quickstart" || screen === "buttons") {
+			await this.openQuickStart();
+			return;
+		}
+		const timerTab = timerTabByScreen[screen];
+		if (timerTab) {
+			await this.openTimeTracked(timerTab);
+			return;
+		}
 
 		switch (screen) {
 			case "dashboard":
@@ -372,9 +436,46 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 		if (
 			merged.kanbanColumnBy !== "status" &&
-			merged.kanbanColumnBy !== "area"
+			merged.kanbanColumnBy !== "area" &&
+			merged.kanbanColumnBy !== "project" &&
+			merged.kanbanColumnBy !== "date"
 		) {
 			merged.kanbanColumnBy = DEFAULT_SETTINGS.kanbanColumnBy;
+		}
+		if (merged.kanbanView !== "projects" && merged.kanbanView !== "tasks") {
+			merged.kanbanView = DEFAULT_SETTINGS.kanbanView;
+		}
+		if (
+			merged.kanbanSwimlaneBy !== "none" &&
+			merged.kanbanSwimlaneBy !== "status" &&
+			merged.kanbanSwimlaneBy !== "area" &&
+			merged.kanbanSwimlaneBy !== "project" &&
+			merged.kanbanSwimlaneBy !== "date"
+		) {
+			merged.kanbanSwimlaneBy = DEFAULT_SETTINGS.kanbanSwimlaneBy;
+		}
+		if (
+			merged.kanbanProjectDateSource !== "nextReview" &&
+			merged.kanbanProjectDateSource !== "deadline"
+		) {
+			merged.kanbanProjectDateSource = DEFAULT_SETTINGS.kanbanProjectDateSource;
+		}
+		if (typeof merged.projectDeadlineField !== "string") {
+			merged.projectDeadlineField = DEFAULT_SETTINGS.projectDeadlineField;
+		}
+		if (
+			!merged.kanbanHiddenColumns ||
+			typeof merged.kanbanHiddenColumns !== "object" ||
+			Array.isArray(merged.kanbanHiddenColumns)
+		) {
+			merged.kanbanHiddenColumns = {...DEFAULT_SETTINGS.kanbanHiddenColumns};
+		}
+		if (
+			!merged.kanbanColumnOrder ||
+			typeof merged.kanbanColumnOrder !== "object" ||
+			Array.isArray(merged.kanbanColumnOrder)
+		) {
+			merged.kanbanColumnOrder = {...DEFAULT_SETTINGS.kanbanColumnOrder};
 		}
 		if (!Array.isArray(merged.kanbanHiddenStatus)) {
 			merged.kanbanHiddenStatus = DEFAULT_SETTINGS.kanbanHiddenStatus;
@@ -388,6 +489,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (!Array.isArray(merged.kanbanOrderArea)) {
 			merged.kanbanOrderArea = DEFAULT_SETTINGS.kanbanOrderArea;
 		}
+		migrateKanbanSettings(merged as FulcrumSettings);
 		if (!Array.isArray(merged.projectSidebarFilterUncheckedStatus)) {
 			merged.projectSidebarFilterUncheckedStatus =
 				DEFAULT_SETTINGS.projectSidebarFilterUncheckedStatus;
@@ -444,15 +546,76 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 
 		this.settings = merged as FulcrumSettings;
+		this.settings.timer = mergeTimerDefaults(
+			typeof loaded.timer === "object" && loaded.timer
+				? (loaded.timer as Partial<typeof DEFAULT_SETTINGS.timer>)
+				: undefined,
+		);
+		if (
+			this.settings.timeModeTab !== "overview" &&
+			this.settings.timeModeTab !== "activity" &&
+			this.settings.timeModeTab !== "sessions" &&
+			this.settings.timeModeTab !== "entryGrid"
+		) {
+			this.settings.timeModeTab = DEFAULT_SETTINGS.timeModeTab;
+		}
+		if ((this.settings.timeModeTab as string) === "quickStart") {
+			this.settings.timeModeTab = "overview";
+		}
 	}
 
 	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		if (this.settings.timer.totalTimeKey !== this.settings.taskTrackedMinutesField) {
+			this.settings.timer.totalTimeKey = this.settings.taskTrackedMinutesField;
+		}
+		await this.saveData({
+			...this.settings,
+			timerEntryCache: this.timer?.entryCache ?? {},
+		});
+	}
+
+	async openTimeTracked(tab: TimeModeTab = this.settings.timeModeTab): Promise<void> {
+		this.settings.timeModeTab = tab;
+		await this.saveSettings();
+		await revealOrCreateTimeTracked(this.app, this.settings, tab);
+	}
+
+	async openActiveTimers(): Promise<void> {
+		await revealOrCreateActiveTimers(this.app, this.settings);
+	}
+
+	async openQuickStart(): Promise<void> {
+		await revealOrCreateQuickStart(this.app, this.settings);
+	}
+
+	async openCalendar(): Promise<void> {
+		const leaf = this.app.workspace.getLeavesOfType(VIEW_PROJECT_MANAGER)[0];
+		if (leaf) {
+			await leaf.setViewState({
+				type: VIEW_PROJECT_MANAGER,
+				active: true,
+				state: {mode: "calendar"},
+			});
+			await this.app.workspace.revealLeaf(leaf);
+			return;
+		}
+		await revealOrCreateProjectManager(this.app, this.settings, {mode: "calendar"});
+	}
+
+	async startTimerForProject(projectName: string, projectFilePath: string): Promise<void> {
+		await this.timer.startTimerForProject(projectName, projectFilePath);
+	}
+
+	async startTimerInNote(
+		notePath: string,
+		options?: {projectName?: string | null; noteTitle?: string | null},
+	): Promise<void> {
+		await this.timer.startTimerInNote(notePath, options);
 	}
 
 	async patchSettings(partial: Partial<FulcrumSettings>): Promise<void> {
 		Object.assign(this.settings, partial);
-		await this.saveData(this.settings);
+		await this.saveSettings();
 		bumpSettingsRevision();
 	}
 
@@ -545,9 +708,6 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		await revealOrCreateReview(this.app, this.settings);
 	}
 
-	async openTimeTracked(): Promise<void> {
-		await revealOrCreateTimeTracked(this.app, this.settings);
-	}
 
 	async openAreas(): Promise<void> {
 		await revealOrCreateAreas(this.app, this.settings);

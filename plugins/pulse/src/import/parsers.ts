@@ -81,7 +81,12 @@ export function parseFITINDEXCsv(csvText: string, options?: { indexFallback?: bo
 			else if (key === "Body Fat (%)" || key === "Body Fat(%)" || key === "Body Fat Percentage (%)" || key === "Body Fat Percentage(%)") row.bodyFatPct = parseNum(raw);
 			else if (key === "Body Fat Mass(lb)" || key === "Body Fat Mass (lb)") row.bodyFatMassLb = parseNum(raw);
 			else if (key === "Fat-free Body Weight (kg)") row.fatFreeWeightKg = parseNum(raw);
-			else if (key === "Fat-free Body Weight(lb)" || key === "Fat-free Body Weight (lb)" || key === "Fat-Free Mass (lb)" || key === "Fat-Free Mass(lb)") row.fatFreeWeightLb = parseNum(raw);
+			else if (
+				key === "Fat-free Body Weight(lb)" ||
+				key === "Fat-free Body Weight (lb)" ||
+				key === "Fat-Free Mass (lb)" ||
+				key === "Fat-Free Mass(lb)"
+			) row.fatFreeWeightLb = parseNum(raw);
 			else if (key === "Subcutaneous Fat (%)" || key === "Subcutaneous Fat(%)") row.subcutaneousFatPct = parseNum(raw);
 			else if (key === "Visceral Fat") row.visceralFat = parseNum(raw);
 			else if (key === "Body Water (%)" || key === "Body Water(%)" || key === "Body Water Percentage (%)" || key === "Body Water Percentage(%)") row.bodyWaterPct = parseNum(raw);

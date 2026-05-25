@@ -28,6 +28,12 @@ export interface PulseSettings extends WorkoutSettings {
 	lastBodyCompImportAt: string;
 	/** ISO timestamp of last successful workout import (JSON or Workouts CSV) */
 	lastWorkoutImportAt: string;
+	/** Monthly nutrition log note path. Variables: {year}, {month}, {YYYY-MM} */
+	nutritionNotePathTemplate: string;
+	/** Daily calorie goal shown on the nutrition month chart (Y-axis max). */
+	nutritionDailyCalorieGoal: number;
+	/** Target weight (lb) — bottom of the Weight chart on the Body tab. */
+	bodyGoalWeight?: number;
 }
 
 export const DEFAULT_SETTINGS: PulseSettings = {
@@ -60,6 +66,8 @@ export const DEFAULT_SETTINGS: PulseSettings = {
 	maptilerApiKey: "",
 	lastBodyCompImportAt: "",
 	lastWorkoutImportAt: "",
+	nutritionNotePathTemplate: "60 Logs/{year}/Nutrition/{YYYY-MM}.md",
+	nutritionDailyCalorieGoal: 2000,
 };
 
 export class PulseSettingTab extends PluginSettingTab {
@@ -74,6 +82,31 @@ export class PulseSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 		containerEl.createEl("h2", { text: "Pulse Settings" });
+
+		containerEl.createEl("h3", { text: "Nutrition Logs" });
+
+		new Setting(containerEl)
+			.setName("Monthly nutrition note path")
+			.setDesc("Path to monthly food log notes. Variables: {year}, {month}, {YYYY-MM}")
+			.addText(text => text
+				.setPlaceholder("60 Logs/{year}/Nutrition/{YYYY-MM}.md")
+				.setValue(this.plugin.settings.nutritionNotePathTemplate ?? "60 Logs/{year}/Nutrition/{YYYY-MM}.md")
+				.onChange(async v => {
+					this.plugin.settings.nutritionNotePathTemplate = v?.trim() || "60 Logs/{year}/Nutrition/{YYYY-MM}.md";
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName("Daily calorie goal")
+			.setDesc("Y-axis max on the nutrition month chart (bars above this line are over goal).")
+			.addText(text => text
+				.setPlaceholder("2000")
+				.setValue(String(this.plugin.settings.nutritionDailyCalorieGoal ?? 2000))
+				.onChange(async v => {
+					const n = parseInt(v, 10);
+					this.plugin.settings.nutritionDailyCalorieGoal = Number.isFinite(n) && n > 0 ? n : 2000;
+					await this.plugin.saveSettings();
+				}));
 
 		// --- Workout Tracking ---
 		containerEl.createEl("h3", { text: "Workout Tracking" });
@@ -270,13 +303,14 @@ export class PulseSettingTab extends PluginSettingTab {
 
 		containerEl.createEl("h3", { text: "URL schemes (Obsidian URI)" });
 		containerEl.createEl("p", {
-			text: "URI host must be pulse (plugin id). Use query params only — e.g. obsidian://pulse?screen=history. Do not use action=open; that targets the core “open” handler. Aliases: programs → program. Optional path= when needed.",
+			text: "URI host must be pulse (plugin id). Use query params only — e.g. obsidian://pulse?screen=today. Do not use action=open; that targets the core “open” handler. Aliases: programs → program, history → home. Optional path= when needed.",
 		});
 		const pulseUris: [string, string][] = [
-			["/pulse/history (default)", "obsidian://pulse?screen=history"],
-			["/pulse/today (Home / import)", "obsidian://pulse?screen=today"],
+			["/pulse/today (Home — default)", "obsidian://pulse?screen=today"],
+			["/pulse/history — alias for home", "obsidian://pulse?screen=history"],
 			["/pulse/program — alias screen=programs", "obsidian://pulse?screen=programs"],
 			["/pulse/stats", "obsidian://pulse?screen=stats"],
+			["/pulse/nutrition", "obsidian://pulse?screen=nutrition"],
 			["/pulse/exercise", "obsidian://pulse?screen=exercise"],
 			["/pulse/session — optional path=", "obsidian://pulse?screen=session&path=…"],
 			["route=/pulse/history", "obsidian://pulse?route=%2Fpulse%2Fhistory"],

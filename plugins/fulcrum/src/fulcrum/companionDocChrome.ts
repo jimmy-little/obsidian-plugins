@@ -12,14 +12,13 @@ import {formatTrackedMinutesShort} from "./utils/dates";
 import {leafIsInWorkspace, type FulcrumCompanionLeaf} from "./openBesideFulcrum";
 import {leadingTimelineEmojiFromNoteType} from "./utils/projectActivity";
 import {isUnderFolder} from "./utils/paths";
-import {getLapseApi} from "./lapseIntegration";
 
 export type CompanionChromeHost = {
 	readonly app: App;
 	getSettings(): FulcrumSettings;
 	registerEvent(ref: EventRef): void;
-	/** When Lapse is installed, companion banner shows Play to start a timer in this note. */
-	startLapseInOpenNote?: (
+	/** Start a timer in the open companion note. */
+	startTimerInOpenNote?: (
 		file: TFile,
 		meta: { projectLabel: string; entryTitle: string },
 	) => Promise<void>;
@@ -305,26 +304,21 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 	}
 
 	const actionsRow = el("div", "fulcrum-companion-banner__actions");
-	const lapseApi = getLapseApi(app);
-	const hasLapsePlay =
-		lapseApi &&
-		typeof lapseApi.startTimerInNote === "function" &&
-		typeof hostCtx.startLapseInOpenNote === "function";
-	if (hasLapsePlay) {
-		const lapseBtn = el("button", "fulcrum-companion-lapse-btn");
-		lapseBtn.type = "button";
-		lapseBtn.title = "Start a Lapse timer in this note";
-		lapseBtn.setAttribute("aria-label", "Start a Lapse timer in this note");
-		setIcon(lapseBtn, "play");
-		lapseBtn.addEventListener("click", (ev) => {
+	if (typeof hostCtx.startTimerInOpenNote === "function") {
+		const timerBtn = el("button", "fulcrum-companion-timer-btn");
+		timerBtn.type = "button";
+		timerBtn.title = "Start a timer in this note";
+		timerBtn.setAttribute("aria-label", "Start a timer in this note");
+		setIcon(timerBtn, "play");
+		timerBtn.addEventListener("click", (ev) => {
 			ev.preventDefault();
 			ev.stopPropagation();
-			void hostCtx.startLapseInOpenNote?.(file, {
+			void hostCtx.startTimerInOpenNote?.(file, {
 				projectLabel: projLabel,
 				entryTitle: titleBase,
 			});
 		});
-		actionsRow.append(lapseBtn);
+		actionsRow.append(timerBtn);
 	}
 
 	const tracked = readTrackedMinutesFromFm(fm, s.taskTrackedMinutesField);

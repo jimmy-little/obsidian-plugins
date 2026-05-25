@@ -5,7 +5,7 @@
 	import DashboardMain from "./DashboardMain.svelte";
 	import KanbanMain from "./KanbanMain.svelte";
 	import CalendarMain from "./CalendarMain.svelte";
-	import TimeTrackedMain from "./TimeTrackedMain.svelte";
+	import TimeMain from "./TimeMain.svelte";
 	import WeeklyReviewMain from "./WeeklyReviewMain.svelte";
 	import AreasMain from "./AreasMain.svelte";
 	import ProjectListPanel from "./ProjectListPanel.svelte";
@@ -293,10 +293,10 @@
 			<CalendarMain {plugin} {hoverParentLeaf} />
 		{:else if mainMode === "time"}
 			<header class="fulcrum-pm__main-head">
-				<h1 class="fulcrum-pm__main-title">Time tracked</h1>
+				<h1 class="fulcrum-pm__main-title">Time</h1>
 				<FulcrumLeafToolbar {plugin} />
 			</header>
-			<TimeTrackedMain {plugin} {hoverParentLeaf} />
+			<TimeMain {plugin} {hoverParentLeaf} activeTab={plugin.settings.timeModeTab} />
 		{:else if projectPath}
 			{#key projectPath}
 				<ProjectSummary

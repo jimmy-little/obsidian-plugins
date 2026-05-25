@@ -32,6 +32,8 @@ export interface IndexedProject {
 	description?: string;
 	/** Next review date (ISO), from configured frontmatter field. */
 	nextReview?: string;
+	/** Project deadline from configured frontmatter field. */
+	deadline?: string;
 	/** YYYY-MM-DD (or raw prefix) from launch / target date field; sidebar sort. */
 	launchDate?: string;
 	/** From configurable frontmatter key; higher = more important. */

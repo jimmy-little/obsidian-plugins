@@ -93,12 +93,24 @@ export class ReposeSettingTab extends PluginSettingTab {
 				});
 			});
 
+		containerEl.createEl("h3", { text: "File Destinations" });
+
 		new Setting(containerEl)
-			.setName("Media folder (vault-relative)")
-			.setDesc("Root folder for imported notes, e.g. 90 Media")
+			.setName("Media Note Folder")
+			.setDesc("Vault-relative root for imported notes, e.g. Media")
 			.addText((t) =>
 				t.setValue(this.plugin.settings.mediaRoot).onChange(async (v) => {
 					this.plugin.settings.mediaRoot = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Note Attachments")
+			.setDesc("Vault-relative folder for imported images, e.g. Media/attachments")
+			.addText((t) =>
+				t.setValue(this.plugin.settings.noteAttachmentsFolder).onChange(async (v) => {
+					this.plugin.settings.noteAttachmentsFolder = v;
 					await this.plugin.saveSettings();
 				}),
 			);
@@ -151,6 +163,18 @@ export class ReposeSettingTab extends PluginSettingTab {
 					});
 				});
 		}
+
+		new Setting(containerEl)
+			.setName("Track watch time with Fulcrum")
+			.setDesc(
+				"When on, episode “Watch Now” writes Fulcrum timer frontmatter (startTime, fulcrumTimerEntries, totalTimeTracked) and adds a ```fulcrum-timer``` block to the note.",
+			)
+			.addToggle((t) =>
+				t.setValue(this.plugin.settings.trackWatchTimeWithFulcrum).onChange(async (v) => {
+					this.plugin.settings.trackWatchTimeWithFulcrum = v;
+					await this.plugin.saveSettings();
+				}),
+			);
 
 		new Setting(containerEl)
 			.setName("Project wikilink")

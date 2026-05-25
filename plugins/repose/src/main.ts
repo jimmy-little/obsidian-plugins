@@ -1,8 +1,10 @@
 import { Notice, Plugin, TFile, type ObsidianProtocolData, type WorkspaceLeaf } from "obsidian";
 import {
 	ensureReposeCompanionMarkdownPane,
+	navigateEpisodeInCompanionPane,
 	openBookCompanionSinglePane,
-	registerReposeCompanionMarkdown,
+	openRawEpisodeNote as mountRawEpisodeNote,
+	registerReposeCompanionMarkdownForPlatform,
 } from "./reposeCompanionMarkdown";
 import { resolveMediaTypeForFile } from "./media/mediaDetect";
 import { isEffectivelyWatchedFromFrontmatter, watchedDatesIsoFromFrontmatter } from "./media/mediaModel";
@@ -15,7 +17,15 @@ import {
 	removeEpisodeWatchedFromTrakt,
 	removeMovieWatchedFromTrakt,
 } from "./trakt/watchedSync";
+import { openEpisodeWatchMenu as showEpisodeWatchMenu } from "./ui/episodeWatchMenu";
 import { refreshMediaNote as runRefreshMediaNote } from "./vault/refreshMedia";
+import {
+	markEpisodeUnwatched as applyEpisodeUnwatched,
+	markEpisodeWatched as applyEpisodeWatched,
+	markSeasonEpisodesWatched as applySeasonEpisodesWatched,
+	markSeriesEpisodesWatched as applySeriesEpisodesWatched,
+	type EpisodeWatchMode,
+} from "./vault/watchState";
 import {
 	refreshShowFromTrakt as runRefreshShowFromTrakt,
 	refreshTvSeasonFromTrakt as runRefreshTvSeasonFromTrakt,
@@ -35,6 +45,8 @@ export default class ReposePlugin extends Plugin {
 	reposeCompanionMarkdownOwnedSplit = false;
 	/** Chrome prev/next — opens book notes or syncs Repose + episode split. */
 	reposeRequestSelectPath: ((path: string) => void) | null = null;
+	/** Markdown views opened via “Open note” — no companion hero / hidden frontmatter. */
+	reposeRawMarkdownViews = new WeakSet<import("obsidian").MarkdownView>();
 
 	clearTraktDevicePoll(): void {
 		if (this.traktDevicePollTimer) {
@@ -63,6 +75,49 @@ export default class ReposePlugin extends Plugin {
 		callbacks?: { onComplete?: () => void },
 	): Promise<{ ok: boolean; error?: string; deferred?: boolean }> {
 		return runRefreshMediaNote(this.app, this.settings, this, file, callbacks);
+	}
+
+	async markEpisodeWatched(filePath: string, mode: EpisodeWatchMode): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(filePath);
+		if (!(f instanceof TFile)) return;
+		await applyEpisodeWatched(this, f, mode);
+	}
+
+	async markEpisodeUnwatched(filePath: string): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(filePath);
+		if (!(f instanceof TFile)) return;
+		await applyEpisodeUnwatched(this, f);
+	}
+
+	async markSeriesEpisodesWatched(showPath: string): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(showPath);
+		if (!(f instanceof TFile)) return;
+		await applySeriesEpisodesWatched(this, f);
+	}
+
+	async markSeasonEpisodesWatched(showPath: string, seasonNum: number): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(showPath);
+		if (!(f instanceof TFile)) return;
+		await applySeasonEpisodesWatched(this, f, seasonNum);
+	}
+
+	openEpisodeWatchMenu(file: TFile, ev: MouseEvent, onComplete?: () => void): void {
+		showEpisodeWatchMenu(this, file, ev, onComplete);
+	}
+
+	/** Repose list/detail selection only — does not create or retarget the companion markdown pane. */
+	async updateReposeSelectedPath(path: string): Promise<void> {
+		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_REPOSE);
+		for (const leaf of leaves) {
+			const view = leaf.view;
+			if (view instanceof ReposeShellView) {
+				view.updateSelection(path);
+			}
+		}
+	}
+
+	async openRawEpisodeNote(file: TFile): Promise<void> {
+		await mountRawEpisodeNote(this, file);
 	}
 
 	async toggleWatchedFrontmatter(filePath: string): Promise<void> {
@@ -134,7 +189,7 @@ export default class ReposePlugin extends Plugin {
 
 		this.registerView(VIEW_TYPE_REPOSE, (leaf) => new ReposeShellView(leaf, this));
 
-		registerReposeCompanionMarkdown(this);
+		registerReposeCompanionMarkdownForPlatform(this);
 
 		this.reposeRequestSelectPath = (path: string) => {
 			void this.navigateCompanionMediaPath(path);
@@ -195,6 +250,15 @@ export default class ReposePlugin extends Plugin {
 		if (mt !== "book" && mt !== "episode") return;
 
 		const reposeLeaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_REPOSE)[0];
+
+		if (mt === "episode") {
+			const navigated = await navigateEpisodeInCompanionPane(this, f);
+			if (navigated) {
+				await this.updateReposeSelectedPath(path);
+				return;
+			}
+		}
+
 		if (reposeLeaf) {
 			await reposeLeaf.setViewState({
 				type: VIEW_TYPE_REPOSE,
@@ -202,8 +266,13 @@ export default class ReposePlugin extends Plugin {
 				state: { selectedPath: path },
 			});
 			await this.app.workspace.revealLeaf(reposeLeaf);
+			return;
 		}
-		const anchor = reposeLeaf ?? this.app.workspace.getLeaf("tab");
+
+		const anchor =
+			this.reposeCompanionMarkdownLeaf ??
+			this.app.workspace.activeLeaf ??
+			this.app.workspace.getLeaf("tab");
 		if (mt === "book") {
 			await openBookCompanionSinglePane(this, anchor, f);
 		} else {

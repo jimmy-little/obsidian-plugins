@@ -1,36 +1,48 @@
-import { normalizePath, setIcon } from "obsidian";
+import { setIcon } from "obsidian";
 import type PulsePlugin from "../main";
-import type { ProgramNote, SessionNote } from "./types";
+import type { PulseView } from "../views/PulseView";
+import type { WorkoutListEntry } from "./types";
+import { HOME_TIMELINE_DAYS, formatWorkoutDateGroupLabel } from "./workoutListUi";
 import {
 	buildCalendarGridCells,
-	buildSessionsByDate,
-	computePlannedForMonth,
+	buildWorkoutsByDate,
 	DAY_ABBREVS,
 	formatMonthTitle,
 	toIsoDateLocal,
 } from "./historyCalendar";
+import { groupMealsByDate, type NutritionMealEntry } from "../nutrition/types";
+import { getStatsNotePath } from "../import/parsers";
+import { loadBodyCompSeries } from "../stats/loadBodyCompSeries";
+import type { BodyCompDay } from "../stats/bodyCompTypes";
+import {
+	bodyCompByDateFromSeries,
+	buildHomeTimelineItems,
+	groupHomeTimelineByDate,
+	loadNutritionByDateForRange,
+} from "../home/homeActivity";
+import {
+	renderHomeBodyCompCalendarCard,
+	renderHomeNutritionCalendarCard,
+	renderHomeWorkoutCalendarChip,
+} from "../home/homeCalendarUi";
+import { openStatsNotePath, renderHomeActivityTimeline } from "../home/homeTimelineUi";
 
 export class HistoryTab {
 	private plugin: PulsePlugin;
+	private view: PulseView | null;
 	private container: HTMLElement | null = null;
-	/** Persist across session detail → back within the same History tab instance */
 	private calendarYear: number | null = null;
 	private calendarMonth: number | null = null;
+	private entries: WorkoutListEntry[] = [];
 
-	constructor(plugin: PulsePlugin) {
+	constructor(plugin: PulsePlugin, view?: PulseView) {
 		this.plugin = plugin;
+		this.view = view ?? null;
 	}
 
-	async render(container: HTMLElement): Promise<void> {
+	render(container: HTMLElement, entries?: WorkoutListEntry[]): void {
 		this.container = container;
-		container.empty();
-		container.createDiv({ cls: "pulse-workout-loading", text: "Loading sessions..." });
-
-		const dm = this.plugin.workoutDataManager;
-		const [sessions, programs] = await Promise.all([
-			dm.getAllSessions(),
-			dm.getAllPrograms(),
-		]);
+		this.entries = entries ?? this.plugin.workoutDataManager.getAllWorkoutListEntries();
 
 		if (this.calendarYear == null || this.calendarMonth == null) {
 			const n = new Date();
@@ -39,64 +51,133 @@ export class HistoryTab {
 		}
 
 		container.empty();
-		this.renderLoaded(container, sessions, programs);
+		const loading = container.createDiv({
+			text: "Loading activity…",
+			cls: "pulse-workout-loading",
+		});
+		void this.renderAsync(container, loading, this.entries);
+	}
+
+	private async renderAsync(
+		container: HTMLElement,
+		loading: HTMLElement,
+		entries: WorkoutListEntry[],
+	): Promise<void> {
+		try {
+			const y = this.calendarYear!;
+			const m = this.calendarMonth!;
+			const ndm = this.plugin.nutritionDataManager;
+			const monthMeals = await ndm.loadMonthEntries(y, m);
+			const nutritionByDate = groupMealsByDate(monthMeals);
+
+			const template =
+				this.plugin.settings.statsNotePathTemplate?.trim() ||
+				"60 Logs/{year}/Stats/{month}/{date}.md";
+			const bodyCompSeries = await loadBodyCompSeries(this.plugin.app.vault, template);
+			const bodyCompByDate = bodyCompByDateFromSeries(bodyCompSeries);
+
+			const today = new Date();
+			const endDate = toIsoDateLocal(
+				today.getFullYear(),
+				today.getMonth(),
+				today.getDate(),
+			);
+			const cutoff = new Date();
+			cutoff.setHours(0, 0, 0, 0);
+			cutoff.setDate(cutoff.getDate() - (HOME_TIMELINE_DAYS - 1));
+			const startDate = toIsoDateLocal(
+				cutoff.getFullYear(),
+				cutoff.getMonth(),
+				cutoff.getDate(),
+			);
+			const timelineNutrition = await loadNutritionByDateForRange(
+				(yr, mo) => ndm.loadMonthEntries(yr, mo),
+				startDate,
+				endDate,
+			);
+
+			loading.remove();
+			this.renderLoaded(container, entries, nutritionByDate, bodyCompByDate, timelineNutrition);
+		} catch (e) {
+			console.error(e);
+			loading.setText("Could not load home activity.");
+		}
 	}
 
 	private renderLoaded(
 		container: HTMLElement,
-		sessions: SessionNote[],
-		programs: ProgramNote[]
+		entries: WorkoutListEntry[],
+		nutritionByDate: Map<string, NutritionMealEntry[]>,
+		bodyCompByDate: Map<string, BodyCompDay>,
+		timelineNutrition: Map<string, NutritionMealEntry[]>,
 	): void {
 		const wrapper = container.createDiv({ cls: "pulse-workout-history-wrap" });
 
-		this.renderCalendar(wrapper, sessions, programs);
+		this.renderCalendar(wrapper, entries, nutritionByDate, bodyCompByDate);
 
 		const logSection = wrapper.createDiv({ cls: "pulse-workout-history-log" });
-		logSection.createEl("h3", { text: "Session log", cls: "pulse-workout-history-log-title" });
+		logSection.createEl("h3", { text: "Activity", cls: "pulse-workout-history-log-title" });
 
-		const list = logSection.createDiv({ cls: "pulse-workout-history" });
+		const listHost = logSection.createDiv({ cls: "pulse-workout-history" });
+		const statsTemplate =
+			this.plugin.settings.statsNotePathTemplate?.trim() ||
+			"60 Logs/{year}/Stats/{month}/{date}.md";
+		const timelineItems = buildHomeTimelineItems(
+			entries,
+			timelineNutrition,
+			bodyCompByDate,
+			statsTemplate,
+			HOME_TIMELINE_DAYS,
+		);
+		const workoutByPath = new Map(entries.map((e) => [e.path, e]));
+		const groups = groupHomeTimelineByDate(timelineItems, formatWorkoutDateGroupLabel);
 
-		if (sessions.length === 0) {
-			list.createEl("p", {
-				text: "No sessions in the vault yet. Import workouts (Health Auto Export, Gravl CSV, etc.) or add session notes under your Sessions folder.",
-				cls: "pulse-workout-muted",
+		renderHomeActivityTimeline(listHost, groups, {
+			weightUnit: this.plugin.settings.weightUnit,
+			onOpenWorkout: (path) => this.openSession(path),
+			onOpenNutritionDay: (date) => void this.plugin.openNutritionDayView(date),
+			onOpenStatsNote: (path) => openStatsNotePath(this.plugin.app, path),
+			getWorkoutIconUrl: (iconName) => this.plugin.importManager.getActivityIconUrl(iconName),
+			workoutMetaByPath: workoutByPath,
+		});
+
+		const hasOlderWorkouts = entries.some((e) => {
+			const cutoff = new Date();
+			cutoff.setHours(0, 0, 0, 0);
+			cutoff.setDate(cutoff.getDate() - (HOME_TIMELINE_DAYS - 1));
+			const cutoffIso = toIsoDateLocal(
+				cutoff.getFullYear(),
+				cutoff.getMonth(),
+				cutoff.getDate(),
+			);
+			return e.date < cutoffIso;
+		});
+		if (hasOlderWorkouts) {
+			logSection.createDiv({
+				cls: "pulse-workout-muted pulse-workout-history-cap-hint",
+				text: `Showing the last ${HOME_TIMELINE_DAYS} days. Use the sidebar for the full workout list.`,
 			});
+		}
+	}
+
+	private openSession(path: string): void {
+		if (this.view) {
+			this.view.navigate("session", path);
 			return;
 		}
-
-		const sorted = [...sessions].sort((a, b) =>
-			b.frontmatter.date.localeCompare(a.frontmatter.date)
-		);
-
-		for (const session of sorted) {
-			const row = list.createDiv({ cls: "pulse-workout-history-row" });
-			row.addEventListener("click", () => void this.showSessionDetail(session));
-
-			const info = row.createDiv({ cls: "pulse-workout-history-info" });
-			info.createSpan({ text: session.frontmatter.date, cls: "pulse-workout-history-date" });
-			const dayName = session.frontmatter.programDay ?? "Workout";
-			info.createSpan({ text: dayName, cls: "pulse-workout-history-name" });
-
-			const meta = row.createDiv({ cls: "pulse-workout-history-meta" });
-			if (session.frontmatter.duration) {
-				meta.createSpan({ text: `${session.frontmatter.duration} min` });
-			}
-			const volume = this.computeVolume(session);
-			if (volume > 0) {
-				meta.createSpan({ text: `${volume.toLocaleString()} ${this.plugin.settings.weightUnit}` });
-			}
-		}
+		void this.plugin.openPulseView("session", path);
 	}
 
 	private renderCalendar(
 		parent: HTMLElement,
-		sessions: SessionNote[],
-		programs: ProgramNote[]
+		entries: WorkoutListEntry[],
+		nutritionByDate: Map<string, NutritionMealEntry[]>,
+		bodyCompByDate: Map<string, BodyCompDay>,
 	): void {
 		const y = this.calendarYear!;
 		const m = this.calendarMonth!;
 
-		const section = parent.createDiv({ cls: "pulse-cal" });
+		const section = parent.createDiv({ cls: "pulse-cal pulse-home-cal" });
 		const head = section.createDiv({ cls: "pulse-cal__head" });
 
 		const prevBtn = head.createEl("button", {
@@ -115,7 +196,7 @@ export class HistoryTab {
 		});
 		setIcon(nextBtn, "chevron-right");
 
-		const shiftMonth = async (delta: number): Promise<void> => {
+		const shiftMonth = (delta: number): void => {
 			let nm = m + delta;
 			let ny = y;
 			if (nm < 0) {
@@ -128,26 +209,19 @@ export class HistoryTab {
 			this.calendarYear = ny;
 			this.calendarMonth = nm;
 			if (!this.container) return;
-			this.container.empty();
-			const dm = this.plugin.workoutDataManager;
-			const [freshSessions, freshPrograms] = await Promise.all([
-				dm.getAllSessions(),
-				dm.getAllPrograms(),
-			]);
-			this.renderLoaded(this.container, freshSessions, freshPrograms);
+			this.render(this.container, this.entries);
 		};
 
 		prevBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
-			void shiftMonth(-1);
+			shiftMonth(-1);
 		});
 		nextBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
-			void shiftMonth(1);
+			shiftMonth(1);
 		});
 
-		const planned = computePlannedForMonth(y, m, programs, sessions);
-		const byDate = buildSessionsByDate(sessions);
+		const byDate = buildWorkoutsByDate(entries);
 
 		const grid = section.createDiv({ cls: "pulse-cal__grid" });
 		const weekdays = grid.createDiv({ cls: "pulse-cal__weekdays" });
@@ -159,7 +233,7 @@ export class HistoryTab {
 		const dayCells = buildCalendarGridCells(y, m);
 
 		for (const dayOrNull of dayCells) {
-			const cell = cells.createDiv({ cls: "pulse-cal__cell" });
+			const cell = cells.createDiv({ cls: "pulse-cal__cell pulse-home-cal__cell" });
 			if (dayOrNull == null) {
 				cell.addClass("pulse-cal__cell--empty");
 				continue;
@@ -168,105 +242,51 @@ export class HistoryTab {
 			const dateStr = toIsoDateLocal(y, m, dayOrNull);
 			cell.createDiv({ cls: "pulse-cal__day-num", text: String(dayOrNull) });
 
-			const daySessions = byDate.get(dateStr) ?? [];
-			const dayPlanned = planned.get(dateStr) ?? [];
-
 			const marks = cell.createDiv({ cls: "pulse-cal__marks" });
+			let hasMarks = false;
 
-			for (const s of daySessions) {
-				const label = s.frontmatter.programDay ?? "Workout";
-				const chip = marks.createDiv({ cls: "pulse-cal__chip pulse-cal__chip--done" });
-				chip.setAttribute("title", `${s.file.basename}`);
-				chip.setText(label);
-				chip.addEventListener("click", (e) => {
-					e.stopPropagation();
-					void this.showSessionDetail(s);
+			const bodyRow = bodyCompByDate.get(dateStr);
+			if (bodyRow) {
+				const statsTemplate =
+					this.plugin.settings.statsNotePathTemplate?.trim() ||
+					"60 Logs/{year}/Stats/{month}/{date}.md";
+				renderHomeBodyCompCalendarCard(marks, bodyRow, () => {
+					openStatsNotePath(
+						this.plugin.app,
+						getStatsNotePath(new Date(`${dateStr}T12:00:00`), statsTemplate),
+					);
 				});
+				hasMarks = true;
 			}
 
-			for (const p of dayPlanned) {
-				const chip = marks.createDiv({ cls: "pulse-cal__chip pulse-cal__chip--planned" });
-				chip.setAttribute("title", `${p.programName}: ${p.dayName}`);
-				chip.setText(p.dayName);
+			const dayMeals = nutritionByDate.get(dateStr) ?? [];
+			if (dayMeals.length > 0) {
+				renderHomeNutritionCalendarCard(marks, dayMeals, () => {
+					void this.plugin.openNutritionDayView(dateStr);
+				});
+				hasMarks = true;
 			}
 
-			if (daySessions.length === 0 && dayPlanned.length === 0) {
+			for (const entry of byDate.get(dateStr) ?? []) {
+				renderHomeWorkoutCalendarChip(marks, entry, () => this.openSession(entry.path));
+				hasMarks = true;
+			}
+
+			if (!hasMarks) {
 				marks.addClass("pulse-cal__marks--empty");
 			}
 		}
 
 		section.createDiv({
 			cls: "pulse-cal__hint pulse-workout-muted",
-			text: "Filled chips are logged workouts; outlined chips are planned program days. Drag-and-drop between days is planned.",
+			text: "Click a card to open workouts, nutrition, or body stats for that day.",
 		});
-	}
-
-	private async showSessionDetail(session: SessionNote): Promise<void> {
-		if (!this.container) return;
-		this.container.empty();
-
-		const detail = this.container.createDiv({ cls: "pulse-workout-session-detail" });
-
-		const header = detail.createDiv({ cls: "pulse-workout-detail-header" });
-		const backBtn = header.createEl("button", { text: "← Back", cls: "pulse-workout-btn pulse-workout-btn-link" });
-		backBtn.addEventListener("click", () => void this.render(this.container!));
-
-		header.createEl("h3", {
-			text: `${session.frontmatter.date} — ${session.frontmatter.programDay ?? "Workout"}`,
-		});
-
-		if (session.frontmatter.duration) {
-			detail.createEl("p", { text: `Duration: ${session.frontmatter.duration} min`, cls: "pulse-workout-muted" });
-		}
-
-		if (session.session.exercises.length === 0) {
-			detail.createEl("p", { text: "No exercises recorded.", cls: "pulse-workout-muted" });
-			return;
-		}
-
-		for (const exercise of session.session.exercises) {
-			const exDiv = detail.createDiv({ cls: "pulse-workout-detail-exercise" });
-			const h4 = exDiv.createEl("h4");
-			const resolvedPath = normalizePath(
-				this.plugin.workoutDataManager.resolveExerciseVaultPath(exercise.exercisePath)
-			);
-			const exNote = await this.plugin.workoutDataManager.getExercise(exercise.exercisePath);
-			const displayName =
-				exNote?.frontmatter.name?.trim() ||
-				resolvedPath.split("/").pop()?.replace(/\.md$/i, "") ||
-				"Exercise";
-			const label = h4.createSpan({
-				text: displayName,
-				cls: "pulse-pm__link pulse-pm__exercise-name-link",
-			});
-			label.addEventListener("click", () => {
-				void this.plugin.openPulseView("exercise", resolvedPath);
-			});
-
-			const table = exDiv.createEl("table", { cls: "pulse-workout-detail-table" });
-			const thead = table.createEl("thead");
-			const headerRow = thead.createEl("tr");
-			["Set", "Weight", "Reps", "Note"].forEach(h => headerRow.createEl("th", { text: h }));
-
-			const tbody = table.createEl("tbody");
-			for (const set of exercise.sets) {
-				const row = tbody.createEl("tr");
-				row.createEl("td", { text: String(set.set) });
-				row.createEl("td", { text: set.weight != null ? `${set.weight} ${this.plugin.settings.weightUnit}` : "—" });
-				row.createEl("td", { text: set.reps != null ? String(set.reps) : "—" });
-				row.createEl("td", { text: set.note ?? "" });
-			}
-		}
-	}
-
-	private computeVolume(session: SessionNote): number {
-		return session.session.exercises.reduce((total, ex) =>
-			total + ex.sets.reduce((sum, s) => sum + ((s.weight ?? 0) * (s.reps ?? 0)), 0), 0);
 	}
 
 	destroy(): void {
 		this.container = null;
 		this.calendarYear = null;
 		this.calendarMonth = null;
+		this.entries = [];
 	}
 }

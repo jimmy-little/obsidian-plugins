@@ -12,8 +12,8 @@ Track habits and counts with a dashboard, vault-stored event logs, and markdown 
 ## Markdown code blocks
 
 - `ratchet-counter` — interactive counter; `tracker: id` (comma-separated for multiple cards).
-- `ratchet-heatmap` — contribution-style grid; `tracker: id`, optional `days:` / `period:`.
-- `ratchet-summary` — card + heatmap; same params as heatmap.
+- `ratchet-heatmap` — contribution-style grid; `tracker: id` (comma-separated for multiple), optional `days:` / `period:`.
+- `ratchet-summary` — card + heatmap; same params as heatmap (comma-separated `tracker:` supported).
 
 ## URL schemes (Obsidian URI)
 

@@ -32,7 +32,6 @@ const failOnMissing = args.includes("--fail-on-missing");
  */
 const PLUGIN_SPECS = [
 	["plugins/pulse"],
-	["plugins/lapse"],
 	["plugins/ratchet"],
 	["plugins/fulcrum"],
 	["plugins/conduit"],

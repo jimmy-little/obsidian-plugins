@@ -8,7 +8,7 @@ export const RESET_PERIOD_LABELS: Record<ResetPeriod, string> = {
 	yearly: "Yearly",
 };
 
-/** "at least" = reach minimum (0 = bad); "at most" = stay under cap (0 = good when goal is 0); "none" = no goal */
+/** "at least" = reach minimum; "at most" = stay under cap; "none" = no numeric goal */
 export type GoalType = "at least" | "at most" | "none";
 
 export interface TrackerConfig {
@@ -20,8 +20,11 @@ export interface TrackerConfig {
 	unit: string;
 	goal: number; // meaning depends on goalType
 	goalType: GoalType;
+	/** Done / not done each period — no count (e.g. workout, no caffeine). */
+	checkOff?: boolean;
+	/** Hidden from dashboard, quick log, and stats; still editable and can be restored. */
+	archived?: boolean;
 	created: string; // ISO
-	incrementButtons: number[]; // e.g. [1, 5, 10]
 }
 
 export interface RatchetConfigFile {
@@ -50,14 +53,45 @@ export function createTracker(overrides: Partial<TrackerConfig> & { name: string
 		unit: overrides.unit ?? "",
 		goal: overrides.goal ?? 0,
 		goalType: overrides.goalType ?? "at least",
+		checkOff: overrides.checkOff ?? false,
+		archived: overrides.archived ?? false,
 		created: overrides.created ?? now,
-		incrementButtons: overrides.incrementButtons?.length ? overrides.incrementButtons : [1],
 	};
+}
+
+/** Done / not done habit — explicit daily check-off, no count. */
+export function isCheckOffHabit(t: TrackerConfig): boolean {
+	return t.checkOff === true;
+}
+
+export function isTrackerArchived(t: TrackerConfig): boolean {
+	return t.archived === true;
+}
+
+/** Target check-offs per reset period (minimum 1). */
+export function checkOffGoalTarget(t: TrackerConfig): number {
+	return Math.max(t.goal, 1);
+}
+
+export function isCheckOffPeriodMet(t: TrackerConfig, checkOffCount: number): boolean {
+	return checkOffCount >= checkOffGoalTarget(t);
+}
+
+export function formatCheckOffGoalSummary(t: TrackerConfig): string {
+	const period = RESET_PERIOD_LABELS[t.resetPeriod]?.toLowerCase() ?? t.resetPeriod;
+	return `${checkOffGoalTarget(t)}× per ${period}`;
 }
 
 /** Whether the tracker has an effective goal for display (goalType is set and goal is defined). */
 export function hasGoal(t: TrackerConfig): boolean {
+	if (isCheckOffHabit(t)) return checkOffGoalTarget(t) > 0;
 	return t.goalType !== "none" && (t.goalType === "at most" || t.goal > 0);
+}
+
+/** Daily habits included in the week-grid column aggregate. */
+export function countsForDailyAggregate(t: TrackerConfig): boolean {
+	if (isCheckOffHabit(t)) return true;
+	return t.goalType !== "none";
 }
 
 /** Whether current value meets the goal (for "at least" current >= goal; for "at most" current <= goal). */

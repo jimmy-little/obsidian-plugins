@@ -90,7 +90,7 @@ export function effectiveGoalForScope(t: TrackerConfig, scope: QuickLogScope, no
 export function progressFillPercent(t: TrackerConfig, count: number, effectiveGoal: number | null): number {
 	if (effectiveGoal == null) return 0;
 	if (effectiveGoal <= 0) {
-		if (t.goalType === "at most") return count === 0 ? 0 : 100;
+		if (t.goalType === "at most") return count === 0 ? 100 : 0;
 		return 0;
 	}
 	return Math.min(100, Math.max(0, (count / effectiveGoal) * 100));

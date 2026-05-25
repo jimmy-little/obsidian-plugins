@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { setIcon } from "obsidian";
+	import { Platform, setIcon } from "obsidian";
 	import { sampleMediaHeroPalette, type MediaHeroPalette } from "../media/bannerSample";
 
 	/** Backdrop (banner / wide art) for full-bleed background */
@@ -45,7 +45,7 @@
 	export let onOpenNote: () => void | Promise<void>;
 	/** Markdown companion: bundle note is already the open file — hide “Open note”. */
 	export let hideOpenNoteButton = false;
-	export let onToggleWatched: () => void | Promise<void>;
+	export let onToggleWatched: (ev?: MouseEvent) => void | Promise<void>;
 	export let onRefresh: () => void | Promise<void>;
 	/** When set (e.g. podcast / book bundle), home appears in the collapsed toolbar row with other actions. */
 	export let onGoHome: (() => void) | undefined = undefined;
@@ -75,6 +75,10 @@
 	export let globeLinkAria: string | undefined = undefined;
 
 	function applyPalette(backdrop: string | null, poster: string | null): void {
+		if (Platform.isMobile) {
+			onPalette?.(null);
+			return;
+		}
 		if (!backdrop && !poster) {
 			paletteToken += 1;
 			onPalette?.(null);
@@ -315,7 +319,7 @@
 									class="repose-show-episode-row__watch"
 									class:repose-show-episode-row__watch--watched={watchPillWatched}
 									aria-label={watchedAria}
-									on:click|stopPropagation={() => void onToggleWatched()}
+									on:click|stopPropagation={(ev) => void onToggleWatched(ev)}
 								>
 									{listenUi
 										? watchPillWatched

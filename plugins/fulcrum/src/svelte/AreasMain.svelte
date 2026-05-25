@@ -255,6 +255,7 @@
 						{#each projectsSorted as p (p.file.path)}
 							<ProjectListRow
 								{plugin}
+								{hoverParentLeaf}
 								{p}
 								selectedPath={null}
 								onSelectProject={onSelectProject}

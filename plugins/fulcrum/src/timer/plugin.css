@@ -1,6 +1,6 @@
 /* Lapse Container Styles */
 
-.lapse-container {
+.fulcrum-timer-container {
     border: 1px solid var(--background-modifier-border);
     border-radius: 8px;
     padding: 12px;
@@ -10,13 +10,13 @@
 
 /* Timer Widget Layout */
 
-.lapse-main-layout {
+.fulcrum-timer-main-layout {
     display: flex;
     align-items: flex-start;
     gap: 12px;
 }
 
-.lapse-timer-container {
+.fulcrum-timer-timer-container {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -29,7 +29,7 @@
     flex-shrink: 0;
 }
 
-.lapse-right-column {
+.fulcrum-timer-right-column {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -37,13 +37,13 @@
     min-width: 0;
 }
 
-.lapse-top-line {
+.fulcrum-timer-top-line {
     display: flex;
     align-items: center;
     gap: 12px;
 }
 
-.lapse-timer-display {
+.fulcrum-timer-timer-display {
     font-size: 20px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
@@ -52,7 +52,7 @@
     line-height: 1.2;
 }
 
-.lapse-label-input {
+.fulcrum-timer-label-input {
     flex: 1;
     padding: 6px 8px;
     border: 1px solid var(--background-modifier-border);
@@ -64,12 +64,12 @@
     font-family: inherit;
 }
 
-.lapse-label-input:focus {
+.fulcrum-timer-label-input:focus {
     outline: none;
     border-color: var(--interactive-accent);
 }
 
-.lapse-label-display-running {
+.fulcrum-timer-label-display-running {
     flex: 1;
     padding: 6px 8px;
     color: var(--text-accent);
@@ -80,8 +80,8 @@
     text-align: left;
 }
 
-.lapse-btn-play-stop,
-.lapse-btn-chevron {
+.fulcrum-timer-btn-play-stop,
+.fulcrum-timer-btn-chevron {
     padding: 6px 8px;
     border-radius: 4px;
     border: 1px solid var(--background-modifier-border);
@@ -96,41 +96,41 @@
     flex-shrink: 0;
 }
 
-.lapse-btn-play-stop:hover,
-.lapse-btn-chevron:hover {
+.fulcrum-timer-btn-play-stop:hover,
+.fulcrum-timer-btn-chevron:hover {
     background: var(--interactive-hover);
 }
 
 /* Play button - green */
-.lapse-btn-play svg {
+.fulcrum-timer-btn-play svg {
     color: #22c55e;
     stroke: #22c55e;
 }
 
-.lapse-btn-play:hover svg {
+.fulcrum-timer-btn-play:hover svg {
     color: #16a34a;
     stroke: #16a34a;
 }
 
 /* Stop button - red */
-.lapse-btn-stop svg {
+.fulcrum-timer-btn-stop svg {
     color: #ef4444;
     stroke: #ef4444;
 }
 
-.lapse-btn-stop:hover svg {
+.fulcrum-timer-btn-stop:hover svg {
     color: #dc2626;
     stroke: #dc2626;
 }
 
-.lapse-adjust-buttons {
+.fulcrum-timer-adjust-buttons {
     display: flex;
     align-items: center;
     gap: 4px;
     width: 100%;
 }
 
-.lapse-btn-adjust {
+.fulcrum-timer-btn-adjust {
     flex: 1;
     padding: 4px 6px;
     border: 1px solid var(--background-modifier-border);
@@ -148,22 +148,22 @@
     font-variant-numeric: tabular-nums;
 }
 
-.lapse-btn-adjust:hover:not(:disabled) {
+.fulcrum-timer-btn-adjust:hover:not(:disabled) {
     background: var(--interactive-hover);
 }
 
-.lapse-btn-adjust:disabled {
+.fulcrum-timer-btn-adjust:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }
 
-.lapse-bottom-line {
+.fulcrum-timer-bottom-line {
     display: flex;
     align-items: center;
     gap: 12px;
 }
 
-.lapse-summary-left {
+.fulcrum-timer-summary-left {
     flex: 1;
     font-size: 14px;
     font-weight: 500;
@@ -171,7 +171,7 @@
     text-align: left;
 }
 
-.lapse-today-label {
+.fulcrum-timer-today-label {
     font-size: 14px;
     font-weight: 500;
     color: var(--text-muted);
@@ -181,20 +181,20 @@
 
 /* Collapsible Panel */
 
-.lapse-panel {
+.fulcrum-timer-panel {
     margin-top: 12px;
     padding-top: 12px;
     border-top: 1px solid var(--background-modifier-border);
 }
 
-.lapse-cards-container {
+.fulcrum-timer-cards-container {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-bottom: 12px;
 }
 
-.lapse-entry-card {
+.fulcrum-timer-entry-card {
     background: var(--background-secondary);
     border: 1px solid var(--background-modifier-border);
     border-radius: 6px;
@@ -202,7 +202,7 @@
     position: relative;
 }
 
-.lapse-card-top-line {
+.fulcrum-timer-card-top-line {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -210,7 +210,7 @@
     gap: 8px;
 }
 
-.lapse-card-label {
+.fulcrum-timer-card-label {
     font-size: 16px;
     font-weight: 600;
     color: var(--text-normal);
@@ -218,14 +218,14 @@
     line-height: 1.4;
 }
 
-.lapse-card-actions {
+.fulcrum-timer-card-actions {
     display: flex;
     gap: 4px;
     flex-shrink: 0;
 }
 
-.lapse-card-btn-edit,
-.lapse-card-btn-delete {
+.fulcrum-timer-card-btn-edit,
+.fulcrum-timer-card-btn-delete {
     padding: 4px;
     border: none;
     background: transparent;
@@ -240,17 +240,17 @@
     border-radius: 4px;
 }
 
-.lapse-card-btn-edit:hover {
+.fulcrum-timer-card-btn-edit:hover {
     background: var(--background-modifier-hover);
     color: var(--text-normal);
 }
 
-.lapse-card-btn-delete:hover {
+.fulcrum-timer-card-btn-delete:hover {
     background: var(--background-modifier-hover);
     color: var(--text-error, #d32f2f);
 }
 
-.lapse-card-details {
+.fulcrum-timer-card-details {
     display: flex;
     flex-direction: row;
     gap: 12px;
@@ -259,11 +259,11 @@
     margin-bottom: 4px;
 }
 
-.lapse-card-detail {
+.fulcrum-timer-card-detail {
     line-height: 1.4;
 }
 
-.lapse-card-bottom-line {
+.fulcrum-timer-card-bottom-line {
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -272,14 +272,14 @@
     color: var(--text-muted);
 }
 
-.lapse-card-tags-inline {
+.fulcrum-timer-card-tags-inline {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
 }
 
-.lapse-card-tag {
+.fulcrum-timer-card-tag {
     font-size: 11px;
     color: var(--text-accent);
     background: var(--background-secondary);
@@ -288,7 +288,7 @@
     font-weight: 500;
 }
 
-.lapse-input {
+.fulcrum-timer-input {
     width: 100%;
     padding: 4px 8px;
     border: 1px solid var(--background-modifier-border);
@@ -299,25 +299,25 @@
     font-family: inherit;
 }
 
-.lapse-input:read-only {
+.fulcrum-timer-input:read-only {
     background: transparent;
     border: none;
     padding: 4px 0;
     cursor: default;
 }
 
-.lapse-input:not(:read-only) {
+.fulcrum-timer-input:not(:read-only) {
     background: var(--background-secondary);
     border-color: var(--interactive-accent);
 }
 
-.lapse-cell-actions {
+.fulcrum-timer-cell-actions {
     white-space: nowrap;
     width: 1%;
 }
 
-.lapse-btn-edit,
-.lapse-btn-delete {
+.fulcrum-timer-btn-edit,
+.fulcrum-timer-btn-delete {
     padding: 4px;
     border: none;
     background: transparent;
@@ -332,21 +332,21 @@
     height: 20px;
 }
 
-.lapse-btn-edit:hover,
-.lapse-btn-delete:hover {
+.fulcrum-timer-btn-edit:hover,
+.fulcrum-timer-btn-delete:hover {
     color: var(--text-normal);
 }
 
-.lapse-btn-delete {
+.fulcrum-timer-btn-delete {
     color: var(--text-error, #d32f2f);
 }
 
-.lapse-btn-delete:hover {
+.fulcrum-timer-btn-delete:hover {
     color: var(--text-error, #d32f2f);
     opacity: 0.8;
 }
 
-.lapse-btn-add {
+.fulcrum-timer-btn-add {
     padding: 6px 8px;
     border-radius: 4px;
     border: 1px solid var(--background-modifier-border);
@@ -363,11 +363,11 @@
     height: 28px;
 }
 
-.lapse-btn-add:hover {
+.fulcrum-timer-btn-add:hover {
     background: var(--interactive-hover);
 }
 
-.lapse-btn-add {
+.fulcrum-timer-btn-add {
     margin-top: 8px;
     background: var(--interactive-accent);
     color: var(--text-on-accent);
@@ -375,13 +375,13 @@
     font-weight: 500;
 }
 
-.lapse-btn-add:hover {
+.fulcrum-timer-btn-add:hover {
     opacity: 0.9;
 }
 
 /* Sidebar Styles */
 
-.lapse-sidebar-empty {
+.fulcrum-timer-sidebar-empty {
     color: var(--text-muted);
     font-style: italic;
     padding: 16px;
@@ -389,23 +389,23 @@
 }
 
 /* Header with refresh button */
-.lapse-sidebar-header {
+.fulcrum-timer-sidebar-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
-.lapse-sidebar-header h4 {
+.fulcrum-timer-sidebar-header h4 {
     margin: 0;
 }
 
-.lapse-sidebar-header-buttons {
+.fulcrum-timer-sidebar-header-buttons {
     display: flex;
     align-items: center;
     gap: 4px;
 }
 
-.lapse-sidebar-toggle-view-btn {
+.fulcrum-timer-sidebar-toggle-view-btn {
     padding: 4px;
     border: none;
     background: transparent;
@@ -414,21 +414,21 @@
     transition: opacity 0.2s;
 }
 
-.lapse-sidebar-toggle-view-btn:hover {
+.fulcrum-timer-sidebar-toggle-view-btn:hover {
     opacity: 1;
 }
 
-.lapse-sidebar-toggle-view-btn.active {
+.fulcrum-timer-sidebar-toggle-view-btn.active {
     opacity: 1;
     color: var(--interactive-accent);
 }
 
-.lapse-sidebar-toggle-view-btn svg {
+.fulcrum-timer-sidebar-toggle-view-btn svg {
     width: 16px;
     height: 16px;
 }
 
-.lapse-sidebar-refresh-btn {
+.fulcrum-timer-sidebar-refresh-btn {
     padding: 4px;
     border: none;
     background: transparent;
@@ -437,16 +437,16 @@
     transition: opacity 0.2s;
 }
 
-.lapse-sidebar-refresh-btn:hover {
+.fulcrum-timer-sidebar-refresh-btn:hover {
     opacity: 1;
 }
 
-.lapse-sidebar-refresh-btn svg {
+.fulcrum-timer-sidebar-refresh-btn svg {
     width: 16px;
     height: 16px;
 }
 
-.lapse-sidebar-add-btn {
+.fulcrum-timer-sidebar-add-btn {
     padding: 4px;
     border: none;
     background: transparent;
@@ -455,18 +455,18 @@
     transition: opacity 0.2s;
 }
 
-.lapse-sidebar-add-btn:hover {
+.fulcrum-timer-sidebar-add-btn:hover {
     opacity: 1;
 }
 
-.lapse-sidebar-add-btn svg {
+.fulcrum-timer-sidebar-add-btn svg {
     width: 16px;
     height: 16px;
     color: var(--interactive-accent);
 }
 
 /* Section header with toggle */
-.lapse-sidebar-section-header {
+.fulcrum-timer-sidebar-section-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -475,7 +475,7 @@
     border-top: 1px solid var(--background-modifier-border);
 }
 
-.lapse-sidebar-toggle-btn {
+.fulcrum-timer-sidebar-toggle-btn {
     padding: 4px;
     border: none;
     background: transparent;
@@ -484,29 +484,52 @@
     transition: opacity 0.2s;
 }
 
-.lapse-sidebar-toggle-btn:hover {
+.fulcrum-timer-sidebar-toggle-btn:hover {
     opacity: 1;
 }
 
-.lapse-sidebar-toggle-btn svg {
+.fulcrum-timer-sidebar-toggle-btn svg {
     width: 16px;
     height: 16px;
 }
 
-.lapse-sidebar-section-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-normal);
-    margin: 0;
+/* Pulse-style sidebar group headers */
+.fulcrum-timer-group-header {
+	background: color-mix(in srgb, var(--background-secondary) 65%, var(--background-primary));
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
 }
 
-.lapse-sidebar-list {
+.fulcrum-timer-group-title {
+	padding: 0.35rem 0.45rem 0.15rem;
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 1px);
+	font-weight: 700;
+	font-family: var(--font-interface);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-faint);
+	background: transparent;
+	border-bottom: none;
+	margin: 0;
+}
+
+.fulcrum-timer-sidebar-section-title {
+	padding: 0.35rem 0.45rem 0.15rem;
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 1px);
+	font-weight: 700;
+	font-family: var(--font-interface);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-faint);
+	margin: 0;
+}
+
+.fulcrum-timer-sidebar-list {
     list-style: none;
     padding: 0;
     margin: 8px 0;
 }
 
-.lapse-sidebar-item {
+.fulcrum-timer-sidebar-item {
     padding: 8px 12px;
     margin: 4px 0;
     font-size: 13px;
@@ -514,7 +537,7 @@
     line-height: 1.4;
 }
 
-.lapse-sidebar-note-group {
+.fulcrum-timer-sidebar-note-group {
     padding: 8px 12px;
     margin: 4px 0;
     font-size: 13px;
@@ -522,27 +545,27 @@
     line-height: 1.4;
 }
 
-.lapse-sidebar-top-line {
+.fulcrum-timer-sidebar-top-line {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 4px;
 }
 
-.lapse-sidebar-item a.internal-link,
-.lapse-sidebar-note-group a.internal-link {
+.fulcrum-timer-sidebar-item a.internal-link,
+.fulcrum-timer-sidebar-note-group a.internal-link {
     color: var(--link-color, var(--text-accent));
     text-decoration: none;
     cursor: pointer;
     font-weight: 500;
 }
 
-.lapse-sidebar-item a.internal-link:hover,
-.lapse-sidebar-note-group a.internal-link:hover {
+.fulcrum-timer-sidebar-item a.internal-link:hover,
+.fulcrum-timer-sidebar-note-group a.internal-link:hover {
     text-decoration: underline;
 }
 
-.lapse-sidebar-time {
+.fulcrum-timer-sidebar-time {
     font-size: 13px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
@@ -550,30 +573,30 @@
     margin-left: 8px;
 }
 
-.lapse-sidebar-second-line {
+.fulcrum-timer-sidebar-second-line {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-top: 2px;
 }
 
-.lapse-sidebar-project {
+.fulcrum-timer-sidebar-project {
     font-size: 11px;
     color: var(--text-muted);
     font-style: italic;
 }
 
-.lapse-sidebar-label {
+.fulcrum-timer-sidebar-label {
     font-size: 11px;
     color: var(--text-muted);
 }
 
-.lapse-sidebar-entries-list {
+.fulcrum-timer-sidebar-entries-list {
     margin-top: 4px;
     padding-left: 12px;
 }
 
-.lapse-sidebar-entry-line {
+.fulcrum-timer-sidebar-entry-line {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -583,11 +606,11 @@
     line-height: 1.4;
 }
 
-.lapse-sidebar-entry-label {
+.fulcrum-timer-sidebar-entry-label {
     flex: 1;
 }
 
-.lapse-sidebar-entry-time {
+.fulcrum-timer-sidebar-entry-time {
     font-size: 11px;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
@@ -596,7 +619,7 @@
 }
 
 /* Activity Card Styles */
-.lapse-activity-card {
+.fulcrum-timer-activity-card {
     background: var(--background-secondary);
     border: 1px solid var(--background-modifier-border);
     border-radius: 8px;
@@ -605,7 +628,7 @@
     text-align: center;
 }
 
-.lapse-activity-timer-row {
+.fulcrum-timer-activity-timer-row {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -613,7 +636,7 @@
     margin-bottom: 16px;
 }
 
-.lapse-activity-timer {
+.fulcrum-timer-activity-timer {
     font-size: 48px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
@@ -621,7 +644,7 @@
     line-height: 1.2;
 }
 
-.lapse-activity-stop-btn {
+.fulcrum-timer-activity-stop-btn {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
     border: none;
@@ -634,16 +657,16 @@
     transition: background-color 0.2s;
 }
 
-.lapse-activity-stop-btn:hover {
+.fulcrum-timer-activity-stop-btn:hover {
     background: var(--interactive-accent-hover);
 }
 
-.lapse-activity-stop-btn svg {
+.fulcrum-timer-activity-stop-btn svg {
     width: 16px;
     height: 16px;
 }
 
-.lapse-activity-details {
+.fulcrum-timer-activity-details {
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -651,36 +674,133 @@
     font-size: 13px;
 }
 
-.lapse-activity-page {
+.fulcrum-timer-activity-page {
     font-weight: 600;
     color: var(--link-color, var(--text-accent));
     text-decoration: none;
     cursor: pointer;
 }
 
-.lapse-activity-page:hover {
+.fulcrum-timer-activity-page:hover {
     text-decoration: underline;
 }
 
-.lapse-activity-project {
+.fulcrum-timer-activity-project {
     font-size: 12px;
     color: var(--text-muted);
     font-style: italic;
 }
 
-.lapse-activity-label {
+.fulcrum-timer-activity-label {
     font-size: 12px;
     color: var(--text-muted);
 }
 
+/* Active Timers leaf — running timers only (compact docked view) */
+.fulcrum-active-timers {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	padding: 0.5rem;
+	box-sizing: border-box;
+}
+
+.fulcrum-active-timers__list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.fulcrum-active-timers__row {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.45rem;
+	padding: 0.45rem 0.5rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 6px);
+	background: var(--background-secondary);
+}
+
+.fulcrum-active-timers__info {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.fulcrum-active-timers__note {
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	color: var(--text-normal);
+	text-decoration: none;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-active-timers__note:hover {
+	color: var(--text-faint);
+	text-decoration: underline;
+}
+
+.fulcrum-active-timers__entry-label {
+	font-size: var(--font-ui-smaller, 0.75rem);
+	color: var(--text-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-active-timers__time {
+	font-size: 1.35rem;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-faint);
+	line-height: 1.15;
+}
+
+.fulcrum-active-timers__stop {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 2rem;
+	height: 2rem;
+	margin-top: 0.1rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-s, 4px);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
+}
+
+.fulcrum-active-timers__stop:hover {
+	background: var(--interactive-accent-hover);
+}
+
+.fulcrum-active-timers__stop svg {
+	width: 14px;
+	height: 14px;
+}
+
+.fulcrum-active-timers__empty {
+	margin: 0.5rem 0;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	text-align: center;
+}
+
 /* Pie Chart Section */
-.lapse-sidebar-chart-section {
+.fulcrum-timer-sidebar-chart-section {
     margin-top: 16px;
     padding-top: 16px;
     border-top: 1px solid var(--background-modifier-border);
 }
 
-.lapse-sidebar-total-time {
+.fulcrum-timer-sidebar-total-time {
     font-size: 24px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
@@ -689,33 +809,33 @@
     margin: 12px 0;
 }
 
-.lapse-sidebar-chart-container {
+.fulcrum-timer-sidebar-chart-container {
     display: flex;
     justify-content: center;
     align-items: center;
     margin: 16px 0;
 }
 
-.lapse-sidebar-pie-chart {
+.fulcrum-timer-sidebar-pie-chart {
     max-width: 200px;
     max-height: 200px;
 }
 
-.lapse-sidebar-chart-legend {
+.fulcrum-timer-sidebar-chart-legend {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-top: 16px;
 }
 
-.lapse-sidebar-legend-item {
+.fulcrum-timer-sidebar-legend-item {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 12px;
 }
 
-.lapse-sidebar-legend-color {
+.fulcrum-timer-sidebar-legend-color {
     width: 16px;
     height: 16px;
     border-radius: 4px;
@@ -723,7 +843,7 @@
     border: 1px solid var(--background-modifier-border);
 }
 
-.lapse-sidebar-legend-label {
+.fulcrum-timer-sidebar-legend-label {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -731,7 +851,7 @@
     gap: 8px;
 }
 
-.lapse-sidebar-legend-time {
+.fulcrum-timer-sidebar-legend-time {
     font-variant-numeric: tabular-nums;
     color: var(--text-muted);
     font-weight: 500;
@@ -739,11 +859,11 @@
 
 /* Modal Styles */
 
-.lapse-modal-field {
+.fulcrum-timer-modal-field {
     margin-bottom: 16px;
 }
 
-.lapse-modal-field label {
+.fulcrum-timer-modal-field label {
     display: block;
     margin-bottom: 4px;
     font-size: 13px;
@@ -751,7 +871,7 @@
     color: var(--text-normal);
 }
 
-.lapse-modal-input {
+.fulcrum-timer-modal-input {
     width: 100%;
     padding: 8px 12px;
     border: 1px solid var(--background-modifier-border);
@@ -762,18 +882,18 @@
     font-family: inherit;
 }
 
-.lapse-modal-input:focus {
+.fulcrum-timer-modal-input:focus {
     outline: none;
     border-color: var(--interactive-accent);
 }
 
-.lapse-modal-input[readonly] {
+.fulcrum-timer-modal-input[readonly] {
     background: var(--background-secondary);
     color: var(--text-muted);
     cursor: not-allowed;
 }
 
-.lapse-modal-buttons {
+.fulcrum-timer-modal-buttons {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
@@ -784,19 +904,19 @@
 
 /* Reports View Styles */
 
-.lapse-reports-header {
+.fulcrum-timer-reports-header {
     margin-bottom: 20px;
     padding-bottom: 16px;
     border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.lapse-reports-tabs {
+.fulcrum-timer-reports-tabs {
     display: flex;
     gap: 8px;
     margin-bottom: 16px;
 }
 
-.lapse-reports-tab {
+.fulcrum-timer-reports-tab {
     padding: 8px 16px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
@@ -807,31 +927,31 @@
     font-size: 13px;
 }
 
-.lapse-reports-tab:hover {
+.fulcrum-timer-reports-tab:hover {
     background: var(--background-modifier-hover);
 }
 
-.lapse-reports-tab.is-active {
+.fulcrum-timer-reports-tab.is-active {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
     border-color: var(--interactive-accent);
 }
 
-.lapse-reports-controls {
+.fulcrum-timer-reports-controls {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 12px;
 }
 
-.lapse-reports-groupby {
+.fulcrum-timer-reports-groupby {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 13px;
 }
 
-.lapse-reports-select {
+.fulcrum-timer-reports-select {
     padding: 4px 8px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
@@ -841,7 +961,7 @@
     cursor: pointer;
 }
 
-.lapse-reports-custom-date {
+.fulcrum-timer-reports-custom-date {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -849,7 +969,7 @@
     font-size: 13px;
 }
 
-.lapse-date-input {
+.fulcrum-timer-date-input {
     padding: 4px 8px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
@@ -859,7 +979,7 @@
     font-family: inherit;
 }
 
-.lapse-apply-btn {
+.fulcrum-timer-apply-btn {
     padding: 6px 16px;
     border-radius: 4px;
     background: var(--interactive-accent);
@@ -871,39 +991,39 @@
     transition: all 0.2s;
 }
 
-.lapse-apply-btn:hover {
+.fulcrum-timer-apply-btn:hover {
     opacity: 0.9;
 }
 
-.lapse-reports-summary {
+.fulcrum-timer-reports-summary {
     margin: 20px 0;
     padding: 16px;
     background: var(--background-secondary);
     border-radius: 6px;
 }
 
-.lapse-reports-summary h3 {
+.fulcrum-timer-reports-summary h3 {
     margin: 0;
     font-size: 20px;
     font-weight: 600;
     color: var(--text-accent);
 }
 
-.lapse-reports-table-container {
+.fulcrum-timer-reports-table-container {
     margin: 20px 0;
     overflow-x: auto;
 }
 
-.lapse-reports-table {
+.fulcrum-timer-reports-table {
     width: 100%;
     border-collapse: collapse;
 }
 
-.lapse-reports-table thead {
+.fulcrum-timer-reports-table thead {
     background: var(--background-secondary);
 }
 
-.lapse-reports-table th {
+.fulcrum-timer-reports-table th {
     padding: 12px;
     text-align: left;
     font-weight: 600;
@@ -912,68 +1032,68 @@
     border-bottom: 2px solid var(--background-modifier-border);
 }
 
-.lapse-reports-table td {
+.fulcrum-timer-reports-table td {
     padding: 12px;
     border-bottom: 1px solid var(--background-modifier-border);
     font-size: 13px;
 }
 
-.lapse-reports-table tbody tr:hover {
+.fulcrum-timer-reports-table tbody tr:hover {
     background: var(--background-secondary);
 }
 
-.lapse-reports-group-row {
+.fulcrum-timer-reports-group-row {
     font-weight: 600;
     background: var(--background-secondary);
 }
 
-.lapse-reports-group-row:hover {
+.fulcrum-timer-reports-group-row:hover {
     background: var(--background-secondary-alt) !important;
 }
 
-.lapse-reports-subgroup-row {
+.fulcrum-timer-reports-subgroup-row {
     background: var(--background-primary-alt);
     font-weight: 500;
 }
 
-.lapse-reports-entry-row {
+.fulcrum-timer-reports-entry-row {
     font-size: 0.9em;
     color: var(--text-muted);
 }
 
-.lapse-reports-entry-row:hover {
+.fulcrum-timer-reports-entry-row:hover {
     background: var(--background-modifier-hover) !important;
 }
 
-.lapse-reports-expand-cell {
+.fulcrum-timer-reports-expand-cell {
     width: 24px;
     text-align: center;
 }
 
-.lapse-reports-expand-btn {
+.fulcrum-timer-reports-expand-btn {
     display: inline-block;
     cursor: pointer;
 }
 
-.lapse-reports-group-name {
+.fulcrum-timer-reports-group-name {
     font-weight: 600;
 }
 
-.lapse-reports-subgroup-name {
+.fulcrum-timer-reports-subgroup-name {
     padding-left: 20px;
 }
 
-.lapse-reports-entry-label {
+.fulcrum-timer-reports-entry-label {
     padding-left: 20px;
     font-style: italic;
 }
 
-.lapse-reports-note-name {
+.fulcrum-timer-reports-note-name {
     font-size: 0.85em;
     color: var(--text-faint);
 }
 
-.lapse-reports-chart-container {
+.fulcrum-timer-reports-chart-container {
     margin: 20px 0;
     padding: 20px;
     background: var(--background-secondary);
@@ -981,25 +1101,25 @@
     width: 100%;
 }
 
-.lapse-reports-chart-container h4 {
+.fulcrum-timer-reports-chart-container h4 {
     margin: 0 0 16px 0;
     font-size: 16px;
     font-weight: 600;
 }
 
-.lapse-reports-chart {
+.fulcrum-timer-reports-chart {
     width: 100%;
     height: auto;
     display: block;
 }
 
-.lapse-chart-label {
+.fulcrum-timer-chart-label {
     font-family: var(--font-interface);
 }
 
 /* Inline Report Query Styles */
 
-.lapse-report-container {
+.fulcrum-timer-report-container {
     border: 1px solid var(--background-modifier-border);
     border-radius: 8px;
     padding: 16px;
@@ -1007,7 +1127,7 @@
     background: var(--background-primary);
 }
 
-.lapse-report-loading {
+.fulcrum-timer-report-loading {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1016,24 +1136,24 @@
     gap: 12px;
 }
 
-.lapse-report-loading-text {
+.fulcrum-timer-report-loading-text {
     color: var(--text-muted);
     font-size: 14px;
     font-weight: 500;
 }
 
-.lapse-report-loading-spinner {
+.fulcrum-timer-report-loading-spinner {
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-.lapse-spinner-icon {
+.fulcrum-timer-spinner-icon {
     display: inline-block;
-    animation: lapse-spin 1s linear infinite;
+    animation: fulcrum-timer-spin 1s linear infinite;
 }
 
-@keyframes lapse-spin {
+@keyframes fulcrum-timer-spin {
     from {
         transform: rotate(0deg);
     }
@@ -1043,11 +1163,11 @@
 }
 
 /* Active Timers Widget Styles */
-.lapse-active-container {
+.fulcrum-timer-active-container {
     margin: 8px 0;
 }
 
-.lapse-active-row {
+.fulcrum-timer-active-row {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -1058,7 +1178,7 @@
     border-radius: 6px;
 }
 
-.lapse-active-time {
+.fulcrum-timer-active-time {
     font-size: 14px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
@@ -1067,21 +1187,21 @@
     flex-shrink: 0;
 }
 
-.lapse-active-label {
+.fulcrum-timer-active-label {
     flex: 1;
     font-size: 13px;
     color: var(--text-normal);
     min-width: 0;
 }
 
-.lapse-active-actions {
+.fulcrum-timer-active-actions {
     display: flex;
     align-items: center;
     gap: 4px;
     flex-shrink: 0;
 }
 
-.lapse-active-btn {
+.fulcrum-timer-active-btn {
     padding: 4px;
     border: none;
     background: transparent;
@@ -1095,24 +1215,24 @@
     height: 20px;
 }
 
-.lapse-active-btn:hover {
+.fulcrum-timer-active-btn:hover {
     opacity: 1;
 }
 
-.lapse-active-btn svg {
+.fulcrum-timer-active-btn svg {
     width: 16px;
     height: 16px;
 }
 
-.lapse-active-btn-stop {
+.fulcrum-timer-active-btn-stop {
     color: var(--text-error, #d32f2f);
 }
 
-.lapse-active-btn-jump {
+.fulcrum-timer-active-btn-jump {
     color: var(--text-normal);
 }
 
-.lapse-active-empty {
+.fulcrum-timer-active-empty {
     text-align: center;
     color: var(--text-muted);
     padding: 16px;
@@ -1120,37 +1240,37 @@
 }
 
 /* Settings Footer */
-.lapse-settings-divider {
+.fulcrum-timer-settings-divider {
     margin: 32px 0 16px 0;
     border: none;
     border-top: 1px solid var(--background-modifier-border);
 }
 
-.lapse-settings-footer {
+.fulcrum-timer-settings-footer {
     padding: 16px 0;
     text-align: center;
 }
 
-.lapse-github-link {
+.fulcrum-timer-github-link {
     color: var(--text-accent);
     text-decoration: none;
     font-size: 13px;
     transition: opacity 0.2s;
 }
 
-.lapse-github-link:hover {
+.fulcrum-timer-github-link:hover {
     opacity: 0.8;
     text-decoration: underline;
 }
 
-.lapse-report-title {
+.fulcrum-timer-report-title {
     font-size: 16px;
     font-weight: 600;
     color: var(--text-normal);
     margin: 0 0 12px 0;
 }
 
-.lapse-report-summary-total {
+.fulcrum-timer-report-summary-total {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1160,27 +1280,27 @@
     margin-bottom: 16px;
 }
 
-.lapse-report-summary-label {
+.fulcrum-timer-report-summary-label {
     font-size: 14px;
     font-weight: 500;
     color: var(--text-normal);
 }
 
-.lapse-report-summary-value {
+.fulcrum-timer-report-summary-value {
     font-size: 20px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: var(--text-accent);
 }
 
-.lapse-report-breakdown {
+.fulcrum-timer-report-breakdown {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-bottom: 16px;
 }
 
-.lapse-report-breakdown-item {
+.fulcrum-timer-report-breakdown-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1190,45 +1310,45 @@
     font-size: 13px;
 }
 
-.lapse-report-breakdown-name {
+.fulcrum-timer-report-breakdown-name {
     color: var(--text-normal);
     font-weight: 500;
 }
 
-.lapse-report-breakdown-time {
+.fulcrum-timer-report-breakdown-time {
     color: var(--text-accent);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
 
-.lapse-report-table-container {
+.fulcrum-timer-report-table-container {
     margin: 16px 0;
     overflow-x: auto;
 }
 
-.lapse-report-pie-chart,
-.lapse-report-bar-chart {
+.fulcrum-timer-report-pie-chart,
+.fulcrum-timer-report-bar-chart {
     max-width: 100%;
     height: auto;
     display: block;
     margin: 16px auto;
 }
 
-.lapse-report-legend {
+.fulcrum-timer-report-legend {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-top: 16px;
 }
 
-.lapse-report-legend-item {
+.fulcrum-timer-report-legend-item {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 12px;
 }
 
-.lapse-report-legend-color {
+.fulcrum-timer-report-legend-color {
     width: 16px;
     height: 16px;
     border-radius: 4px;
@@ -1236,7 +1356,7 @@
     border: 1px solid var(--background-modifier-border);
 }
 
-.lapse-report-legend-label {
+.fulcrum-timer-report-legend-label {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1244,7 +1364,7 @@
     gap: 8px;
 }
 
-.lapse-report-legend-time {
+.fulcrum-timer-report-legend-time {
     font-variant-numeric: tabular-nums;
     color: var(--text-muted);
     font-weight: 500;
@@ -1252,7 +1372,7 @@
 
 /* Lapse Button Styles */
 
-.lapse-button {
+.fulcrum-timer-button {
     display: inline-flex;
     flex-direction: column;
     align-items: flex-start;
@@ -1273,9 +1393,9 @@
 }
 
 /* Quick Start / Timery-style cards */
-.lapse-button--timery {
-    --lapse-play-bg: var(--text-muted);
-    --lapse-play-fg: var(--background-primary);
+.fulcrum-timer-button--timery {
+    --fulcrum-timer-play-bg: var(--text-muted);
+    --fulcrum-timer-play-fg: var(--background-primary);
 
     display: flex;
     flex-direction: row;
@@ -1286,12 +1406,12 @@
     padding: 6px 10px 6px 8px;
 }
 
-.lapse-button--timery:focus-visible {
+.fulcrum-timer-button--timery:focus-visible {
     outline: 2px solid var(--interactive-accent);
     outline-offset: 2px;
 }
 
-.lapse-button--timery .lapse-button-body {
+.fulcrum-timer-button--timery .fulcrum-timer-button-body {
     display: flex;
     flex-direction: column;
     gap: 3px;
@@ -1300,7 +1420,7 @@
     width: auto;
 }
 
-.lapse-button-top {
+.fulcrum-timer-button-top {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1308,7 +1428,7 @@
     width: 100%;
 }
 
-.lapse-button-play {
+.fulcrum-timer-button-play {
     flex-shrink: 0;
     width: 26px;
     height: 26px;
@@ -1316,8 +1436,8 @@
     min-height: 26px;
     border-radius: 50%;
     border: none;
-    background-color: var(--lapse-play-bg);
-    color: var(--lapse-play-fg);
+    background-color: var(--fulcrum-timer-play-bg);
+    color: var(--fulcrum-timer-play-fg);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1326,13 +1446,13 @@
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
-.lapse-button-play svg {
+.fulcrum-timer-button-play svg {
     width: 11px;
     height: 11px;
     stroke-width: 2.25px;
 }
 
-.lapse-button-title-block {
+.fulcrum-timer-button-title-block {
     flex: 1;
     min-width: 0;
     display: flex;
@@ -1342,7 +1462,7 @@
     overflow: hidden;
 }
 
-.lapse-button-project-name {
+.fulcrum-timer-button-project-name {
     font-size: 12px;
     font-weight: 600;
     flex-shrink: 1;
@@ -1353,14 +1473,14 @@
     line-height: 1.25;
 }
 
-.lapse-button-bullet {
+.fulcrum-timer-button-bullet {
     flex-shrink: 0;
     color: var(--text-muted);
     font-size: 11px;
     font-weight: 400;
 }
 
-.lapse-button-area {
+.fulcrum-timer-button-area {
     font-size: 11px;
     font-weight: 400;
     color: var(--text-muted);
@@ -1372,7 +1492,7 @@
     line-height: 1.25;
 }
 
-.lapse-button-meta {
+.fulcrum-timer-button-meta {
     flex-shrink: 0;
     display: inline-flex;
     flex-direction: row;
@@ -1388,16 +1508,16 @@
     line-height: 1.2;
 }
 
-.lapse-button-meta-sep {
+.fulcrum-timer-button-meta-sep {
     opacity: 0.65;
     user-select: none;
 }
 
-.lapse-button-period {
+.fulcrum-timer-button-period {
     display: inline;
 }
 
-.lapse-button-desc {
+.fulcrum-timer-button-desc {
     font-size: 11px;
     font-weight: 400;
     color: var(--text-normal);
@@ -1412,17 +1532,17 @@
     opacity: 0.92;
 }
 
-.lapse-button:hover {
+.fulcrum-timer-button:hover {
     background-color: var(--background-modifier-hover);
     transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-.lapse-button:active {
+.fulcrum-timer-button:active {
     transform: translateY(0);
 }
 
-.lapse-button-name {
+.fulcrum-timer-button-name {
     font-size: 15px;
     font-weight: 600;
     color: var(--text-normal);
@@ -1434,7 +1554,7 @@
     min-width: 0;
 }
 
-.lapse-button-title {
+.fulcrum-timer-button-title {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1443,7 +1563,7 @@
     text-align: left;
 }
 
-.lapse-button-duration {
+.fulcrum-timer-button-duration {
     font-size: 11px;
     font-weight: 400;
     color: var(--text-muted);
@@ -1453,7 +1573,7 @@
 }
 
 /* Inline lapse: buttons only — keep pill under title */
-.lapse-button:not(.lapse-button--timery) .lapse-button-project {
+.fulcrum-timer-button:not(.fulcrum-timer-button--timery) .fulcrum-timer-button-project {
     font-size: 12px;
     font-weight: 500;
     margin-top: 8px;
@@ -1467,7 +1587,7 @@
     max-width: calc(100% - 20px);
 }
 
-.lapse-button-error {
+.fulcrum-timer-button-error {
     background-color: var(--background-primary);
     border-color: var(--background-modifier-error);
     color: var(--text-error);
@@ -1475,7 +1595,7 @@
     opacity: 0.7;
 }
 
-.lapse-button-error:hover {
+.fulcrum-timer-button-error:hover {
     transform: none;
     box-shadow: none;
     opacity: 0.7;
@@ -1484,14 +1604,14 @@
 
 /* Lapse Template Modal */
 
-.lapse-template-list {
+.fulcrum-timer-template-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-top: 16px;
 }
 
-.lapse-template-option {
+.fulcrum-timer-template-option {
     padding: 12px 16px;
     text-align: left;
     background-color: var(--background-secondary);
@@ -1502,36 +1622,36 @@
     transition: all 0.2s ease;
 }
 
-.lapse-template-option:hover {
+.fulcrum-timer-template-option:hover {
     background-color: var(--background-modifier-hover);
     border-color: var(--interactive-accent);
 }
 
 /* Lapse Buttons View */
 
-.lapse-buttons-view {
+.fulcrum-timer-buttons-view {
     padding: 16px;
 }
 
-.lapse-buttons-header {
+.fulcrum-timer-buttons-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
 }
 
-.lapse-buttons-header h2 {
+.fulcrum-timer-buttons-header h2 {
     margin: 0;
     font-size: 24px;
 }
 
-.lapse-buttons-header-buttons {
+.fulcrum-timer-buttons-header-buttons {
     display: flex;
     align-items: center;
     gap: 4px;
 }
 
-.lapse-buttons-refresh-btn {
+.fulcrum-timer-buttons-refresh-btn {
     padding: 4px;
     border: none;
     background: transparent;
@@ -1540,21 +1660,55 @@
     transition: opacity 0.2s;
 }
 
-.lapse-buttons-refresh-btn:hover {
+.fulcrum-timer-buttons-refresh-btn:hover {
     opacity: 1;
 }
 
-.lapse-buttons-refresh-btn svg {
+.fulcrum-timer-buttons-refresh-btn svg {
     width: 16px;
     height: 16px;
 }
 
-.lapse-buttons-filter {
+.fulcrum-timer-buttons-filter-bar {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin-bottom: 16px;
+	min-width: 0;
+}
+
+.fulcrum-timer-buttons-group-by {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	flex-shrink: 0;
+}
+
+.fulcrum-timer-buttons-group-by-label {
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.fulcrum-timer-buttons-group-by-select {
+	font-size: var(--font-ui-smaller);
+	min-width: 6.5rem;
+}
+
+.fulcrum-timer-buttons-filter-bar .fulcrum-timer-buttons-filter {
+	position: relative;
+	flex: 1 1 auto;
+	min-width: 0;
+	margin-bottom: 0;
+}
+
+.fulcrum-timer-buttons-filter {
     position: relative;
     margin-bottom: 16px;
 }
 
-.lapse-buttons-filter-input {
+.fulcrum-timer-buttons-filter-input {
     width: 100%;
     padding: 8px 32px 8px 12px;
     border: 1px solid var(--background-modifier-border);
@@ -1564,17 +1718,17 @@
     font-size: 14px;
 }
 
-.lapse-buttons-filter-input:focus {
+.fulcrum-timer-buttons-filter-input:focus {
     outline: none;
     border-color: var(--interactive-accent);
     box-shadow: 0 0 0 2px var(--interactive-accent-hover);
 }
 
-.lapse-buttons-filter-input::placeholder {
+.fulcrum-timer-buttons-filter-input::placeholder {
     color: var(--text-muted);
 }
 
-.lapse-buttons-filter-clear {
+.fulcrum-timer-buttons-filter-clear {
     position: absolute;
     right: 4px;
     top: 50%;
@@ -1590,28 +1744,28 @@
     border-radius: 4px;
 }
 
-.lapse-buttons-filter-clear:hover {
+.fulcrum-timer-buttons-filter-clear:hover {
     color: var(--text-normal);
     background: var(--background-modifier-hover);
 }
 
-.lapse-buttons-filter-clear svg {
+.fulcrum-timer-buttons-filter-clear svg {
     width: 14px;
     height: 14px;
 }
 
-.lapse-buttons-count {
+.fulcrum-timer-buttons-count {
     font-size: 12px;
     color: var(--text-muted);
     margin: -8px 0 14px;
     min-height: 1.2em;
 }
 
-.lapse-buttons-content {
+.fulcrum-timer-buttons-content {
     /* Container for filtered results */
 }
 
-.lapse-buttons-project-section {
+.fulcrum-timer-buttons-project-section {
     margin-bottom: 20px;
     border-radius: 8px;
     border: 1px solid var(--background-modifier-border);
@@ -1619,85 +1773,85 @@
     overflow: hidden;
 }
 
-.lapse-buttons-project-section .lapse-buttons-project-header {
+.fulcrum-timer-buttons-project-section .fulcrum-timer-buttons-project-header {
     margin: 0;
-    padding: 10px 12px 10px 12px;
-    border-left: 4px solid var(--background-modifier-border);
+    padding: 0;
+    border-left: none;
     cursor: pointer;
     list-style: none;
     user-select: none;
     display: block;
 }
 
-.lapse-buttons-project-section .lapse-buttons-project-header::-webkit-details-marker {
+.fulcrum-timer-buttons-project-section .fulcrum-timer-buttons-project-header::-webkit-details-marker {
     display: none;
 }
 
-.lapse-buttons-project-section .lapse-buttons-project-title {
-    display: inline;
-    font-size: 15px;
-    font-weight: 600;
-    margin: 0;
-    color: var(--text-normal);
+.fulcrum-timer-buttons-project-section .fulcrum-timer-group-header {
+    border-left: 3px solid var(--background-modifier-border);
 }
 
-.lapse-buttons-project-section .lapse-buttons-grid {
+.fulcrum-timer-buttons-project-section .fulcrum-timer-group-title {
+    display: block;
+}
+
+.fulcrum-timer-buttons-project-section .fulcrum-timer-buttons-grid {
     margin-top: 0;
     padding: 8px 10px 14px;
     border-top: 1px solid var(--background-modifier-border);
     background: var(--background-primary);
 }
 
-.lapse-buttons-grid {
+.fulcrum-timer-buttons-grid {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 16px;
 }
 
-.lapse-quick-start-modal {
+.fulcrum-timer-quick-start-modal {
     padding: 16px;
     max-width: min(720px, 95vw);
 }
 
-.lapse-quick-start-modal .lapse-buttons-project-section {
+.fulcrum-timer-quick-start-modal .fulcrum-timer-buttons-project-section {
     margin-bottom: 28px;
 }
 
-.lapse-quick-start-modal .lapse-button {
+.fulcrum-timer-quick-start-modal .fulcrum-timer-button {
     max-width: 100%;
     width: min(100%, 280px);
 }
 
-.lapse-buttons-empty {
+.fulcrum-timer-buttons-empty {
     color: var(--text-muted);
     font-style: italic;
     padding: 20px;
 }
 
-.lapse-grid-view {
+.fulcrum-timer-grid-view {
     padding: 16px;
 }
 
-.lapse-grid-header {
+.fulcrum-timer-grid-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 12px;
 }
 
-.lapse-grid-header h2 {
+.fulcrum-timer-grid-header h2 {
     margin: 0;
     font-size: 20px;
 }
 
-.lapse-grid-header-buttons {
+.fulcrum-timer-grid-header-buttons {
     display: flex;
     align-items: center;
     gap: 4px;
 }
 
-.lapse-grid-refresh-btn {
+.fulcrum-timer-grid-refresh-btn {
     padding: 4px;
     border: none;
     background: transparent;
@@ -1706,11 +1860,11 @@
     transition: opacity 0.2s;
 }
 
-.lapse-grid-refresh-btn:hover {
+.fulcrum-timer-grid-refresh-btn:hover {
     opacity: 1;
 }
 
-.lapse-grid-note-section {
+.fulcrum-timer-grid-note-section {
     border-radius: 8px;
     border: 1px solid var(--background-modifier-border);
     padding: 14px;
@@ -1719,25 +1873,25 @@
     box-shadow: var(--background-modifier-shadow);
 }
 
-.lapse-grid-note-header {
+.fulcrum-timer-grid-note-header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
     margin-bottom: 10px;
 }
 
-.lapse-grid-note-count {
+.fulcrum-timer-grid-note-count {
     font-size: 12px;
     color: var(--text-muted);
 }
 
-.lapse-grid-table {
+.fulcrum-timer-grid-table {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
-.lapse-grid-entry-row {
+.fulcrum-timer-grid-entry-row {
     display: grid;
     grid-template-columns: 2fr 1.2fr 1.2fr 1.6fr;
     gap: 8px;
@@ -1745,7 +1899,7 @@
     padding: 6px 0;
 }
 
-.lapse-grid-entry-row.lapse-grid-entry-header {
+.fulcrum-timer-grid-entry-row.fulcrum-timer-grid-entry-header {
     text-transform: uppercase;
     font-size: 0.75rem;
     letter-spacing: 0.04em;
@@ -1754,19 +1908,19 @@
     background: transparent;
 }
 
-.lapse-grid-row-even {
+.fulcrum-timer-grid-row-even {
     background: var(--background-modifier-border);
 }
 
-.lapse-grid-row-odd {
+.fulcrum-timer-grid-row-odd {
     background: transparent;
 }
 
-.lapse-grid-entry-cell {
+.fulcrum-timer-grid-entry-cell {
     min-width: 0;
 }
 
-.lapse-grid-input {
+.fulcrum-timer-grid-input {
     width: 100%;
     border-radius: 4px;
     border: 1px solid var(--background-modifier-border);
@@ -1776,26 +1930,26 @@
     color: var(--text-normal);
 }
 
-.lapse-grid-input:focus {
+.fulcrum-timer-grid-input:focus {
     outline: 2px solid var(--interactive-accent);
     outline-offset: 0;
 }
 
-.lapse-grid-empty {
+.fulcrum-timer-grid-empty {
     font-style: italic;
     color: var(--text-muted);
 }
 
 /* Calendar View Styles */
 
-.lapse-calendar-view {
+.fulcrum-timer-calendar-view {
     padding: 16px;
     height: 100%;
     display: flex;
     flex-direction: column;
 }
 
-.lapse-calendar-header {
+.fulcrum-timer-calendar-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1806,13 +1960,13 @@
     gap: 12px;
 }
 
-.lapse-calendar-nav {
+.fulcrum-timer-calendar-nav {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.lapse-calendar-today-btn {
+.fulcrum-timer-calendar-today-btn {
     padding: 6px 12px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
@@ -1823,11 +1977,11 @@
     transition: all 0.2s;
 }
 
-.lapse-calendar-today-btn:hover {
+.fulcrum-timer-calendar-today-btn:hover {
     background: var(--background-modifier-hover);
 }
 
-.lapse-calendar-date-display {
+.fulcrum-timer-calendar-date-display {
     font-size: 16px;
     font-weight: 600;
     color: var(--text-normal);
@@ -1835,13 +1989,13 @@
     text-align: center;
 }
 
-.lapse-calendar-controls {
+.fulcrum-timer-calendar-controls {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.lapse-calendar-view-select {
+.fulcrum-timer-calendar-view-select {
     padding: 6px 12px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
@@ -1851,28 +2005,28 @@
     cursor: pointer;
 }
 
-.lapse-calendar-grid-container {
+.fulcrum-timer-calendar-grid-container {
     flex: 1;
     overflow: auto;
 }
 
-.lapse-calendar-grid {
+.fulcrum-timer-calendar-grid {
     display: flex;
     min-height: 100%;
 }
 
-.lapse-calendar-time-column {
+.fulcrum-timer-calendar-time-column {
     width: 80px;
     flex-shrink: 0;
     border-right: 1px solid var(--background-modifier-border);
 }
 
-.lapse-calendar-time-header {
+.fulcrum-timer-calendar-time-header {
     height: 60px;
     border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.lapse-calendar-time-slot {
+.fulcrum-timer-calendar-time-slot {
     height: 60px;
     padding: 4px 8px;
     font-size: 11px;
@@ -1883,65 +2037,65 @@
     font-variant-numeric: tabular-nums;
 }
 
-.lapse-calendar-days-container {
+.fulcrum-timer-calendar-days-container {
     flex: 1;
     display: flex;
     flex-direction: column;
 }
 
-.lapse-calendar-day-headers {
+.fulcrum-timer-calendar-day-headers {
     display: flex;
     border-bottom: 2px solid var(--background-modifier-border);
     height: 60px;
 }
 
-.lapse-calendar-day-header {
+.fulcrum-timer-calendar-day-header {
     flex: 1;
     padding: 8px;
     text-align: center;
     border-right: 1px solid var(--background-modifier-border);
 }
 
-.lapse-calendar-day-header:last-child {
+.fulcrum-timer-calendar-day-header:last-child {
     border-right: none;
 }
 
-.lapse-calendar-day-weekday {
+.fulcrum-timer-calendar-day-weekday {
     font-size: 12px;
     color: var(--text-muted);
     font-weight: 500;
     margin-bottom: 4px;
 }
 
-.lapse-calendar-day-number {
+.fulcrum-timer-calendar-day-number {
     font-size: 18px;
     font-weight: 600;
     color: var(--text-normal);
 }
 
-.lapse-calendar-day-columns {
+.fulcrum-timer-calendar-day-columns {
     display: flex;
     flex: 1;
     position: relative;
 }
 
-.lapse-calendar-day-column {
+.fulcrum-timer-calendar-day-column {
     flex: 1;
     border-right: 1px solid var(--background-modifier-border);
     position: relative;
 }
 
-.lapse-calendar-day-column:last-child {
+.fulcrum-timer-calendar-day-column:last-child {
     border-right: none;
 }
 
-.lapse-calendar-day-slot {
+.fulcrum-timer-calendar-day-slot {
     height: 60px;
     border-bottom: 1px solid var(--background-modifier-border);
     position: relative;
 }
 
-.lapse-calendar-entry-block {
+.fulcrum-timer-calendar-entry-block {
     position: absolute;
     left: 2px;
     right: 2px;
@@ -1956,19 +2110,19 @@
     min-height: 20px;
 }
 
-.lapse-calendar-entry-block:hover {
+.fulcrum-timer-calendar-entry-block:hover {
     background: var(--background-modifier-hover);
     border-color: var(--interactive-accent);
     z-index: 2;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-.lapse-calendar-entry-block.lapse-calendar-entry-active {
+.fulcrum-timer-calendar-entry-block.fulcrum-timer-calendar-entry-active {
     border-left-width: 3px;
-    animation: lapse-pulse 2s ease-in-out infinite;
+    animation: fulcrum-timer-pulse 2s ease-in-out infinite;
 }
 
-@keyframes lapse-pulse {
+@keyframes fulcrum-timer-pulse {
     0%, 100% {
         opacity: 1;
     }
@@ -1977,7 +2131,7 @@
     }
 }
 
-.lapse-calendar-entry-label {
+.fulcrum-timer-calendar-entry-label {
     font-size: 12px;
     font-weight: 500;
     color: var(--text-normal);
@@ -1987,22 +2141,22 @@
     margin-bottom: 2px;
 }
 
-.lapse-calendar-entry-time {
+.fulcrum-timer-calendar-entry-time {
     font-size: 10px;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
 }
 
-.lapse-calendar-entry-active-indicator {
+.fulcrum-timer-calendar-entry-active-indicator {
     position: absolute;
     top: 4px;
     right: 6px;
     font-size: 8px;
     color: var(--interactive-accent);
-    animation: lapse-blink 1s ease-in-out infinite;
+    animation: fulcrum-timer-blink 1s ease-in-out infinite;
 }
 
-@keyframes lapse-blink {
+@keyframes fulcrum-timer-blink {
     0%, 100% {
         opacity: 1;
     }
@@ -2013,26 +2167,26 @@
 
 /* Month View Styles */
 
-.lapse-calendar-month-grid {
+.fulcrum-timer-calendar-month-grid {
     display: flex;
     flex-direction: column;
 }
 
-.lapse-calendar-month-weekdays {
+.fulcrum-timer-calendar-month-weekdays {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     border-bottom: 2px solid var(--background-modifier-border);
     padding: 8px 0;
 }
 
-.lapse-calendar-month-weekday {
+.fulcrum-timer-calendar-month-weekday {
     text-align: center;
     font-size: 12px;
     font-weight: 600;
     color: var(--text-muted);
 }
 
-.lapse-calendar-month-days {
+.fulcrum-timer-calendar-month-days {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     gap: 1px;
@@ -2040,7 +2194,7 @@
     border: 1px solid var(--background-modifier-border);
 }
 
-.lapse-calendar-month-day {
+.fulcrum-timer-calendar-month-day {
     min-height: 100px;
     padding: 8px;
     background: var(--background-primary);
@@ -2049,31 +2203,31 @@
     position: relative;
 }
 
-.lapse-calendar-month-day.empty {
+.fulcrum-timer-calendar-month-day.empty {
     background: var(--background-secondary);
     cursor: default;
 }
 
-.lapse-calendar-month-day:hover:not(.empty) {
+.fulcrum-timer-calendar-month-day:hover:not(.empty) {
     background: var(--background-modifier-hover);
 }
 
-.lapse-calendar-month-day.has-entries {
+.fulcrum-timer-calendar-month-day.has-entries {
     background: var(--background-secondary);
 }
 
-.lapse-calendar-month-day.has-entries:hover {
+.fulcrum-timer-calendar-month-day.has-entries:hover {
     background: var(--background-modifier-hover);
 }
 
-.lapse-calendar-month-day-number {
+.fulcrum-timer-calendar-month-day-number {
     font-size: 14px;
     font-weight: 600;
     color: var(--text-normal);
     margin-bottom: 4px;
 }
 
-.lapse-calendar-month-day-time {
+.fulcrum-timer-calendar-month-day-time {
     font-size: 11px;
     font-weight: 500;
     color: var(--text-accent);
@@ -2081,7 +2235,7 @@
     margin-top: 4px;
 }
 
-.lapse-calendar-month-day-count {
+.fulcrum-timer-calendar-month-day-count {
     font-size: 10px;
     color: var(--text-muted);
     margin-top: 2px;
@@ -2089,7 +2243,7 @@
 
 /* Calendar Drag & Drop Styles */
 
-.lapse-calendar-resize-handle {
+.fulcrum-timer-calendar-resize-handle {
     position: absolute;
     left: 0;
     right: 0;
@@ -2100,37 +2254,37 @@
     transition: background-color 0.2s;
 }
 
-.lapse-calendar-resize-handle:hover {
+.fulcrum-timer-calendar-resize-handle:hover {
     background: var(--interactive-accent);
     opacity: 0.5;
 }
 
-.lapse-calendar-resize-start {
+.fulcrum-timer-calendar-resize-start {
     top: -3px;
     border-radius: 4px 4px 0 0;
 }
 
-.lapse-calendar-resize-end {
+.fulcrum-timer-calendar-resize-end {
     bottom: -3px;
     border-radius: 0 0 4px 4px;
 }
 
-.lapse-calendar-entry-block {
+.fulcrum-timer-calendar-entry-block {
     user-select: none;
 }
 
-.lapse-calendar-entry-dragging {
+.fulcrum-timer-calendar-entry-dragging {
     opacity: 0.5;
     z-index: 1000;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.lapse-calendar-day-column-drag-over {
+.fulcrum-timer-calendar-day-column-drag-over {
     background: var(--background-modifier-hover);
     border: 2px dashed var(--interactive-accent);
 }
 
-.lapse-calendar-entry-preview {
+.fulcrum-timer-calendar-entry-preview {
     background: var(--background-modifier-hover);
     border: 2px dashed var(--interactive-accent);
     opacity: 0.7;
@@ -2138,20 +2292,20 @@
 }
 
 /* Planned blocks (intent only; not logged work) */
-.lapse-calendar-planned-block {
+.fulcrum-timer-calendar-planned-block {
     border-style: dashed;
     border-width: 1px;
     opacity: 0.92;
     z-index: 2;
 }
 
-.lapse-calendar-month-day-planned {
+.fulcrum-timer-calendar-month-day-planned {
     font-size: 10px;
     color: var(--text-accent);
     margin-top: 2px;
 }
 
-.lapse-calendar-draw-modal-buttons {
+.fulcrum-timer-calendar-draw-modal-buttons {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;

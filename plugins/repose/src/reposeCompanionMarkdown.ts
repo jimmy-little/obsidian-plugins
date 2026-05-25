@@ -1,5 +1,6 @@
 import { MarkdownView, Platform, type App, TFile, type WorkspaceLeaf } from "obsidian";
 import type ReposePlugin from "./main";
+import { pathUnderMediaRoot, reposeMobile } from "./platform";
 import { resolveMediaTypeForFile } from "./media/mediaDetect";
 import { leafIsInSideDock, leafIsInWorkspace } from "./workspaceLeaf";
 import ReposeMarkdownChrome from "./svelte/ReposeMarkdownChrome.svelte";
@@ -72,6 +73,77 @@ export async function openBookCompanionSinglePane(
  * {@link syncAllMarkdownChrome}) matches the in-app hero. YAML / Properties stay in the file but are hidden via
  * {@link DOC_CLASS}.
  */
+function findEpisodeCompanionMarkdownLeaf(plugin: ReposePlugin, app: App): WorkspaceLeaf | null {
+	const tracked = plugin.reposeCompanionMarkdownLeaf;
+	if (tracked && leafIsInWorkspace(app, tracked)) return tracked;
+
+	let withChrome: WorkspaceLeaf | null = null;
+	let episodeMarkdown: WorkspaceLeaf | null = null;
+	app.workspace.iterateAllLeaves((leaf) => {
+		const v = leaf.view;
+		if (!(v instanceof MarkdownView)) return;
+		if (v.contentEl.querySelector(".repose-companion-chrome-host") && !withChrome) {
+			withChrome = leaf;
+		}
+		const file = v.file;
+		if (
+			file &&
+			resolveMediaTypeForFile(app, file, plugin.settings) === "episode" &&
+			!plugin.reposeRawMarkdownViews.has(v) &&
+			!episodeMarkdown
+		) {
+			episodeMarkdown = leaf;
+		}
+	});
+	return withChrome ?? episodeMarkdown;
+}
+
+export async function navigateEpisodeInCompanionPane(
+	plugin: ReposePlugin,
+	file: TFile,
+): Promise<boolean> {
+	const app = plugin.app;
+	const companion = findEpisodeCompanionMarkdownLeaf(plugin, app);
+	if (!companion) return false;
+
+	plugin.reposeCompanionMarkdownPath = file.path;
+	plugin.reposeCompanionMarkdownLeaf = companion;
+	plugin.reposeCompanionMarkdownOwnedSplit = true;
+
+	await companion.openFile(file, { active: true });
+	await app.workspace.revealLeaf(companion);
+	scheduleSyncAllMarkdownChrome(plugin);
+	return true;
+}
+
+export async function openRawEpisodeNote(plugin: ReposePlugin, file: TFile): Promise<void> {
+	const leaf = plugin.app.workspace.getLeaf("tab");
+	await leaf.openFile(file, { active: true });
+	const view = leaf.view;
+	if (view instanceof MarkdownView) {
+		plugin.reposeRawMarkdownViews.add(view);
+		clearChromeForMarkdownView(view);
+	}
+}
+
+function resolveEpisodeCompanionLeaf(plugin: ReposePlugin, app: App): WorkspaceLeaf | null {
+	return findEpisodeCompanionMarkdownLeaf(plugin, app);
+}
+
+/** Main-area leaf to split when creating the first episode companion pane (avoid getLeaf when reusing). */
+function anchorLeafForNewEpisodeSplit(app: App, anchorLeaf: WorkspaceLeaf): WorkspaceLeaf {
+	if (!leafIsInSideDock(app, anchorLeaf)) return anchorLeaf;
+	const active = app.workspace.activeLeaf;
+	if (active && !leafIsInSideDock(app, active)) return active;
+	let mainMarkdown: WorkspaceLeaf | null = null;
+	app.workspace.iterateAllLeaves((l) => {
+		if (leafIsInSideDock(app, l)) return;
+		if (l.view.getViewType() === "markdown" && !mainMarkdown) mainMarkdown = l;
+	});
+	if (mainMarkdown) return mainMarkdown;
+	return app.workspace.getLeaf("tab");
+}
+
 export async function ensureReposeCompanionMarkdownPane(
 	plugin: ReposePlugin,
 	anchorLeaf: WorkspaceLeaf,
@@ -80,20 +152,12 @@ export async function ensureReposeCompanionMarkdownPane(
 	const app = plugin.app;
 	plugin.reposeCompanionMarkdownPath = file.path;
 
-	let anchor = anchorLeaf;
-	if (leafIsInSideDock(app, anchorLeaf)) {
-		anchor = app.workspace.getLeaf("tab");
-	}
-
-	const reuse =
-		plugin.reposeCompanionMarkdownLeaf &&
-		leafIsInWorkspace(app, plugin.reposeCompanionMarkdownLeaf) &&
-		plugin.reposeCompanionMarkdownLeaf !== anchor;
+	const existing = resolveEpisodeCompanionLeaf(plugin, app);
 
 	if (Platform.isMobile) {
 		// Mobile tabs are not "owned split panes"; detaching them can close the active tab unexpectedly.
 		plugin.reposeCompanionMarkdownOwnedSplit = false;
-		const leaf = app.workspace.getLeaf("tab");
+		const leaf = existing ?? app.workspace.getLeaf("tab");
 		await leaf.openFile(file, { active: true });
 		plugin.reposeCompanionMarkdownLeaf = leaf;
 		scheduleSyncAllMarkdownChrome(plugin);
@@ -101,13 +165,14 @@ export async function ensureReposeCompanionMarkdownPane(
 	}
 	plugin.reposeCompanionMarkdownOwnedSplit = true;
 
-	if (reuse) {
-		await app.workspace.revealLeaf(plugin.reposeCompanionMarkdownLeaf!);
-		await plugin.reposeCompanionMarkdownLeaf!.openFile(file, { active: true });
+	if (existing) {
+		await app.workspace.revealLeaf(existing);
+		await existing.openFile(file, { active: true });
 		scheduleSyncAllMarkdownChrome(plugin);
 		return;
 	}
 
+	const anchor = anchorLeafForNewEpisodeSplit(app, anchorLeaf);
 	const splitLeaf = app.workspace.createLeafBySplit(anchor, "vertical", false);
 	await splitLeaf.openFile(file, { active: true });
 	plugin.reposeCompanionMarkdownLeaf = splitLeaf;
@@ -146,6 +211,7 @@ function clearChromeForMarkdownView(view: MarkdownView): void {
 }
 
 export function syncAllMarkdownChrome(plugin: ReposePlugin): void {
+	if (reposeMobile()) return;
 	plugin.app.workspace.iterateAllLeaves((leaf) => {
 		const v = leaf.view;
 		if (!(v instanceof MarkdownView) || !v.file) return;
@@ -159,6 +225,10 @@ function syncChromeForMarkdownView(plugin: ReposePlugin, view: MarkdownView): vo
 		clearChromeForMarkdownView(view);
 		return;
 	}
+	if (plugin.reposeRawMarkdownViews.has(view)) {
+		clearChromeForMarkdownView(view);
+		return;
+	}
 	const mt = resolveMediaTypeForFile(plugin.app, file, plugin.settings);
 	if (mt !== "book" && mt !== "episode") {
 		clearChromeForMarkdownView(view);
@@ -168,30 +238,21 @@ function syncChromeForMarkdownView(plugin: ReposePlugin, view: MarkdownView): vo
 	/* Class on container so tint + YAML hiding apply to the full leaf (view-content sits here, not on contentEl). */
 	view.containerEl.classList.add(DOC_CLASS);
 
-	/**
-	 * Important: MarkdownView scroll is *inside* CM's `.cm-scroller` (edit) or `.markdown-preview-view` (read).
-	 * If we prepend chrome above that, it becomes a static header. Put it inside the scroll container so it
-	 * scrolls away with the note content (Fulcrum-style behavior).
-	 */
-	const scroller =
-		(view.contentEl.querySelector(".markdown-source-view .cm-scroller") as HTMLElement | null) ??
-		(view.contentEl.querySelector(".markdown-reading-view") as HTMLElement | null) ??
-		(view.contentEl.querySelector(".markdown-preview-view") as HTMLElement | null) ??
-		view.contentEl;
+	/** Prepended on contentEl (Fulcrum-style). Do not inject into `.cm-scroller` — that breaks CM flex layout. */
+	const mountEl = view.contentEl;
 
-	let host = view.contentEl.querySelector(".repose-companion-chrome-host") as HTMLElement | null;
+	let host = mountEl.querySelector(":scope > .repose-companion-chrome-host") as HTMLElement | null;
 	if (!host) {
 		host = document.createElement("div");
 		host.className = "repose-companion-chrome-host";
 	}
-	// Ensure the host lives in the active scroll container (mode switches move the scroller node).
-	if (host.parentElement !== scroller) {
+	if (host.parentElement !== mountEl) {
 		try {
 			host.remove();
 		} catch {
 			/* ignore */
 		}
-		scroller.prepend(host);
+		mountEl.prepend(host);
 	}
 
 	const existing = chromeByView.get(view);
@@ -208,15 +269,24 @@ function syncChromeForMarkdownView(plugin: ReposePlugin, view: MarkdownView): vo
 }
 
 export function registerReposeCompanionMarkdown(plugin: ReposePlugin): void {
+	if (reposeMobile()) return;
+
 	const run = (): void => scheduleSyncAllMarkdownChrome(plugin);
 	plugin.registerEvent(plugin.app.workspace.on("layout-change", run));
 	plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", run));
 	plugin.registerEvent(plugin.app.workspace.on("file-open", run));
 	plugin.registerEvent(
 		plugin.app.metadataCache.on("changed", (f) => {
-			if (f instanceof TFile) run();
+			if (!(f instanceof TFile)) return;
+			if (!pathUnderMediaRoot(f.path, plugin.settings.mediaRoot)) return;
+			run();
 		}),
 	);
+}
+
+export function registerReposeCompanionMarkdownForPlatform(plugin: ReposePlugin): void {
+	if (reposeMobile()) return;
+	registerReposeCompanionMarkdown(plugin);
 }
 
 export async function syncReposeCompanionPaneForSelection(
@@ -229,6 +299,20 @@ export async function syncReposeCompanionPaneForSelection(
 		return;
 	}
 	const mt = resolveMediaTypeForFile(plugin.app, file, plugin.settings);
+
+	if (reposeMobile()) {
+		if (mt === "book" || mt === "episode") {
+			plugin.reposeCompanionMarkdownOwnedSplit = false;
+			plugin.reposeCompanionMarkdownPath = file.path;
+			const leaf = plugin.app.workspace.getLeaf("tab");
+			await leaf.openFile(file, { active: true });
+			plugin.reposeCompanionMarkdownLeaf = leaf;
+		} else {
+			clearReposeCompanionMarkdownPane(plugin);
+		}
+		return;
+	}
+
 	if (mt === "book") {
 		await openBookCompanionSinglePane(plugin, anchorLeaf, file);
 		return;

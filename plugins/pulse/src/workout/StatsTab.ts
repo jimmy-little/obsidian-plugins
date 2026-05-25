@@ -1,8 +1,16 @@
 import type PulsePlugin from "../main";
 import { formatPulseImportAt } from "../formatImport";
 import type { SessionNote, ExerciseNote } from "./types";
-import { renderVolumeChart, renderCategoryChart } from "./charts";
+import { renderVolumeChart, renderRatioDoughnutChart } from "./charts";
 import { createSuiteWorkoutHeatmap } from "./pulseHeatmap";
+import { workoutDateFromFrontmatter } from "../import/workoutDedup";
+import { relativeDate } from "./renderers";
+import {
+	aggregateBodyPartVolumes,
+	aggregateWorkoutTypeCounts,
+} from "../stats/statsAggregates";
+
+const RECENT_PR_COUNT = 3;
 
 export class StatsTab {
 	private plugin: PulsePlugin;
@@ -21,24 +29,17 @@ export class StatsTab {
 
 		const dm = this.plugin.workoutDataManager;
 		const [sessions, exercises] = await Promise.all([
-			dm.getAllSessions(),
+			dm.getAllWorkoutSessions(),
 			dm.getAllExercises(),
 		]);
 
 		container.empty();
 		const wrapper = container.createDiv({ cls: "pulse-workout-stats" });
 
-		// Volume over time (last 12 weeks)
 		await this.renderVolumeSection(wrapper, sessions);
-
-		// Workout frequency heatmap
 		this.renderHeatmap(wrapper, sessions);
-
-		// PR Board
-		this.renderPRBoard(wrapper, exercises);
-
-		// Category breakdown
-		await this.renderCategoryBreakdown(wrapper, sessions, exercises);
+		this.renderRecentPRs(wrapper, exercises);
+		await this.renderBreakdownCharts(wrapper, sessions, exercises);
 
 		const foot = wrapper.createDiv({ cls: "pulse-stats__footer" });
 		foot.createSpan({ cls: "pulse-stats__footer-label", text: "Last workout import: " });
@@ -77,7 +78,7 @@ export class StatsTab {
 
 		const counts = new Map<string, number>();
 		for (const s of sessions) {
-			const d = s.frontmatter.date;
+			const d = workoutDateFromFrontmatter(s.frontmatter as unknown as Record<string, unknown>);
 			if (!d) continue;
 			counts.set(d, (counts.get(d) ?? 0) + 1);
 		}
@@ -89,72 +90,96 @@ export class StatsTab {
 		section.appendChild(heatmap);
 	}
 
-	private renderPRBoard(parent: HTMLElement, exercises: ExerciseNote[]): void {
+	private renderRecentPRs(parent: HTMLElement, exercises: ExerciseNote[]): void {
 		const section = parent.createDiv({ cls: "pulse-workout-stats-section" });
-		section.createEl("h3", { text: "Personal Records" });
+		section.createEl("h3", { text: "Recent PRs" });
 
 		const prs = exercises
-			.filter(e => e.frontmatter["pr-weight"] != null)
+			.filter((e) => e.frontmatter["pr-weight"] != null)
 			.sort((a, b) => {
 				const dateA = a.frontmatter["pr-date"] ?? "";
 				const dateB = b.frontmatter["pr-date"] ?? "";
 				return dateB.localeCompare(dateA);
-			});
+			})
+			.slice(0, RECENT_PR_COUNT);
 
 		if (prs.length === 0) {
 			section.createEl("p", { text: "No PRs yet.", cls: "pulse-workout-muted" });
 			return;
 		}
 
-		const table = section.createEl("table", { cls: "pulse-workout-pr-table" });
-		const thead = table.createEl("thead");
-		const headerRow = thead.createEl("tr");
-		["Exercise", "PR Weight", "Date"].forEach(h => headerRow.createEl("th", { text: h }));
-
-		const tbody = table.createEl("tbody");
+		const row = section.createDiv({ cls: "pulse-stats-pr-cards" });
 		for (const ex of prs) {
-			const row = tbody.createEl("tr");
-			row.createEl("td", { text: ex.frontmatter.name });
-			row.createEl("td", { text: `${ex.frontmatter["pr-weight"]} ${ex.frontmatter.unit}` });
-			row.createEl("td", { text: ex.frontmatter["pr-date"] ?? "—" });
+			const date = ex.frontmatter["pr-date"] ?? "";
+			const card = row.createDiv({ cls: "pulse-log-card pulse-log-card-accent pulse-stats-pr-card" });
+			card.createDiv({ text: ex.frontmatter.name, cls: "pulse-log-card-label" });
+			card.createDiv({
+				text: `${ex.frontmatter["pr-weight"]} ${ex.frontmatter.unit}`,
+				cls: "pulse-log-card-value",
+			});
+			card.createDiv({
+				text: date ? relativeDate(date) : "—",
+				cls: "pulse-log-card-sub",
+			});
+			if (date) {
+				card.createDiv({ text: date, cls: "pulse-log-card-sub" });
+			}
 		}
 	}
 
-	private async renderCategoryBreakdown(parent: HTMLElement, sessions: SessionNote[], exercises: ExerciseNote[]): Promise<void> {
+	private async renderBreakdownCharts(
+		parent: HTMLElement,
+		sessions: SessionNote[],
+		exercises: ExerciseNote[],
+	): Promise<void> {
 		const section = parent.createDiv({ cls: "pulse-workout-stats-section" });
-		section.createEl("h3", { text: "Volume by Movement" });
+		section.createEl("h3", { text: "Training Mix" });
 
-		const exerciseMap = new Map<string, ExerciseNote>();
-		for (const ex of exercises) exerciseMap.set(ex.file.path, ex);
+		const row = section.createDiv({ cls: "pulse-stats-donut-row" });
 
-		const movementVolumes = new Map<string, number>();
-		for (const session of sessions) {
-			for (const ex of session.session.exercises) {
-				const exercise = exerciseMap.get(ex.exercisePath);
-				const movement = exercise?.frontmatter.movement ?? "Uncategorized";
-				const volume = ex.sets.reduce((s, set) => s + ((set.weight ?? 0) * (set.reps ?? 0)), 0);
-				movementVolumes.set(movement, (movementVolumes.get(movement) ?? 0) + volume);
-			}
-		}
+		const typeCounts = aggregateWorkoutTypeCounts(sessions);
+		await this.renderDonutPanel(
+			row,
+			"Workout types",
+			"By session count",
+			typeCounts.map((t) => ({ label: t.name, value: t.count })),
+		);
 
-		const categories = Array.from(movementVolumes.entries())
-			.map(([name, volume]) => ({ name, volume }))
-			.sort((a, b) => b.volume - a.volume);
+		const bodyPartVolumes = aggregateBodyPartVolumes(sessions, exercises);
+		await this.renderDonutPanel(
+			row,
+			"Strength body parts",
+			"By total volume",
+			bodyPartVolumes.map((b) => ({ label: b.name, value: b.volume })),
+		);
+	}
 
-		if (categories.length === 0) {
-			section.createEl("p", { text: "No data yet.", cls: "pulse-workout-muted" });
+	private async renderDonutPanel(
+		parent: HTMLElement,
+		title: string,
+		subtitle: string,
+		slices: { label: string; value: number }[],
+	): Promise<void> {
+		const panel = parent.createDiv({ cls: "pulse-stats-donut-panel" });
+		panel.createEl("h4", { text: title, cls: "pulse-stats-donut-panel__title" });
+		panel.createEl("p", { text: subtitle, cls: "pulse-stats-donut-panel__subtitle pulse-workout-muted" });
+
+		if (slices.length === 0) {
+			panel.createEl("p", { text: "No data yet.", cls: "pulse-workout-muted" });
 			return;
 		}
 
-		const chartContainer = section.createDiv({ cls: "pulse-workout-chart-container pulse-workout-chart-small" });
+		const chartContainer = panel.createDiv({
+			cls: "pulse-workout-chart-container pulse-workout-chart-small pulse-stats-donut-panel__chart",
+		});
 		const canvas = chartContainer.createEl("canvas");
 		canvas.width = 300;
 		canvas.height = 200;
 		try {
-			const chart = await renderCategoryChart(canvas, categories);
+			const chart = await renderRatioDoughnutChart(canvas, slices);
 			this.charts.push(chart);
 		} catch (e) {
-			console.warn("Category chart error:", e);
+			console.warn("Donut chart error:", e);
 			chartContainer.createEl("p", { text: "Chart unavailable", cls: "pulse-workout-muted" });
 		}
 	}
@@ -174,7 +199,11 @@ export class StatsTab {
 			let volume = 0;
 
 			for (const session of sessions) {
-				const sessionDate = new Date(session.frontmatter.date + "T00:00:00");
+				const dateKey = workoutDateFromFrontmatter(
+					session.frontmatter as unknown as Record<string, unknown>,
+				);
+				if (!dateKey) continue;
+				const sessionDate = new Date(`${dateKey}T12:00:00`);
 				if (sessionDate >= weekStart && sessionDate < weekEnd) {
 					for (const ex of session.session.exercises) {
 						volume += ex.sets.reduce((s, set) => s + ((set.weight ?? 0) * (set.reps ?? 0)), 0);

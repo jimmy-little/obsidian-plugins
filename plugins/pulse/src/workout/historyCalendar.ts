@@ -1,4 +1,4 @@
-import type { ProgramNote, SessionNote } from "./types";
+import type { ProgramNote, SessionNote, WorkoutListEntry } from "./types";
 
 /** Sun..Sat abbreviations — must match program schedule strings */
 export const DAY_ABBREVS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -28,6 +28,17 @@ export function buildSessionsByDate(sessions: SessionNote[]): Map<string, Sessio
 		if (!d) continue;
 		if (!map.has(d)) map.set(d, []);
 		map.get(d)!.push(s);
+	}
+	return map;
+}
+
+/** Group workout list rows by date (YYYY-MM-DD). */
+export function buildWorkoutsByDate(entries: WorkoutListEntry[]): Map<string, WorkoutListEntry[]> {
+	const map = new Map<string, WorkoutListEntry[]>();
+	for (const e of entries) {
+		if (!e.date) continue;
+		if (!map.has(e.date)) map.set(e.date, []);
+		map.get(e.date)!.push(e);
 	}
 	return map;
 }

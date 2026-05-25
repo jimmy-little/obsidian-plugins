@@ -13,7 +13,7 @@
 		watchedPlayDatesCommaDetail,
 	} from "../media/mediaModel";
 	import MediaHero from "./MediaHero.svelte";
-	import { orderedEpisodePaths } from "../media/showEpisodes";
+	import { episodeDisplayTitle, orderedEpisodePaths, readEpisodeRow } from "../media/showEpisodes";
 
 	export let plugin: ReposePlugin;
 	export let episodeFile: TFile;
@@ -63,6 +63,8 @@
 	$: epCache = (detailRev, plugin.app.metadataCache.getFileCache(episodeFile));
 	$: epFm = (epCache?.frontmatter ?? {}) as Record<string, unknown>;
 	$: item = readMediaItem(plugin.app, episodeFile, plugin.settings);
+	$: epRow = (detailRev, readEpisodeRow(plugin.app, episodeFile));
+	$: heroTitle = episodeDisplayTitle(epRow.season, epRow.episode, epRow.title);
 	$: hostCache = hostFile
 		? (detailRev, plugin.app.metadataCache.getFileCache(hostFile))
 		: null;
@@ -128,12 +130,14 @@
 	}
 
 	async function openEpisodeNote(): Promise<void> {
-		await plugin.app.workspace.getLeaf("tab").openFile(episodeFile);
+		await plugin.openRawEpisodeNote(episodeFile);
 	}
 
-	async function toggleEpisodeWatched(): Promise<void> {
-		await plugin.toggleWatchedFrontmatter(episodeFile.path);
-		detailRev += 1;
+	function toggleEpisodeWatched(ev?: MouseEvent): void {
+		if (!ev) return;
+		plugin.openEpisodeWatchMenu(episodeFile, ev, () => {
+			detailRev += 1;
+		});
 	}
 
 	async function refreshEpisodeContext(): Promise<void> {
@@ -167,7 +171,7 @@
 	<MediaHero
 		backdropSrc={bannerSrc}
 		posterSrc={posterSrc}
-		title={item.title}
+		title={heroTitle}
 		releaseLabel={releaseLabel}
 		description={episodeDescription}
 		genres={genrePills}
@@ -184,7 +188,7 @@
 		posterPlaceholderHue={posterHue}
 		onPalette={onPalette}
 		onOpenNote={openEpisodeNote}
-		onToggleWatched={() => void toggleEpisodeWatched()}
+		onToggleWatched={toggleEpisodeWatched}
 		onRefresh={() => void refreshEpisodeContext()}
 		detailMetaRows={detailMetaRows}
 		listenUi={listenUi}

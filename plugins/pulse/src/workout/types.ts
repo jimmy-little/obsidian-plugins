@@ -51,6 +51,9 @@ export interface SessionData {
 export interface SessionFrontmatter {
 	"pulse-type": "session";
 	date: string;
+	/** Manual or imported activity label, e.g. `[[Mind & Body]]`. */
+	type?: string;
+	name?: string;
 	program?: string;
 	programDay?: string;
 	duration?: number;
@@ -74,6 +77,29 @@ export interface SessionNote {
 	session: SessionData;
 	/** Markdown after the \`\`\`pulse-session\`\`\` block (e.g. imported Heart Rate chart). */
 	bodySuffix?: string;
+}
+
+/** Lightweight workout row for sidebar / history lists. */
+export interface WorkoutListEntry {
+	file: TFile;
+	path: string;
+	date: string;
+	displayName: string;
+	/** @deprecated Use displayName + stats line in list UI. */
+	headline: string;
+	/** @deprecated Use stats line in list UI. */
+	meta: string;
+	/** Normalized duration in seconds (for display). */
+	duration?: number;
+	/** ISO start timestamp from frontmatter (for sort + time label). */
+	startTimeIso?: string;
+	calories?: number;
+	/** Total weight × reps from pulse-session block (when present). */
+	volume?: number;
+	/** Quick-note bullet text (timestamps stripped). */
+	quickNotes?: string[];
+	/** Activity icon basename (`strength`, `gravl`, etc.) for sidebar / banners. */
+	iconName?: string;
 }
 
 /** Session not linked to a program (sidebar “Workouts” list, edit flow). */

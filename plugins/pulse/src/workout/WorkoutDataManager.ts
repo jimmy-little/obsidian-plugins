@@ -1,8 +1,9 @@
-import { TFile, Vault, normalizePath } from "obsidian";
+import { MetadataCache, TFile, Vault, normalizePath } from "obsidian";
 import type { WorkoutSettings } from "../settings";
 import type { ImportedWorkoutData } from "../import/types";
 import { ACTIVITY_TYPE_MAP } from "../import/types";
 import { parseFrontmatter } from "../import/parsers";
+import { ensureVaultFolder } from "../vaultFolders";
 import type {
 	ExerciseNote,
 	ExerciseFrontmatter,
@@ -17,9 +18,23 @@ import type {
 	PRRecord,
 	NewExerciseData,
 	NewProgramData,
+	WorkoutListEntry,
 } from "./types";
 import type { WorkoutKind } from "../import/workoutDedup";
 import { parseDistanceUnit } from "./exerciseKind";
+import {
+	durationSecondsFromWorkoutFrontmatter,
+	fallbackWorkoutFrontmatterFromBasename,
+	isLikelyImportedWorkoutPath,
+	startIsoFromWorkoutFrontmatter,
+	workoutDateFromFrontmatter,
+} from "../import/workoutDedup";
+import { parseWorkoutQuickNotesFromBody } from "./workoutQuickNote";
+import { computeSessionVolume } from "./workoutSessionStats";
+import {
+	resolveWorkoutIconName,
+	workoutIconInputFromFrontmatter,
+} from "./workoutIcon";
 
 function exercisePathToWikilink(path: string): string {
 	const p = path.replace(/\.md$/i, "").trim();
@@ -32,7 +47,75 @@ function stripAutoExerciseWikilinkSection(s: string): string {
 }
 
 export class WorkoutDataManager {
-	constructor(private vault: Vault, private settings: WorkoutSettings) {}
+	private workoutListCache: WorkoutListEntry[] | null = null;
+	private workoutListDetailCache = new Map<
+		string,
+		Pick<WorkoutListEntry, "volume" | "quickNotes" | "iconName">
+	>();
+
+	constructor(
+		private vault: Vault,
+		private settings: WorkoutSettings,
+		private metadataCache: MetadataCache,
+	) {}
+
+	invalidateWorkoutListCache(): void {
+		this.workoutListCache = null;
+		this.workoutListDetailCache.clear();
+	}
+
+	private fmNumber(fm: Record<string, unknown>, key: string): number | undefined {
+		const v = fm[key];
+		if (typeof v === "number" && !Number.isNaN(v)) return v;
+		if (typeof v === "string" && v.trim() !== "") {
+			const n = parseFloat(v);
+			return Number.isNaN(n) ? undefined : n;
+		}
+		return undefined;
+	}
+
+	private parseSessionVolumeFromContent(content: string): number | undefined {
+		const m = content.match(/```pulse-session\n([\s\S]*?)```/);
+		if (!m) return undefined;
+		try {
+			const data = JSON.parse(m[1]!) as SessionData;
+			const vol = computeSessionVolume(data);
+			return vol > 0 ? vol : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	private async loadWorkoutListDetails(
+		file: TFile,
+	): Promise<Pick<WorkoutListEntry, "volume" | "quickNotes" | "iconName">> {
+		const cached = this.workoutListDetailCache.get(file.path);
+		if (cached) return cached;
+
+		const content = await this.vault.read(file);
+		const { frontmatter, body } = parseFrontmatter(content);
+		const fm = frontmatter as Record<string, unknown>;
+		const hasPulseSession = body.includes("```pulse-session");
+		const details = {
+			volume: this.parseSessionVolumeFromContent(content),
+			quickNotes: parseWorkoutQuickNotesFromBody(body),
+			iconName: resolveWorkoutIconName(
+				workoutIconInputFromFrontmatter(fm, { hasPulseSession }),
+			),
+		};
+		this.workoutListDetailCache.set(file.path, details);
+		return details;
+	}
+
+	/** Merge body-derived fields (volume, quick notes) into list rows. */
+	async enrichWorkoutListEntries(entries: WorkoutListEntry[]): Promise<WorkoutListEntry[]> {
+		return Promise.all(
+			entries.map(async (entry) => {
+				const details = await this.loadWorkoutListDetails(entry.file);
+				return { ...entry, ...details };
+			}),
+		);
+	}
 
 	/**
 	 * Prefer the stored path if that file exists; otherwise same note name under the
@@ -319,7 +402,9 @@ export class WorkoutDataManager {
 			file,
 			frontmatter: {
 				"pulse-type": "session",
-				date: String(fm.date ?? ""),
+				date: workoutDateFromFrontmatter(fm) || String(fm.date ?? ""),
+				type: fm.type != null ? String(fm.type) : undefined,
+				name: fm.name != null ? String(fm.name) : undefined,
 				program: fm.program != null ? String(fm.program) : undefined,
 				programDay: fm.programDay != null ? String(fm.programDay) : undefined,
 				duration: fm.duration != null ? Number(fm.duration) : undefined,
@@ -358,73 +443,133 @@ export class WorkoutDataManager {
 		return sessions;
 	}
 
+	private fmString(fm: Record<string, unknown>, key: string): string {
+		const v = fm[key];
+		if (v == null) return "";
+		return String(v).trim();
+	}
+
+	private workoutDateFromFrontmatter(fm: Record<string, unknown>): string {
+		return workoutDateFromFrontmatter(fm);
+	}
+
+	/** All workout notes vault-wide (sessions + imports), with pulse-session data when present. */
+	async getAllWorkoutSessions(): Promise<SessionNote[]> {
+		const entries = this.getAllWorkoutListEntries();
+		const notes = await Promise.all(
+			entries.map((entry) => this.getSessionForDisplay(entry.path)),
+		);
+		return notes.filter((note): note is SessionNote => note != null);
+	}
+
+	private buildWorkoutListEntry(
+		file: TFile,
+		fm: Record<string, unknown> | undefined,
+	): WorkoutListEntry | null {
+		const likelyImport = isLikelyImportedWorkoutPath(file.path, file.basename);
+		let effectiveFm = fm ?? {};
+		const pulseType = this.fmString(effectiveFm, "pulse-type");
+		const hasWorkoutId = this.fmString(effectiveFm, "workoutId") !== "";
+		if (pulseType !== "session" && !hasWorkoutId && !likelyImport) return null;
+
+		if (
+			likelyImport &&
+			(!this.workoutDateFromFrontmatter(effectiveFm) ||
+				(!hasWorkoutId && Object.keys(effectiveFm).length === 0))
+		) {
+			effectiveFm = {
+				...fallbackWorkoutFrontmatterFromBasename(file.basename),
+				...effectiveFm,
+			};
+		}
+
+		const nameStr = this.fmString(effectiveFm, "name");
+		const programDay = this.fmString(effectiveFm, "programDay");
+		const displayName = programDay || nameStr || file.basename.replace(/\.md$/i, "");
+		const date = this.workoutDateFromFrontmatter(effectiveFm);
+		const headline = `${date || "—"} — ${displayName}`;
+
+		const metaParts: string[] = [];
+		const program = this.fmString(effectiveFm, "program");
+		if (program) metaParts.push(program);
+		if (nameStr && nameStr !== displayName) metaParts.push(nameStr);
+		metaParts.push(file.basename.replace(/\.md$/i, ""));
+
+		const durationRaw = effectiveFm.duration;
+		const durationSec = durationSecondsFromWorkoutFrontmatter(effectiveFm);
+		const duration =
+			durationSec > 0
+				? durationSec
+				: durationRaw != null && Number.isFinite(Number(durationRaw))
+					? Number(durationRaw)
+					: undefined;
+
+		const startTimeIso = startIsoFromWorkoutFrontmatter(effectiveFm) || undefined;
+		const calories = this.fmNumber(effectiveFm, "calories");
+		const iconName = resolveWorkoutIconName(workoutIconInputFromFrontmatter(effectiveFm));
+
+		return {
+			file,
+			path: file.path,
+			date,
+			displayName,
+			headline,
+			meta: metaParts.filter(Boolean).join(" · "),
+			duration,
+			startTimeIso,
+			calories: calories != null && calories > 0 ? calories : undefined,
+			iconName,
+		};
+	}
+
 	/**
-	 * All Pulse session notes plus imported workout markdown (`workoutId` in YAML, any path).
+	 * All Pulse session notes plus imported workout markdown (`workoutId` in YAML).
+	 * Uses metadata cache only — no vault reads.
 	 */
-	async getAllWorkoutSidebarEntries(): Promise<
-		{ session: SessionNote; headline: string; meta: string }[]
-	> {
-		const byPath = new Map<string, SessionNote>();
+	getAllWorkoutListEntries(): WorkoutListEntry[] {
+		if (this.workoutListCache) return this.workoutListCache;
 
-		for (const s of await this.getAllSessions()) {
-			byPath.set(s.file.path, s);
-		}
-
+		const byPath = new Map<string, WorkoutListEntry>();
 		for (const file of this.vault.getMarkdownFiles()) {
-			if (byPath.has(file.path)) continue;
-			try {
-				const content = await this.vault.read(file);
-				const { frontmatter } = parseFrontmatter(content);
-				const wid = frontmatter.workoutId;
-				if (wid == null || String(wid).trim() === "") continue;
-				const note = this.parseSessionNoteLenient(file, content);
-				if (note) byPath.set(file.path, note);
-			} catch {
-				/* skip */
-			}
+			const fm = this.metadataCache.getFileCache(file)?.frontmatter as
+				| Record<string, unknown>
+				| undefined;
+			if (!fm && !isLikelyImportedWorkoutPath(file.path, file.basename)) continue;
+			const entry = this.buildWorkoutListEntry(file, fm);
+			if (entry) byPath.set(file.path, entry);
 		}
 
-		const out: { session: SessionNote; headline: string; meta: string }[] = [];
-
-		for (const session of byPath.values()) {
-			const fm = await this.readWorkoutSidebarFrontmatter(session.file);
-			const nameStr = fm.name != null ? String(fm.name).trim() : "";
-			const dayPart =
-				(session.frontmatter.programDay && String(session.frontmatter.programDay).trim()) ||
-				nameStr ||
-				"Workout";
-			const headline = `${session.frontmatter.date || "—"} — ${dayPart}`;
-
-			const metaParts: string[] = [];
-			if (session.frontmatter.program) {
-				metaParts.push(String(session.frontmatter.program));
-			}
-			if (nameStr && nameStr !== dayPart) {
-				metaParts.push(nameStr);
-			}
-			metaParts.push(session.file.basename.replace(/\.md$/i, ""));
-			const meta = metaParts.filter(Boolean).join(" · ");
-
-			out.push({ session, headline, meta });
-		}
-
+		const out = [...byPath.values()];
 		out.sort((a, b) => {
-			const da = a.session.frontmatter.date || "";
-			const db = b.session.frontmatter.date || "";
-			const c = db.localeCompare(da);
-			return c !== 0 ? c : b.session.file.path.localeCompare(a.session.file.path);
+			const c = b.date.localeCompare(a.date);
+			if (c !== 0) return c;
+			const ta = a.startTimeIso ?? "";
+			const tb = b.startTimeIso ?? "";
+			const tc = tb.localeCompare(ta);
+			if (tc !== 0) return tc;
+			return b.path.localeCompare(a.path);
 		});
 
+		this.workoutListCache = out;
 		return out;
 	}
 
-	private async readWorkoutSidebarFrontmatter(file: TFile): Promise<Record<string, string | number>> {
-		try {
-			const content = await this.vault.read(file);
-			return parseFrontmatter(content).frontmatter;
-		} catch {
-			return {};
-		}
+	/** @deprecated Use {@link getAllWorkoutListEntries} — kept for callers expecting session objects. */
+	getAllWorkoutSidebarEntries(): { session: SessionNote; headline: string; meta: string }[] {
+		return this.getAllWorkoutListEntries().map((entry) => ({
+			session: {
+				file: entry.file,
+				frontmatter: {
+					"pulse-type": "session",
+					date: entry.date,
+					programDay: entry.displayName,
+					duration: entry.duration ? Math.round(entry.duration / 60) : undefined,
+				},
+				session: { exercises: [] },
+			},
+			headline: entry.headline,
+			meta: entry.meta,
+		}));
 	}
 
 	async createSession(programDay?: ProgramDay, programName?: string): Promise<TFile> {
@@ -626,6 +771,7 @@ export class WorkoutDataManager {
 		const file = this.vault.getAbstractFileByPath(path);
 		if (file && file instanceof TFile) {
 			await this.vault.trash(file, true);
+			this.invalidateWorkoutListCache();
 		}
 	}
 
@@ -1006,7 +1152,9 @@ export class WorkoutDataManager {
 			file,
 			frontmatter: {
 				"pulse-type": "session",
-				date: String(fm.date ?? ""),
+				date: workoutDateFromFrontmatter(fm) || String(fm.date ?? ""),
+				type: fm.type != null ? String(fm.type) : undefined,
+				name: fm.name != null ? String(fm.name) : undefined,
 				program: fm.program != null ? String(fm.program) : undefined,
 				programDay: fm.programDay != null ? String(fm.programDay) : undefined,
 				duration: fm.duration != null ? Number(fm.duration) : undefined,
@@ -1111,12 +1259,6 @@ export class WorkoutDataManager {
 	}
 
 	private async ensureFolder(folderPath: string): Promise<void> {
-		const parts = folderPath.split("/");
-		for (let i = 1; i <= parts.length; i++) {
-			const sub = parts.slice(0, i).join("/");
-			if (!this.vault.getAbstractFileByPath(sub)) {
-				await this.vault.createFolder(sub);
-			}
-		}
+		await ensureVaultFolder(this.vault, folderPath);
 	}
 }

@@ -2,6 +2,7 @@ import {App, Notice, PluginSettingTab, Setting} from "obsidian";
 import {getTaskNotesHealth} from "./fulcrum/taskNotesApi";
 import type {FulcrumSettings} from "./fulcrum/settingsDefaults";
 import type FulcrumPlugin from "./main";
+import {displayTimerSettings} from "./timer/settingsTab";
 
 export type {FulcrumSettings} from "./fulcrum/settingsDefaults";
 export {DEFAULT_SETTINGS} from "./fulcrum/settingsDefaults";
@@ -255,6 +256,7 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		this.textSetting("projectLastReviewedField", "Last reviewed field");
 		this.textSetting("projectReviewFrequencyField", "Review frequency field (days)");
 		this.textSetting("projectNextReviewField", "Next review field");
+		this.textSetting("projectDeadlineField", "Project deadline field (Kanban date axis)");
 		this.textSetting("projectJiraField", "External link field (e.g. Jira)");
 		this.textSetting("projectBannerField", "Banner image field");
 		this.textSetting("projectColorField", "Project color field");
@@ -394,6 +396,60 @@ export class FulcrumSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		heading(containerEl, "Kanban");
+		new Setting(containerEl)
+			.setName("Default Kanban view")
+			.addDropdown((d) =>
+				d
+					.addOptions({projects: "Projects", tasks: "Tasks"})
+					.setValue(this.plugin.settings.kanbanView)
+					.onChange(async (v) => {
+						this.plugin.settings.kanbanView = v as FulcrumSettings["kanbanView"];
+						await this.plugin.saveSettings();
+					}),
+			);
+		new Setting(containerEl)
+			.setName("Kanban columns by")
+			.addDropdown((d) =>
+				d
+					.addOptions({area: "Area", project: "Project", status: "Status", date: "Date"})
+					.setValue(this.plugin.settings.kanbanColumnBy)
+					.onChange(async (v) => {
+						this.plugin.settings.kanbanColumnBy = v as FulcrumSettings["kanbanColumnBy"];
+						await this.plugin.saveSettings();
+					}),
+			);
+		new Setting(containerEl)
+			.setName("Kanban swimlanes by")
+			.addDropdown((d) =>
+				d
+					.addOptions({
+						none: "None",
+						area: "Area",
+						project: "Project",
+						status: "Status",
+						date: "Date",
+					})
+					.setValue(this.plugin.settings.kanbanSwimlaneBy)
+					.onChange(async (v) => {
+						this.plugin.settings.kanbanSwimlaneBy = v as FulcrumSettings["kanbanSwimlaneBy"];
+						await this.plugin.saveSettings();
+					}),
+			);
+		new Setting(containerEl)
+			.setName("Kanban project date axis")
+			.setDesc("When columns or swimlanes group projects by date.")
+			.addDropdown((d) =>
+				d
+					.addOptions({nextReview: "Next review", deadline: "Deadline"})
+					.setValue(this.plugin.settings.kanbanProjectDateSource)
+					.onChange(async (v) => {
+						this.plugin.settings.kanbanProjectDateSource =
+							v as FulcrumSettings["kanbanProjectDateSource"];
+						await this.plugin.saveSettings();
+					}),
+			);
+
 		heading(containerEl, "Display");
 		new Setting(containerEl)
 			.setName("Dashboard activity (days)")
@@ -524,6 +580,8 @@ export class FulcrumSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		displayTimerSettings(containerEl, this.plugin);
+
 		heading(containerEl, "URL schemes (Obsidian URI)");
 		containerEl.createEl("p", {
 			text: "Open Fulcrum from bookmarks or automation. The URI host must be the plugin id (fulcrum), not “open”. Example: obsidian://fulcrum?screen=dashboard — query params carry screen, route, projectPath, focalDate. With multiple vaults open, the focused vault is used unless you launch via obsidian://open?vault=VAULT_NAME&…",
@@ -534,6 +592,8 @@ export class FulcrumSettingTab extends PluginSettingTab {
 			["/fulcrum/kanban", "obsidian://fulcrum?screen=kanban"],
 			["/fulcrum/calendar", "obsidian://fulcrum?screen=calendar"],
 			["/fulcrum/time — Time tracked", "obsidian://fulcrum?screen=time"],
+			["/fulcrum/quick-start — Quick Start sidebar", "obsidian://fulcrum?screen=quick_start"],
+			["/fulcrum/activity — Active timers sidebar", "obsidian://fulcrum?screen=activity"],
 			["/fulcrum/timeline — optional focalDate=YYYY-MM-DD", "obsidian://fulcrum?screen=timeline&focalDate=2026-04-01"],
 			[
 				"/fulcrum/project — requires projectPath",

@@ -130,22 +130,34 @@ export async function renderCategoryChart(
 	canvas: HTMLCanvasElement,
 	categories: { name: string; volume: number }[]
 ): Promise<{ destroy(): void }> {
+	return renderRatioDoughnutChart(
+		canvas,
+		categories.map((c) => ({ label: c.name, value: c.volume })),
+	);
+}
+
+export async function renderRatioDoughnutChart(
+	canvas: HTMLCanvasElement,
+	slices: { label: string; value: number }[],
+): Promise<{ destroy(): void }> {
 	const { Chart } = await loadChartJs();
 	const ctx = canvas.getContext("2d");
 	if (!ctx) throw new Error("No canvas context");
 
+	const filtered = slices.filter((s) => s.value > 0);
 	const colors = [
 		"#ff6384", "#36a2eb", "#ffce56", "#4bc0c0",
 		"#9966ff", "#ff9f40", "#c9cbcf", "#7bc043",
+		"#e879f9", "#38bdf8", "#fb7185", "#a3e635",
 	];
 
 	return new Chart(ctx, {
 		type: "doughnut",
 		data: {
-			labels: categories.map(c => c.name),
+			labels: filtered.map((c) => c.label),
 			datasets: [{
-				data: categories.map(c => c.volume),
-				backgroundColor: categories.map((_, i) => colors[i % colors.length]),
+				data: filtered.map((c) => c.value),
+				backgroundColor: filtered.map((_, i) => colors[i % colors.length]),
 				borderWidth: 0,
 			}],
 		},
@@ -204,10 +216,18 @@ function lineColorRgbForBodyChart(anchor: HTMLElement): { r: number; g: number; 
 }
 
 /** Smooth line chart for body metrics (tension avoids sharp corners at data points). */
+export interface SmoothLineChartOptions {
+	/** Fixed Y-axis minimum (e.g. goal weight). */
+	yMin?: number;
+	/** Fixed Y-axis maximum. */
+	yMax?: number;
+}
+
 export async function renderSmoothLineChart(
 	canvas: HTMLCanvasElement,
 	points: { x: string; y: number }[],
-	_label: string
+	_label: string,
+	options?: SmoothLineChartOptions,
 ): Promise<{ destroy(): void }> {
 	const { Chart } = await loadChartJs();
 	const ctx = canvas.getContext("2d");
@@ -264,6 +284,8 @@ export async function renderSmoothLineChart(
 				},
 				y: {
 					beginAtZero: false,
+					...(options?.yMin != null ? { min: options.yMin } : {}),
+					...(options?.yMax != null ? { max: options.yMax } : {}),
 					ticks: { color: "var(--text-muted)" },
 					grid: { color: CHART_GRID_COLOR },
 				},

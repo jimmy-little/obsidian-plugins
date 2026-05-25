@@ -69,15 +69,13 @@ export function renderTrackerCard(container: HTMLElement, options: RenderTracker
 		updateUI();
 		onIncrement();
 	});
-	for (const v of tracker.incrementButtons) {
-		const btn = btnRow.createEl("button", { text: `+${v}` });
-		btn.addEventListener("click", async (e) => {
-			e.stopPropagation();
-			await dataManager.increment(tracker.id, v);
-			updateUI();
-			onIncrement();
-		});
-	}
+	const plusBtn = btnRow.createEl("button", { text: "+1" });
+	plusBtn.addEventListener("click", async (e) => {
+		e.stopPropagation();
+		await dataManager.increment(tracker.id, 1);
+		updateUI();
+		onIncrement();
+	});
 
 	if (hasGoal(tracker)) {
 		const progressWrap = card.createDiv("ratchet-card-progress-wrap");

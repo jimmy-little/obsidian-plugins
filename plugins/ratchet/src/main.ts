@@ -20,20 +20,18 @@ export default class RatchetPlugin extends Plugin {
 	private dataManager: DataManager | null = null;
 
 	/**
-	 * Main Ratchet leaf UI: dashboard (cards + quick log) vs month grid, editor selection,
-	 * grid month navigation; quick log scope; dedicated quick-log leaf (main) for mobile shortcuts.
+	 * Main Ratchet leaf UI: dashboard vs week grid, habit detail, quick log scope.
 	 */
 	ratchetViewState: {
 		selectedId: string | null;
-		mainPane: "dashboard" | "grid";
-		gridYear: number;
-		gridMonth: number;
+		mainPane: "overview" | "dashboard" | "grid" | "habit";
+		/** Local YYYY-MM-DD of the week row (Sunday or Monday per settings). */
+		gridWeekStartKey: string;
 		quickLogScope: QuickLogScope;
 	} = {
 		selectedId: null,
-		mainPane: "dashboard",
-		gridYear: new Date().getFullYear(),
-		gridMonth: new Date().getMonth(),
+		mainPane: "overview",
+		gridWeekStartKey: "",
 		quickLogScope: "day",
 	};
 
@@ -48,7 +46,7 @@ export default class RatchetPlugin extends Plugin {
 		this.addRibbonIcon("tally-5", "Ratchet", () => {
 			void this.activateRatchetView();
 		});
-		this.addRibbonIcon("layout-grid", "Ratchet month grid", () => {
+		this.addRibbonIcon("layout-grid", "Ratchet week grid", () => {
 			void this.openMonthGridInRatchetLeaf();
 		});
 
@@ -70,7 +68,7 @@ export default class RatchetPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-month-grid",
-			name: "Open month grid",
+			name: "Open week grid",
 			callback: () => void this.openMonthGridInRatchetLeaf(),
 		});
 
@@ -153,27 +151,34 @@ export default class RatchetPlugin extends Plugin {
 	}
 
 	async activateRatchetView(): Promise<void> {
-		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "sidebar");
+		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "main");
 	}
 
-	/** Full dashboard + editor in sidebar (from ribbon / “Open Ratchet”). */
+	/** Full dashboard + editor in main pane (from ribbon / “Open Ratchet”). */
 	async openRatchetDashboardForEdit(trackerId: string): Promise<void> {
 		this.ratchetViewState.selectedId = trackerId;
 		this.ratchetViewState.mainPane = "dashboard";
-		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "sidebar");
+		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "main");
 		this.refreshRatchetViews();
 	}
 
 	async openRatchetNewTracker(): Promise<void> {
 		this.ratchetViewState.selectedId = "new";
 		this.ratchetViewState.mainPane = "dashboard";
-		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "sidebar");
+		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "main");
 		this.refreshRatchetViews();
 	}
 
 	async openMonthGridInRatchetLeaf(): Promise<void> {
 		this.ratchetViewState.mainPane = "grid";
-		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "sidebar");
+		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "main");
+		this.refreshRatchetViews();
+	}
+
+	async openHabitView(trackerId: string): Promise<void> {
+		this.ratchetViewState.selectedId = trackerId;
+		this.ratchetViewState.mainPane = "habit";
+		await revealOrCreateView(this.app, VIEW_TYPE_RATCHET_MAIN, "main");
 		this.refreshRatchetViews();
 	}
 

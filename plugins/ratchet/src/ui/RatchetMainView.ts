@@ -9,9 +9,13 @@ import {
 import type RatchetPlugin from "../main";
 import type { DataManager } from "../data/DataManager";
 import type { TrackerConfig, GoalType, ResetPeriod } from "../data/TrackerConfig";
-import { createTracker, makeTrackerId, DEFAULT_TRACKER_COLOR } from "../data/TrackerConfig";
+import { createTracker, makeTrackerId, DEFAULT_TRACKER_COLOR, isCheckOffHabit, isTrackerArchived } from "../data/TrackerConfig";
+import { appendTrackerConfigActions } from "./trackerConfigActions";
 import { renderRatchetMonthGrid } from "./renderRatchetMonthGrid";
 import { renderQuickLogSection } from "./renderQuickLogSection";
+import { loadAndRenderTrackerSidebarList } from "./renderTrackerSidebarList";
+import { renderHabitView } from "./renderHabitView";
+import { renderHabitsDashboard } from "./renderHabitsDashboard";
 
 export const VIEW_TYPE_RATCHET_MAIN = "ratchet-main-view";
 
@@ -25,7 +29,7 @@ const RESET_OPTIONS: { value: ResetPeriod; label: string }[] = [
 
 const GOAL_TYPE_OPTIONS: { value: GoalType; label: string; desc: string }[] = [
 	{ value: "at least", label: "At least", desc: "Reach a minimum (e.g. 3 cups, close rings)" },
-	{ value: "at most", label: "At most", desc: "Stay at or below a cap (e.g. 0 drinks)" },
+	{ value: "at most", label: "At most", desc: "Stay at or below a cap (e.g. 2 drinks)" },
 	{ value: "none", label: "No goal", desc: "Just count" },
 ];
 
@@ -172,38 +176,64 @@ export class RatchetMainView extends ItemView {
 		const leftSidebar = shell.createDiv({ cls: "ratchet-pm__sidebar ratchet-pm__sidebar--left" });
 		const leftStack = leftSidebar.createDiv({ cls: "ratchet-pm__left-stack" });
 
-		const glyphBar = leftStack.createDiv({ cls: "ratchet-pm__glyph-bar", attr: { role: "toolbar", "aria-label": "Trackers sidebar" } });
+		const glyphBar = leftStack.createDiv({
+			cls: `ratchet-pm__glyph-bar ${this.leftCollapsed ? "ratchet-pm__glyph-bar--collapsed" : ""}`,
+			attr: { role: "toolbar", "aria-label": "Trackers sidebar" },
+		});
 
 		const collapseBtn = glyphBar.createEl("button", {
-			cls: "ratchet-pm__glyph-btn clickable-icon",
+			cls: "ratchet-pm__glyph-btn",
 			type: "button",
 			attr: {
 				"aria-label": this.leftCollapsed ? "Expand tracker list" : "Collapse tracker list",
 				title: this.leftCollapsed ? "Expand" : "Collapse",
 			},
-			text: this.leftCollapsed ? "›" : "‹",
 		});
+		setIcon(collapseBtn, this.leftCollapsed ? "panel-left" : "panel-left-close");
 		collapseBtn.addEventListener("click", () => {
 			this.leftCollapsed = !this.leftCollapsed;
 			this.render();
 		});
 
-		glyphBar.createDiv({ cls: "ratchet-pm__glyph-spacer", attr: { "aria-hidden": "true" } });
+		const overviewBtn = glyphBar.createEl("button", {
+			cls: `ratchet-pm__glyph-btn ${mainPane === "overview" ? "ratchet-pm__glyph-btn--active" : ""}`,
+			type: "button",
+			attr: { "aria-label": "Habits dashboard", title: "Dashboard" },
+		});
+		setIcon(overviewBtn, "layout-dashboard");
+		overviewBtn.addEventListener("click", () => {
+			this.plugin.ratchetViewState.mainPane = "overview";
+			this.plugin.ratchetViewState.selectedId = null;
+			this.render();
+		});
 
 		const homeBtn = glyphBar.createEl("button", {
-			cls: `ratchet-pm__glyph-btn clickable-icon ${mainPane === "dashboard" ? "ratchet-pm__glyph-btn--active" : ""}`,
+			cls: `ratchet-pm__glyph-btn ${mainPane === "dashboard" ? "ratchet-pm__glyph-btn--active" : ""}`,
 			type: "button",
-			attr: { "aria-label": "Dashboard & quick log", title: "Dashboard" },
+			attr: { "aria-label": "Quick log", title: "Quick log" },
 		});
-		setIcon(homeBtn, "layout-dashboard");
+		setIcon(homeBtn, "list-checks");
 		homeBtn.addEventListener("click", () => {
 			this.plugin.ratchetViewState.mainPane = "dashboard";
 			this.plugin.ratchetViewState.selectedId = null;
 			this.render();
 		});
 
+		const gridBtn = glyphBar.createEl("button", {
+			cls: `ratchet-pm__glyph-btn ${mainPane === "grid" ? "ratchet-pm__glyph-btn--active" : ""}`,
+			type: "button",
+			attr: { "aria-label": "Week grid", title: "Week grid" },
+		});
+		setIcon(gridBtn, "layout-grid");
+		gridBtn.addEventListener("click", () => {
+			this.plugin.ratchetViewState.mainPane = "grid";
+			this.render();
+		});
+
+		glyphBar.createDiv({ cls: "ratchet-pm__glyph-spacer", attr: { "aria-hidden": "true" } });
+
 		const newBtn = glyphBar.createEl("button", {
-			cls: `ratchet-pm__glyph-btn clickable-icon ${selectedId === "new" && mainPane === "dashboard" ? "ratchet-pm__glyph-btn--active" : ""}`,
+			cls: `ratchet-pm__glyph-btn ${selectedId === "new" && mainPane === "dashboard" ? "ratchet-pm__glyph-btn--active" : ""}`,
 			type: "button",
 			attr: { "aria-label": "New tracker", title: "New tracker" },
 		});
@@ -214,22 +244,18 @@ export class RatchetMainView extends ItemView {
 			this.render();
 		});
 
-		const gridBtn = glyphBar.createEl("button", {
-			cls: `ratchet-pm__glyph-btn clickable-icon ${mainPane === "grid" ? "ratchet-pm__glyph-btn--active" : ""}`,
-			type: "button",
-			attr: { "aria-label": "Month grid", title: "Month grid" },
-		});
-		setIcon(gridBtn, "layout-grid");
-		gridBtn.addEventListener("click", () => {
-			this.plugin.ratchetViewState.mainPane = "grid";
-			this.render();
-		});
-
-		const scrollArea = leftStack.createDiv({ cls: "ratchet-pm__left-scroll" });
-		scrollArea.createDiv({
-			cls: "ratchet-pm__sidebar-placeholder",
-			text: "Tracker cards and quick log live in the main pane →",
-		});
+		if (!this.leftCollapsed) {
+			const scrollArea = leftStack.createDiv({ cls: "ratchet-pm__left-scroll" });
+			void loadAndRenderTrackerSidebarList(scrollArea, this.plugin, {
+				selectedId,
+				mainPane,
+				onSelectTracker: (id) => {
+					this.plugin.ratchetViewState.mainPane = "habit";
+					this.plugin.ratchetViewState.selectedId = id;
+					this.render();
+				},
+			});
+		}
 
 		const splitter = shell.createEl("button", {
 			cls: "ratchet-pm__split",
@@ -248,8 +274,37 @@ export class RatchetMainView extends ItemView {
 			return;
 		}
 
+		if (mainPane === "overview") {
+			void renderHabitsDashboard(mainScroll, this.plugin, {
+				onRefresh: () => this.plugin.refreshRatchetViews(),
+				openHabit: (id) => {
+					this.plugin.ratchetViewState.mainPane = "habit";
+					this.plugin.ratchetViewState.selectedId = id;
+					this.plugin.refreshRatchetViews();
+				},
+				openNewTracker: () => {
+					this.plugin.ratchetViewState.mainPane = "dashboard";
+					this.plugin.ratchetViewState.selectedId = "new";
+					this.plugin.refreshRatchetViews();
+				},
+			});
+			return;
+		}
+
+		if (mainPane === "habit" && selectedId && selectedId !== "new") {
+			void renderHabitView(mainScroll, this.plugin, selectedId, {
+				onRefresh: () => this.plugin.refreshRatchetViews(),
+				onDeleted: () => {
+					this.plugin.ratchetViewState.selectedId = null;
+					this.plugin.ratchetViewState.mainPane = "overview";
+					this.plugin.refreshRatchetViews();
+				},
+			});
+			return;
+		}
+
 		const content = mainScroll.createDiv({ cls: "ratchet-main-content" });
-		content.createEl("h1", { text: "Ratchet" });
+		content.createEl("h1", { text: "Quick log" });
 		const qlWrap = content.createDiv({
 			cls: "ratchet-ql-wrap ratchet-ql-wrap--embedded",
 			attr: { id: "ratchet-quick-log" },
@@ -257,16 +312,18 @@ export class RatchetMainView extends ItemView {
 		renderQuickLogSection(qlWrap, this.plugin, {
 			onRefresh: () => this.plugin.refreshRatchetViews(),
 			openEditTracker: (id) => {
+				this.plugin.ratchetViewState.mainPane = "dashboard";
 				this.plugin.ratchetViewState.selectedId = id;
 				this.plugin.refreshRatchetViews();
 			},
 			openNewTracker: () => {
+				this.plugin.ratchetViewState.mainPane = "dashboard";
 				this.plugin.ratchetViewState.selectedId = "new";
 				this.plugin.refreshRatchetViews();
 			},
 		});
 
-		if (this.plugin.ratchetViewState.selectedId) {
+		if (this.plugin.ratchetViewState.selectedId && mainPane === "dashboard") {
 			const formSection = content.createDiv({ cls: "ratchet-main-form-section" });
 			formSection.createEl("h2", {
 				text: this.plugin.ratchetViewState.selectedId === "new" ? "New tracker" : "Edit tracker",
@@ -286,7 +343,8 @@ export class RatchetMainView extends ItemView {
 		let goalType: GoalType = "at least";
 		let goal = 0;
 		let unit = "";
-		const incrementButtons = [...this.plugin.settings.defaultIncrementButtons];
+		let checkOff = false;
+		let trackerArchived = false;
 
 		const loadTracker = async (): Promise<void> => {
 			if (!isEdit) return;
@@ -299,8 +357,8 @@ export class RatchetMainView extends ItemView {
 				goalType = t.goalType ?? "at least";
 				goal = t.goal;
 				unit = t.unit ?? "";
-				incrementButtons.length = 0;
-				incrementButtons.push(...t.incrementButtons);
+				checkOff = isCheckOffHabit(t);
+				trackerArchived = isTrackerArchived(t);
 			}
 		};
 
@@ -370,73 +428,72 @@ export class RatchetMainView extends ItemView {
 					d.setValue(resetPeriod).onChange((v) => (resetPeriod = v as ResetPeriod));
 				});
 
-			new Setting(form)
-				.setName("Goal type")
-				.setDesc("At least = reach minimum; At most = stay under cap; No goal = just count")
-				.addDropdown((d) => {
-					for (const opt of GOAL_TYPE_OPTIONS) d.addOption(opt.value, `${opt.label}: ${opt.desc}`);
-					d.setValue(goalType).onChange((v) => (goalType = v as GoalType));
-				});
-
-			new Setting(form)
-				.setName("Goal")
-				.setDesc('Target number. For "At least" use e.g. 3 or 1 (toggle). For "At most" use e.g. 0.')
-				.addText((text: TextComponent) =>
-					text
-						.setPlaceholder("0")
-						.setValue(String(goal))
-						.onChange((v) => (goal = Math.max(0, parseInt(v, 10) || 0))),
-				);
-
-			new Setting(form)
-				.setName("Unit (optional)")
-				.setDesc("e.g. cups, minutes, pages")
-				.addText((text: TextComponent) =>
-					text.setPlaceholder("").setValue(unit).onChange((v) => (unit = v)),
-				);
-
-			new Setting(form)
-				.setName("Increment buttons")
-				.setDesc("Comma-separated values for +/− buttons (e.g. 1, 5, 10). Widget and card use these.")
-				.addText((text: TextComponent) =>
-					text
-						.setPlaceholder("1")
-						.setValue(incrementButtons.join(", "))
-						.onChange((v) => {
-							const parsed = v
-								.split(",")
-								.map((s) => parseInt(s.trim(), 10))
-								.filter((n) => !isNaN(n) && n > 0);
-							incrementButtons.length = 0;
-							incrementButtons.push(...(parsed.length ? parsed : [1]));
-						}),
-				);
-
-			if (isEdit) {
-				this.renderPastEntriesSection(form, selectedId, dm, goalType, goal, () => this.plugin.refreshRatchetViews());
-			}
-
-			const actions = form.createDiv("ratchet-config-actions");
-			new ButtonComponent(actions).setButtonText("Cancel").onClick(() => {
-				this.plugin.ratchetViewState.selectedId = null;
-				this.plugin.refreshRatchetViews();
-			});
-
-			if (isEdit) {
-				new ButtonComponent(actions)
-					.setButtonText("Delete")
-					.setClass("ratchet-btn-delete")
-					.onClick(async () => {
-						await dm.deleteTracker(selectedId);
-						this.plugin.ratchetViewState.selectedId = null;
-						this.plugin.refreshRatchetViews();
+			let goalFieldsWrap: HTMLElement | null = null;
+			const refreshGoalFields = (): void => {
+				if (!goalFieldsWrap) return;
+				goalFieldsWrap.empty();
+				if (checkOff) {
+					new Setting(goalFieldsWrap)
+						.setName("Goal")
+						.setDesc("Check-offs per reset period (e.g. 1 per day, 3 per week)")
+						.addText((text: TextComponent) =>
+							text
+								.setPlaceholder("1")
+								.setValue(String(goal))
+								.onChange((v) => (goal = Math.max(1, parseInt(v, 10) || 1))),
+						);
+					return;
+				}
+				new Setting(goalFieldsWrap)
+					.setName("Goal type")
+					.setDesc("At least = reach minimum; At most = stay under cap; No goal = just count")
+					.addDropdown((d) => {
+						for (const opt of GOAL_TYPE_OPTIONS) d.addOption(opt.value, `${opt.label}: ${opt.desc}`);
+						d.setValue(goalType).onChange((v) => (goalType = v as GoalType));
 					});
+				new Setting(goalFieldsWrap)
+					.setName("Goal")
+					.setDesc("Target number")
+					.addText((text: TextComponent) =>
+						text
+							.setPlaceholder("0")
+							.setValue(String(goal))
+							.onChange((v) => (goal = Math.max(0, parseInt(v, 10) || 0))),
+					);
+				new Setting(goalFieldsWrap)
+					.setName("Unit (optional)")
+					.setDesc("e.g. cups, minutes, pages")
+					.addText((text: TextComponent) =>
+						text.setPlaceholder("").setValue(unit).onChange((v) => (unit = v)),
+					);
+			};
+
+			new Setting(form)
+				.setName("Check-off habit")
+				.setDesc("Mark each day done without counting (e.g. workout 3×/week, no caffeine daily)")
+				.addToggle((t) =>
+					t.setValue(checkOff).onChange((v) => {
+						checkOff = v;
+						if (v && goal < 1) goal = 1;
+						refreshGoalFields();
+					}),
+				);
+
+			goalFieldsWrap = form.createDiv("ratchet-config-goal-fields");
+			refreshGoalFields();
+
+			if (isEdit) {
+				this.renderPastEntriesSection(form, selectedId, dm, checkOff, () => this.plugin.refreshRatchetViews());
 			}
 
-			new ButtonComponent(actions)
-				.setButtonText(isEdit ? "Save" : "Create")
-				.setClass("mod-cta")
-				.onClick(async () => {
+			appendTrackerConfigActions(form, {
+				archived: trackerArchived,
+				isEdit,
+				onCancel: () => {
+					this.plugin.ratchetViewState.selectedId = null;
+					this.plugin.refreshRatchetViews();
+				},
+				onSave: async () => {
 					if (!name.trim()) return;
 					const id = isEdit ? selectedId : makeTrackerId(name.trim());
 					if (isEdit) {
@@ -445,10 +502,10 @@ export class RatchetMainView extends ItemView {
 							icon: icon || "📌",
 							color: color || DEFAULT_TRACKER_COLOR,
 							resetPeriod,
-							goalType,
-							goal,
-							unit: unit.trim(),
-							incrementButtons: [...incrementButtons],
+							checkOff,
+							goalType: checkOff ? "at least" : goalType,
+							goal: checkOff ? Math.max(goal, 1) : goal,
+							unit: checkOff ? "" : unit.trim(),
 						});
 					} else {
 						const config = createTracker({
@@ -457,16 +514,37 @@ export class RatchetMainView extends ItemView {
 							icon: icon || "📌",
 							resetPeriod,
 							color: color || DEFAULT_TRACKER_COLOR,
-							unit: unit.trim(),
-							goal,
-							goalType,
-							incrementButtons,
+							unit: checkOff ? "" : unit.trim(),
+							goal: checkOff ? Math.max(goal, 1) : goal,
+							goalType: checkOff ? "at least" : goalType,
+							checkOff,
 						});
 						await dm.createTracker(config);
 					}
 					this.plugin.ratchetViewState.selectedId = null;
 					this.plugin.refreshRatchetViews();
-				});
+				},
+				onDelete: isEdit
+					? async () => {
+							await dm.deleteTracker(selectedId);
+							this.plugin.ratchetViewState.selectedId = null;
+							this.plugin.refreshRatchetViews();
+						}
+					: undefined,
+				onArchive: isEdit
+					? async () => {
+							await dm.updateTracker(selectedId, { archived: true });
+							this.plugin.ratchetViewState.selectedId = null;
+							this.plugin.refreshRatchetViews();
+						}
+					: undefined,
+				onUnarchive: isEdit
+					? async () => {
+							await dm.updateTracker(selectedId, { archived: false });
+							this.plugin.refreshRatchetViews();
+						}
+					: undefined,
+			});
 		})();
 	}
 
@@ -480,8 +558,7 @@ export class RatchetMainView extends ItemView {
 		form: HTMLElement,
 		trackerId: string,
 		dm: DataManager,
-		goalType: GoalType,
-		goal: number,
+		checkOff: boolean,
 		onRefresh: () => void,
 	): void {
 		const section = form.createDiv("ratchet-past-entries-section");
@@ -516,7 +593,7 @@ export class RatchetMainView extends ItemView {
 					const newVal = parseInt(String(input.value), 10);
 					if (isNaN(newVal) || newVal < 0) return;
 					let delta = newVal - entry.count;
-					if (goalType === "at most" && goal === 0 && newVal === 0 && entry.eventCount === 0) {
+					if (checkOff && newVal === 0 && entry.eventCount === 0) {
 						delta = 0;
 						await dm.incrementOnDate(trackerId, 0, entry.date, "done");
 					} else if (delta === 0) {

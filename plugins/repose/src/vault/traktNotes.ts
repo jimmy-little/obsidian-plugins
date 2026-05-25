@@ -8,6 +8,7 @@ import {
 	parseOpenLibraryWorkId,
 	pickPrimaryIsbn,
 } from "../openlibrary/client";
+import { noteAttachmentsBase, type ReposeSettings } from "../settings";
 
 /** Match Noma server: readable names for paths */
 export function readableMediaName(title: string): string {
@@ -293,10 +294,11 @@ export async function downloadTraktArtToNoteFolder(
 }
 
 /**
- * Download poster/backdrop/still into vault/attachments/{noteTitle}/
+ * Download poster/backdrop/still into `{noteAttachmentsFolder}/{noteTitle}/`
  */
 export async function downloadObsidianImages(
 	vault: Vault,
+	settings: Pick<ReposeSettings, "noteAttachmentsFolder">,
 	images: { poster?: string | null; backdrop?: string | null; episodeStill?: string | null } | null,
 	noteTitle: string,
 	episodeMeta?: { showName: string | null; season: number | undefined; episode: number | undefined },
@@ -304,7 +306,7 @@ export async function downloadObsidianImages(
 	const results: ImageDownloadResult = { banner: null, poster: null };
 	if (!images) return results;
 
-	const attachmentsDir = `attachments/${sanitizeFilename(noteTitle)}`;
+	const attachmentsDir = normalizePath(`${noteAttachmentsBase(settings)}/${sanitizeFilename(noteTitle)}`);
 	await ensureFolder(vault, attachmentsDir);
 
 	if (images.backdrop) {

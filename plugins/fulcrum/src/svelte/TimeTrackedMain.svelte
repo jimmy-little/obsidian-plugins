@@ -150,9 +150,9 @@
 
 <div class="fulcrum-time-dashboard">
 	<p class="fulcrum-time-dashboard__disclaimer fulcrum-muted">
-		Task minutes come from your configured tracked field, then <code>totalTimeTracked</code> (Lapse
-		<code>HH:MM:SS</code>), then other totals — not from <code>startTime</code>/<code>endTime</code> span.
-		Horizons use file modification dates (and task created dates) as a proxy for when time was logged.
+		Task minutes use merged timer entries (<code>fulcrumTimerEntries</code>, legacy
+		<code>timeEntries</code>/<code>lapseEntries</code>) when present, then your configured tracked field.
+		Horizons prefer entry end timestamps; otherwise file modification dates apply.
 		Meetings use your total-minutes field when it’s set and positive; otherwise the scheduled
 		<code>duration</code> (minutes) from the meeting note.
 	</p>

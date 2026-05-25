@@ -28,6 +28,8 @@ export function getProjectStatusOptions(app: App, s: FulcrumSettings): string[] 
 export type ApplyProjectStatusOptions = {
 	setFrontmatter: boolean;
 	updateFolder: boolean;
+	quiet?: boolean;
+	skipRebuild?: boolean;
 };
 
 /**
@@ -60,8 +62,12 @@ export async function applyProjectStatusChange(
 		newPath = await moveProjectToStatusFolder(app, f, host.settings, selectedStatus);
 	}
 
-	await host.vaultIndex.rebuild();
-	new Notice("Project status updated.");
+	if (!options.skipRebuild) {
+		await host.vaultIndex.rebuild();
+	}
+	if (!options.quiet) {
+		new Notice("Project status updated.");
+	}
 	return newPath;
 }
 

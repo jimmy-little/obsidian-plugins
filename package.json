@@ -2,7 +2,7 @@
 	"name": "obsidian-plugins",
 	"private": true,
 	"version": "0.0.0",
-	"description": "Monorepo: Pulse, Lapse, Ratchet, Fulcrum, Orbit, Repose — @obsidian-suite/core, heatmap, theme, interop, svelte-shell",
+	"description": "Monorepo: Pulse, Ratchet, Fulcrum, Orbit, Repose — @obsidian-suite/core, heatmap, theme, interop, svelte-shell",
 	"workspaces": [
 		"packages/*",
 		"plugins/*"
@@ -11,7 +11,6 @@
 		"install:all": "node tooling/install-all-to-vault.mjs",
 		"build": "npm run build --workspaces --if-present",
 		"build:pulse": "npm run build -w obsidian-plugin-pulse",
-		"build:lapse": "npm run build -w obsidian-plugin-lapse",
 		"build:ratchet": "npm run build -w obsidian-plugin-ratchet",
 		"build:fulcrum": "npm run build -w obsidian-plugin-fulcrum",
 		"build:orbit": "npm run build -w obsidian-plugin-orbit",

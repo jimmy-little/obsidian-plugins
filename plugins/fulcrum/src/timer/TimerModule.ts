@@ -1,20 +1,8 @@
 import {
-	LAPSE_PLUGIN_ID,
-	LAPSE_PLANNED_DRAG_MIME,
-	LAPSE_PUBLIC_API_READY_EVENT,
-	LAPSE_PUBLIC_API_UNLOAD_EVENT,
-	type LapsePlannedBlockPublic,
-	type LapsePlannedBlockUpsertInput,
-	type LapsePublicApi,
-	type LapseQuickStartItemPublic,
-} from "@obsidian-suite/interop";
-import {
 	App,
 	type MarkdownPostProcessorContext,
 	Modal,
 	Notice,
-	Plugin,
-	PluginSettingTab,
 	Setting,
 	ItemView,
 	Workspace,
@@ -24,164 +12,98 @@ import {
 	setIcon,
 	type ObsidianProtocolData,
 } from "obsidian";
+import type {FulcrumTimerHost} from "./host";
+import type {TimerSettings, QuickStartGroupBy} from "./settings";
+import type {IndexedProject} from "../fulcrum/types";
+import {isUnderFolder} from "../fulcrum/utils/paths";
+import {
+	readTimerEntriesFromFm,
+	resolveEntriesWriteKey,
+} from "../fulcrum/utils/timerEntries";
+import {allPlannedReadKeys} from "./settings";
+import type {
+	TimeEntry,
+	PlannedBlock,
+	TimerQuery,
+	PageTimeData,
+	CachedFileData,
+	EntryCache,
+	TemplateData,
+	TemplateGroupResult,
+	QuickStartDurationMaps,
+	NoteEntryGroup,
+	QuickStartItemPublic,
+	PlannedBlockPublic,
+	PlannedBlockUpsertInput,
+} from "./types";
+import {FULCRUM_PLANNED_DRAG_MIME} from "./types";
+import {ActiveTimersPanel} from "./ActiveTimersPanel";
 
-interface LapseSettings {
-	dateFormat: string;
-	showSeconds: boolean;
-	startTimeKey: string;
-	endTimeKey: string;
-	entriesKey: string;
-	totalTimeKey: string;
-	projectKey: string;
-	quickStartGroupByKey: string; // Frontmatter key to group Quick Start panel by (default: project)
-	/** Frontmatter key for gray “area” text on template Quick Start cards (Timery-style) */
-	quickStartAreaKey: string;
-	/** Frontmatter key for subtitle/description on template cards; defaults to note name if unset */
-	quickStartEntryKey: string;
-	defaultLabelType: 'freeText' | 'frontmatter' | 'fileName';
-	defaultLabelText: string;
-	defaultLabelFrontmatterKey: string;
-	removeTimestampFromFileName: boolean;
-	hideTimestampsInViews: boolean;
-	defaultTagOnNote: string;
-	defaultTagOnTimeEntries: string;
-	timeAdjustMinutes: number;
-	firstDayOfWeek: number; // 0 = Sunday, 1 = Monday, etc.
-	excludedFolders: string[]; // Glob patterns for folders to exclude
-	showStatusBar: boolean; // Show active timer(s) in status bar
-	lapseButtonTemplatesFolder: string; // Folder containing templates for lapse-button inline buttons
-	/** Vault folder whose notes (and subfolders) become generic Quick Start timers */
-	defaultProjectFolder: string;
-	/** Folder or full path pattern for new timer notes; moment-style date tokens (YYYY, MM, DD, …) and {{project}}, {{title}} */
-	defaultTimerSavePath: string;
-	/** Markdown template path for new timer/calendar notes; supports {{project}}, {{title}}, {{date}}, date tokens */
-	defaultTimerTemplate: string;
-	showDurationOnNoteButtons: boolean; // Show duration on note buttons/links
-	noteButtonDurationType: 'project' | 'note'; // Type of duration to show (project or note)
-	noteButtonTimePeriod: 'today' | 'thisWeek' | 'thisMonth' | 'lastWeek' | 'lastMonth'; // Time period for duration
-	/** Vault folder for per-day planner notes `YYYY-MM-DD.md` (planned time blocks; not logged work). */
-	plannedBlocksFolder: string;
-	/** Frontmatter array key for planned blocks inside planner notes. */
-	plannedBlocksKey: string;
-	/** When drawing a new slot on the calendar: ask plan vs log, or always one mode. */
-	calendarDrawMode: 'ask' | 'plan' | 'log';
-}
+export class TimerModule {
+	host: FulcrumTimerHost;
 
-const DEFAULT_SETTINGS: LapseSettings = {
-	dateFormat: 'YYYY-MM-DD HH:mm:ss',
-	showSeconds: true,
-	startTimeKey: 'startTime',
-	endTimeKey: 'endTime',
-	entriesKey: 'timeEntries',
-	totalTimeKey: 'totalTimeTracked',
-	projectKey: 'project',
-	quickStartGroupByKey: 'project',
-	quickStartAreaKey: 'area',
-	quickStartEntryKey: 'entry',
-	defaultLabelType: 'freeText',
-	defaultLabelText: '',
-	defaultLabelFrontmatterKey: 'project',
-	removeTimestampFromFileName: false,
-	hideTimestampsInViews: true,
-	defaultTagOnNote: '#lapse',
-	defaultTagOnTimeEntries: '',
-	timeAdjustMinutes: 5,
-	firstDayOfWeek: 0, // 0 = Sunday
-	excludedFolders: [], // No folders excluded by default
-	showStatusBar: true, // Show active timers in status bar by default
-	lapseButtonTemplatesFolder: 'Templates/Lapse Buttons', // Default folder for lapse button templates
-	defaultProjectFolder: '',
-	defaultTimerSavePath: '',
-	defaultTimerTemplate: '',
-	showDurationOnNoteButtons: false, // Don't show duration on note buttons by default
-	noteButtonDurationType: 'note', // Default to note
-	noteButtonTimePeriod: 'today', // Default to today
-	plannedBlocksFolder: 'Lapse/Planner',
-	plannedBlocksKey: 'lapse_planned',
-	calendarDrawMode: 'ask',
-}
+	constructor(host: FulcrumTimerHost) {
+		this.host = host;
+	}
 
-interface TimeEntry {
-	id: string;
-	label: string;
-	startTime: number | null;
-	endTime: number | null;
-	duration: number;
-	isPaused: boolean;
-	tags: string[];
-}
+	get app() {
+		return this.host.app;
+	}
 
-/** Tentative calendar block; stored in planner day notes — not counted as logged work. */
-interface PlannedBlock {
-	id: string;
-	label: string;
-	startTime: number;
-	endTime: number;
-	project: string | null;
-	tags: string[];
-}
+	get settings(): TimerSettings {
+		return this.host.settings.timer;
+	}
 
-interface LapseQuery {
-	project?: string;
-	tag?: string;
-	note?: string;
-	from?: string;
-	to?: string;
-	period?: 'today' | 'thisWeek' | 'thisMonth' | 'lastWeek' | 'lastMonth';
-	groupBy?: 'project' | 'date' | 'tag' | 'note';
-	display?: 'table' | 'summary' | 'chart';
-	chart?: 'bar' | 'pie' | 'none';
-}
+	register(cb: () => void): void {
+		this.host.register(cb);
+	}
 
-interface PageTimeData {
-	entries: TimeEntry[];
-	totalTimeTracked: number;
-}
+	registerEvent(eventRef: import("obsidian").EventRef): void {
+		this.host.registerEvent(eventRef);
+	}
 
-interface CachedFileData {
-	lastModified: number; // File mtime in milliseconds
-	entries: TimeEntry[];
-	project: string | null;
-	totalTime: number;
-}
+	addCommand(command: Parameters<FulcrumTimerHost["addCommand"]>[0]): void {
+		this.host.addCommand(command);
+	}
 
-interface EntryCache {
-	[filePath: string]: CachedFileData;
-}
+	registerMarkdownCodeBlockProcessor(
+		language: string,
+		handler: Parameters<FulcrumTimerHost["registerMarkdownCodeBlockProcessor"]>[1],
+	): void {
+		this.host.registerMarkdownCodeBlockProcessor(language, handler);
+	}
 
-interface TemplateData {
-	kind: 'template' | 'project';
-	template: TFile | null;
-	templateName: string;
-	project: string | null;
-	projectColor: string | null;
-	groupValue: string | null; // Value of quickStartGroupByKey frontmatter, used for Quick Start grouping
-	/** For kind 'project': path to the project hub note, if any */
-	projectSourcePath?: string | null;
-	/** Template timers: gray subtitle after • (from quickStartAreaKey) */
-	area: string | null;
-	/** Bottom line: from quickStartEntryKey / description, else note basename */
-	timerDescription: string | null;
-}
+	registerMarkdownPostProcessor(
+		handler: Parameters<FulcrumTimerHost["registerMarkdownPostProcessor"]>[0],
+	): void {
+		this.host.registerMarkdownPostProcessor(handler);
+	}
 
-interface TemplateGroupResult {
-	grouped: Map<string, TemplateData[]>;
-	sortedProjects: string[];
-}
+	registerView(
+		type: string,
+		viewCreator: Parameters<FulcrumTimerHost["registerView"]>[1],
+	): void {
+		this.host.registerView(type, viewCreator);
+	}
 
-/** Aggregated tracked time for the configured note-button period (single vault pass). */
-interface QuickStartDurationMaps {
-	byProject: Map<string, number>;
-	byNoteBase: Map<string, number>;
-}
+	registerObsidianProtocolHandler(
+		protocol: string,
+		handler: Parameters<FulcrumTimerHost["registerObsidianProtocolHandler"]>[1],
+	): void {
+		this.host.registerObsidianProtocolHandler(protocol, handler);
+	}
 
-interface NoteEntryGroup {
-	file: TFile;
-	entries: TimeEntry[];
-}
+	addStatusBarItem(): HTMLElement {
+		return this.host.addStatusBarItem();
+	}
 
-export default class LapsePlugin extends Plugin {
-	settings!: LapseSettings;
+	async loadData(): Promise<Record<string, unknown>> {
+		return (await this.host.loadData()) ?? {};
+	}
+
+	async saveData(data: Record<string, unknown>): Promise<void> {
+		await this.host.saveData(data);
+	}
 	timeData: Map<string, PageTimeData> = new Map();
 	entryCache: EntryCache = {}; // In-memory cache indexed by file path (lazy-loaded)
 	cacheSaveTimeout: number | null = null; // Debounce cache saves
@@ -191,16 +113,160 @@ export default class LapsePlugin extends Plugin {
 	colorMeasurementEl: HTMLElement | null = null; // Hidden element for measuring computed colors
 	/** Planner note path → cached planned blocks (mtime-validated). */
 	plannedDayCache: Map<string, { mtime: number; blocks: PlannedBlock[] }> = new Map();
-	/** @see LapsePublicApi — duplicate reference as `api` for common plugin conventions */
-	lapsePublicApi!: Readonly<LapsePublicApi>;
-	/** Alias of {@link LapsePlugin.lapsePublicApi} for `getPlugin('lapse-tracker').api` */
-	api?: Readonly<LapsePublicApi>;
+	activityEmbed: TimerActivityView | null = null;
+	sessionsEmbed: TimerSessionsView | null = null;
+	quickStartPanel: TimerQuickStartView | null = null;
+	entryGridEmbed: TimerEntryGridView | null = null;
+	activeTimersPanel: ActiveTimersPanel | null = null;
+
+	async loadTimerCache(): Promise<void> {
+		const data = await this.loadData();
+		const raw = data.timerEntryCache ?? data.entryCache;
+		if (raw && typeof raw === "object") {
+			this.entryCache = raw as EntryCache;
+		}
+	}
+
+	async mountActivityPanel(container: HTMLElement): Promise<void> {
+		if (!this.activityEmbed) {
+			this.activityEmbed = new TimerActivityView(this);
+		} else {
+			this.activityEmbed.unmount();
+		}
+		this.activityEmbed.embedContainer = container;
+		await this.activityEmbed.render();
+	}
+
+	async mountSessionsPanel(container: HTMLElement): Promise<void> {
+		if (!this.sessionsEmbed) {
+			this.sessionsEmbed = new TimerSessionsView(this);
+		}
+		this.sessionsEmbed.embedContainer = container;
+		await this.sessionsEmbed.render();
+	}
+
+	async mountQuickStartView(container: HTMLElement): Promise<void> {
+		if (!this.quickStartPanel) {
+			this.quickStartPanel = new TimerQuickStartView(this);
+		}
+		this.quickStartPanel.embedContainer = container;
+		await this.quickStartPanel.render();
+	}
+
+	unmountQuickStartView(): void {
+		this.quickStartPanel?.unmount();
+		if (this.quickStartPanel?.embedContainer) {
+			this.quickStartPanel.embedContainer.empty();
+			this.quickStartPanel.embedContainer = null;
+		}
+	}
+
+	async mountEntryGridPanel(container: HTMLElement): Promise<void> {
+		if (!this.entryGridEmbed) {
+			this.entryGridEmbed = new TimerEntryGridView(this);
+		}
+		this.entryGridEmbed.embedContainer = container;
+		await this.entryGridEmbed.render();
+	}
+
+	async mountActiveTimersView(container: HTMLElement): Promise<void> {
+		if (!this.activeTimersPanel) {
+			this.activeTimersPanel = new ActiveTimersPanel(this);
+		}
+		await this.activeTimersPanel.render(container);
+	}
+
+	unmountActiveTimersView(): void {
+		this.activeTimersPanel?.unmount();
+	}
+
+	refreshActivityPanel(): void {
+		void this.activityEmbed?.refresh();
+		void this.activeTimersPanel?.refresh();
+	}
+
+	refreshActivityEmbed(): void {
+		void this.activityEmbed?.refresh();
+	}
+
+	refreshSessionsPanel(): void {
+		void this.sessionsEmbed?.render();
+	}
+
+	refreshQuickStartPanel(): void {
+		this.quickStartPanel?.invalidateQuickStartDataCache();
+	}
+
+	refreshEntryGridPanel(): void {
+		void this.entryGridEmbed?.render();
+	}
+
+	refreshAllEmbeddedPanels(): void {
+		this.refreshActivityPanel();
+		this.refreshSessionsPanel();
+		this.refreshQuickStartPanel();
+		this.refreshEntryGridPanel();
+	}
+
+	async getQuickStartItemsPublic(): Promise<QuickStartItemPublic[]> {
+		const list = await this.getTemplateDataList();
+		return list.map((d) => this.templateDataToPublic(d));
+	}
+
+	async startTimerForProject(projectName: string, projectFilePath: string): Promise<void> {
+		const picked = await this.pickQuickStartForProject(projectName, projectFilePath);
+		if (!picked) {
+			new Notice("No Quick Start items available. Add templates in Fulcrum timer settings.");
+			return;
+		}
+		await this.executeQuickStartPublic(picked);
+	}
+
+	async pickQuickStartForProject(
+		projectName: string,
+		projectFilePath: string,
+	): Promise<QuickStartItemPublic | null> {
+		const items = await this.getQuickStartItemsPublic();
+		if (!items.length) return null;
+		const tokens = new Set<string>();
+		const n = projectName.trim();
+		if (n) tokens.add(n);
+		const base = projectFilePath.split("/").pop()?.replace(/\.md$/i, "") ?? "";
+		if (base) tokens.add(base);
+		const f = this.app.vault.getAbstractFileByPath(projectFilePath);
+		if (f instanceof TFile) {
+			const lt = this.app.metadataCache.fileToLinktext(f, projectFilePath, false);
+			if (lt) tokens.add(lt.replace(/\.md$/i, "").trim());
+		}
+		const matching = items.filter((item) => {
+			if (item.projectSourcePath && item.projectSourcePath === projectFilePath) return true;
+			const p = (item.project ?? "").replace(/\[\[|\]\]/g, "").trim();
+			const g = (item.groupValue ?? "").replace(/\[\[|\]\]/g, "").trim();
+			for (const t of tokens) {
+				if (p && p === t) return true;
+				if (g && g === t) return true;
+			}
+			return false;
+		});
+		const template = matching.find((i) => i.kind === "template");
+		if (template) return template;
+		const hub = matching.find((i) => i.kind === "project");
+		if (hub) return hub;
+		return items.find((i) => i.kind === "template") ?? items[0] ?? null;
+	}
+
+	async startTimerInNote(
+		notePath: string,
+		options?: { projectName?: string | null; noteTitle?: string | null },
+	): Promise<void> {
+		await this.runStartTimerInNoteFromApi(notePath, options);
+	}
 
 	async onload() {
 		const pluginStartTime = Date.now();
-		await this.loadSettings();
+		await this.loadTimerCache();
 
-		console.log(`Lapse: Plugin loading... (${Date.now() - pluginStartTime}ms)`);
+		console.log(`Fulcrum timer: Plugin loading... (${Date.now() - pluginStartTime}ms)`);
 
 		// Listen to metadata cache changes to automatically invalidate stale cache entries
 		this.registerEvent(
@@ -226,22 +292,26 @@ export default class LapsePlugin extends Plugin {
 			})
 		);
 
-		// Register the code block processors
-		this.registerMarkdownCodeBlockProcessor('lapse', this.processTimerCodeBlock.bind(this));
-		this.registerMarkdownCodeBlockProcessor('lapse-report', this.processReportCodeBlock.bind(this));
-		this.registerMarkdownCodeBlockProcessor('lapse-active', this.processActiveTimersCodeBlock.bind(this));
-
-		// Register inline code processor for lapse template buttons
+		// Timer code block processors (primary + legacy aliases)
+		const timerBlock = this.processTimerCodeBlock.bind(this);
+		const reportBlock = this.processReportCodeBlock.bind(this);
+		this.registerMarkdownCodeBlockProcessor("fulcrum-timer", timerBlock);
+		this.registerMarkdownCodeBlockProcessor("fulcrum-timer-report", reportBlock);
+		this.registerMarkdownCodeBlockProcessor("lapse", timerBlock);
+		this.registerMarkdownCodeBlockProcessor("lapse-report", reportBlock);
+		// Register inline code processor for timer template buttons
 		this.registerMarkdownPostProcessor((el, ctx) => {
 			// Find all code elements that are not inside code blocks
 			const codeElements = el.querySelectorAll('code:not(pre code)');
 			codeElements.forEach((codeEl) => {
 				if (codeEl instanceof HTMLElement) {
 					const text = codeEl.textContent || '';
-					if (text.startsWith('lapse:')) {
-						const templateName = text.substring('lapse:'.length);
+					if (text.startsWith("fulcrum-timer:") || text.startsWith("lapse:")) {
+						const templateName = text.startsWith("fulcrum-timer:")
+						? text.substring("fulcrum-timer:".length)
+						: text.substring("lapse:".length);
 						// Only process if not already processed (check if parent is a button)
-						if (!codeEl.parentElement?.classList.contains('lapse-button')) {
+						if (!codeEl.parentElement?.classList.contains("fulcrum-timer-button")) {
 							this.processLapseButton(codeEl, templateName, ctx).catch(err => {
 								console.error('Error processing lapse button:', err);
 							});
@@ -251,70 +321,21 @@ export default class LapsePlugin extends Plugin {
 			});
 		});
 
-		// Register the sidebar view
-		this.registerView(
-			'lapse-sidebar',
-			(leaf) => new LapseSidebarView(leaf, this)
-		);
-
-		// Register the reports view
-		this.registerView(
-			'lapse-reports',
-			(leaf) => new LapseReportsView(leaf, this)
-		);
-
-		// Register the buttons view
-		this.registerView(
-			'lapse-buttons',
-			(leaf) => new LapseButtonsView(leaf, this)
-		);
-
-		// Register the entry grid view
-		this.registerView(
-			'lapse-grid',
-			(leaf) => new LapseGridView(leaf, this)
-		);
-
-		// Register the calendar view
-		this.registerView(
-			'lapse-calendar',
-			(leaf) => new LapseCalendarView(leaf, this)
-		);
-
-		// Add ribbon icons
-		this.addRibbonIcon('clock', 'Lapse: Show Activity', () => {
-			this.activateView();
-		});
-
-		this.addRibbonIcon('bar-chart-2', 'Lapse: Show Time Reports', () => {
-			this.activateReportsView();
-		});
-
-		this.addRibbonIcon('play-circle', 'Lapse: Show Quick Start', () => {
-			this.activateButtonsView();
-		});
-
-		this.addRibbonIcon('calendar', 'Lapse: Show Calendar', () => {
-			this.activateCalendarView();
-		});
-
-		this.addRibbonIcon('table', 'Lapse: Show Entry Grid', () => {
-			this.activateGridView();
-		});
+		// Embedded panels are mounted from Project Manager Time mode (no standalone view leaves).
 
 		// Add command to insert timer
 		this.addCommand({
-			id: 'insert-lapse-timer',
+			id: 'fulcrum-timer-insert',
 			name: 'Add time tracker',
 			editorCallback: (editor) => {
-				editor.replaceSelection('```lapse\n\n```');
+				editor.replaceSelection('```fulcrum-timer\n\n```');
 			},
 			hotkeys: []
 		});
 
 		// Add command to insert timer and auto-start it
 		this.addCommand({
-			id: 'insert-lapse-autostart',
+			id: 'fulcrum-timer-insert-start',
 			name: 'Add and start time tracker',
 			editorCallback: async (editor, view) => {
 				const file = view.file;
@@ -323,7 +344,7 @@ export default class LapsePlugin extends Plugin {
 				const filePath = file.path;
 				
 				// Insert the lapse code block
-				editor.replaceSelection('```lapse\n\n```');
+				editor.replaceSelection('```fulcrum-timer\n\n```');
 				
 				// Create the timer entry in memory
 				if (!this.timeData.has(filePath)) {
@@ -364,11 +385,7 @@ export default class LapsePlugin extends Plugin {
 					await this.updateFrontmatter(filePath);
 					
 					// Update sidebar
-					this.app.workspace.getLeavesOfType('lapse-sidebar').forEach(leaf => {
-						if (leaf.view instanceof LapseSidebarView) {
-							leaf.view.refresh();
-						}
-					});
+					this.refreshActivityPanel();
 				}
 				
 				// Switch to reading mode so the widget appears immediately
@@ -387,7 +404,7 @@ export default class LapsePlugin extends Plugin {
 
 		// Add command to quick-start timer in current note
 		this.addCommand({
-			id: 'quick-start-timer',
+			id: 'fulcrum-timer-toggle',
 			name: 'Quick start timer',
 			editorCallback: async (editor, view) => {
 				const file = view.file;
@@ -408,11 +425,7 @@ export default class LapsePlugin extends Plugin {
 						await this.updateFrontmatter(filePath);
 						
 						// Update sidebar
-						this.app.workspace.getLeavesOfType('lapse-sidebar').forEach(leaf => {
-							if (leaf.view instanceof LapseSidebarView) {
-								leaf.view.refresh();
-							}
-						});
+						this.refreshActivityPanel();
 					}
 				} else {
 					// Start a new timer
@@ -446,11 +459,7 @@ export default class LapsePlugin extends Plugin {
 					await this.updateFrontmatter(filePath);
 					
 					// Update sidebar
-					this.app.workspace.getLeavesOfType('lapse-sidebar').forEach(leaf => {
-						if (leaf.view instanceof LapseSidebarView) {
-							leaf.view.refresh();
-						}
-					});
+					this.refreshActivityPanel();
 				}
 				
 				// Force widget to update by briefly toggling view mode
@@ -480,10 +489,10 @@ export default class LapsePlugin extends Plugin {
 			}
 		});
 
-		// Add command to show activity sidebar
+		// Add command to show active timers leaf
 		this.addCommand({
-			id: 'show-lapse-sidebar',
-			name: 'Show activity',
+			id: 'fulcrum-timer-show-activity',
+			name: 'Show active timers',
 			callback: () => {
 				this.activateView();
 			}
@@ -491,16 +500,16 @@ export default class LapsePlugin extends Plugin {
 
 		// Add command to show reports view
 		this.addCommand({
-			id: 'show-lapse-reports',
+			id: 'fulcrum-timer-show-sessions',
 			name: 'Show time reports',
 			callback: () => {
 				this.activateReportsView();
 			}
 		});
 
-		// Add command to show buttons view
+		// Add command to show quick start panel
 		this.addCommand({
-			id: 'show-lapse-buttons',
+			id: 'fulcrum-timer-show-quick-start',
 			name: 'Show quick start',
 			callback: () => {
 				this.activateButtonsView();
@@ -508,7 +517,7 @@ export default class LapsePlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'show-lapse-calendar',
+			id: 'fulcrum-timer-show-calendar',
 			name: 'Show calendar',
 			callback: () => {
 				this.activateCalendarView();
@@ -517,7 +526,7 @@ export default class LapsePlugin extends Plugin {
 
 		// Add command to show entry grid view
 		this.addCommand({
-			id: 'show-lapse-grid',
+			id: 'fulcrum-timer-show-entry-grid',
 			name: 'Show entry grid',
 			callback: () => {
 				this.activateGridView();
@@ -526,26 +535,20 @@ export default class LapsePlugin extends Plugin {
 
 		// Add command to insert lapse button
 		this.addCommand({
-			id: 'insert-lapse-button',
+			id: 'insert-fulcrum-timer-button',
 			name: 'Insert template button',
 			editorCallback: (editor) => {
-				new LapseButtonModal(this.app, this, (templateName) => {
+				new TimerButtonModal(this.app, this, (templateName) => {
 					editor.replaceSelection(`\`lapse:${templateName}\``);
 				}).open();
 			}
 		});
 
-		// Settings tab
-		this.addSettingTab(new LapseSettingTab(this.app, this));
-
-		this.registerObsidianProtocolHandler(this.manifest.id, (p) => {
-			void this.handleLapseOpenUri(p);
-		});
 
 		// Status bar setup
 		if (this.settings.showStatusBar) {
 			this.statusBarItem = this.addStatusBarItem();
-			this.statusBarItem.addClass('lapse-status-bar');
+			this.statusBarItem.addClass('fulcrum-timer-status-bar');
 			this.updateStatusBar();
 			// Update status bar every second
 			this.statusBarUpdateInterval = window.setInterval(() => {
@@ -554,49 +557,12 @@ export default class LapsePlugin extends Plugin {
 		}
 
 		const totalLoadTime = Date.now() - pluginStartTime;
-		console.log(`Lapse: Plugin loaded in ${totalLoadTime}ms`);
+		console.log(`Fulcrum timer: Plugin loaded in ${totalLoadTime}ms`);
 
-		this.registerPublicIntegrationApi();
 	}
 
-	/** Build `lapsePublicApi` / `api`, fire `lapse-tracker:public-api-ready` for late-loading plugins */
-	registerPublicIntegrationApi(): void {
-		const api: LapsePublicApi = {
-			pluginId: LAPSE_PLUGIN_ID,
-			getQuickStartItems: async () => {
-				const list = await this.getTemplateDataList();
-				return list.map((d) => this.templateDataToPublic(d));
-			},
-			executeQuickStart: async (item) => {
-				await this.executeQuickStartPublic(item);
-			},
-			invalidateQuickStartCache: () => {
-				this.invalidateQuickStartCachesForIntegration();
-			},
-			startTimerInNote: async (notePath, options) => {
-				await this.runStartTimerInNoteFromApi(notePath, options);
-			},
-			listPlannedBlocksInRange: async (startMs, endMs) => {
-				return this.listPlannedBlocksInRangeApi(startMs, endMs);
-			},
-			upsertPlannedBlock: async (input) => {
-				return this.upsertPlannedBlockApi(input);
-			},
-			deletePlannedBlock: async (id, dateIso) => {
-				await this.deletePlannedBlockApi(id, dateIso);
-			},
-		};
-		this.lapsePublicApi = Object.freeze(api);
-		this.api = this.lapsePublicApi;
 
-		window.dispatchEvent(
-			new CustomEvent(LAPSE_PUBLIC_API_READY_EVENT, {
-				detail: { pluginId: LAPSE_PLUGIN_ID, api: this.lapsePublicApi },
-			}),
-		);
-	}
-
-	templateDataToPublic(data: TemplateData): LapseQuickStartItemPublic {
+	templateDataToPublic(data: TemplateData): QuickStartItemPublic {
 		return {
 			kind: data.kind,
 			templatePath: data.template?.path ?? null,
@@ -610,7 +576,7 @@ export default class LapsePlugin extends Plugin {
 		};
 	}
 
-	fromPublicQuickStartItem(item: LapseQuickStartItemPublic): TemplateData | null {
+	fromPublicQuickStartItem(item: QuickStartItemPublic): TemplateData | null {
 		let template: TFile | null = null;
 		if (item.kind === 'template') {
 			if (!item.templatePath) return null;
@@ -631,31 +597,26 @@ export default class LapsePlugin extends Plugin {
 		};
 	}
 
-	async executeQuickStartPublic(item: LapseQuickStartItemPublic): Promise<void> {
+	async executeQuickStartPublic(item: QuickStartItemPublic): Promise<void> {
 		const data = this.fromPublicQuickStartItem(item);
 		if (!data) {
-			throw new Error("Lapse: invalid quick start item (kind 'template' requires a valid templatePath)");
+			throw new Error("Fulcrum timer: invalid quick start item (kind 'template' requires a valid templatePath)");
 		}
 		if (data.kind === 'project') {
 			if (!data.project) {
-				throw new Error('Lapse: project quick start item is missing project');
+				throw new Error('Fulcrum timer: project quick start item is missing project');
 			}
 			await this.createQuickStartFromProject(data.project, data.projectSourcePath ?? null);
 			return;
 		}
 		if (!data.template) {
-			throw new Error("Lapse: template quick start item is missing template file");
+			throw new Error("Fulcrum timer: template quick start item is missing template file");
 		}
 		await this.createQuickStartFromTemplateFile(data.template, data.templateName);
 	}
 
 	invalidateQuickStartCachesForIntegration(): void {
-		this.app.workspace.getLeavesOfType('lapse-buttons').forEach((leaf) => {
-			const v = leaf.view;
-			if (v instanceof LapseButtonsView) {
-				v.invalidateQuickStartDataCache();
-			}
-		});
+		this.refreshQuickStartPanel();
 	}
 
 	/**
@@ -668,7 +629,7 @@ export default class LapsePlugin extends Plugin {
 	): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(notePath);
 		if (!file || !(file instanceof TFile)) {
-			throw new Error(`Lapse: note not found: ${notePath}`);
+			throw new Error(`Fulcrum timer: note not found: ${notePath}`);
 		}
 		await this.loadEntriesFromFrontmatter(notePath);
 		let pageData = this.timeData.get(notePath);
@@ -683,11 +644,7 @@ export default class LapsePlugin extends Plugin {
 				activeEntry.endTime = Date.now();
 				activeEntry.duration += activeEntry.endTime - activeEntry.startTime!;
 				await this.updateFrontmatter(notePath);
-				this.app.workspace.getLeavesOfType("lapse-sidebar").forEach((leaf) => {
-					if (leaf.view instanceof LapseSidebarView) {
-						leaf.view.refresh();
-					}
-				});
+				this.refreshActivityPanel();
 			}
 			return;
 		}
@@ -713,11 +670,7 @@ export default class LapsePlugin extends Plugin {
 		await this.addDefaultTagToNote(notePath);
 		await this.ensureLapseTimerCodeBlockInNote(notePath);
 		await this.updateFrontmatter(notePath);
-		this.app.workspace.getLeavesOfType("lapse-sidebar").forEach((leaf) => {
-			if (leaf.view instanceof LapseSidebarView) {
-				leaf.view.refresh();
-			}
-		});
+		this.refreshActivityPanel();
 	}
 
 	/**
@@ -728,8 +681,8 @@ export default class LapsePlugin extends Plugin {
 		const file = this.app.vault.getAbstractFileByPath(filePath);
 		if (!file || !(file instanceof TFile)) return;
 		const content = await this.app.vault.read(file);
-		if (/```[\t ]*lapse\b/im.test(content)) return;
-		const fence = "\n\n```lapse\n```\n";
+		if (/```[\t ]*(?:lapse|fulcrum-timer)\b/im.test(content)) return;
+		const fence = "\n\n```fulcrum-timer\n```\n";
 		await this.app.vault.modify(file, content.replace(/\s*$/, "") + fence);
 	}
 
@@ -798,228 +751,26 @@ export default class LapsePlugin extends Plugin {
 	async loadEntriesFromFrontmatter(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(filePath);
 		if (!file || !(file instanceof TFile)) return;
-
 		try {
-			const content = await this.app.vault.read(file);
-			const frontmatterRegex = /^---\n([\s\S]*?)\n---/;
-			const match = content.match(frontmatterRegex);
-
-			if (!match) {
-				return;
-			}
-
-			const frontmatter = match[1];
-			const lines = frontmatter.split('\n');
-			
-			// Parse entries using configured key
-			const entriesKey = this.settings.entriesKey;
-			const parseTimestampValue = (value?: string | null): number | null => {
-				if (!value) return null;
-				return this.parseDatetimeLocal(value);
+			const fm = (this.app.metadataCache.getFileCache(file)?.frontmatter ?? {}) as Record<string, unknown>;
+			const entries = readTimerEntriesFromFm(fm, this.settings, filePath);
+			const projectRaw = fm[this.settings.projectKey];
+			const project = typeof projectRaw === 'string' ? projectRaw : null;
+			const totalTimeTracked = entries
+				.filter((e) => e.endTime !== null)
+				.reduce((sum, e) => sum + e.duration, 0);
+			this.timeData.set(filePath, { entries, totalTimeTracked });
+			this.entryCache[filePath] = {
+				lastModified: file.stat.mtime,
+				entries,
+				project,
+				totalTime: totalTimeTracked,
 			};
-			let inEntries = false;
-			let currentEntry: any = null;
-			const entries: TimeEntry[] = [];
-
-			for (let i = 0; i < lines.length; i++) {
-				const originalLine = lines[i];
-				const trimmed = originalLine.trim();
-				const indent = originalLine.length - originalLine.trimStart().length;
-				
-				if (trimmed.startsWith(`${entriesKey}:`)) {
-					inEntries = true;
-					continue;
-				}
-
-				if (inEntries) {
-					// Check if we've exited the entries block (new top-level field with no indent)
-					if (trimmed && indent === 0 && !trimmed.startsWith('-')) {
-						// Save current entry if exists
-						if (currentEntry) {
-							const startTime = parseTimestampValue(currentEntry.start);
-							entries.push({
-								// Use stable ID based on file + index + start time (not Date.now())
-								id: `${filePath}-${entries.length}-${startTime || 'nostart'}`,
-								label: currentEntry.label || 'Untitled',
-								startTime: startTime,
-								endTime: parseTimestampValue(currentEntry.end),
-								duration: (currentEntry.duration || 0) * 1000,
-								isPaused: false,
-								tags: currentEntry.tags || []
-							});
-							currentEntry = null;
-						}
-						inEntries = false;
-						continue;
-					}
-
-					// Parse array items (indented with -)
-					if (trimmed.startsWith('- label:')) {
-						// Save previous entry if exists
-						if (currentEntry) {
-							const startTime = parseTimestampValue(currentEntry.start);
-							entries.push({
-								// Use stable ID based on file + index + start time (not Date.now())
-								id: `${filePath}-${entries.length}-${startTime || 'nostart'}`,
-								label: currentEntry.label || 'Untitled',
-								startTime: startTime,
-								endTime: parseTimestampValue(currentEntry.end),
-								duration: (currentEntry.duration || 0) * 1000,
-								isPaused: false,
-								tags: currentEntry.tags || []
-							});
-						}
-						currentEntry = {};
-						// Extract label value, handling quotes
-						const labelMatch = trimmed.match(/^- label:\s*"?([^"]*)"?/);
-						currentEntry.label = labelMatch ? labelMatch[1].trim() : 'Untitled';
-					} else if (trimmed.startsWith('start:') && currentEntry) {
-						currentEntry.start = trimmed.replace(/start:\s*/, '').trim();
-					} else if (trimmed.startsWith('end:') && currentEntry) {
-						const endValue = trimmed.replace(/end:\s*/, '').trim();
-						currentEntry.end = endValue || null;
-					} else if (trimmed.startsWith('duration:') && currentEntry) {
-						const durationStr = trimmed.replace(/duration:\s*/, '').trim();
-						currentEntry.duration = parseInt(durationStr) || 0;
-					} else if (trimmed.startsWith('tags:') && currentEntry) {
-						// Parse tags - can be inline array, comma-separated, or multiline array
-						const tagsStr = trimmed.replace(/tags:\s*/, '').trim();
-						if (tagsStr.startsWith('[')) {
-							// Inline array format: tags: ["tag1", "tag2"]
-							try {
-								currentEntry.tags = JSON.parse(tagsStr);
-							} catch {
-								currentEntry.tags = [];
-							}
-						} else if (tagsStr) {
-							// Comma-separated or single tag on same line
-							currentEntry.tags = tagsStr.split(',').map(t => t.trim()).filter(t => t);
-						} else {
-							// Empty on this line, check next lines for multiline YAML array
-							// Format:
-							// tags:
-							//   - tag1
-							//   - tag2
-							currentEntry.tags = [];
-							let j = i + 1;
-							while (j < lines.length) {
-								const nextLine = lines[j];
-								const nextTrimmed = nextLine.trim();
-								const nextIndent = nextLine.length - nextLine.trimStart().length;
-								
-								// Check if this is an array item under tags (should have more indent than 'tags:')
-								if (nextTrimmed.startsWith('-') && nextIndent > indent) {
-									// Extract the tag value after the dash
-									const tagValue = nextTrimmed.substring(1).trim();
-									// Remove quotes if present
-									const cleanTag = tagValue.replace(/^["'](.*)["']$/, '$1');
-									if (cleanTag) {
-										currentEntry.tags.push(cleanTag);
-									}
-									j++;
-								} else if (nextTrimmed === '') {
-									// Skip empty lines within the array
-									j++;
-								} else {
-									// Hit a non-array line, stop parsing tags
-									break;
-								}
-							}
-							// Update i to skip the lines we've already processed
-							i = j - 1;
-						}
-					}
-				}
-			}
-
-			// Add last entry if exists
-			if (currentEntry) {
-				const startTime = parseTimestampValue(currentEntry.start);
-				entries.push({
-					// Use stable ID based on file + index + start time (not Date.now())
-					id: `${filePath}-${entries.length}-${startTime || 'nostart'}`,
-					label: currentEntry.label || 'Untitled',
-					startTime: startTime,
-					endTime: parseTimestampValue(currentEntry.end),
-					duration: (currentEntry.duration || 0) * 1000,
-					isPaused: false,
-					tags: currentEntry.tags || []
-				});
-			}
-
-			// Fallback: if no time entries found, check for top-level startTime/endTime
-			if (entries.length === 0) {
-				const startTimeKey = this.settings.startTimeKey;
-				const endTimeKey = this.settings.endTimeKey;
-				let topLevelStart: string | null = null;
-				let topLevelEnd: string | null = null;
-				let topLevelTags: string[] = [];
-
-				for (const line of lines) {
-					const trimmed = line.trim();
-					if (trimmed.startsWith(`${startTimeKey}:`)) {
-						topLevelStart = trimmed.replace(`${startTimeKey}:`, '').trim();
-					} else if (trimmed.startsWith(`${endTimeKey}:`)) {
-						topLevelEnd = trimmed.replace(`${endTimeKey}:`, '').trim();
-					} else if (trimmed.startsWith('tags:')) {
-						const tagsStr = trimmed.replace('tags:', '').trim();
-						if (tagsStr.startsWith('[')) {
-							try {
-								topLevelTags = JSON.parse(tagsStr);
-							} catch {
-								topLevelTags = [];
-							}
-						} else if (tagsStr) {
-							topLevelTags = tagsStr.split(',').map(t => t.trim()).filter(t => t);
-						}
-					}
-				}
-
-				// Create synthetic entry from top-level times only if BOTH start AND end exist
-				// (completed entries only - not active timers)
-				if (topLevelStart && topLevelEnd) {
-					const parsedStart = parseTimestampValue(topLevelStart);
-					const parsedEnd = parseTimestampValue(topLevelEnd);
-					
-					// Only create if both parsed successfully
-					if (parsedStart && parsedEnd) {
-						const duration = Math.max(0, parsedEnd - parsedStart);
-						
-						// Use filename as label
-						const noteName = file.basename;
-						const label = this.settings.removeTimestampFromFileName 
-							? this.removeTimestampFromFileName(noteName) 
-							: noteName;
-
-						entries.push({
-							// Use stable ID based on file + start time (not Date.now())
-							id: `${filePath}-fallback-${parsedStart}`,
-							label: label,
-							startTime: parsedStart,
-							endTime: parsedEnd,
-							duration: duration,
-							isPaused: false,
-							tags: topLevelTags
-						});
-					}
-				}
-			}
-
-			// Update page data
-			if (!this.timeData.has(filePath)) {
-				this.timeData.set(filePath, {
-					entries: [],
-					totalTimeTracked: 0
-				});
-			}
-
-			const pageData = this.timeData.get(filePath)!;
-			pageData.entries = entries;
-			pageData.totalTimeTracked = entries.reduce((sum, e) => sum + e.duration, 0);
 		} catch (error) {
 			console.error('Error loading entries from frontmatter:', error);
 		}
 	}
+
 
 	getDefaultTags(): string[] {
 		const defaultTag = this.settings.defaultTagOnTimeEntries.trim();
@@ -1380,13 +1131,13 @@ export default class LapsePlugin extends Plugin {
 	async processLapseButton(codeEl: HTMLElement, templateName: string, ctx: MarkdownPostProcessorContext) {
 		try {
 			// Find the template file
-			const templatePath = `${this.settings.lapseButtonTemplatesFolder}/${templateName}.md`;
+			const templatePath = `${this.settings.timerButtonTemplatesFolder}/${templateName}.md`;
 			const templateFile = this.app.vault.getAbstractFileByPath(templatePath);
 			
 			if (!templateFile || !(templateFile instanceof TFile)) {
 				// Template not found - show error
 				const errorBtn = document.createElement('button');
-				errorBtn.className = 'lapse-button lapse-button-error';
+				errorBtn.className = 'fulcrum-timer-button fulcrum-timer-button-error';
 				errorBtn.textContent = `⚠️ Template not found: ${templateName}`;
 				errorBtn.title = `Looking for: ${templatePath}`;
 				errorBtn.disabled = true;
@@ -1433,11 +1184,11 @@ export default class LapsePlugin extends Plugin {
 
 			// Create button
 			const button = document.createElement('button');
-			button.className = 'lapse-button';
+			button.className = 'fulcrum-timer-button';
 			
 			// Build button structure with two lines
 			const topLine = document.createElement('div');
-			topLine.className = 'lapse-button-name';
+			topLine.className = 'fulcrum-timer-button-name';
 			topLine.style.display = 'flex';
 			topLine.style.justifyContent = 'flex-start';
 			topLine.style.alignItems = 'center';
@@ -1446,7 +1197,7 @@ export default class LapsePlugin extends Plugin {
 			
 			// Title element (will truncate if needed)
 			const titleEl = document.createElement('span');
-			titleEl.className = 'lapse-button-title';
+			titleEl.className = 'fulcrum-timer-button-title';
 			titleEl.textContent = templateName;
 			titleEl.style.overflow = 'hidden';
 			titleEl.style.textOverflow = 'ellipsis';
@@ -1462,7 +1213,7 @@ export default class LapsePlugin extends Plugin {
 					if (duration > 0) {
 				const durationText = this.formatTimeForButton(duration);
 				const durationEl = document.createElement('span');
-				durationEl.className = 'lapse-button-duration';
+				durationEl.className = 'fulcrum-timer-button-duration';
 				durationEl.textContent = durationText;
 				durationEl.style.flexShrink = '0';
 				durationEl.style.marginLeft = 'auto';
@@ -1476,7 +1227,7 @@ export default class LapsePlugin extends Plugin {
 			
 			if (project) {
 				const bottomLine = document.createElement('div');
-				bottomLine.className = 'lapse-button-project';
+				bottomLine.className = 'fulcrum-timer-button-project';
 				bottomLine.textContent = project;
 				button.appendChild(bottomLine);
 			}
@@ -1488,7 +1239,7 @@ export default class LapsePlugin extends Plugin {
 				
 				// Style the project name pill with solid color background and contrasting text
 				if (project) {
-					const bottomLine = button.querySelector('.lapse-button-project') as HTMLElement;
+					const bottomLine = button.querySelector('.fulcrum-timer-button-project') as HTMLElement;
 					if (bottomLine) {
 						// Set the pill background to the project color
 						bottomLine.style.backgroundColor = projectColor;
@@ -1514,7 +1265,7 @@ export default class LapsePlugin extends Plugin {
 			console.error('Error processing lapse button:', error);
 			// Show error button on failure
 			const errorBtn = document.createElement('button');
-			errorBtn.className = 'lapse-button lapse-button-error';
+			errorBtn.className = 'fulcrum-timer-button fulcrum-timer-button-error';
 			errorBtn.textContent = `⚠️ Error: ${templateName}`;
 			errorBtn.title = `Error processing button: ${error}`;
 			errorBtn.disabled = true;
@@ -1635,7 +1386,7 @@ export default class LapsePlugin extends Plugin {
 			const lines = frontmatter.split('\n');
 			
 			// Look for color field (trying common variations)
-			const colorKeys = ['color', 'colour', 'lapse-color'];
+			const colorKeys = ['color', 'colour', 'fulcrum-timer-color'];
 			
 			for (const key of colorKeys) {
 				for (let i = 0; i < lines.length; i++) {
@@ -1681,40 +1432,40 @@ export default class LapsePlugin extends Plugin {
 		const activeTimer = pageData.entries.find(e => e.startTime !== null && e.endTime === null);
 
 		// Build the container
-		const container = el.createDiv({ cls: 'lapse-container' });
+		const container = el.createDiv({ cls: 'fulcrum-timer-container' });
 		
 		// Main layout wrapper with two columns
-		const mainLayout = container.createDiv({ cls: 'lapse-main-layout' });
+		const mainLayout = container.createDiv({ cls: 'fulcrum-timer-main-layout' });
 		
 		// LEFT COLUMN: Timer container (timer display + adjust buttons in bordered box)
-		const timerContainer = mainLayout.createDiv({ cls: 'lapse-timer-container' });
+		const timerContainer = mainLayout.createDiv({ cls: 'fulcrum-timer-timer-container' });
 		
 		// Timer display
-		const timerDisplay = timerContainer.createDiv({ cls: 'lapse-timer-display' });
+		const timerDisplay = timerContainer.createDiv({ cls: 'fulcrum-timer-timer-display' });
 		timerDisplay.setText('--:--');
 		
 		// Adjust buttons container
-		const adjustButtonsContainer = timerContainer.createDiv({ cls: 'lapse-adjust-buttons' });
+		const adjustButtonsContainer = timerContainer.createDiv({ cls: 'fulcrum-timer-adjust-buttons' });
 		
 		// - button (adjust start time backward)
 		const adjustBackBtn = adjustButtonsContainer.createEl('button', { 
-			cls: 'lapse-btn-adjust',
+			cls: 'fulcrum-timer-btn-adjust',
 			text: `-${this.settings.timeAdjustMinutes}`
 		});
 		adjustBackBtn.disabled = !activeTimer;
 		
 		// + button (adjust start time forward)
 		const adjustForwardBtn = adjustButtonsContainer.createEl('button', { 
-			cls: 'lapse-btn-adjust',
+			cls: 'fulcrum-timer-btn-adjust',
 			text: `+${this.settings.timeAdjustMinutes}`
 		});
 		adjustForwardBtn.disabled = !activeTimer;
 		
 		// RIGHT COLUMN: Label/buttons/counters
-		const rightColumn = mainLayout.createDiv({ cls: 'lapse-right-column' });
+		const rightColumn = mainLayout.createDiv({ cls: 'fulcrum-timer-right-column' });
 		
 		// TOP LINE: Label/Input, Stop, Expand
-		const topLine = rightColumn.createDiv({ cls: 'lapse-top-line' });
+		const topLine = rightColumn.createDiv({ cls: 'fulcrum-timer-top-line' });
 		
 		// Label display/input - use span when timer is running, input when editable
 		let labelDisplay: HTMLElement;
@@ -1724,40 +1475,40 @@ export default class LapsePlugin extends Plugin {
 			// Show as plain text when timer is running
 			labelDisplay = topLine.createEl('div', {
 				text: activeTimer.label,
-				cls: 'lapse-label-display-running'
+				cls: 'fulcrum-timer-label-display-running'
 			});
 		} else {
 			// Show as input when editable
 			labelInput = topLine.createEl('input', {
 				type: 'text',
 				placeholder: 'Timer label...',
-				cls: 'lapse-label-input'
+				cls: 'fulcrum-timer-label-input'
 			}) as HTMLInputElement;
 			labelDisplay = labelInput;
 		}
 
 		// Play/Stop button
-		const playStopBtn = topLine.createEl('button', { cls: 'lapse-btn-play-stop' });
+		const playStopBtn = topLine.createEl('button', { cls: 'fulcrum-timer-btn-play-stop' });
 		if (activeTimer) {
 			setIcon(playStopBtn, 'square');
-			playStopBtn.classList.add('lapse-btn-stop');
+			playStopBtn.classList.add('fulcrum-timer-btn-stop');
 		} else {
 			setIcon(playStopBtn, 'play');
-			playStopBtn.classList.add('lapse-btn-play');
+			playStopBtn.classList.add('fulcrum-timer-btn-play');
 		}
 
 		// Chevron button to toggle panel
-		const chevronBtn = topLine.createEl('button', { cls: 'lapse-btn-chevron' });
+		const chevronBtn = topLine.createEl('button', { cls: 'fulcrum-timer-btn-chevron' });
 		setIcon(chevronBtn, 'chevron-down');
 
 		// BOTTOM LINE: Entry count | Today total
-		const bottomLine = rightColumn.createDiv({ cls: 'lapse-bottom-line' });
+		const bottomLine = rightColumn.createDiv({ cls: 'fulcrum-timer-bottom-line' });
 		
 		// Entry count and total time (middle, flexible)
-		const summaryLeft = bottomLine.createDiv({ cls: 'lapse-summary-left' });
+		const summaryLeft = bottomLine.createDiv({ cls: 'fulcrum-timer-summary-left' });
 		
 		// Today total (right-aligned)
-		const todayLabel = bottomLine.createDiv({ cls: 'lapse-today-label' });
+		const todayLabel = bottomLine.createDiv({ cls: 'fulcrum-timer-today-label' });
 
 		// Helper function to calculate total time (including active timer if running)
 		const calculateTotalTime = (): number => {
@@ -1853,11 +1604,11 @@ export default class LapsePlugin extends Plugin {
 		};
 
 		// Collapsible panel for entries cards
-		const panel = container.createDiv({ cls: 'lapse-panel' });
+		const panel = container.createDiv({ cls: 'fulcrum-timer-panel' });
 		panel.style.display = 'none'; // Start collapsed
 
 		// Cards container
-		const cardsContainer = panel.createDiv({ cls: 'lapse-cards-container' });
+		const cardsContainer = panel.createDiv({ cls: 'fulcrum-timer-cards-container' });
 
 		// Render all entries as cards
 		this.renderEntryCards(cardsContainer, pageData.entries, filePath, labelDisplay, labelInput);
@@ -1865,7 +1616,7 @@ export default class LapsePlugin extends Plugin {
 		// Add button to add new entry
 		const addButton = panel.createEl('button', { 
 			text: '+ Add Entry', 
-			cls: 'lapse-btn-add' 
+			cls: 'fulcrum-timer-btn-add' 
 		});
 
 		// Panel toggle
@@ -1914,27 +1665,23 @@ export default class LapsePlugin extends Plugin {
 				labelInput = topLine.createEl('input', {
 					type: 'text',
 					placeholder: 'Timer label...',
-					cls: 'lapse-label-input'
+					cls: 'fulcrum-timer-label-input'
 				}) as HTMLInputElement;
 				// Move input to correct position (after timer, before buttons)
-				const playBtn = topLine.querySelector('.lapse-btn-play-stop');
+				const playBtn = topLine.querySelector('.fulcrum-timer-btn-play-stop');
 				if (playBtn) {
 					topLine.insertBefore(labelInput, playBtn);
 				}
 				labelDisplay = labelInput;
 			}
 			setIcon(playStopBtn, 'play');
-			playStopBtn.classList.remove('lapse-btn-stop');
-			playStopBtn.classList.add('lapse-btn-play');
+			playStopBtn.classList.remove('fulcrum-timer-btn-stop');
+			playStopBtn.classList.add('fulcrum-timer-btn-play');
 			updateDisplays(); // Update displays immediately
 			this.renderEntryCards(cardsContainer, pageData.entries, filePath, labelDisplay, labelInput);
 
-			// Update sidebar
-			this.app.workspace.getLeavesOfType('lapse-sidebar').forEach(leaf => {
-				if (leaf.view instanceof LapseSidebarView) {
-					leaf.view.refresh();
-				}
-			});
+			// Update activity panel
+			this.refreshActivityPanel();
 		} else {
 			// Start a new timer
 			let label = '';
@@ -1975,10 +1722,10 @@ export default class LapsePlugin extends Plugin {
 				labelInput.remove();
 				labelDisplay = topLine.createEl('div', {
 					text: label, // Use the resolved label value
-					cls: 'lapse-label-display-running'
+					cls: 'fulcrum-timer-label-display-running'
 				});
 				// Move display to correct position (after timer, before buttons)
-				const playBtn = topLine.querySelector('.lapse-btn-play-stop');
+				const playBtn = topLine.querySelector('.fulcrum-timer-btn-play-stop');
 				if (playBtn) {
 					topLine.insertBefore(labelDisplay, playBtn);
 				}
@@ -1990,26 +1737,22 @@ export default class LapsePlugin extends Plugin {
 				// Create display if it doesn't exist
 				labelDisplay = topLine.createEl('div', {
 					text: label,
-					cls: 'lapse-label-display-running'
+					cls: 'fulcrum-timer-label-display-running'
 				});
 				// Move display to correct position
-				const playBtn = topLine.querySelector('.lapse-btn-play-stop');
+				const playBtn = topLine.querySelector('.fulcrum-timer-btn-play-stop');
 				if (playBtn) {
 					topLine.insertBefore(labelDisplay, playBtn);
 				}
 			}
 			setIcon(playStopBtn, 'square');
-			playStopBtn.classList.remove('lapse-btn-play');
-			playStopBtn.classList.add('lapse-btn-stop');
+			playStopBtn.classList.remove('fulcrum-timer-btn-play');
+			playStopBtn.classList.add('fulcrum-timer-btn-stop');
 				updateDisplays(); // Update displays immediately
 				this.renderEntryCards(cardsContainer, pageData.entries, filePath, labelDisplay, labelInput);
 
-				// Update sidebar
-				this.app.workspace.getLeavesOfType('lapse-sidebar').forEach(leaf => {
-					if (leaf.view instanceof LapseSidebarView) {
-						leaf.view.refresh();
-					}
-				});
+				// Update activity panel
+				this.refreshActivityPanel();
 			}
 		};
 
@@ -2033,15 +1776,15 @@ export default class LapsePlugin extends Plugin {
 
 	async processReportCodeBlock(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) {
 		// Create container immediately
-		const container = el.createDiv({ cls: 'lapse-report-container' });
+		const container = el.createDiv({ cls: 'fulcrum-timer-report-container' });
 		
 		// Show loading indicator
-		const loadingContainer = container.createDiv({ cls: 'lapse-report-loading' });
-		const loadingText = loadingContainer.createDiv({ cls: 'lapse-report-loading-text' });
+		const loadingContainer = container.createDiv({ cls: 'fulcrum-timer-report-loading' });
+		const loadingText = loadingContainer.createDiv({ cls: 'fulcrum-timer-report-loading-text' });
 		loadingText.setText('Loading Lapse Report');
 		
-		const spinnerContainer = loadingContainer.createDiv({ cls: 'lapse-report-loading-spinner' });
-		const spinner = spinnerContainer.createEl('span', { cls: 'lapse-spinner-icon' });
+		const spinnerContainer = loadingContainer.createDiv({ cls: 'fulcrum-timer-report-loading-spinner' });
+		const spinner = spinnerContainer.createEl('span', { cls: 'fulcrum-timer-spinner-icon' });
 		setIcon(spinner, 'loader-2');
 		
 		// Parse the query
@@ -2081,234 +1824,8 @@ export default class LapsePlugin extends Plugin {
 		}
 	}
 
-	async processActiveTimersCodeBlock(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) {
-		// Create container
-		const container = el.createDiv({ cls: 'lapse-active-container' });
-		
-		// Track time displays and intervals for this instance
-		const timeDisplays = new Map<string, HTMLElement>();
-		const updateIntervals = new Map<string, number>();
-		
-		// Function to get all active timers
-		const getActiveTimers = async (): Promise<Array<{ filePath: string; entry: TimeEntry }>> => {
-			const activeTimers: Array<{ filePath: string; entry: TimeEntry }> = [];
-			
-			// First, always check the current file (important for same-page timers)
-			const currentFile = this.app.workspace.getActiveFile();
-			if (currentFile) {
-				const currentFilePath = currentFile.path;
-				// Force load from frontmatter for current file to ensure fresh data
-				await this.loadEntriesFromFrontmatter(currentFilePath);
-				
-				const currentPageData = this.timeData.get(currentFilePath);
-				if (currentPageData) {
-					currentPageData.entries.forEach(entry => {
-						if (entry.startTime && !entry.endTime) {
-							activeTimers.push({ filePath: currentFilePath, entry });
-						}
-					});
-				}
-			}
-			
-			// Check other entries already loaded in memory
-			this.timeData.forEach((pageData, filePath) => {
-				// Skip current file since we already checked it
-				if (currentFile && filePath === currentFile.path) {
-					return;
-				}
-				
-				pageData.entries.forEach(entry => {
-					if (entry.startTime && !entry.endTime) {
-						activeTimers.push({ filePath, entry });
-					}
-				});
-			});
-			
-			// Also check all other markdown files for active timers not yet in memory
-			const markdownFiles = this.app.vault.getMarkdownFiles();
-			for (const file of markdownFiles) {
-				const filePath = file.path;
-				
-				// Skip excluded folders
-				if (this.isFileExcluded(filePath)) {
-					continue;
-				}
-				
-				// Skip if already checked (including current file)
-				if (this.timeData.has(filePath)) {
-					continue;
-				}
-				
-				// Load entries from cache or frontmatter
-				const { entries } = await this.getCachedOrLoadEntries(filePath);
-				entries.forEach(entry => {
-					if (entry.startTime && !entry.endTime) {
-						activeTimers.push({ filePath, entry });
-					}
-				});
-			}
-			
-			// Deduplicate timers by entry ID to avoid rendering duplicates from race conditions
-			const uniqueTimers = new Map<string, { filePath: string; entry: TimeEntry }>();
-			for (const timer of activeTimers) {
-				if (!uniqueTimers.has(timer.entry.id)) {
-					uniqueTimers.set(timer.entry.id, timer);
-				}
-			}
-
-			return Array.from(uniqueTimers.values());
-		};
-		
-		// Function to render active timers (full render)
-		const renderActiveTimers = async () => {
-			// Clear existing intervals
-			updateIntervals.forEach(intervalId => window.clearInterval(intervalId));
-			updateIntervals.clear();
-			timeDisplays.clear();
-			
-			container.empty();
-			
-			// Get all active timers
-			const activeTimers = await getActiveTimers();
-			
-			// If no active timers, show message
-			if (activeTimers.length === 0) {
-				container.createEl('p', { text: 'No active timers', cls: 'lapse-active-empty' });
-				return;
-			}
-			
-			// Render each active timer as a simple row
-			for (const { filePath, entry } of activeTimers) {
-				const row = container.createDiv({ cls: 'lapse-active-row' });
-				
-				// Elapsed time
-				const elapsed = entry.duration + (entry.isPaused ? 0 : (Date.now() - entry.startTime!));
-				const timeText = this.formatTimeAsHHMMSS(elapsed);
-				const timeDisplay = row.createDiv({ 
-					text: timeText, 
-					cls: 'lapse-active-time' 
-				});
-				timeDisplays.set(entry.id, timeDisplay);
-				
-				// Label (read-only)
-				const labelDisplay = row.createDiv({ 
-					text: entry.label, 
-					cls: 'lapse-active-label' 
-				});
-				
-				// Action buttons container
-				const actionsContainer = row.createDiv({ cls: 'lapse-active-actions' });
-				
-				// Jump to note button
-				const jumpBtn = actionsContainer.createEl('button', {
-					cls: 'lapse-active-btn lapse-active-btn-jump',
-					attr: { 'aria-label': 'Jump to note' }
-				});
-				setIcon(jumpBtn, 'arrow-right');
-				jumpBtn.onclick = async () => {
-					await this.app.workspace.openLinkText(filePath, '', true);
-				};
-				
-				// Stop button
-				const stopBtn = actionsContainer.createEl('button', {
-					cls: 'lapse-active-btn lapse-active-btn-stop',
-					attr: { 'aria-label': 'Stop timer' }
-				});
-				setIcon(stopBtn, 'square');
-				stopBtn.onclick = async (e) => {
-					e.stopPropagation();
-					
-					// Find the entry in timeData and update it
-					const pageData = this.timeData.get(filePath);
-					if (pageData) {
-						const entryInData = pageData.entries.find(e => e.id === entry.id);
-						if (entryInData && entryInData.startTime && !entryInData.endTime) {
-							// Stop the timer
-							const now = Date.now();
-							entryInData.endTime = now;
-							entryInData.duration += (now - entryInData.startTime);
-							
-							// Update total time
-							pageData.totalTimeTracked = pageData.entries.reduce((sum, e) => sum + e.duration, 0);
-							
-							// Update frontmatter in the background
-							await this.updateFrontmatter(filePath);
-							
-							// Re-render to update the list
-							await renderActiveTimers();
-						}
-					}
-				};
-				
-				// Update elapsed time every second
-				const intervalId = window.setInterval(() => {
-					if (entry.startTime && !entry.endTime) {
-						const newElapsed = entry.duration + (entry.isPaused ? 0 : (Date.now() - entry.startTime));
-						const display = timeDisplays.get(entry.id);
-						if (display) {
-							display.setText(this.formatTimeAsHHMMSS(newElapsed));
-						}
-					} else {
-						// Timer stopped, clear interval
-						window.clearInterval(intervalId);
-						updateIntervals.delete(entry.id);
-					}
-				}, 1000);
-				updateIntervals.set(entry.id, intervalId);
-			}
-		};
-		
-		// Function to check for new/stopped timers (lightweight check using in-memory data only)
-		const checkForTimerChanges = () => {
-			// Get current active timers from in-memory timeData only (don't scan files)
-			const currentActiveTimers: Array<{ filePath: string; entry: TimeEntry }> = [];
-			this.timeData.forEach((pageData, filePath) => {
-				pageData.entries.forEach(entry => {
-					if (entry.startTime && !entry.endTime) {
-						currentActiveTimers.push({ filePath, entry });
-					}
-				});
-			});
-			
-			const activeEntryIds = new Set(currentActiveTimers.map(({ entry }) => entry.id));
-			const displayedEntryIds = new Set(timeDisplays.keys());
-			
-			// Check if we need a full refresh (new timer or timer stopped)
-			const needsFullRefresh = 
-				currentActiveTimers.length !== displayedEntryIds.size ||
-				![...displayedEntryIds].every(id => activeEntryIds.has(id)) ||
-				!currentActiveTimers.every(({ entry }) => displayedEntryIds.has(entry.id));
-			
-			if (needsFullRefresh) {
-				renderActiveTimers();
-			}
-		};
-		
-		// Initial render
-		await renderActiveTimers();
-		
-		// Check for timer changes every 5 seconds (lightweight in-memory check only)
-		const checkInterval = window.setInterval(() => {
-			checkForTimerChanges();
-		}, 5000);
-		
-		// Full refresh every 30 seconds to catch new timers from other sources
-		const refreshInterval = window.setInterval(async () => {
-			await renderActiveTimers();
-		}, 30000);
-		
-		// Clean up intervals when the element is removed
-		ctx.addChild({
-			unload: () => {
-				window.clearInterval(checkInterval);
-				window.clearInterval(refreshInterval);
-				updateIntervals.forEach(intervalId => window.clearInterval(intervalId));
-			}
-		} as any);
-	}
-
-	parseQuery(source: string): LapseQuery {
-		const query: LapseQuery = {
+	parseQuery(source: string): TimerQuery {
+		const query: TimerQuery = {
 			display: 'table',
 			groupBy: 'project',
 			chart: 'none'
@@ -2383,7 +1900,7 @@ export default class LapsePlugin extends Plugin {
 		return value.trim();
 	}
 
-	getDateRange(query: LapseQuery): { startTime: number; endTime: number } {
+	getDateRange(query: TimerQuery): { startTime: number; endTime: number } {
 		let startTime: number;
 		let endTime: number;
 		
@@ -2726,7 +2243,7 @@ export default class LapsePlugin extends Plugin {
 		return totalDuration;
 	}
 
-	async getMatchingEntries(query: LapseQuery, startTime: number, endTime: number): Promise<Array<{
+	async getMatchingEntries(query: TimerQuery, startTime: number, endTime: number): Promise<Array<{
 		filePath: string;
 		entry: TimeEntry;
 		project: string | null;
@@ -2907,8 +2424,8 @@ export default class LapsePlugin extends Plugin {
 		return grouped;
 	}
 
-	async renderReportSummary(container: HTMLElement, groupedData: Map<string, any>, query: LapseQuery) {
-		container.createEl('h4', { text: 'Summary', cls: 'lapse-report-title' });
+	async renderReportSummary(container: HTMLElement, groupedData: Map<string, any>, query: TimerQuery) {
+		container.createEl('h4', { text: 'Summary', cls: 'fulcrum-timer-report-title' });
 		
 		// Calculate total time
 		let totalTime = 0;
@@ -2917,20 +2434,20 @@ export default class LapsePlugin extends Plugin {
 		});
 		
 		// Display total time
-		const summaryDiv = container.createDiv({ cls: 'lapse-report-summary-total' });
-		summaryDiv.createEl('span', { text: 'Total Time: ', cls: 'lapse-report-summary-label' });
-		summaryDiv.createEl('span', { text: this.formatTimeAsHHMMSS(totalTime), cls: 'lapse-report-summary-value' });
+		const summaryDiv = container.createDiv({ cls: 'fulcrum-timer-report-summary-total' });
+		summaryDiv.createEl('span', { text: 'Total Time: ', cls: 'fulcrum-timer-report-summary-label' });
+		summaryDiv.createEl('span', { text: this.formatTimeAsHHMMSS(totalTime), cls: 'fulcrum-timer-report-summary-value' });
 		
 		// Show breakdown by group
-		const breakdownDiv = container.createDiv({ cls: 'lapse-report-breakdown' });
+		const breakdownDiv = container.createDiv({ cls: 'fulcrum-timer-report-breakdown' });
 		
 		// Sort groups by time descending
 		const sortedGroups = Array.from(groupedData.entries()).sort((a, b) => b[1].totalTime - a[1].totalTime);
 		
 		const groupBy = query.groupBy || 'project';
 		for (const [groupName, group] of sortedGroups) {
-			const groupDiv = breakdownDiv.createDiv({ cls: 'lapse-report-breakdown-item' });
-			const nameSpan = groupDiv.createEl('span', { text: groupName, cls: 'lapse-report-breakdown-name' });
+			const groupDiv = breakdownDiv.createDiv({ cls: 'fulcrum-timer-report-breakdown-item' });
+			const nameSpan = groupDiv.createEl('span', { text: groupName, cls: 'fulcrum-timer-report-breakdown-name' });
 			// Color the group name if grouping by project
 			if (groupBy === 'project') {
 				const projectColor = await this.getProjectColor(groupName);
@@ -2938,12 +2455,12 @@ export default class LapsePlugin extends Plugin {
 					nameSpan.style.color = projectColor;
 				}
 			}
-			groupDiv.createEl('span', { text: this.formatTimeAsHHMMSS(group.totalTime), cls: 'lapse-report-breakdown-time' });
+			groupDiv.createEl('span', { text: this.formatTimeAsHHMMSS(group.totalTime), cls: 'fulcrum-timer-report-breakdown-time' });
 		}
 		
 		// Render chart if specified
 		if (query.chart && query.chart !== 'none' && sortedGroups.length > 0) {
-			const chartContainer = container.createDiv({ cls: 'lapse-report-chart-container' });
+			const chartContainer = container.createDiv({ cls: 'fulcrum-timer-report-chart-container' });
 			const chartData = sortedGroups.map(([group, data]) => ({
 				group,
 				totalTime: data.totalTime
@@ -2952,8 +2469,8 @@ export default class LapsePlugin extends Plugin {
 		}
 	}
 
-	async renderReportTable(container: HTMLElement, groupedData: Map<string, any>, query: LapseQuery) {
-		container.createEl('h4', { text: 'Report', cls: 'lapse-report-title' });
+	async renderReportTable(container: HTMLElement, groupedData: Map<string, any>, query: TimerQuery) {
+		container.createEl('h4', { text: 'Report', cls: 'fulcrum-timer-report-title' });
 		
 		// Calculate total time
 		let totalTime = 0;
@@ -2962,13 +2479,13 @@ export default class LapsePlugin extends Plugin {
 		});
 		
 		// Display total time
-		const summaryDiv = container.createDiv({ cls: 'lapse-report-summary-total' });
-		summaryDiv.createEl('span', { text: 'Total: ', cls: 'lapse-report-summary-label' });
-		summaryDiv.createEl('span', { text: this.formatTimeAsHHMMSS(totalTime), cls: 'lapse-report-summary-value' });
+		const summaryDiv = container.createDiv({ cls: 'fulcrum-timer-report-summary-total' });
+		summaryDiv.createEl('span', { text: 'Total: ', cls: 'fulcrum-timer-report-summary-label' });
+		summaryDiv.createEl('span', { text: this.formatTimeAsHHMMSS(totalTime), cls: 'fulcrum-timer-report-summary-value' });
 		
 		// Create table
-		const tableContainer = container.createDiv({ cls: 'lapse-report-table-container' });
-		const table = tableContainer.createEl('table', { cls: 'lapse-reports-table' });
+		const tableContainer = container.createDiv({ cls: 'fulcrum-timer-report-table-container' });
+		const table = tableContainer.createEl('table', { cls: 'fulcrum-timer-reports-table' });
 		
 		const thead = table.createEl('thead');
 		const headerRow = thead.createEl('tr');
@@ -3029,7 +2546,7 @@ export default class LapsePlugin extends Plugin {
 		
 		// Render chart if specified
 		if (query.chart && query.chart !== 'none' && sortedGroups.length > 0) {
-			const chartContainer = container.createDiv({ cls: 'lapse-report-chart-container' });
+			const chartContainer = container.createDiv({ cls: 'fulcrum-timer-report-chart-container' });
 			const chartData = sortedGroups.map(([group, data]) => ({
 				group,
 				totalTime: data.totalTime
@@ -3048,7 +2565,7 @@ export default class LapsePlugin extends Plugin {
 		}
 	}
 
-	async renderReportChartOnly(container: HTMLElement, groupedData: Map<string, any>, query: LapseQuery) {
+	async renderReportChartOnly(container: HTMLElement, groupedData: Map<string, any>, query: TimerQuery) {
 		// Calculate total time
 		let totalTime = 0;
 		groupedData.forEach(group => {
@@ -3060,7 +2577,7 @@ export default class LapsePlugin extends Plugin {
 		
 		// Only render chart if chart type is specified and not 'none'
 		if (query.chart && query.chart !== 'none' && sortedGroups.length > 0) {
-			const chartContainer = container.createDiv({ cls: 'lapse-report-chart-container' });
+			const chartContainer = container.createDiv({ cls: 'fulcrum-timer-report-chart-container' });
 			const chartData = sortedGroups.map(([group, data]) => ({
 				group,
 				totalTime: data.totalTime
@@ -3070,7 +2587,7 @@ export default class LapsePlugin extends Plugin {
 			// If no chart specified or 'none', show a message
 			container.createEl('p', { 
 				text: 'Please specify a chart type (chart: pie or chart: bar)', 
-				cls: 'lapse-report-error' 
+				cls: 'fulcrum-timer-report-error' 
 			});
 		}
 	}
@@ -3085,7 +2602,7 @@ export default class LapsePlugin extends Plugin {
 
 	async renderPieChart(container: HTMLElement, data: Array<{ group: string; totalTime: number }>, totalTime: number, groupBy?: string) {
 		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('class', 'lapse-report-pie-chart');
+		svg.setAttribute('class', 'fulcrum-timer-report-pie-chart');
 		svg.setAttribute('width', '300');
 		svg.setAttribute('height', '300');
 		svg.setAttribute('viewBox', '0 0 300 300');
@@ -3146,18 +2663,18 @@ export default class LapsePlugin extends Plugin {
 		});
 
 		// Add legend
-		const legend = container.createDiv({ cls: 'lapse-report-legend' });
+		const legend = container.createDiv({ cls: 'fulcrum-timer-report-legend' });
 		dataWithColors.forEach(({ group, totalTime: time, color }) => {
-			const legendItem = legend.createDiv({ cls: 'lapse-report-legend-item' });
-			const colorBox = legendItem.createDiv({ cls: 'lapse-report-legend-color' });
+			const legendItem = legend.createDiv({ cls: 'fulcrum-timer-report-legend-item' });
+			const colorBox = legendItem.createDiv({ cls: 'fulcrum-timer-report-legend-color' });
 			colorBox.style.backgroundColor = color;
-			const label = legendItem.createDiv({ cls: 'lapse-report-legend-label' });
+			const label = legendItem.createDiv({ cls: 'fulcrum-timer-report-legend-label' });
 			const nameSpan = label.createSpan({ text: group });
 			// Color the project name if grouping by project
 			if (isGroupingByProject) {
 				nameSpan.style.color = color;
 			}
-			label.createSpan({ text: this.formatTimeAsHHMMSS(time), cls: 'lapse-report-legend-time' });
+			label.createSpan({ text: this.formatTimeAsHHMMSS(time), cls: 'fulcrum-timer-report-legend-time' });
 		});
 	}
 
@@ -3170,7 +2687,7 @@ export default class LapsePlugin extends Plugin {
 		const chartAreaWidth = viewBoxWidth - (padding * 2);
 		
 		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('class', 'lapse-report-bar-chart');
+		svg.setAttribute('class', 'fulcrum-timer-report-bar-chart');
 		svg.setAttribute('width', '100%');
 		svg.setAttribute('height', '300');
 		svg.setAttribute('viewBox', `0 0 ${viewBoxWidth} ${totalHeight}`);
@@ -3226,7 +2743,7 @@ export default class LapsePlugin extends Plugin {
 			foreignObject.setAttribute('height', labelHeight.toString());
 			
 			const labelDiv = document.createElement('div');
-			labelDiv.setAttribute('class', 'lapse-chart-label');
+			labelDiv.setAttribute('class', 'fulcrum-timer-chart-label');
 			labelDiv.style.width = '100%';
 			labelDiv.style.height = '100%';
 			labelDiv.style.display = 'flex';
@@ -3258,23 +2775,23 @@ export default class LapsePlugin extends Plugin {
 		cardsContainer.empty();
 
 		entries.forEach((entry, index) => {
-			const card = cardsContainer.createDiv({ cls: 'lapse-entry-card' });
+			const card = cardsContainer.createDiv({ cls: 'fulcrum-timer-entry-card' });
 			
 			// Top line: label and action buttons
-			const topLine = card.createDiv({ cls: 'lapse-card-top-line' });
-			const labelDiv = topLine.createDiv({ cls: 'lapse-card-label' });
+			const topLine = card.createDiv({ cls: 'fulcrum-timer-card-top-line' });
+			const labelDiv = topLine.createDiv({ cls: 'fulcrum-timer-card-label' });
 			labelDiv.setText(entry.label);
 			
 			// Action buttons
-			const actionsDiv = topLine.createDiv({ cls: 'lapse-card-actions' });
-			const editBtn = actionsDiv.createEl('button', { cls: 'lapse-card-btn-edit' });
-			const deleteBtn = actionsDiv.createEl('button', { cls: 'lapse-card-btn-delete' });
+			const actionsDiv = topLine.createDiv({ cls: 'fulcrum-timer-card-actions' });
+			const editBtn = actionsDiv.createEl('button', { cls: 'fulcrum-timer-card-btn-edit' });
+			const deleteBtn = actionsDiv.createEl('button', { cls: 'fulcrum-timer-card-btn-delete' });
 			
 			setIcon(editBtn, 'pencil');
 			setIcon(deleteBtn, 'trash');
 
 			// Second line: start, end, duration
-			const detailsLine = card.createDiv({ cls: 'lapse-card-details' });
+			const detailsLine = card.createDiv({ cls: 'fulcrum-timer-card-details' });
 			
 			const startText = entry.startTime 
 				? new Date(entry.startTime).toLocaleString('en-US', { 
@@ -3288,19 +2805,19 @@ export default class LapsePlugin extends Plugin {
 					hour: 'numeric', minute: '2-digit'
 				})
 				: '--';
-			detailsLine.createSpan({ text: `Start: ${startText}`, cls: 'lapse-card-detail' });
-			detailsLine.createSpan({ text: `End: ${endText}`, cls: 'lapse-card-detail' });
+			detailsLine.createSpan({ text: `Start: ${startText}`, cls: 'fulcrum-timer-card-detail' });
+			detailsLine.createSpan({ text: `End: ${endText}`, cls: 'fulcrum-timer-card-detail' });
 
 			// Third line: duration and tags on same line
-			const bottomLine = card.createDiv({ cls: 'lapse-card-bottom-line' });
+			const bottomLine = card.createDiv({ cls: 'fulcrum-timer-card-bottom-line' });
 			const durationText = this.formatTimeAsHHMMSS(entry.duration);
-			bottomLine.createSpan({ text: `Duration: ${durationText}`, cls: 'lapse-card-detail' });
+			bottomLine.createSpan({ text: `Duration: ${durationText}`, cls: 'fulcrum-timer-card-detail' });
 
 			// Tags on the same line
 			if (entry.tags && entry.tags.length > 0) {
-				const tagsContainer = bottomLine.createDiv({ cls: 'lapse-card-tags-inline' });
+				const tagsContainer = bottomLine.createDiv({ cls: 'fulcrum-timer-card-tags-inline' });
 				entry.tags.forEach(tag => {
-					const tagEl = tagsContainer.createSpan({ text: `#${tag}`, cls: 'lapse-card-tag' });
+					const tagEl = tagsContainer.createSpan({ text: `#${tag}`, cls: 'fulcrum-timer-card-tag' });
 				});
 			}
 
@@ -3352,62 +2869,62 @@ export default class LapsePlugin extends Plugin {
 		content.empty();
 
 		// Label input
-		const labelContainer = content.createDiv({ cls: 'lapse-modal-field' });
-		labelContainer.createEl('label', { text: 'Label', attr: { for: 'lapse-edit-label' } });
+		const labelContainer = content.createDiv({ cls: 'fulcrum-timer-modal-field' });
+		labelContainer.createEl('label', { text: 'Label', attr: { for: 'fulcrum-timer-edit-label' } });
 		const labelInput = labelContainer.createEl('input', {
 				type: 'text',
 				value: entry.label,
-			cls: 'lapse-modal-input',
-			attr: { id: 'lapse-edit-label' }
+			cls: 'fulcrum-timer-modal-input',
+			attr: { id: 'fulcrum-timer-edit-label' }
 		}) as HTMLInputElement;
 
 		// Start input
-		const startContainer = content.createDiv({ cls: 'lapse-modal-field' });
-		startContainer.createEl('label', { text: 'Start Time', attr: { for: 'lapse-edit-start' } });
+		const startContainer = content.createDiv({ cls: 'fulcrum-timer-modal-field' });
+		startContainer.createEl('label', { text: 'Start Time', attr: { for: 'fulcrum-timer-edit-start' } });
 		const startInput = startContainer.createEl('input', {
 				type: 'datetime-local',
-			cls: 'lapse-modal-input',
-			attr: { id: 'lapse-edit-start' }
+			cls: 'fulcrum-timer-modal-input',
+			attr: { id: 'fulcrum-timer-edit-start' }
 		}) as HTMLInputElement;
 			if (entry.startTime) {
 			startInput.value = this.formatDateTimeLocal(new Date(entry.startTime));
 		}
 
 		// End input
-		const endContainer = content.createDiv({ cls: 'lapse-modal-field' });
-		endContainer.createEl('label', { text: 'End Time', attr: { for: 'lapse-edit-end' } });
+		const endContainer = content.createDiv({ cls: 'fulcrum-timer-modal-field' });
+		endContainer.createEl('label', { text: 'End Time', attr: { for: 'fulcrum-timer-edit-end' } });
 		const endInput = endContainer.createEl('input', {
 				type: 'datetime-local',
-			cls: 'lapse-modal-input',
-			attr: { id: 'lapse-edit-end' }
+			cls: 'fulcrum-timer-modal-input',
+			attr: { id: 'fulcrum-timer-edit-end' }
 		}) as HTMLInputElement;
 			if (entry.endTime) {
 			endInput.value = this.formatDateTimeLocal(new Date(entry.endTime));
 		}
 
 		// Duration display (read-only)
-		const durationContainer = content.createDiv({ cls: 'lapse-modal-field' });
-		durationContainer.createEl('label', { text: 'Duration', attr: { for: 'lapse-edit-duration' } });
+		const durationContainer = content.createDiv({ cls: 'fulcrum-timer-modal-field' });
+		durationContainer.createEl('label', { text: 'Duration', attr: { for: 'fulcrum-timer-edit-duration' } });
 		const durationInput = durationContainer.createEl('input', {
 				type: 'text',
 				value: this.formatTimeAsHHMMSS(entry.duration),
-			cls: 'lapse-modal-input',
-			attr: { id: 'lapse-edit-duration', readonly: 'true' }
+			cls: 'fulcrum-timer-modal-input',
+			attr: { id: 'fulcrum-timer-edit-duration', readonly: 'true' }
 		}) as HTMLInputElement;
 			durationInput.readOnly = true;
 
 		// Tags input
-		const tagsContainer = content.createDiv({ cls: 'lapse-modal-field' });
-		tagsContainer.createEl('label', { text: 'Tags (comma-separated, without #)', attr: { for: 'lapse-edit-tags' } });
+		const tagsContainer = content.createDiv({ cls: 'fulcrum-timer-modal-field' });
+		tagsContainer.createEl('label', { text: 'Tags (comma-separated, without #)', attr: { for: 'fulcrum-timer-edit-tags' } });
 		const tagsInput = tagsContainer.createEl('input', {
 			type: 'text',
 			value: (entry.tags || []).join(', '),
-			cls: 'lapse-modal-input',
-			attr: { id: 'lapse-edit-tags', placeholder: 'tag1, tag2, tag3' }
+			cls: 'fulcrum-timer-modal-input',
+			attr: { id: 'fulcrum-timer-edit-tags', placeholder: 'tag1, tag2, tag3' }
 		}) as HTMLInputElement;
 
 		// Buttons
-		const buttonContainer = content.createDiv({ cls: 'lapse-modal-buttons' });
+		const buttonContainer = content.createDiv({ cls: 'fulcrum-timer-modal-buttons' });
 		const saveBtn = buttonContainer.createEl('button', { text: 'Save', cls: 'mod-cta' });
 		const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
 
@@ -3512,7 +3029,7 @@ export default class LapsePlugin extends Plugin {
 			content.empty();
 			content.createEl('p', { text: `Are you sure you want to delete "${entryLabel}"?` });
 			
-			const buttonContainer = content.createDiv({ cls: 'lapse-modal-buttons' });
+			const buttonContainer = content.createDiv({ cls: 'fulcrum-timer-modal-buttons' });
 			const deleteBtn = buttonContainer.createEl('button', { text: 'Delete', cls: 'mod-warning' });
 			const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
 
@@ -3819,7 +3336,7 @@ export default class LapsePlugin extends Plugin {
 			}
 			onNoteCreated?.();
 		} catch (e) {
-			console.error('Lapse: create note from Quick Start failed:', e);
+			console.error('Fulcrum timer: create note from Quick Start failed:', e);
 		}
 	}
 
@@ -3849,78 +3366,188 @@ export default class LapsePlugin extends Plugin {
 		return null;
 	}
 
-	async getProjectFolderQuickStartEntries(groupByKey: string): Promise<TemplateData[]> {
-		const folderPath = this.settings.defaultProjectFolder?.trim().replace(/\/+$/, '');
-		if (!folderPath) return [];
-		const folder = this.app.vault.getAbstractFileByPath(folderPath);
-		if (!folder || !(folder instanceof TFolder)) return [];
+	isQuickStartPlaceholder(value: string | null | undefined): boolean {
+		const t = value?.trim() ?? "";
+		if (!t) return true;
+		return /<%[\s\S]*?%>/.test(t) || /\{\{[\s\S]*?\}\}/.test(t);
+	}
 
-		const areaKey = this.settings.quickStartAreaKey?.trim() || 'area';
-		const entryKey = this.settings.quickStartEntryKey?.trim() || 'entry';
-		const list: TemplateData[] = [];
-		for (const child of folder.children) {
-			if (child instanceof TFile && child.extension === 'md') {
-				const fromFm = await this.getProjectFromFrontmatter(child.path);
-				const projectName = (fromFm?.trim() || child.basename).trim();
-				const projectColor = await this.getProjectColor(projectName);
-				const groupValue =
-					groupByKey === this.settings.projectKey
-						? projectName
-						: (await this.parseFrontmatterScalarFromPath(child.path, groupByKey)) ?? projectName;
-				let area: string | null = null;
-				let timerDescription: string | null = projectName;
-				try {
-					const content = await this.app.vault.read(child);
-					const fm = content.match(/^---\n([\s\S]*?)\n---/);
-					if (fm) {
-						const lines = fm[1].split('\n');
-						const parseKey = (key: string): string | null => {
-							for (const line of lines) {
-								if (line.trim().startsWith(`${key}:`)) {
-									let val = line.split(':').slice(1).join(':').trim();
-									if (val) {
-										val = val.replace(/\[\[/g, '').replace(/\]\]/g, '');
-										val = val.replace(/^["']+|["']+$/g, '').trim();
-									}
-									return val || null;
-								}
-							}
-							return null;
-						};
-						area = parseKey(areaKey);
-						const entryVal = parseKey(entryKey) ?? parseKey('description');
-						timerDescription = (entryVal?.trim() || projectName);
-					}
-				} catch {
-					/* keep defaults */
-				}
-				list.push({
-					kind: 'project',
-					template: null,
-					templateName: projectName,
-					project: projectName,
-					projectColor,
-					groupValue,
-					projectSourcePath: child.path,
-					area,
-					timerDescription
-				});
-			} else if (child instanceof TFolder) {
-				const projectName = child.name;
-				const projectColor = await this.getProjectColor(projectName);
-				list.push({
-					kind: 'project',
-					template: null,
-					templateName: projectName,
-					project: projectName,
-					projectColor,
-					groupValue: projectName,
-					projectSourcePath: null,
-					area: null,
-					timerDescription: projectName
-				});
+	/** Strip wikilinks, quotes, and folder paths — keep the human project/area name. */
+	displayQuickStartLabel(raw: string | null | undefined): string {
+		if (!raw?.trim()) return "";
+		let v = raw.trim();
+		v = v.replace(/\[\[|\]\]/g, "");
+		v = v.replace(/^["']+|["']+$/g, "");
+		if (v.includes("/")) {
+			const parts = v.split("/").filter(Boolean);
+			v = parts[parts.length - 1] ?? v;
+		}
+		return v.replace(/\.md$/i, "").trim();
+	}
+
+	normalizeQuickStartGroupKey(label: string): string {
+		return label.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
+	}
+
+	resolveQuickStartProjectPath(data: TemplateData): string | null {
+		if (data.projectSourcePath) {
+			const indexed = this.host.vaultIndex.resolveProjectByPath(data.projectSourcePath);
+			return indexed?.file.path ?? data.projectSourcePath;
+		}
+		if (!data.project || !data.template) return null;
+		const link = data.project.replace(/\[\[|\]\]/g, "").trim();
+		if (!link) return null;
+		const dest =
+			this.app.metadataCache.getFirstLinkpathDest(link, data.template.path) ??
+			this.app.metadataCache.getFirstLinkpathDest(link, "");
+		if (!(dest instanceof TFile)) return null;
+		const indexed = this.host.vaultIndex.resolveProjectByPath(dest.path);
+		return indexed?.file.path ?? dest.path;
+	}
+
+	quickStartGroupKey(data: TemplateData, groupBy: QuickStartGroupBy): string {
+		if (groupBy === "project") {
+			const path = this.resolveQuickStartProjectPath(data);
+			if (path) return `project:${path}`;
+			const label = data.groupValue ?? "No Project";
+			if (label === "No Project") return "no-project";
+			return `unresolved:${this.normalizeQuickStartGroupKey(label)}`;
+		}
+		const label =
+			data.groupValue ?? (groupBy === "area" ? "Unassigned" : "No Project");
+		return `${groupBy}:${this.normalizeQuickStartGroupKey(label)}`;
+	}
+
+	quickStartGroupLabel(data: TemplateData, groupBy: QuickStartGroupBy): string {
+		if (groupBy === "project") {
+			const path = this.resolveQuickStartProjectPath(data);
+			if (path) {
+				const indexed = this.host.vaultIndex.resolveProjectByPath(path);
+				if (indexed) return indexed.name;
+			}
+			return data.groupValue ?? data.project ?? data.templateName ?? "No Project";
+		}
+		return data.groupValue ?? (groupBy === "area" ? "Unassigned" : "No Project");
+	}
+
+	private quickStartGroupValueForProject(
+		project: IndexedProject,
+		groupBy: QuickStartGroupBy,
+	): string {
+		switch (groupBy) {
+			case "area":
+				return (
+					project.areaName?.trim() ||
+					project.areaFile?.basename.replace(/\.md$/i, "") ||
+					"Unassigned"
+				);
+			case "status": {
+				const st = (project.status || "active").trim().toLowerCase();
+				return st.replace(/\b\w/g, (c) => c.toUpperCase());
+			}
+			case "project":
+			default:
+				return project.name;
+		}
+	}
+
+	async resolveQuickStartArea(
+		projectRaw: string | null,
+		areaRaw: string | null,
+		contextPath: string,
+	): Promise<string | null> {
+		if (areaRaw && !this.isQuickStartPlaceholder(areaRaw)) {
+			const label = this.displayQuickStartLabel(areaRaw);
+			if (label) return label;
+		}
+		if (!projectRaw || this.isQuickStartPlaceholder(projectRaw)) return null;
+
+		const link = projectRaw.replace(/\[\[|\]\]/g, "").trim();
+		const projectFile =
+			this.app.metadataCache.getFirstLinkpathDest(link, contextPath) ??
+			this.app.metadataCache.getFirstLinkpathDest(link, "");
+		if (!(projectFile instanceof TFile)) return null;
+
+		const keys = [
+			this.settings.quickStartAreaKey?.trim() || "area",
+			this.host.settings.areaLinkField,
+		].filter((k, i, arr) => k && arr.indexOf(k) === i);
+
+		for (const key of keys) {
+			const val = await this.parseFrontmatterScalarFromPath(projectFile.path, key);
+			if (val && !this.isQuickStartPlaceholder(val)) {
+				const label = this.displayQuickStartLabel(val);
+				if (label) return label;
 			}
 		}
+		return null;
+	}
+
+	getQuickStartGroupBy(): QuickStartGroupBy {
+		const v = this.settings.quickStartGroupBy;
+		if (v === "area" || v === "project" || v === "status") return v;
+		return "project";
+	}
+
+	resolveQuickStartGroupByKey(groupBy: QuickStartGroupBy): string {
+		switch (groupBy) {
+			case "area":
+				return (
+					this.host.settings.areaLinkField?.trim() ||
+					this.settings.quickStartAreaKey?.trim() ||
+					"area"
+				);
+			case "status":
+				return (
+					this.host.settings.projectStatusField?.trim().replace(/:+$/u, "") || "status"
+				);
+			case "project":
+			default:
+				return this.settings.projectKey?.trim() || "project";
+		}
+	}
+
+	async setQuickStartGroupBy(groupBy: QuickStartGroupBy): Promise<void> {
+		if (this.getQuickStartGroupBy() === groupBy) return;
+		this.settings.quickStartGroupBy = groupBy;
+		await this.host.saveSettings();
+		this.invalidateQuickStartCachesForIntegration();
+	}
+
+	async getProjectFolderQuickStartEntries(groupBy: QuickStartGroupBy): Promise<TemplateData[]> {
+		const folderPath = this.settings.defaultProjectFolder?.trim().replace(/\/+$/, "");
+		if (!folderPath) return [];
+
+		const projects = this.host.vaultIndex
+			.getActiveProjects(this.host.settings)
+			.filter((p) => isUnderFolder(p.file.path, folderPath));
+
+		const list: TemplateData[] = [];
+
+		for (const p of projects) {
+			const projectName = p.name;
+			const groupValue =
+				this.displayQuickStartLabel(this.quickStartGroupValueForProject(p, groupBy)) ||
+				projectName;
+			const area =
+				p.areaName?.trim() ||
+				p.areaFile?.basename.replace(/\.md$/i, "") ||
+				null;
+			const projectColor = p.color || (await this.getProjectColor(projectName));
+
+			list.push({
+				kind: "project",
+				template: null,
+				templateName: projectName,
+				project: projectName,
+				projectColor,
+				groupValue,
+				projectSourcePath: p.file.path,
+				area,
+				timerDescription: projectName,
+			});
+		}
+
 		return list.sort((a, b) => a.templateName.localeCompare(b.templateName));
 	}
 
@@ -3991,7 +3618,10 @@ export default class LapsePlugin extends Plugin {
 		// Get configured keys
 		const startTimeKey = this.settings.startTimeKey;
 		const endTimeKey = this.settings.endTimeKey;
-		const entriesKey = this.settings.entriesKey;
+		const entriesKey = resolveEntriesWriteKey(
+			this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined,
+			this.settings,
+		);
 		const totalTimeKey = this.settings.totalTimeKey;
 
 		// Build the Lapse frontmatter section as a string
@@ -4084,129 +3714,24 @@ export default class LapsePlugin extends Plugin {
 		this.invalidateCacheForFile(filePath);
 	}
 
-	private async handleLapseOpenUri(params: ObsidianProtocolData): Promise<void> {
-		const raw = String(params.screen ?? params.leaf ?? 'activity')
-			.trim()
-			.toLowerCase()
-			.replace(/-/g, '_');
-		const route = String(params.route ?? '')
-			.trim()
-			.replace(/^\/+/, '');
-		let key = raw;
-		if (!key && route) {
-			const tail = route.replace(/^lapse\//i, '').replace(/^lapse-tracker\//i, '');
-			key = (tail.split('/')[0] ?? '').toLowerCase().replace(/-/g, '_');
-		}
-		if (!key) key = 'activity';
-
-		const map: Record<string, () => Promise<void>> = {
-			activity: () => this.activateView(),
-			sidebar: () => this.activateView(),
-			reports: () => this.activateReportsView(),
-			quick_start: () => this.activateButtonsView(),
-			quickstart: () => this.activateButtonsView(),
-			buttons: () => this.activateButtonsView(),
-			calendar: () => this.activateCalendarView(),
-			grid: () => this.activateGridView(),
-			entry_grid: () => this.activateGridView(),
-		};
-
-		const fn = map[key];
-		if (fn) {
-			await fn();
-			return;
-		}
-		new Notice(`Lapse: unknown screen "${key}".`);
+	async activateView(): Promise<void> {
+		await this.host.openActiveTimers();
 	}
 
-	async activateView() {
-		const { workspace } = this.app;
-
-		let leaf: WorkspaceLeaf | null = null;
-		const leaves = workspace.getLeavesOfType('lapse-sidebar');
-
-		if (leaves.length > 0) {
-			leaf = leaves[0];
-		} else {
-			leaf = workspace.getRightLeaf(false);
-			await leaf?.setViewState({ type: 'lapse-sidebar', active: true });
-		}
-
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-		}
+	async activateReportsView(): Promise<void> {
+		await this.host.openTimeTracked("sessions");
 	}
 
-	async activateReportsView() {
-		const { workspace } = this.app;
-
-		let leaf: WorkspaceLeaf | null = null;
-		const leaves = workspace.getLeavesOfType('lapse-reports');
-
-		if (leaves.length > 0) {
-			leaf = leaves[0];
-		} else {
-			leaf = workspace.getRightLeaf(false);
-			await leaf?.setViewState({ type: 'lapse-reports', active: true });
-		}
-
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-		}
+	async activateButtonsView(): Promise<void> {
+		await this.host.openQuickStart();
 	}
 
-	async activateButtonsView() {
-		const { workspace } = this.app;
-
-		let leaf: WorkspaceLeaf | null = null;
-		const leaves = workspace.getLeavesOfType('lapse-buttons');
-
-		if (leaves.length > 0) {
-			leaf = leaves[0];
-		} else {
-			leaf = workspace.getRightLeaf(false);
-			await leaf?.setViewState({ type: 'lapse-buttons', active: true });
-		}
-
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-		}
+	async activateCalendarView(): Promise<void> {
+		await this.host.openCalendar();
 	}
 
-	async activateCalendarView() {
-		const { workspace } = this.app;
-
-		let leaf: WorkspaceLeaf | null = null;
-		const leaves = workspace.getLeavesOfType('lapse-calendar');
-
-		if (leaves.length > 0) {
-			leaf = leaves[0];
-		} else {
-			leaf = workspace.getRightLeaf(false);
-			await leaf?.setViewState({ type: 'lapse-calendar', active: true });
-		}
-
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-		}
-	}
-
-	async activateGridView() {
-		const { workspace } = this.app;
-
-		let leaf: WorkspaceLeaf | null = null;
-		const leaves = workspace.getLeavesOfType('lapse-grid');
-
-		if (leaves.length > 0) {
-			leaf = leaves[0];
-		} else {
-			leaf = workspace.getRightLeaf(false);
-			await leaf?.setViewState({ type: 'lapse-grid', active: true });
-		}
-
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-		}
+	async activateGridView(): Promise<void> {
+		await this.host.openTimeTracked("entryGrid");
 	}
 
 	async getActiveTimers(): Promise<Array<{ filePath: string; entry: TimeEntry }>> {
@@ -4256,10 +3781,6 @@ export default class LapsePlugin extends Plugin {
 	}
 
 	async onunload() {
-		this.api = undefined;
-		window.dispatchEvent(
-			new CustomEvent(LAPSE_PUBLIC_API_UNLOAD_EVENT, { detail: { pluginId: LAPSE_PLUGIN_ID } }),
-		);
 
 		// Clean up status bar interval
 		if (this.statusBarUpdateInterval) {
@@ -4269,7 +3790,7 @@ export default class LapsePlugin extends Plugin {
 		
 		// Wait for any pending cache saves to complete
 		if (this.pendingSaves.length > 0) {
-			console.log(`Lapse: Waiting for ${this.pendingSaves.length} pending save(s) to complete...`);
+			console.log(`Fulcrum timer: Waiting for ${this.pendingSaves.length} pending save(s) to complete...`);
 			await Promise.all(this.pendingSaves);
 		}
 		
@@ -4283,25 +3804,13 @@ export default class LapsePlugin extends Plugin {
 			this.cacheSaveTimeout = null;
 		}
 		
-		console.log('Unloading Lapse plugin');
+		console.log('Unloading Fulcrum timer module');
 	}
 
-	async loadSettings() {
-		const data = (await this.loadData()) as Record<string, unknown>;
-		// Migrate renamed calendar template setting
-		if (data.defaultTimerTemplate === undefined && typeof data.calendarDefaultTemplate === 'string') {
-			data.defaultTimerTemplate = data.calendarDefaultTemplate;
-		}
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, data) as LapseSettings;
-		
-		// Don't load the large cache on startup - use on-demand loading instead
-		// This allows plugin to load instantly
-		console.log('Lapse: Settings loaded (cache will load on-demand)');
-	}
-
-	async saveSettings() {
-		// Only save settings, not the cache
-		await this.saveData(this.settings);
+	async saveTimerSettings(): Promise<void> {
+		const data = await this.loadData();
+		await this.saveData({ ...data, timerEntryCache: this.entryCache });
+		await this.host.saveSettings();
 	}
 
 	async saveCache() {
@@ -4537,7 +4046,7 @@ export default class LapsePlugin extends Plugin {
 		return out;
 	}
 
-	toPlannedBlockPublic(block: PlannedBlock, dateIso: string, plannerPath: string): LapsePlannedBlockPublic {
+	toPlannedBlockPublic(block: PlannedBlock, dateIso: string, plannerPath: string): PlannedBlockPublic {
 		return {
 			id: block.id,
 			label: block.label,
@@ -4550,14 +4059,14 @@ export default class LapsePlugin extends Plugin {
 		};
 	}
 
-	async listPlannedBlocksInRangeApi(startMs: number, endMs: number): Promise<LapsePlannedBlockPublic[]> {
+	async listPlannedBlocksInRangeApi(startMs: number, endMs: number): Promise<PlannedBlockPublic[]> {
 		const start = new Date(startMs);
 		const end = new Date(endMs);
 		const rows = await this.getAllPlannedInRange(start, end);
 		return rows.map((r) => this.toPlannedBlockPublic(r.block, r.dateIso, r.file.path));
 	}
 
-	async upsertPlannedBlockApi(input: LapsePlannedBlockUpsertInput): Promise<LapsePlannedBlockPublic> {
+	async upsertPlannedBlockApi(input: PlannedBlockUpsertInput): Promise<PlannedBlockPublic> {
 		const iso = input.dateIso.slice(0, 10);
 		const blocks = await this.loadPlannedBlocksForDay(iso);
 		const id =
@@ -4684,9 +4193,10 @@ export default class LapsePlugin extends Plugin {
 
 	async getTemplateDataList(): Promise<TemplateData[]> {
 		const templateDataList: TemplateData[] = [];
-		const groupByKey = this.settings.quickStartGroupByKey?.trim() || this.settings.projectKey;
+		const groupBy = this.getQuickStartGroupBy();
+		const groupByKey = this.resolveQuickStartGroupByKey(groupBy);
 
-		const templateFolder = this.settings.lapseButtonTemplatesFolder?.trim();
+		const templateFolder = this.settings.timerButtonTemplatesFolder?.trim();
 		if (templateFolder) {
 			const normalizedFolder = templateFolder.endsWith('/') ? templateFolder : `${templateFolder}/`;
 			const files = this.app.vault.getMarkdownFiles();
@@ -4697,6 +4207,7 @@ export default class LapsePlugin extends Plugin {
 
 			for (const template of templates) {
 				let project: string | null = null;
+				let projectSourcePath: string | null = null;
 				let projectColor: string | null = null;
 				let groupValue: string | null = null;
 				let area: string | null = null;
@@ -4726,63 +4237,184 @@ export default class LapsePlugin extends Plugin {
 							return null;
 						};
 
-						project = parseKey(this.settings.projectKey);
-						groupValue = groupByKey === this.settings.projectKey ? project : parseKey(groupByKey);
-						area = parseKey(areaKey);
-						const entryVal = parseKey(entryKey) ?? parseKey('description');
-						timerDescription = (entryVal?.trim() || template.basename);
+						const projectRaw = parseKey(this.settings.projectKey);
+						project = projectRaw;
+						groupValue =
+							groupBy === "project" ? projectRaw : parseKey(groupByKey);
+						if (projectRaw && !this.isQuickStartPlaceholder(projectRaw)) {
+							const link = projectRaw.replace(/\[\[|\]\]/g, "").trim();
+							const dest =
+								this.app.metadataCache.getFirstLinkpathDest(link, template.path) ??
+								this.app.metadataCache.getFirstLinkpathDest(link, "");
+							if (dest instanceof TFile) {
+								const indexed = this.host.vaultIndex.resolveProjectByPath(dest.path);
+								projectSourcePath = indexed?.file.path ?? dest.path;
+							}
+						}
+						const areaKeys = [
+							areaKey,
+							this.host.settings.areaLinkField,
+						].filter((k, i, arr) => k && arr.indexOf(k) === i);
+						for (const key of areaKeys) {
+							area = parseKey(key);
+							if (area && !this.isQuickStartPlaceholder(area)) break;
+							area = null;
+						}
+						const entryVal = parseKey(entryKey) ?? parseKey("description");
+						if (entryVal && !this.isQuickStartPlaceholder(entryVal)) {
+							timerDescription = entryVal.trim();
+						}
 					}
+
+					project = project ? this.displayQuickStartLabel(project) : null;
+					groupValue = groupValue
+						? this.displayQuickStartLabel(groupValue)
+						: groupBy === "project"
+							? project
+							: null;
+					if (!groupValue) groupValue = "No Project";
+					area = await this.resolveQuickStartArea(project, area, template.path);
 
 					if (project) {
 						projectColor = await this.getProjectColor(project);
 					}
 				} catch (error) {
-					console.error('Error reading template for Quick Start:', error);
+					console.error("Error reading template for Quick Start:", error);
 				}
 
 				templateDataList.push({
-					kind: 'template',
+					kind: "template",
 					template,
 					templateName: template.basename,
 					project,
 					projectColor,
 					groupValue,
+					projectSourcePath,
 					area,
-					timerDescription
+					timerDescription,
 				});
 			}
 		}
 
-		templateDataList.push(...(await this.getProjectFolderQuickStartEntries(groupByKey)));
+		templateDataList.push(...(await this.getProjectFolderQuickStartEntries(groupBy)));
 
-		templateDataList.sort((a, b) => {
+		const seenTemplatePaths = new Set<string>();
+		const seenProjectPaths = new Set<string>();
+		const deduped: TemplateData[] = [];
+		for (const data of templateDataList) {
+			if (data.kind === "template" && data.template) {
+				if (seenTemplatePaths.has(data.template.path)) continue;
+				seenTemplatePaths.add(data.template.path);
+			} else if (data.kind === "project" && data.projectSourcePath) {
+				if (seenProjectPaths.has(data.projectSourcePath)) continue;
+				seenProjectPaths.add(data.projectSourcePath);
+			}
+			deduped.push(data);
+		}
+
+		deduped.sort((a, b) => {
 			const byName = a.templateName.localeCompare(b.templateName);
 			if (byName !== 0) return byName;
 			if (a.kind === b.kind) return 0;
 			return a.kind === 'template' ? -1 : 1;
 		});
-		return templateDataList;
+		return deduped;
 	}
 
 	groupTemplateData(templateDataList: TemplateData[]): TemplateGroupResult {
+		const groupBy = this.getQuickStartGroupBy();
 		const grouped = new Map<string, TemplateData[]>();
+		const groupLabels = new Map<string, string>();
 
 		for (const data of templateDataList) {
-			const groupKey = data.groupValue ?? 'No Project';
+			const groupKey = this.quickStartGroupKey(data, groupBy);
 			if (!grouped.has(groupKey)) {
 				grouped.set(groupKey, []);
+				groupLabels.set(groupKey, this.quickStartGroupLabel(data, groupBy));
 			}
 			grouped.get(groupKey)!.push(data);
 		}
 
 		const sortedProjects = Array.from(grouped.keys()).sort((a, b) => {
-			if (a === 'No Project') return 1;
-			if (b === 'No Project') return -1;
-			return a.localeCompare(b);
+			const labelA = groupLabels.get(a) ?? a;
+			const labelB = groupLabels.get(b) ?? b;
+			if (labelA === "No Project") return 1;
+			if (labelB === "No Project") return -1;
+			return labelA.localeCompare(labelB);
 		});
 
-		return { grouped, sortedProjects };
+		return { grouped, sortedProjects, groupLabels };
 	}
+}
+
+function mountQuickStartFilterBar(
+	container: HTMLElement,
+	opts: {
+		plugin: TimerModule;
+		filterText: string;
+		onFilterTextChange: (text: string) => void;
+		onFilterInput?: () => void;
+		onGroupByChange: () => void | Promise<void>;
+		onRefreshContent: () => void | Promise<void>;
+	},
+): HTMLInputElement {
+	const bar = container.createDiv({cls: "fulcrum-timer-buttons-filter-bar"});
+
+	const groupWrap = bar.createDiv({cls: "fulcrum-timer-buttons-group-by"});
+	groupWrap.createSpan({cls: "fulcrum-timer-buttons-group-by-label", text: "Group by"});
+	const groupSelect = groupWrap.createEl("select", {
+		cls: "dropdown fulcrum-timer-buttons-group-by-select",
+		attr: {"aria-label": "Group quick start by"},
+	}) as HTMLSelectElement;
+	for (const [value, label] of [
+		["area", "Area"],
+		["project", "Project"],
+		["status", "Status"],
+	] as const) {
+		groupSelect.createEl("option", {value, text: label});
+	}
+	groupSelect.value = opts.plugin.getQuickStartGroupBy();
+	groupSelect.onchange = () => {
+		void (async () => {
+			const next = groupSelect.value as QuickStartGroupBy;
+			await opts.plugin.setQuickStartGroupBy(next);
+			await opts.onGroupByChange();
+			await opts.onRefreshContent();
+		})();
+	};
+
+	const filterContainer = bar.createDiv({cls: "fulcrum-timer-buttons-filter"});
+	const filterInput = filterContainer.createEl("input", {
+		cls: "fulcrum-timer-buttons-filter-input",
+		attr: {
+			type: "text",
+			placeholder: "Filter by name, project, or initials…",
+			"aria-label": "Filter timers",
+		},
+	}) as HTMLInputElement;
+	filterInput.value = opts.filterText;
+
+	const clearBtn = filterContainer.createEl("button", {
+		cls: "fulcrum-timer-buttons-filter-clear clickable-icon",
+		attr: {"aria-label": "Clear filter"},
+	});
+	setIcon(clearBtn, "x");
+	clearBtn.style.display = opts.filterText ? "flex" : "none";
+
+	clearBtn.onclick = () => {
+		opts.onFilterTextChange("");
+		filterInput.value = "";
+		clearBtn.style.display = "none";
+		void opts.onRefreshContent();
+	};
+
+	filterInput.oninput = () => {
+		opts.onFilterTextChange(filterInput.value);
+		clearBtn.style.display = filterInput.value ? "flex" : "none";
+		opts.onFilterInput?.();
+	};
+
+	return filterInput;
 }
 
 /** One field: substring, word-prefix, or multi-token initials (e.g. "b t" → "Bolt Taxonomy"). */
@@ -4823,7 +4455,7 @@ function matchesQuickStartFilter(data: TemplateData, filter: string): boolean {
 	return false;
 }
 
-function noteButtonPeriodShortLabel(period: LapseSettings['noteButtonTimePeriod']): string {
+function noteButtonPeriodShortLabel(period: TimerSettings["noteButtonTimePeriod"]): string {
 	switch (period) {
 		case 'today':
 			return 'Today';
@@ -4840,7 +4472,7 @@ function noteButtonPeriodShortLabel(period: LapseSettings['noteButtonTimePeriod'
 	}
 }
 
-function quickStartDurationFromMaps(plugin: LapsePlugin, data: TemplateData, maps: QuickStartDurationMaps): number {
+function quickStartDurationFromMaps(plugin: TimerModule, data: TemplateData, maps: QuickStartDurationMaps): number {
 	const mode = data.kind === 'project' ? 'project' : plugin.settings.noteButtonDurationType;
 	if (mode === 'project') {
 		if (!data.project) return 0;
@@ -4851,13 +4483,13 @@ function quickStartDurationFromMaps(plugin: LapsePlugin, data: TemplateData, map
 
 function appendQuickStartButton(
 	container: HTMLElement,
-	plugin: LapsePlugin,
+	plugin: TimerModule,
 	data: TemplateData,
 	durationMaps: QuickStartDurationMaps,
 	onNoteCreated?: () => void
 ) {
 	const button = container.createEl('button', {
-		cls: 'lapse-button lapse-button--timery',
+		cls: 'fulcrum-timer-button fulcrum-timer-button--timery',
 		attr: {
 			type: 'button',
 			'aria-label': `Start timer: ${data.timerDescription ?? data.templateName}`
@@ -4867,78 +4499,113 @@ function appendQuickStartButton(
 	const accent = data.projectColor || '';
 	if (accent) {
 		button.style.borderLeftColor = accent;
-		button.style.setProperty('--lapse-timer-accent', accent);
-		button.style.setProperty('--lapse-play-bg', accent);
-		button.style.setProperty('--lapse-play-fg', plugin.getContrastColor(accent));
+		button.style.setProperty('--fulcrum-timer-timer-accent', accent);
+		button.style.setProperty('--fulcrum-timer-play-bg', accent);
+		button.style.setProperty('--fulcrum-timer-play-fg', plugin.getContrastColor(accent));
 	}
 
-	const playWrap = button.createSpan({ cls: 'lapse-button-play', attr: { 'aria-hidden': 'true' } });
+	const playWrap = button.createSpan({ cls: 'fulcrum-timer-button-play', attr: { 'aria-hidden': 'true' } });
 	setIcon(playWrap, 'play');
 
-	const body = button.createDiv({ cls: 'lapse-button-body' });
-	const topRow = body.createDiv({ cls: 'lapse-button-top' });
+	const body = button.createDiv({ cls: "fulcrum-timer-button-body" });
+	const topRow = body.createDiv({ cls: "fulcrum-timer-button-top" });
 
-	const titleBlock = topRow.createDiv({ cls: 'lapse-button-title-block' });
-	const projectLabel = data.project?.trim() || data.templateName;
-	const projectEl = titleBlock.createSpan({ cls: 'lapse-button-project-name' });
+	const titleBlock = topRow.createDiv({ cls: "fulcrum-timer-button-title-block" });
+	const projectLabel =
+		plugin.displayQuickStartLabel(data.project) ||
+		plugin.displayQuickStartLabel(data.templateName);
+	const projectEl = titleBlock.createSpan({ cls: "fulcrum-timer-button-project-name" });
 	projectEl.textContent = projectLabel;
 	if (accent) {
 		projectEl.style.color = accent;
 	}
 
-	const areaText = data.area?.trim() ?? '';
-	if (areaText) {
-		titleBlock.createSpan({ cls: 'lapse-button-bullet', text: ' • ' });
-		const areaEl = titleBlock.createSpan({ cls: 'lapse-button-area' });
-		areaEl.textContent = areaText;
-	}
-
-	const meta = topRow.createDiv({ cls: 'lapse-button-meta' });
-	meta.createSpan({ cls: 'lapse-button-period', text: noteButtonPeriodShortLabel(plugin.settings.noteButtonTimePeriod) });
+	const meta = topRow.createDiv({ cls: "fulcrum-timer-button-meta" });
+	meta.createSpan({
+		cls: "fulcrum-timer-button-period",
+		text: noteButtonPeriodShortLabel(plugin.settings.noteButtonTimePeriod),
+	});
 	// Timery cards always show time for the configured period (bypasses “show on inline buttons” setting).
 	try {
 		const duration = quickStartDurationFromMaps(plugin, data, durationMaps);
 		const durationText = plugin.formatTimeForButton(Math.max(0, duration));
-		meta.createSpan({ cls: 'lapse-button-meta-sep', text: '·' });
-		meta.createSpan({ cls: 'lapse-button-duration', text: durationText });
+		meta.createSpan({ cls: "fulcrum-timer-button-meta-sep", text: "·" });
+		meta.createSpan({ cls: "fulcrum-timer-button-duration", text: durationText });
 	} catch (error) {
-		console.error('Error calculating duration for Quick Start button:', error);
+		console.error("Error calculating duration for Quick Start button:", error);
 	}
 
-	const desc = body.createDiv({ cls: 'lapse-button-desc' });
-	desc.textContent = data.timerDescription ?? data.templateName;
+	const desc = body.createDiv({ cls: "fulcrum-timer-button-desc" });
+	const areaLabel = plugin.displayQuickStartLabel(data.area);
+	const entryLabel =
+		data.timerDescription && !plugin.isQuickStartPlaceholder(data.timerDescription)
+			? data.timerDescription.trim()
+			: "";
+	if (data.kind === "template") {
+		desc.textContent = entryLabel || areaLabel || data.templateName;
+	} else {
+		desc.textContent = areaLabel || entryLabel;
+	}
 
 	button.onclick = async () => {
 		await plugin.createNoteFromQuickStart(data, onNoteCreated);
 	};
 }
 
-async function renderTemplateGroups(container: HTMLElement, plugin: LapsePlugin, groupResult: TemplateGroupResult, onNoteCreated?: () => void) {
+async function renderTemplateGroups(container: HTMLElement, plugin: TimerModule, groupResult: TemplateGroupResult, onNoteCreated?: () => void) {
 	const durationMaps = await plugin.computeQuickStartDurationMaps();
 	for (const projectKey of groupResult.sortedProjects) {
 		const projectTemplates = groupResult.grouped.get(projectKey)!;
-		const details = container.createEl('details', { cls: 'lapse-buttons-project-section' });
+		const details = container.createEl('details', { cls: 'fulcrum-timer-buttons-project-section' });
 		details.open = true;
-		const summary = details.createEl('summary', { cls: 'lapse-buttons-project-header' });
-		const title = summary.createEl('h3', { text: projectKey, cls: 'lapse-buttons-project-title' }) as HTMLElement;
+		const summary = details.createEl("summary", { cls: "fulcrum-timer-buttons-project-header" });
+		const displayGroup =
+			groupResult.groupLabels.get(projectKey) ||
+			plugin.displayQuickStartLabel(projectKey) ||
+			projectKey;
+		const header = summary.createDiv({ cls: "fulcrum-timer-group-header" });
+		const title = header.createDiv({
+			text: displayGroup,
+			cls: "fulcrum-timer-group-title",
+		});
 
-		if (projectKey !== 'No Project') {
-			const sectionColor = await plugin.getProjectColor(projectKey) ?? projectTemplates[0].projectColor;
+		if (projectKey !== "No Project" && projectKey !== "no-project") {
+			const sectionColor =
+				(await plugin.getProjectColor(displayGroup)) ?? projectTemplates[0].projectColor;
 			if (sectionColor) {
-				summary.style.borderLeftColor = sectionColor;
+				header.style.borderLeftColor = sectionColor;
 				title.style.color = sectionColor;
 			}
 		}
 
-		const buttonsGrid = details.createDiv({ cls: 'lapse-buttons-grid' });
+		const buttonsGrid = details.createDiv({ cls: 'fulcrum-timer-buttons-grid' });
 		for (const data of projectTemplates) {
 			appendQuickStartButton(buttonsGrid, plugin, data, durationMaps, onNoteCreated);
 		}
 	}
 }
 
-class LapseSidebarView extends ItemView {
-	plugin: LapsePlugin;
+abstract class TimerEmbedPanel {
+	plugin: TimerModule;
+	embedContainer: HTMLElement | null = null;
+
+	constructor(plugin: TimerModule) {
+		this.plugin = plugin;
+	}
+
+	get app(): App {
+		return this.plugin.app;
+	}
+
+	protected panelEl(): HTMLElement {
+		if (!this.embedContainer) {
+			throw new Error("Fulcrum timer panel is not mounted");
+		}
+		return this.embedContainer;
+	}
+}
+
+class TimerActivityView extends TimerEmbedPanel {
 	refreshInterval: number | null = null;
 	timeDisplays: Map<string, HTMLElement> = new Map(); // Map of entry ID to time display element
 	showTodayEntries: boolean = true; // Toggle for showing/hiding individual entries
@@ -4946,41 +4613,20 @@ class LapseSidebarView extends ItemView {
 	showEntriesList: boolean = true; // Toggle for showing/hiding the entries list section
 	showChart: boolean = true; // Toggle for showing/hiding the chart section
 
-	constructor(leaf: WorkspaceLeaf, plugin: LapsePlugin) {
-		super(leaf);
-		this.plugin = plugin;
-	}
-
-	getViewType(): string {
-		return 'lapse-sidebar';
-	}
-
-	getDisplayText(): string {
-		return 'Activity';
-	}
-
-	getIcon(): string {
-		return 'clock';
-	}
-
-	async onOpen() {
-		await this.render();
-	}
-
 	async render() {
-		const container = this.containerEl.children[1] as HTMLElement;
+		const container = this.panelEl();
 		container.empty();
 		this.timeDisplays.clear();
 		
 		// Header with title and toggle buttons
-		const header = container.createDiv({ cls: 'lapse-sidebar-header' });
+		const header = container.createDiv({ cls: 'fulcrum-timer-sidebar-header' });
 		header.createEl('h4', { text: 'Activity' });
 		
-		const headerButtons = header.createDiv({ cls: 'lapse-sidebar-header-buttons' });
+		const headerButtons = header.createDiv({ cls: 'fulcrum-timer-sidebar-header-buttons' });
 		
 		// List toggle button
 		const listBtn = headerButtons.createEl('button', { 
-			cls: `lapse-sidebar-toggle-view-btn clickable-icon ${this.showEntriesList ? 'active' : ''}`,
+			cls: `fulcrum-timer-sidebar-toggle-view-btn clickable-icon ${this.showEntriesList ? 'active' : ''}`,
 			attr: { 'aria-label': 'Toggle entries list' }
 		});
 		setIcon(listBtn, 'list');
@@ -4991,7 +4637,7 @@ class LapseSidebarView extends ItemView {
 		
 		// Chart toggle button
 		const chartBtn = headerButtons.createEl('button', { 
-			cls: `lapse-sidebar-toggle-view-btn clickable-icon ${this.showChart ? 'active' : ''}`,
+			cls: `fulcrum-timer-sidebar-toggle-view-btn clickable-icon ${this.showChart ? 'active' : ''}`,
 			attr: { 'aria-label': 'Toggle chart' }
 		});
 		setIcon(chartBtn, 'pie-chart');
@@ -5002,7 +4648,7 @@ class LapseSidebarView extends ItemView {
 		
 		// Refresh button
 		const refreshBtn = headerButtons.createEl('button', { 
-			cls: 'lapse-sidebar-refresh-btn clickable-icon',
+			cls: 'fulcrum-timer-sidebar-refresh-btn clickable-icon',
 			attr: { 'aria-label': 'Refresh' }
 		});
 		setIcon(refreshBtn, 'refresh-cw');
@@ -5013,12 +4659,12 @@ class LapseSidebarView extends ItemView {
 		};
 
 		const addBtn = headerButtons.createEl('button', {
-			cls: 'lapse-sidebar-add-btn clickable-icon',
+			cls: 'fulcrum-timer-sidebar-add-btn clickable-icon',
 			attr: { 'aria-label': 'Start a new timer' }
 		});
 		setIcon(addBtn, 'plus');
 		addBtn.onclick = () => {
-			new LapseQuickStartModal(this.app, this.plugin).open();
+			new TimerQuickStartModal(this.app, this.plugin).open();
 		};
 
 		// Get active timers from memory only (not all files) for faster rendering
@@ -5032,27 +4678,27 @@ class LapseSidebarView extends ItemView {
 		});
 
 		if (activeTimers.length === 0) {
-			container.createEl('p', { text: 'No active timers', cls: 'lapse-sidebar-empty' });
+			container.createEl('p', { text: 'No active timers', cls: 'fulcrum-timer-sidebar-empty' });
 		} else {
 			// Active timers section with card layout
 			for (const { filePath, entry } of activeTimers) {
-				const card = container.createDiv({ cls: 'lapse-activity-card' });
+				const card = container.createDiv({ cls: 'fulcrum-timer-activity-card' });
 				
 				// Timer row with timer and stop button
-				const timerRow = card.createDiv({ cls: 'lapse-activity-timer-row' });
+				const timerRow = card.createDiv({ cls: 'fulcrum-timer-activity-timer-row' });
 				
 				// Timer display - big on the left
 				const elapsed = entry.duration + (entry.isPaused ? 0 : (Date.now() - entry.startTime!));
 				const timeText = this.plugin.formatTimeAsHHMMSS(elapsed);
 				const timerDisplay = timerRow.createDiv({ 
 					text: timeText, 
-					cls: 'lapse-activity-timer' 
+					cls: 'fulcrum-timer-activity-timer' 
 				});
 				this.timeDisplays.set(entry.id, timerDisplay);
 				
 				// Stop button on the right
 				const stopBtn = timerRow.createEl('button', {
-					cls: 'lapse-activity-stop-btn',
+					cls: 'fulcrum-timer-activity-stop-btn',
 					attr: { 'aria-label': 'Stop timer' }
 				});
 				setIcon(stopBtn, 'square');
@@ -5091,12 +4737,12 @@ class LapseSidebarView extends ItemView {
 				}
 				
 				// Details container - smaller text below timer
-				const detailsContainer = card.createDiv({ cls: 'lapse-activity-details' });
+				const detailsContainer = card.createDiv({ cls: 'fulcrum-timer-activity-details' });
 				
 				// Create link to the note
 				const link = detailsContainer.createEl('a', { 
 					text: fileName,
-					cls: 'lapse-activity-page internal-link',
+					cls: 'fulcrum-timer-activity-page internal-link',
 					href: filePath
 				});
 				
@@ -5115,14 +4761,14 @@ class LapseSidebarView extends ItemView {
 				// Project (if available)
 				if (project) {
 					const projectColor = await this.plugin.getProjectColor(project);
-					const projectEl = detailsContainer.createDiv({ text: project, cls: 'lapse-activity-project' });
+					const projectEl = detailsContainer.createDiv({ text: project, cls: 'fulcrum-timer-activity-project' });
 					if (projectColor) {
 						projectEl.style.color = projectColor;
 					}
 				}
 				
 				// Entry label
-				detailsContainer.createDiv({ text: entry.label, cls: 'lapse-activity-label' });
+				detailsContainer.createDiv({ text: entry.label, cls: 'fulcrum-timer-activity-label' });
 			}
 		}
 
@@ -5196,11 +4842,11 @@ class LapseSidebarView extends ItemView {
 		// Display today's entries grouped by note
 		if (noteGroups.length > 0) {
 			// Section header with toggle button
-			const sectionHeader = container.createDiv({ cls: 'lapse-sidebar-section-header' });
-			sectionHeader.createEl('h4', { text: "Today's Entries", cls: 'lapse-sidebar-section-title' });
+			const sectionHeader = container.createDiv({ cls: 'fulcrum-timer-sidebar-section-header' });
+			sectionHeader.createDiv({ text: "Today's Entries", cls: 'fulcrum-timer-sidebar-section-title' });
 			
 			const toggleBtn = sectionHeader.createEl('button', {
-				cls: 'lapse-sidebar-toggle-btn clickable-icon',
+				cls: 'fulcrum-timer-sidebar-toggle-btn clickable-icon',
 				attr: { 'aria-label': this.showTodayEntries ? 'Hide entries' : 'Show entries' }
 			});
 			setIcon(toggleBtn, this.showTodayEntries ? 'chevron-down' : 'chevron-right');
@@ -5209,13 +4855,13 @@ class LapseSidebarView extends ItemView {
 				this.render();
 			};
 			
-			const todayList = container.createEl('ul', { cls: 'lapse-sidebar-list' });
+			const todayList = container.createEl('ul', { cls: 'fulcrum-timer-sidebar-list' });
 			
 			for (const { filePath, entries, totalTime } of noteGroups) {
-				const item = todayList.createEl('li', { cls: 'lapse-sidebar-note-group' });
+				const item = todayList.createEl('li', { cls: 'fulcrum-timer-sidebar-note-group' });
 				
 				// Top line container - note name and total time
-				const topLine = item.createDiv({ cls: 'lapse-sidebar-top-line' });
+				const topLine = item.createDiv({ cls: 'fulcrum-timer-sidebar-top-line' });
 				
 			// Get file name without extension
 			const file = this.app.vault.getAbstractFileByPath(filePath);
@@ -5244,25 +4890,25 @@ class LapseSidebarView extends ItemView {
 				
 				// Total time tracked on the right
 				const timeText = this.plugin.formatTimeAsHHMMSS(totalTime);
-				topLine.createSpan({ text: timeText, cls: 'lapse-sidebar-time' });
+				topLine.createSpan({ text: timeText, cls: 'fulcrum-timer-sidebar-time' });
 				
 				// Get project from frontmatter
 				const project = await this.plugin.getProjectFromFrontmatter(filePath);
 				
 				// Second line: project (if available)
 				if (project) {
-					const secondLine = item.createDiv({ cls: 'lapse-sidebar-second-line' });
-					secondLine.createSpan({ text: project, cls: 'lapse-sidebar-project' });
+					const secondLine = item.createDiv({ cls: 'fulcrum-timer-sidebar-second-line' });
+					secondLine.createSpan({ text: project, cls: 'fulcrum-timer-sidebar-project' });
 				}
 				
 				// List individual entries below (only if toggled on)
 				if (this.showTodayEntries) {
-					const entriesList = item.createDiv({ cls: 'lapse-sidebar-entries-list' });
+					const entriesList = item.createDiv({ cls: 'fulcrum-timer-sidebar-entries-list' });
 					entries.forEach(({ entry }) => {
-						const entryLine = entriesList.createDiv({ cls: 'lapse-sidebar-entry-line' });
+						const entryLine = entriesList.createDiv({ cls: 'fulcrum-timer-sidebar-entry-line' });
 						const entryTime = this.plugin.formatTimeAsHHMMSS(entry.duration);
-						entryLine.createSpan({ text: entry.label, cls: 'lapse-sidebar-entry-label' });
-						entryLine.createSpan({ text: entryTime, cls: 'lapse-sidebar-entry-time' });
+						entryLine.createSpan({ text: entry.label, cls: 'fulcrum-timer-sidebar-entry-label' });
+						entryLine.createSpan({ text: entryTime, cls: 'fulcrum-timer-sidebar-entry-time' });
 					});
 				}
 			}
@@ -5362,7 +5008,7 @@ class LapseSidebarView extends ItemView {
 			const today = new Date();
 			today.setHours(0, 0, 0, 0);
 			const todayStart = today.getTime();
-			const chartContainer = this.containerEl.querySelector('.lapse-pie-chart-container');
+			const chartContainer = this.embedContainer?.querySelector('.fulcrum-timer-pie-chart-container');
 			if (chartContainer) {
 				// Only update if chart exists - don't re-render everything
 				// Chart updates are handled internally by the chart library if needed
@@ -5447,19 +5093,19 @@ class LapseSidebarView extends ItemView {
 		}
 
 		// Create section container
-		const chartSection = container.createDiv({ cls: 'lapse-sidebar-chart-section' });
-		chartSection.createEl('h4', { text: 'Today\'s Summary', cls: 'lapse-sidebar-section-title' });
+		const chartSection = container.createDiv({ cls: 'fulcrum-timer-sidebar-chart-section' });
+		chartSection.createDiv({ text: "Today's Summary", cls: 'fulcrum-timer-sidebar-section-title' });
 
 		// Display total time in bigger text
-		const totalTimeDiv = chartSection.createDiv({ cls: 'lapse-sidebar-total-time' });
+		const totalTimeDiv = chartSection.createDiv({ cls: 'fulcrum-timer-sidebar-total-time' });
 		totalTimeDiv.setText(this.plugin.formatTimeAsHHMMSS(totalTimeToday));
 
 		// Create pie chart container
-		const chartContainer = chartSection.createDiv({ cls: 'lapse-sidebar-chart-container' });
+		const chartContainer = chartSection.createDiv({ cls: 'fulcrum-timer-sidebar-chart-container' });
 		
 		// Create SVG for pie chart
 		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('class', 'lapse-sidebar-pie-chart');
+		svg.setAttribute('class', 'fulcrum-timer-sidebar-pie-chart');
 		svg.setAttribute('width', '200');
 		svg.setAttribute('height', '200');
 		svg.setAttribute('viewBox', '0 0 200 200');
@@ -5525,22 +5171,22 @@ class LapseSidebarView extends ItemView {
 		});
 
 		// Create legend with labels
-		const legend = chartSection.createDiv({ cls: 'lapse-sidebar-chart-legend' });
+		const legend = chartSection.createDiv({ cls: 'fulcrum-timer-sidebar-chart-legend' });
 		
 		projectData.forEach(({ name, time, color }) => {
-			const legendItem = legend.createDiv({ cls: 'lapse-sidebar-legend-item' });
+			const legendItem = legend.createDiv({ cls: 'fulcrum-timer-sidebar-legend-item' });
 			
 			// Color indicator
-			const colorBox = legendItem.createDiv({ cls: 'lapse-sidebar-legend-color' });
+			const colorBox = legendItem.createDiv({ cls: 'fulcrum-timer-sidebar-legend-color' });
 			colorBox.style.backgroundColor = color;
 			
 			// Project name and time
-			const label = legendItem.createDiv({ cls: 'lapse-sidebar-legend-label' });
+			const label = legendItem.createDiv({ cls: 'fulcrum-timer-sidebar-legend-label' });
 			const nameSpan = label.createSpan({ text: name });
 			nameSpan.style.color = color; // Color the project name
 			const timeSpan = label.createSpan({ 
 				text: this.plugin.formatTimeAsHHMMSS(time),
-				cls: 'lapse-sidebar-legend-time'
+				cls: 'fulcrum-timer-sidebar-legend-time'
 			});
 		});
 	}
@@ -5550,8 +5196,7 @@ class LapseSidebarView extends ItemView {
 		await this.render();
 	}
 
-	async onClose() {
-		// Cleanup interval
+	unmount(): void {
 		if (this.refreshInterval) {
 			clearInterval(this.refreshInterval);
 			this.refreshInterval = null;
@@ -5559,15 +5204,16 @@ class LapseSidebarView extends ItemView {
 	}
 }
 
-class LapseQuickStartModal extends Modal {
-	plugin: LapsePlugin;
+class TimerQuickStartModal extends Modal {
+	plugin: TimerModule;
 	templateListCache: TemplateData[] = [];
 	filterText: string = '';
 	contentContainer: HTMLElement | null = null;
 	countStatEl: HTMLElement | null = null;
 	filterDebounceHandle: number | null = null;
+	private contentRenderSeq = 0;
 
-	constructor(app: App, plugin: LapsePlugin) {
+	constructor(app: App, plugin: TimerModule) {
 		super(app);
 		this.plugin = plugin;
 	}
@@ -5583,7 +5229,7 @@ class LapseQuickStartModal extends Modal {
 			this.filterDebounceHandle = null;
 		}
 
-		contentEl.addClass('lapse-quick-start-modal');
+		contentEl.addClass('fulcrum-timer-quick-start-modal');
 		contentEl.createEl('h2', { text: 'Quick Start' });
 
 		try {
@@ -5596,61 +5242,49 @@ class LapseQuickStartModal extends Modal {
 				return;
 			}
 
-			const filterContainer = contentEl.createDiv({ cls: 'lapse-buttons-filter' });
-			const filterInput = filterContainer.createEl('input', {
-				cls: 'lapse-buttons-filter-input',
-				attr: {
-					type: 'text',
-					placeholder: 'Filter by name, project, or initials…',
-					'aria-label': 'Filter timers'
-				}
-			}) as HTMLInputElement;
-
-			const clearBtn = filterContainer.createEl('button', {
-				cls: 'lapse-buttons-filter-clear clickable-icon',
-				attr: { 'aria-label': 'Clear filter' }
-			});
-			setIcon(clearBtn, 'x');
-			clearBtn.style.display = 'none';
-
-			clearBtn.onclick = () => {
-				this.filterText = '';
-				filterInput.value = '';
-				clearBtn.style.display = 'none';
-				if (this.filterDebounceHandle !== null) {
-					window.clearTimeout(this.filterDebounceHandle);
-					this.filterDebounceHandle = null;
-				}
-				void this.renderModalContent();
-			};
-
-			filterInput.oninput = () => {
-				this.filterText = filterInput.value;
-				clearBtn.style.display = this.filterText ? 'flex' : 'none';
-				if (this.filterDebounceHandle !== null) window.clearTimeout(this.filterDebounceHandle);
-				this.filterDebounceHandle = window.setTimeout(() => {
-					this.filterDebounceHandle = null;
+			const filterHost = contentEl.createDiv({ cls: "fulcrum-timer-buttons-filter-bar-host" });
+			let filterDebounce: number | null = null;
+			const scheduleModalRefresh = () => {
+				if (filterDebounce !== null) window.clearTimeout(filterDebounce);
+				filterDebounce = window.setTimeout(() => {
+					filterDebounce = null;
 					void this.renderModalContent();
 				}, 120);
 			};
 
+			const filterInput = mountQuickStartFilterBar(filterHost, {
+				plugin: this.plugin,
+				filterText: this.filterText,
+				onFilterTextChange: (text) => {
+					this.filterText = text;
+				},
+				onFilterInput: scheduleModalRefresh,
+				onGroupByChange: async () => {
+					this.templateListCache = await this.plugin.getTemplateDataList();
+				},
+				onRefreshContent: () => this.renderModalContent(),
+			});
+
 			filterInput.onkeydown = (e) => {
-				if (e.key === 'Escape' && this.filterText.trim()) {
+				if (e.key === "Escape" && this.filterText.trim()) {
 					e.preventDefault();
 					e.stopPropagation();
-					this.filterText = '';
-					filterInput.value = '';
-					clearBtn.style.display = 'none';
-					if (this.filterDebounceHandle !== null) {
-						window.clearTimeout(this.filterDebounceHandle);
-						this.filterDebounceHandle = null;
+					this.filterText = "";
+					filterInput.value = "";
+					const clearBtn = filterHost.querySelector(
+						".fulcrum-timer-buttons-filter-clear",
+					) as HTMLButtonElement | null;
+					if (clearBtn) clearBtn.style.display = "none";
+					if (filterDebounce !== null) {
+						window.clearTimeout(filterDebounce);
+						filterDebounce = null;
 					}
 					void this.renderModalContent();
 				}
 			};
 
-			this.countStatEl = contentEl.createDiv({ cls: 'lapse-buttons-count' });
-			this.contentContainer = contentEl.createDiv({ cls: 'lapse-buttons-content' });
+			this.countStatEl = contentEl.createDiv({ cls: "fulcrum-timer-buttons-count" });
+			this.contentContainer = contentEl.createDiv({ cls: 'fulcrum-timer-buttons-content' });
 			await this.renderModalContent();
 
 			window.requestAnimationFrame(() => filterInput.focus());
@@ -5662,30 +5296,36 @@ class LapseQuickStartModal extends Modal {
 
 	async renderModalContent() {
 		if (!this.contentContainer || !this.countStatEl) return;
-		this.contentContainer.empty();
+		const seq = ++this.contentRenderSeq;
+		const container = this.contentContainer;
+		const countStatEl = this.countStatEl;
+		container.empty();
 
 		const total = this.templateListCache.length;
 		const filtered = this.templateListCache.filter(d => matchesQuickStartFilter(d, this.filterText));
 
+		if (seq !== this.contentRenderSeq) return;
+
 		if (this.filterText.trim()) {
-			this.countStatEl.textContent =
+			countStatEl.textContent =
 				filtered.length === total
 					? `${total} timer${total === 1 ? '' : 's'}`
 					: `Showing ${filtered.length} of ${total} timers`;
 		} else {
-			this.countStatEl.textContent = `${total} timer${total === 1 ? '' : 's'}`;
+			countStatEl.textContent = `${total} timer${total === 1 ? '' : 's'}`;
 		}
 
 		if (filtered.length === 0) {
-			this.contentContainer.createEl('p', {
+			container.createEl('p', {
 				text: 'No timers match your filter.',
-				cls: 'lapse-buttons-empty'
+				cls: 'fulcrum-timer-buttons-empty'
 			});
 			return;
 		}
 
 		const groupResult = this.plugin.groupTemplateData(filtered);
-		await renderTemplateGroups(this.contentContainer, this.plugin, groupResult, () => this.close());
+		await renderTemplateGroups(container, this.plugin, groupResult, () => this.close());
+		if (seq !== this.contentRenderSeq) return;
 	}
 
 	onClose() {
@@ -5697,41 +5337,19 @@ class LapseQuickStartModal extends Modal {
 	}
 }
 
-class LapseGridView extends ItemView {
-	plugin: LapsePlugin;
-
-	constructor(leaf: WorkspaceLeaf, plugin: LapsePlugin) {
-		super(leaf);
-		this.plugin = plugin;
-	}
-
-	getViewType(): string {
-		return 'lapse-grid';
-	}
-
-	getDisplayText(): string {
-		return 'Entry Grid';
-	}
-
-	getIcon(): string {
-		return 'table';
-	}
-
-	async onOpen() {
-		await this.render();
-	}
+class TimerEntryGridView extends TimerEmbedPanel {
 
 	async render() {
-		const container = this.containerEl.children[1] as HTMLElement;
+		const container = this.panelEl();
 		container.empty();
-		container.addClass('lapse-grid-view');
+		container.addClass('fulcrum-timer-grid-view');
 
-		const header = container.createDiv({ cls: 'lapse-grid-header' });
+		const header = container.createDiv({ cls: 'fulcrum-timer-grid-header' });
 		header.createEl('h2', { text: 'Entry Grid' });
 
-		const headerButtons = header.createDiv({ cls: 'lapse-grid-header-buttons' });
+		const headerButtons = header.createDiv({ cls: 'fulcrum-timer-grid-header-buttons' });
 		const refreshBtn = headerButtons.createEl('button', {
-			cls: 'lapse-grid-refresh-btn clickable-icon',
+			cls: 'fulcrum-timer-grid-refresh-btn clickable-icon',
 			attr: { 'aria-label': 'Refresh grid' }
 		});
 		setIcon(refreshBtn, 'refresh-cw');
@@ -5743,14 +5361,14 @@ class LapseGridView extends ItemView {
 		if (groups.length === 0) {
 			container.createEl('p', {
 				text: 'No tracked Lapse entries found.',
-				cls: 'lapse-grid-empty'
+				cls: 'fulcrum-timer-grid-empty'
 			});
 			return;
 		}
 
 		for (const { file, entries } of groups) {
-			const noteSection = container.createDiv({ cls: 'lapse-grid-note-section' });
-			const noteHeader = noteSection.createDiv({ cls: 'lapse-grid-note-header' });
+			const noteSection = container.createDiv({ cls: 'fulcrum-timer-grid-note-section' });
+			const noteHeader = noteSection.createDiv({ cls: 'fulcrum-timer-grid-note-header' });
 			const title = noteHeader.createEl('a', {
 				text: file.basename,
 				href: file.path,
@@ -5762,13 +5380,13 @@ class LapseGridView extends ItemView {
 			};
 			noteHeader.createSpan({
 				text: `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`,
-				cls: 'lapse-grid-note-count'
+				cls: 'fulcrum-timer-grid-note-count'
 			});
 
-			const table = noteSection.createDiv({ cls: 'lapse-grid-table' });
-			const headerRow = table.createDiv({ cls: 'lapse-grid-entry-row lapse-grid-entry-header' });
+			const table = noteSection.createDiv({ cls: 'fulcrum-timer-grid-table' });
+			const headerRow = table.createDiv({ cls: 'fulcrum-timer-grid-entry-row fulcrum-timer-grid-entry-header' });
 			['Label', 'Start', 'End', 'Tags'].forEach(text => {
-				headerRow.createDiv({ text, cls: 'lapse-grid-entry-cell lapse-grid-entry-cell-header' });
+				headerRow.createDiv({ text, cls: 'fulcrum-timer-grid-entry-cell fulcrum-timer-grid-entry-cell-header' });
 			});
 
 			const sortedEntries = [...entries].sort((a, b) => {
@@ -5778,37 +5396,37 @@ class LapseGridView extends ItemView {
 			});
 			let rowIndex = 0;
 			for (const entry of sortedEntries) {
-				const row = table.createDiv({ cls: 'lapse-grid-entry-row' });
-				row.addClass(rowIndex % 2 === 0 ? 'lapse-grid-row-even' : 'lapse-grid-row-odd');
+				const row = table.createDiv({ cls: 'fulcrum-timer-grid-entry-row' });
+				row.addClass(rowIndex % 2 === 0 ? 'fulcrum-timer-grid-row-even' : 'fulcrum-timer-grid-row-odd');
 				rowIndex++;
-				const labelCell = row.createDiv({ cls: 'lapse-grid-entry-cell' });
+				const labelCell = row.createDiv({ cls: 'fulcrum-timer-grid-entry-cell' });
 				const labelInput = labelCell.createEl('input', {
 					type: 'text',
 					value: entry.label,
-					cls: 'lapse-grid-input'
+					cls: 'fulcrum-timer-grid-input'
 				}) as HTMLInputElement;
 
-				const startCell = row.createDiv({ cls: 'lapse-grid-entry-cell' });
+				const startCell = row.createDiv({ cls: 'fulcrum-timer-grid-entry-cell' });
 				const startInput = startCell.createEl('input', {
 					type: 'datetime-local',
 					value: this.plugin.formatForDatetimeLocal(entry.startTime),
-					cls: 'lapse-grid-input',
+					cls: 'fulcrum-timer-grid-input',
 					attr: { step: '1' }
 				}) as HTMLInputElement;
 
-				const endCell = row.createDiv({ cls: 'lapse-grid-entry-cell' });
+				const endCell = row.createDiv({ cls: 'fulcrum-timer-grid-entry-cell' });
 				const endInput = endCell.createEl('input', {
 					type: 'datetime-local',
 					value: this.plugin.formatForDatetimeLocal(entry.endTime),
-					cls: 'lapse-grid-input',
+					cls: 'fulcrum-timer-grid-input',
 					attr: { step: '1' }
 				}) as HTMLInputElement;
 
-				const tagsCell = row.createDiv({ cls: 'lapse-grid-entry-cell' });
+				const tagsCell = row.createDiv({ cls: 'fulcrum-timer-grid-entry-cell' });
 				const tagsInput = tagsCell.createEl('input', {
 					type: 'text',
 					value: (entry.tags || []).join(', '),
-					cls: 'lapse-grid-input',
+					cls: 'fulcrum-timer-grid-input',
 					attr: { placeholder: 'tag1, tag2' }
 				}) as HTMLInputElement;
 
@@ -5863,8 +5481,7 @@ class LapseGridView extends ItemView {
 	}
 }
 
-class LapseButtonsView extends ItemView {
-	plugin: LapsePlugin;
+class TimerQuickStartView extends TimerEmbedPanel {
 	filterText: string = '';
 	contentContainer: HTMLElement | null = null;
 	countStatEl: HTMLElement | null = null;
@@ -5873,29 +5490,9 @@ class LapseButtonsView extends ItemView {
 	filterDebounceHandle: number | null = null;
 	filterInputEl: HTMLInputElement | null = null;
 	private filterFocusApplied = false;
+	private contentRenderSeq = 0;
 
-	constructor(leaf: WorkspaceLeaf, plugin: LapsePlugin) {
-		super(leaf);
-		this.plugin = plugin;
-	}
-
-	getViewType(): string {
-		return 'lapse-buttons';
-	}
-
-	getDisplayText(): string {
-		return 'Quick Start';
-	}
-
-	getIcon(): string {
-		return 'play-circle';
-	}
-
-	async onOpen() {
-		await this.render();
-	}
-
-	async onClose() {
+	unmount(): void {
 		if (this.filterDebounceHandle !== null) {
 			window.clearTimeout(this.filterDebounceHandle);
 			this.filterDebounceHandle = null;
@@ -5912,18 +5509,18 @@ class LapseButtonsView extends ItemView {
 	}
 
 	async render() {
-		const container = this.containerEl.children[1] as HTMLElement;
+		const container = this.panelEl();
 		container.empty();
-		container.addClass('lapse-buttons-view');
+		container.addClass('fulcrum-timer-buttons-view');
 
 		// Header
-		const header = container.createDiv({ cls: 'lapse-buttons-header' });
+		const header = container.createDiv({ cls: 'fulcrum-timer-buttons-header' });
 		header.createEl('h2', { text: 'Quick Start' });
 
-		const headerButtons = header.createDiv({ cls: 'lapse-buttons-header-buttons' });
+		const headerButtons = header.createDiv({ cls: 'fulcrum-timer-buttons-header-buttons' });
 
 		const refreshBtn = headerButtons.createEl('button', {
-			cls: 'lapse-buttons-refresh-btn clickable-icon',
+			cls: 'fulcrum-timer-buttons-refresh-btn clickable-icon',
 			attr: { 'aria-label': 'Refresh template list' }
 		});
 		setIcon(refreshBtn, 'refresh-cw');
@@ -5932,25 +5529,7 @@ class LapseButtonsView extends ItemView {
 			await this.renderContent();
 		};
 
-		const filterContainer = container.createDiv({ cls: 'lapse-buttons-filter' });
-		const filterInput = filterContainer.createEl('input', {
-			cls: 'lapse-buttons-filter-input',
-			attr: {
-				type: 'text',
-				placeholder: 'Filter by name, project, or initials…',
-				'aria-label': 'Filter timers'
-			}
-		}) as HTMLInputElement;
-		this.filterInputEl = filterInput;
-		filterInput.value = this.filterText;
-
-		const clearBtn = filterContainer.createEl('button', {
-			cls: 'lapse-buttons-filter-clear clickable-icon',
-			attr: { 'aria-label': 'Clear filter' }
-		});
-		setIcon(clearBtn, 'x');
-		clearBtn.style.display = this.filterText ? 'flex' : 'none';
-
+		const filterContainer = container.createDiv({ cls: "fulcrum-timer-buttons-filter-bar-host" });
 		const scheduleContentRefresh = () => {
 			if (this.filterDebounceHandle !== null) window.clearTimeout(this.filterDebounceHandle);
 			this.filterDebounceHandle = window.setTimeout(() => {
@@ -5958,30 +5537,29 @@ class LapseButtonsView extends ItemView {
 				void this.renderContent();
 			}, 120);
 		};
-
-		clearBtn.onclick = () => {
-			this.filterText = '';
-			filterInput.value = '';
-			clearBtn.style.display = 'none';
-			if (this.filterDebounceHandle !== null) {
-				window.clearTimeout(this.filterDebounceHandle);
-				this.filterDebounceHandle = null;
-			}
-			void this.renderContent();
-		};
-
-		filterInput.oninput = () => {
-			this.filterText = filterInput.value;
-			clearBtn.style.display = this.filterText ? 'flex' : 'none';
-			scheduleContentRefresh();
-		};
+		const filterInput = mountQuickStartFilterBar(filterContainer, {
+			plugin: this.plugin,
+			filterText: this.filterText,
+			onFilterTextChange: (text) => {
+				this.filterText = text;
+			},
+			onFilterInput: scheduleContentRefresh,
+			onGroupByChange: () => {
+				this.templateListCache = null;
+			},
+			onRefreshContent: () => this.renderContent(),
+		});
+		this.filterInputEl = filterInput;
 
 		filterInput.onkeydown = (e) => {
-			if (e.key === 'Escape' && this.filterText.trim()) {
+			if (e.key === "Escape" && this.filterText.trim()) {
 				e.preventDefault();
-				this.filterText = '';
-				filterInput.value = '';
-				clearBtn.style.display = 'none';
+				this.filterText = "";
+				filterInput.value = "";
+				const clearBtn = filterContainer.querySelector(
+					".fulcrum-timer-buttons-filter-clear",
+				) as HTMLButtonElement | null;
+				if (clearBtn) clearBtn.style.display = "none";
 				if (this.filterDebounceHandle !== null) {
 					window.clearTimeout(this.filterDebounceHandle);
 					this.filterDebounceHandle = null;
@@ -5990,8 +5568,8 @@ class LapseButtonsView extends ItemView {
 			}
 		};
 
-		this.countStatEl = container.createDiv({ cls: 'lapse-buttons-count' });
-		this.contentContainer = container.createDiv({ cls: 'lapse-buttons-content' });
+		this.countStatEl = container.createDiv({ cls: "fulcrum-timer-buttons-count" });
+		this.contentContainer = container.createDiv({ cls: 'fulcrum-timer-buttons-content' });
 		await this.renderContent();
 
 		if (!this.filterFocusApplied) {
@@ -6002,18 +5580,23 @@ class LapseButtonsView extends ItemView {
 
 	async renderContent() {
 		if (!this.contentContainer || !this.countStatEl) return;
-		this.contentContainer.empty();
+		const seq = ++this.contentRenderSeq;
+		const container = this.contentContainer;
+		const countStatEl = this.countStatEl;
+		container.empty();
 
 		if (this.templateListCache === null) {
 			this.templateListCache = await this.plugin.getTemplateDataList();
 		}
+		if (seq !== this.contentRenderSeq) return;
+
 		const templateDataList = this.templateListCache;
 
 		if (templateDataList.length === 0) {
-			this.countStatEl.textContent = '0 timers';
-			this.contentContainer.createEl('p', {
-				text: 'No Quick Start items yet. Set the templates folder and/or default project folder in Lapse settings.',
-				cls: 'lapse-buttons-empty'
+			countStatEl.textContent = '0 timers';
+			container.createEl('p', {
+				text: 'No Quick Start items yet. Set the templates folder and/or default project folder in Fulcrum timer settings.',
+				cls: 'fulcrum-timer-buttons-empty'
 			});
 			return;
 		}
@@ -6021,32 +5604,33 @@ class LapseButtonsView extends ItemView {
 		const filteredTemplates = templateDataList.filter(data => matchesQuickStartFilter(data, this.filterText));
 
 		if (this.filterText.trim()) {
-			this.countStatEl.textContent =
+			countStatEl.textContent =
 				filteredTemplates.length === templateDataList.length
 					? `${templateDataList.length} timer${templateDataList.length === 1 ? '' : 's'}`
 					: `Showing ${filteredTemplates.length} of ${templateDataList.length} timers`;
 		} else {
-			this.countStatEl.textContent = `${templateDataList.length} timer${templateDataList.length === 1 ? '' : 's'}`;
+			countStatEl.textContent = `${templateDataList.length} timer${templateDataList.length === 1 ? '' : 's'}`;
 		}
 
 		if (filteredTemplates.length === 0) {
-			this.contentContainer.createEl('p', {
+			container.createEl('p', {
 				text: 'No timers match your filter.',
-				cls: 'lapse-buttons-empty'
+				cls: 'fulcrum-timer-buttons-empty'
 			});
 			return;
 		}
 
 		const groupResult = this.plugin.groupTemplateData(filteredTemplates);
-		await renderTemplateGroups(this.contentContainer, this.plugin, groupResult);
+		await renderTemplateGroups(container, this.plugin, groupResult);
+		if (seq !== this.contentRenderSeq) return;
 	}
 }
 
-class LapseButtonModal extends Modal {
-	plugin: LapsePlugin;
+class TimerButtonModal extends Modal {
+	plugin: TimerModule;
 	onChoose: (templateName: string) => void;
 
-	constructor(app: App, plugin: LapsePlugin, onChoose: (templateName: string) => void) {
+	constructor(app: App, plugin: TimerModule, onChoose: (templateName: string) => void) {
 		super(app);
 		this.plugin = plugin;
 		this.onChoose = onChoose;
@@ -6059,7 +5643,7 @@ class LapseButtonModal extends Modal {
 		contentEl.createEl('h2', { text: 'Select template' });
 
 		// Get all template files from the configured folder
-		const templateFolder = this.plugin.settings.lapseButtonTemplatesFolder;
+		const templateFolder = this.plugin.settings.timerButtonTemplatesFolder;
 		const files = this.app.vault.getMarkdownFiles();
 		const templates = files.filter(file => file.path.startsWith(templateFolder + '/'));
 
@@ -6072,7 +5656,7 @@ class LapseButtonModal extends Modal {
 		}
 
 		// Create a list of template buttons
-		const templateList = contentEl.createDiv({ cls: 'lapse-template-list' });
+		const templateList = contentEl.createDiv({ cls: 'fulcrum-timer-template-list' });
 		
 		templates.forEach(template => {
 			// Extract template name (remove folder path and .md extension)
@@ -6080,7 +5664,7 @@ class LapseButtonModal extends Modal {
 			
 			const button = templateList.createEl('button', {
 				text: templateName,
-				cls: 'lapse-template-option'
+				cls: 'fulcrum-timer-template-option'
 			});
 			
 			button.onclick = () => {
@@ -6096,477 +5680,7 @@ class LapseButtonModal extends Modal {
 	}
 }
 
-class LapseSettingTab extends PluginSettingTab {
-	plugin: LapsePlugin;
-
-	constructor(app: App, plugin: LapsePlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const { containerEl } = this;
-
-		containerEl.empty();
-
-		containerEl.createEl('h3', { text: 'URL schemes (Obsidian URI)' });
-		containerEl.createEl('p', {
-			text: 'URI host must be lapse-tracker (manifest id). Example: obsidian://lapse-tracker?screen=activity. Do not use action=open.',
-		});
-		const lapseUris: [string, string][] = [
-			['/lapse/activity — Activity sidebar (default)', 'obsidian://lapse-tracker?screen=activity'],
-			['/lapse/reports', 'obsidian://lapse-tracker?screen=reports'],
-			['/lapse/quick-start — template timers', 'obsidian://lapse-tracker?screen=quick-start'],
-			['/lapse/calendar', 'obsidian://lapse-tracker?screen=calendar'],
-			['/lapse/grid — entry grid', 'obsidian://lapse-tracker?screen=grid'],
-		];
-		for (const [label, uri] of lapseUris) {
-			containerEl.createEl('p', { text: label, cls: 'setting-item-description' });
-			const pre = containerEl.createEl('pre', { text: uri });
-			pre.style.whiteSpace = 'pre-wrap';
-			pre.style.wordBreak = 'break-all';
-		}
-
-		containerEl.createEl('h3', { text: 'Frontmatter Keys' });
-
-		new Setting(containerEl)
-			.setName('Start Time Key')
-			.setDesc('Frontmatter key for start time')
-			.addText(text => text
-				.setPlaceholder('startTime')
-				.setValue(this.plugin.settings.startTimeKey)
-				.onChange(async (value) => {
-					this.plugin.settings.startTimeKey = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('End Time Key')
-			.setDesc('Frontmatter key for end time')
-			.addText(text => text
-				.setPlaceholder('endTime')
-				.setValue(this.plugin.settings.endTimeKey)
-				.onChange(async (value) => {
-					this.plugin.settings.endTimeKey = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Total Time Key')
-			.setDesc('Frontmatter key for total time tracked')
-			.addText(text => text
-				.setPlaceholder('totalTimeTracked')
-				.setValue(this.plugin.settings.totalTimeKey)
-				.onChange(async (value) => {
-					this.plugin.settings.totalTimeKey = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Project Key')
-			.setDesc('Frontmatter key for project name')
-			.addText(text => text
-				.setPlaceholder('project')
-				.setValue(this.plugin.settings.projectKey)
-				.onChange(async (value) => {
-					this.plugin.settings.projectKey = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Group Quick Start By…')
-			.setDesc('Frontmatter key to group Quick Start panel by (e.g. project, parent, areaOfLife). Leave as project for default behavior.')
-			.addText(text => text
-				.setPlaceholder('project')
-				.setValue(this.plugin.settings.quickStartGroupByKey)
-				.onChange(async (value) => {
-					this.plugin.settings.quickStartGroupByKey = (value?.trim()) || 'project';
-					await this.plugin.saveSettings();
-				}));
-
-		containerEl.createEl('h3', { text: 'Default Time Entry Label' });
-
-		new Setting(containerEl)
-			.setName('Label Type')
-			.setDesc('How to determine the default label for new time entries')
-			.addDropdown(dropdown => dropdown
-				.addOption('freeText', 'Free Text')
-				.addOption('frontmatter', 'Frontmatter')
-				.addOption('fileName', 'File Name')
-				.setValue(this.plugin.settings.defaultLabelType)
-				.onChange(async (value) => {
-					this.plugin.settings.defaultLabelType = value as LapseSettings["defaultLabelType"];
-					await this.plugin.saveSettings();
-					this.display(); // Refresh to show/hide conditional inputs
-				}));
-
-		if (this.plugin.settings.defaultLabelType === 'freeText') {
-			new Setting(containerEl)
-				.setName('Default Label Text')
-				.setDesc('Default text to use for new time entries')
-				.addText(text => text
-					.setPlaceholder('Enter default label')
-					.setValue(this.plugin.settings.defaultLabelText)
-					.onChange(async (value) => {
-						this.plugin.settings.defaultLabelText = value;
-						await this.plugin.saveSettings();
-					}));
-		}
-
-		if (this.plugin.settings.defaultLabelType === 'frontmatter') {
-			new Setting(containerEl)
-				.setName('Frontmatter Key')
-				.setDesc('Frontmatter key to use for default label')
-				.addText(text => text
-					.setPlaceholder('project')
-					.setValue(this.plugin.settings.defaultLabelFrontmatterKey)
-					.onChange(async (value) => {
-						this.plugin.settings.defaultLabelFrontmatterKey = value;
-						await this.plugin.saveSettings();
-					}));
-		}
-
-		if (this.plugin.settings.defaultLabelType === 'fileName') {
-			new Setting(containerEl)
-				.setName('Remove timestamp from filename')
-				.setDesc('When enabled, removes date and time stamps from filenames when setting the default label')
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.removeTimestampFromFileName)
-					.onChange(async (value) => {
-						this.plugin.settings.removeTimestampFromFileName = value;
-						await this.plugin.saveSettings();
-					}));
-		}
-
-		containerEl.createEl('h3', { text: 'Display Options' });
-
-		new Setting(containerEl)
-			.setName('Hide timestamps in views')
-			.setDesc('When enabled, removes the display of timestamps in note titles in Active Timers and Time Reports views. This does not change the name of any note, just hides the timestamp for cleaner display.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.hideTimestampsInViews)
-				.onChange(async (value) => {
-					this.plugin.settings.hideTimestampsInViews = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Show status bar')
-			.setDesc('Display active timer(s) in the status bar at the bottom of Obsidian')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showStatusBar)
-				.onChange(async (value) => {
-					this.plugin.settings.showStatusBar = value;
-					await this.plugin.saveSettings();
-					
-					// Update status bar visibility
-					if (value) {
-						if (!this.plugin.statusBarItem) {
-							this.plugin.statusBarItem = this.plugin.addStatusBarItem();
-							this.plugin.statusBarItem.addClass('lapse-status-bar');
-						}
-						this.plugin.updateStatusBar();
-						if (!this.plugin.statusBarUpdateInterval) {
-							this.plugin.statusBarUpdateInterval = window.setInterval(() => {
-								this.plugin.updateStatusBar();
-							}, 1000);
-						}
-					} else {
-						if (this.plugin.statusBarUpdateInterval) {
-							window.clearInterval(this.plugin.statusBarUpdateInterval);
-							this.plugin.statusBarUpdateInterval = null;
-						}
-						if (this.plugin.statusBarItem) {
-							this.plugin.statusBarItem.setText('');
-							this.plugin.statusBarItem.hide();
-						}
-					}
-				}));
-
-		new Setting(containerEl)
-			.setName('Show duration on note buttons')
-			.setDesc('Display task duration on inline lapse buttons (e.g., `lapse:Dishes`)')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showDurationOnNoteButtons)
-				.onChange(async (value) => {
-					this.plugin.settings.showDurationOnNoteButtons = value;
-					await this.plugin.saveSettings();
-					// Refresh sidebar to update note buttons
-					this.app.workspace.getLeavesOfType('lapse-sidebar').forEach(leaf => {
-						if (leaf.view instanceof LapseSidebarView) {
-							leaf.view.refresh();
-						}
-					});
-				}));
-
-		if (this.plugin.settings.showDurationOnNoteButtons) {
-			new Setting(containerEl)
-				.setName('Duration type')
-				.setDesc('Project: aggregate time from all notes with the same project. Note: aggregate time from all notes with the same base filename (ignoring timestamp).')
-				.addDropdown(dropdown => dropdown
-					.addOption('project', 'Project')
-					.addOption('note', 'Note')
-					.setValue(this.plugin.settings.noteButtonDurationType)
-					.onChange(async (value) => {
-						this.plugin.settings.noteButtonDurationType = value as 'project' | 'note';
-						await this.plugin.saveSettings();
-						// Refresh sidebar to update note buttons
-						this.app.workspace.getLeavesOfType('lapse-sidebar').forEach(leaf => {
-							if (leaf.view instanceof LapseSidebarView) {
-								leaf.view.refresh();
-							}
-						});
-					}));
-
-			new Setting(containerEl)
-				.setName('Time period')
-				.setDesc('Select the time period for duration calculation')
-				.addDropdown(dropdown => dropdown
-					.addOption('today', 'Today')
-					.addOption('thisWeek', 'This Week')
-					.addOption('thisMonth', 'This Month')
-					.addOption('lastWeek', 'Last Week')
-					.addOption('lastMonth', 'Last Month')
-					.setValue(this.plugin.settings.noteButtonTimePeriod)
-					.onChange(async (value) => {
-						this.plugin.settings.noteButtonTimePeriod = value as 'today' | 'thisWeek' | 'thisMonth' | 'lastWeek' | 'lastMonth';
-						await this.plugin.saveSettings();
-						// Refresh sidebar to update note buttons
-						this.app.workspace.getLeavesOfType('lapse-sidebar').forEach(leaf => {
-							if (leaf.view instanceof LapseSidebarView) {
-								leaf.view.refresh();
-							}
-						});
-					}));
-		}
-
-		new Setting(containerEl)
-			.setName('First day of week')
-			.setDesc('Set the first day of the week for weekly reports')
-			.addDropdown(dropdown => dropdown
-				.addOption('0', 'Sunday')
-				.addOption('1', 'Monday')
-				.addOption('2', 'Tuesday')
-				.addOption('3', 'Wednesday')
-				.addOption('4', 'Thursday')
-				.addOption('5', 'Friday')
-				.addOption('6', 'Saturday')
-				.setValue(this.plugin.settings.firstDayOfWeek.toString())
-				.onChange(async (value) => {
-					this.plugin.settings.firstDayOfWeek = parseInt(value);
-					await this.plugin.saveSettings();
-				}));
-
-		containerEl.createEl('h3', { text: 'Tags' });
-
-		new Setting(containerEl)
-			.setName('Default tag on note')
-			.setDesc('Tag to add to notes when time entries are created (e.g., #lapse)')
-			.addText(text => text
-				.setPlaceholder('#lapse')
-				.setValue(this.plugin.settings.defaultTagOnNote)
-				.onChange(async (value) => {
-					this.plugin.settings.defaultTagOnNote = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Default tag on time entries')
-			.setDesc('Tag to automatically add to new time entries (leave empty for none, e.g., #work)')
-			.addText(text => text
-				.setPlaceholder('#work')
-				.setValue(this.plugin.settings.defaultTagOnTimeEntries)
-				.onChange(async (value) => {
-					this.plugin.settings.defaultTagOnTimeEntries = value;
-					await this.plugin.saveSettings();
-				}));
-
-		containerEl.createEl('h3', { text: 'Lapse Button Templates' });
-
-		new Setting(containerEl)
-			.setName('Templates folder')
-			.setDesc('Folder path containing templates for lapse-button inline buttons (e.g., Templates/Lapse Buttons). Templates should be in your vault\'s template folder.')
-			.addText(text => text
-				.setPlaceholder('Templates/Lapse Buttons')
-				.setValue(this.plugin.settings.lapseButtonTemplatesFolder)
-				.onChange(async (value) => {
-					this.plugin.settings.lapseButtonTemplatesFolder = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Quick Start area key')
-			.setDesc('Frontmatter key for the gray text after • on template Quick Start cards (Timery-style), e.g. area or areaOfLife.')
-			.addText(text => text
-				.setPlaceholder('area')
-				.setValue(this.plugin.settings.quickStartAreaKey)
-				.onChange(async (value) => {
-					this.plugin.settings.quickStartAreaKey = (value?.trim()) || 'area';
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Quick Start description key')
-			.setDesc('Frontmatter key for the bottom line on template cards. If empty in the note, the note file name is used. Also checks description if entry is missing.')
-			.addText(text => text
-				.setPlaceholder('entry')
-				.setValue(this.plugin.settings.quickStartEntryKey)
-				.onChange(async (value) => {
-					this.plugin.settings.quickStartEntryKey = (value?.trim()) || 'entry';
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Default project folder')
-			.setDesc('Optional. Each note (and subfolder) in this folder appears as an extra Quick Start timer. Tapping one starts a new timer note for that project with the clock running now.')
-			.addText(text => text
-				.setPlaceholder('Projects')
-				.setValue(this.plugin.settings.defaultProjectFolder)
-				.onChange(async (value) => {
-					this.plugin.settings.defaultProjectFolder = value.trim();
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Default save path for timer notes')
-			.setDesc('Vault path pattern for new timer notes. If it does not end in .md, the file name {{project}}-<timestamp>.md is appended. Use moment-style tokens: YYYY, MM, DD, HH, mm, ss, MMM, MMMM, ddd, dddd, plus {{project}} and {{title}}.')
-			.addText(text => text
-				.setPlaceholder('Lapse/{{YYYY}}/{{MM}}')
-				.setValue(this.plugin.settings.defaultTimerSavePath)
-				.onChange(async (value) => {
-					this.plugin.settings.defaultTimerSavePath = value.trim();
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Default timer template')
-			.setDesc('Markdown file for project Quick Start and the calendar (when no per-button template). Only {{project}}, {{title}}, {{date}}, and {{now}} are substituted — the rest of the file is left as-is (safe for Templater). Leave empty for a minimal blank note: Lapse will add a running timer and sync frontmatter. If this path is set, Lapse will not rewrite that note’s YAML or inject timers.')
-			.addText(text => text
-				.setPlaceholder('Templates/Lapse/Default Timer.md')
-				.setValue(this.plugin.settings.defaultTimerTemplate)
-				.onChange(async (value) => {
-					this.plugin.settings.defaultTimerTemplate = value.trim();
-					await this.plugin.saveSettings();
-				}));
-
-		containerEl.createEl('h3', { text: 'Time blocking (planned blocks)' });
-
-		new Setting(containerEl)
-			.setName('Planner folder')
-			.setDesc('Per-day notes `YYYY-MM-DD.md` in this folder store planned blocks (frontmatter). Not counted in time reports until you log time or start a timer.')
-			.addText((text) =>
-				text
-					.setPlaceholder('Lapse/Planner')
-					.setValue(this.plugin.settings.plannedBlocksFolder)
-					.onChange(async (value) => {
-						this.plugin.settings.plannedBlocksFolder = value.trim() || 'Lapse/Planner';
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Planner frontmatter key')
-			.setDesc('YAML array key for planned intervals inside each planner note.')
-			.addText((text) =>
-				text
-					.setPlaceholder('lapse_planned')
-					.setValue(this.plugin.settings.plannedBlocksKey)
-					.onChange(async (value) => {
-						this.plugin.settings.plannedBlocksKey = (value?.trim()) || 'lapse_planned';
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Calendar: draw new slot as…')
-			.setDesc('When you drag on an empty area of the week/day calendar: create a planned block, a logged interval (timer note), or ask each time.')
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption('ask', 'Ask (plan vs log)')
-					.addOption('plan', 'Always plan')
-					.addOption('log', 'Always log time')
-					.setValue(this.plugin.settings.calendarDrawMode)
-					.onChange(async (value) => {
-						this.plugin.settings.calendarDrawMode = value as LapseSettings['calendarDrawMode'];
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		containerEl.createDiv({ cls: 'setting-item-description' })
-			.createEl('p', {
-				text: 'Inline code `lapse:TemplateName` and template Quick Start buttons create a new note from that template (saved using the path above) and open it in a new tab. Project Quick Start buttons start a running timer immediately.'
-			});
-
-		containerEl.createEl('h3', { text: 'Timer Controls' });
-
-		new Setting(containerEl)
-			.setName('Show seconds')
-			.setDesc('Display seconds in timer')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showSeconds)
-				.onChange(async (value) => {
-					this.plugin.settings.showSeconds = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Time Adjustment')
-			.setDesc('Number of minutes to adjust start time with << and >> buttons')
-			.addText(text => text
-				.setPlaceholder('5')
-				.setValue(this.plugin.settings.timeAdjustMinutes.toString())
-				.onChange(async (value) => {
-					const numValue = parseInt(value) || 5;
-					this.plugin.settings.timeAdjustMinutes = numValue;
-					await this.plugin.saveSettings();
-				}));
-
-		containerEl.createEl('h3', { text: 'Performance' });
-
-		new Setting(containerEl)
-			.setName('Excluded folders')
-			.setDesc('Folders to exclude from time tracking (one pattern per line). Supports glob patterns like */2020/* or **/Archive/**')
-			.addTextArea(text => {
-				text
-					.setPlaceholder('Templates\n*/2020/*\n**/Archive/**')
-					.setValue(this.plugin.settings.excludedFolders.join('\n'))
-					.onChange(async (value) => {
-						// Split by newline and filter empty lines
-						this.plugin.settings.excludedFolders = value
-							.split('\n')
-							.map(line => line.trim())
-							.filter(line => line.length > 0);
-						await this.plugin.saveSettings();
-					});
-				text.inputEl.rows = 6;
-				text.inputEl.cols = 40;
-			});
-
-		containerEl.createDiv({ cls: 'setting-item-description' })
-			.createEl('div', { text: 'Example patterns:', cls: 'setting-item-description' })
-			.createEl('ul', {}, (ul) => {
-				ul.createEl('li', { text: 'Templates - Exact folder name' });
-				ul.createEl('li', { text: '*/2020/* - 2020 folder one level deep' });
-				ul.createEl('li', { text: '**/2020/** - 2020 folder at any depth' });
-				ul.createEl('li', { text: '**/Archive - Any folder ending in Archive' });
-			});
-
-		// Add GitHub issue link at the bottom
-		containerEl.createEl('hr', { cls: 'lapse-settings-divider' });
-		
-		const githubLinkContainer = containerEl.createDiv({ cls: 'lapse-settings-footer' });
-		const githubLink = githubLinkContainer.createEl('a', {
-			text: 'Report an issue on GitHub',
-			href: 'https://github.com/jimmy-little/obsidian-lapse-tracker/issues/new',
-			cls: 'lapse-github-link'
-		});
-		githubLink.setAttr('target', '_blank');
-		githubLink.setAttr('rel', 'noopener noreferrer');
-	}
-}
-
-class LapseReportsView extends ItemView {
-	plugin: LapsePlugin;
+class TimerSessionsView extends TimerEmbedPanel {
 	dateFilter: 'today' | 'thisWeek' | 'thisMonth' | 'lastWeek' | 'lastMonth' | 'custom' = 'today';
 	customStartDate: string = '';
 	customEndDate: string = '';
@@ -6574,41 +5688,20 @@ class LapseReportsView extends ItemView {
 	secondaryGroupBy: 'none' | 'note' | 'project' | 'tag' | 'date' = 'none';
 	expandedGroups: Set<string> = new Set(); // Track which groups are expanded
 
-	constructor(leaf: WorkspaceLeaf, plugin: LapsePlugin) {
-		super(leaf);
-		this.plugin = plugin;
-	}
-
-	getViewType(): string {
-		return 'lapse-reports';
-	}
-
-	getDisplayText(): string {
-		return 'Time Reports';
-	}
-
-	getIcon(): string {
-		return 'bar-chart-2';
-	}
-
-	async onOpen() {
-		await this.render();
-	}
-
 	async render() {
-		const container = this.containerEl.children[1];
+		const container = this.panelEl();
 		container.empty();
 
 		// Header with inline controls
-		const header = container.createDiv({ cls: 'lapse-reports-header' });
+		const header = container.createDiv({ cls: 'fulcrum-timer-reports-header' });
 		
 		// Controls container - all inline
-		const controlsContainer = header.createDiv({ cls: 'lapse-reports-controls' });
+		const controlsContainer = header.createDiv({ cls: 'fulcrum-timer-reports-controls' });
 		
 		// Date filter dropdown
-		const dateFilterSetting = controlsContainer.createDiv({ cls: 'lapse-reports-groupby' });
+		const dateFilterSetting = controlsContainer.createDiv({ cls: 'fulcrum-timer-reports-groupby' });
 		dateFilterSetting.createEl('label', { text: 'Period: ' });
-		const dateFilterSelect = dateFilterSetting.createEl('select', { cls: 'lapse-reports-select' });
+		const dateFilterSelect = dateFilterSetting.createEl('select', { cls: 'fulcrum-timer-reports-select' });
 		dateFilterSelect.createEl('option', { text: 'Today', value: 'today' });
 		dateFilterSelect.createEl('option', { text: 'This Week', value: 'thisWeek' });
 		dateFilterSelect.createEl('option', { text: 'This Month', value: 'thisMonth' });
@@ -6622,9 +5715,9 @@ class LapseReportsView extends ItemView {
 		};
 		
 		// Primary grouping
-		const groupBySetting = controlsContainer.createDiv({ cls: 'lapse-reports-groupby' });
+		const groupBySetting = controlsContainer.createDiv({ cls: 'fulcrum-timer-reports-groupby' });
 		groupBySetting.createEl('label', { text: 'Group by: ' });
-		const groupBySelect = groupBySetting.createEl('select', { cls: 'lapse-reports-select' });
+		const groupBySelect = groupBySetting.createEl('select', { cls: 'fulcrum-timer-reports-select' });
 		groupBySelect.createEl('option', { text: 'Note', value: 'note' });
 		groupBySelect.createEl('option', { text: 'Project', value: 'project' });
 		groupBySelect.createEl('option', { text: 'Tag', value: 'tag' });
@@ -6636,9 +5729,9 @@ class LapseReportsView extends ItemView {
 		};
 
 		// Secondary grouping
-		const secondaryGroupBySetting = controlsContainer.createDiv({ cls: 'lapse-reports-groupby' });
+		const secondaryGroupBySetting = controlsContainer.createDiv({ cls: 'fulcrum-timer-reports-groupby' });
 		secondaryGroupBySetting.createEl('label', { text: 'Then by: ' });
-		const secondaryGroupBySelect = secondaryGroupBySetting.createEl('select', { cls: 'lapse-reports-select' });
+		const secondaryGroupBySelect = secondaryGroupBySetting.createEl('select', { cls: 'fulcrum-timer-reports-select' });
 		secondaryGroupBySelect.createEl('option', { text: 'None', value: 'none' });
 		secondaryGroupBySelect.createEl('option', { text: 'Note', value: 'note' });
 		secondaryGroupBySelect.createEl('option', { text: 'Project', value: 'project' });
@@ -6652,25 +5745,25 @@ class LapseReportsView extends ItemView {
 
 		// Custom date range picker (shown only when custom is selected)
 		if (this.dateFilter === 'custom') {
-			const customDateRow = container.createDiv({ cls: 'lapse-reports-custom-date' });
+			const customDateRow = container.createDiv({ cls: 'fulcrum-timer-reports-custom-date' });
 			
 			customDateRow.createEl('label', { text: 'Start: ' });
 			const startDateInput = customDateRow.createEl('input', { 
 				type: 'date',
-				cls: 'lapse-date-input'
+				cls: 'fulcrum-timer-date-input'
 			});
 			startDateInput.value = this.customStartDate || new Date().toISOString().split('T')[0];
 			
 			customDateRow.createEl('label', { text: 'End: ' });
 			const endDateInput = customDateRow.createEl('input', { 
 				type: 'date',
-				cls: 'lapse-date-input'
+				cls: 'fulcrum-timer-date-input'
 			});
 			endDateInput.value = this.customEndDate || new Date().toISOString().split('T')[0];
 			
 			const applyBtn = customDateRow.createEl('button', { 
 				text: 'Apply',
-				cls: 'lapse-apply-btn'
+				cls: 'fulcrum-timer-apply-btn'
 			});
 			applyBtn.onclick = async () => {
 				this.customStartDate = startDateInput.value;
@@ -6683,13 +5776,13 @@ class LapseReportsView extends ItemView {
 		const data = await this.getReportData();
 
 		// Summary section
-		const summary = container.createDiv({ cls: 'lapse-reports-summary' });
+		const summary = container.createDiv({ cls: 'fulcrum-timer-reports-summary' });
 		const totalTime = data.reduce((sum, item) => sum + item.totalTime, 0);
 		summary.createEl('h3', { text: `Total: ${this.plugin.formatTimeAsHHMMSS(totalTime)}` });
 
 		// Data table
-		const tableContainer = container.createDiv({ cls: 'lapse-reports-table-container' });
-		const table = tableContainer.createEl('table', { cls: 'lapse-reports-table' });
+		const tableContainer = container.createDiv({ cls: 'fulcrum-timer-reports-table-container' });
+		const table = tableContainer.createEl('table', { cls: 'fulcrum-timer-reports-table' });
 		
 		const thead = table.createEl('thead');
 		const headerRow = thead.createEl('tr');
@@ -6707,17 +5800,17 @@ class LapseReportsView extends ItemView {
 
 		for (const item of sortedData) {
 			// Primary group row
-			const row = tbody.createEl('tr', { cls: 'lapse-reports-group-row' });
+			const row = tbody.createEl('tr', { cls: 'fulcrum-timer-reports-group-row' });
 			
 			// Expand/collapse icon
-			const expandCell = row.createEl('td', { cls: 'lapse-reports-expand-cell' });
-			const expandBtn = expandCell.createEl('span', { cls: 'lapse-reports-expand-btn' });
+			const expandCell = row.createEl('td', { cls: 'fulcrum-timer-reports-expand-cell' });
+			const expandBtn = expandCell.createEl('span', { cls: 'fulcrum-timer-reports-expand-btn' });
 			const groupId = `group-${item.group}`;
 			const isExpanded = this.expandedGroups.has(groupId);
 			setIcon(expandBtn, isExpanded ? 'chevron-down' : 'chevron-right');
 			
 			// Group name cell - make clickable for note/project grouping
-			const groupNameCell = row.createEl('td', { cls: 'lapse-reports-group-name' });
+			const groupNameCell = row.createEl('td', { cls: 'fulcrum-timer-reports-group-name' });
 			if (this.groupBy === 'note' && item.entries.length > 0) {
 				// Link to the note file
 				const filePath = item.entries[0].filePath;
@@ -6820,9 +5913,9 @@ class LapseReportsView extends ItemView {
 				if (item.subGroups && item.subGroups.size > 0) {
 					// Show secondary grouping
 					for (const [subGroupName, subGroup] of item.subGroups) {
-						const subRow = tbody.createEl('tr', { cls: 'lapse-reports-subgroup-row' });
+						const subRow = tbody.createEl('tr', { cls: 'fulcrum-timer-reports-subgroup-row' });
 						subRow.createEl('td'); // Empty expand cell
-						subRow.createEl('td', { text: `  ${subGroupName}`, cls: 'lapse-reports-subgroup-name' });
+						subRow.createEl('td', { text: `  ${subGroupName}`, cls: 'fulcrum-timer-reports-subgroup-name' });
 						
 						const subProjects = new Set(subGroup.entries.map(e => e.project).filter(p => p));
 						const subTags = new Set<string>();
@@ -6870,9 +5963,9 @@ class LapseReportsView extends ItemView {
 				} else {
 					// Show individual entries
 					for (const { entry, noteName, project, filePath } of item.entries) {
-						const entryRow = tbody.createEl('tr', { cls: 'lapse-reports-entry-row' });
+						const entryRow = tbody.createEl('tr', { cls: 'fulcrum-timer-reports-entry-row' });
 						entryRow.createEl('td'); // Empty expand cell
-						entryRow.createEl('td', { text: `  ${entry.label}`, cls: 'lapse-reports-entry-label' });
+						entryRow.createEl('td', { text: `  ${entry.label}`, cls: 'fulcrum-timer-reports-entry-label' });
 						const entryProjectCell = entryRow.createEl('td');
 						if (project) {
 							const projectColor = await this.plugin.getProjectColor(project);
@@ -6910,7 +6003,7 @@ class LapseReportsView extends ItemView {
 						entryRow.createEl('td', { text: this.plugin.formatTimeAsHHMMSS(entryDuration) });
 						
 						// Note name as clickable link
-						const noteNameCell = entryRow.createEl('td', { cls: 'lapse-reports-note-name' });
+						const noteNameCell = entryRow.createEl('td', { cls: 'fulcrum-timer-reports-note-name' });
 						const noteLink = noteNameCell.createEl('a', { 
 							text: noteName, 
 							cls: 'internal-link',
@@ -6928,7 +6021,7 @@ class LapseReportsView extends ItemView {
 
 		// Chart section
 		if (data.length > 0) {
-			const chartContainer = container.createDiv({ cls: 'lapse-reports-chart-container' });
+			const chartContainer = container.createDiv({ cls: 'fulcrum-timer-reports-chart-container' });
 			await this.renderChart(chartContainer, data, totalTime);
 		}
 	}
@@ -7156,7 +6249,7 @@ class LapseReportsView extends ItemView {
 		const chartAreaWidth = viewBoxWidth - (padding * 2);
 		
 		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('class', 'lapse-reports-chart');
+		svg.setAttribute('class', 'fulcrum-timer-reports-chart');
 		svg.setAttribute('width', '100%');
 		svg.setAttribute('height', '300'); // Fixed pixel height
 		svg.setAttribute('viewBox', `0 0 ${viewBoxWidth} ${totalHeight}`);
@@ -7215,7 +6308,7 @@ class LapseReportsView extends ItemView {
 			foreignObject.setAttribute('height', labelHeight.toString());
 			
 			const labelDiv = document.createElement('div');
-			labelDiv.setAttribute('class', 'lapse-chart-label');
+			labelDiv.setAttribute('class', 'fulcrum-timer-chart-label');
 			labelDiv.style.width = '100%';
 			labelDiv.style.height = '100%';
 			labelDiv.style.display = 'flex';
@@ -7260,7 +6353,7 @@ class CalendarDrawChoiceModal extends Modal {
 		contentEl.createEl('p', {
 			text: 'Plan a block (intent only) or log time (creates a timer note with a completed interval).',
 		});
-		const row = contentEl.createDiv({ cls: 'lapse-calendar-draw-modal-buttons' });
+		const row = contentEl.createDiv({ cls: 'fulcrum-timer-calendar-draw-modal-buttons' });
 		const planBtn = row.createEl('button', { text: 'Plan', cls: 'mod-cta' });
 		planBtn.onclick = () => {
 			void Promise.resolve(this.onChoose('plan'));
@@ -7285,8 +6378,9 @@ class CalendarDrawChoiceModal extends Modal {
  * Displays time entries in a calendar grid similar to TaskNotes
  * Supports day, 3-day, week, and month views
  */
-class LapseCalendarView extends ItemView {
-	plugin: LapsePlugin;
+class TimerCalendarView extends ItemView {
+	plugin: TimerModule;
+	embedContainer: HTMLElement | null = null;
 	viewType: 'day' | '3day' | 'week' | 'month' = 'week';
 	currentDate: Date = new Date();
 	refreshInterval: number | null = null;
@@ -7312,13 +6406,13 @@ class LapseCalendarView extends ItemView {
 		previewBlock: null
 	};
 
-	constructor(leaf: WorkspaceLeaf, plugin: LapsePlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: TimerModule) {
 		super(leaf);
 		this.plugin = plugin;
 	}
 
 	getViewType(): string {
-		return 'lapse-calendar';
+		return 'fulcrum-timer-calendar';
 	}
 
 	getDisplayText(): string {
@@ -7345,22 +6439,22 @@ class LapseCalendarView extends ItemView {
 	}
 
 	async render() {
-		const container = this.containerEl.children[1];
+		const container = (this.embedContainer ?? this.containerEl.children[1]) as HTMLElement;
 		container.empty();
-		container.addClass('lapse-calendar-view');
+		container.addClass('fulcrum-timer-calendar-view');
 
 		// Header with navigation and view type selector
-		const header = container.createDiv({ cls: 'lapse-calendar-header' });
+		const header = container.createDiv({ cls: 'fulcrum-timer-calendar-header' });
 		
 		// Left side: Navigation
-		const navSection = header.createDiv({ cls: 'lapse-calendar-nav' });
+		const navSection = header.createDiv({ cls: 'fulcrum-timer-calendar-nav' });
 		const prevBtn = navSection.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Previous' } });
 		setIcon(prevBtn, 'chevron-left');
 		prevBtn.onclick = () => {
 			this.navigateDate(-1);
 		};
 
-		const todayBtn = navSection.createEl('button', { text: 'Today', cls: 'lapse-calendar-today-btn' });
+		const todayBtn = navSection.createEl('button', { text: 'Today', cls: 'fulcrum-timer-calendar-today-btn' });
 		todayBtn.onclick = () => {
 			this.currentDate = new Date();
 			this.render();
@@ -7373,13 +6467,13 @@ class LapseCalendarView extends ItemView {
 		};
 
 		// Center: Date range display
-		const dateDisplay = header.createDiv({ cls: 'lapse-calendar-date-display' });
+		const dateDisplay = header.createDiv({ cls: 'fulcrum-timer-calendar-date-display' });
 		this.updateDateDisplay(dateDisplay);
 
 		// Right side: View type selector and refresh
-		const controlsSection = header.createDiv({ cls: 'lapse-calendar-controls' });
+		const controlsSection = header.createDiv({ cls: 'fulcrum-timer-calendar-controls' });
 		
-		const viewTypeSelect = controlsSection.createEl('select', { cls: 'lapse-calendar-view-select' });
+		const viewTypeSelect = controlsSection.createEl('select', { cls: 'fulcrum-timer-calendar-view-select' });
 		viewTypeSelect.createEl('option', { text: 'Day', value: 'day' });
 		viewTypeSelect.createEl('option', { text: '3 Days', value: '3day' });
 		viewTypeSelect.createEl('option', { text: 'Week', value: 'week' });
@@ -7464,7 +6558,7 @@ class LapseCalendarView extends ItemView {
 	}
 
 	async renderCalendarGrid(container: HTMLElement) {
-		const gridContainer = container.createDiv({ cls: 'lapse-calendar-grid-container' });
+		const gridContainer = container.createDiv({ cls: 'fulcrum-timer-calendar-grid-container' });
 		
 		// Get all time entries in the date range
 		const startDate = this.getViewStartDate();
@@ -7535,11 +6629,11 @@ class LapseCalendarView extends ItemView {
 		noteName: string;
 	}>, planned: Array<{ file: TFile; block: PlannedBlock; dateIso: string }>, startDate: Date, endDate: Date) {
 		// Create calendar grid
-		const grid = container.createDiv({ cls: 'lapse-calendar-grid' });
+		const grid = container.createDiv({ cls: 'fulcrum-timer-calendar-grid' });
 		
 		// Time slots column (left side)
-		const timeColumn = grid.createDiv({ cls: 'lapse-calendar-time-column' });
-		timeColumn.createDiv({ cls: 'lapse-calendar-time-header' }); // Empty header for day columns
+		const timeColumn = grid.createDiv({ cls: 'fulcrum-timer-calendar-time-column' });
+		timeColumn.createDiv({ cls: 'fulcrum-timer-calendar-time-header' }); // Empty header for day columns
 		
 		// Generate time slots (every 30 minutes from 00:00 to 23:30)
 		const timeSlots: string[] = [];
@@ -7551,7 +6645,7 @@ class LapseCalendarView extends ItemView {
 		}
 
 		for (const timeSlot of timeSlots) {
-			const slot = timeColumn.createDiv({ cls: 'lapse-calendar-time-slot' });
+			const slot = timeColumn.createDiv({ cls: 'fulcrum-timer-calendar-time-slot' });
 			slot.textContent = timeSlot;
 		}
 
@@ -7563,26 +6657,26 @@ class LapseCalendarView extends ItemView {
 			currentDay.setDate(currentDay.getDate() + 1);
 		}
 
-		const daysContainer = grid.createDiv({ cls: 'lapse-calendar-days-container' });
+		const daysContainer = grid.createDiv({ cls: 'fulcrum-timer-calendar-days-container' });
 		
 		// Day headers
-		const dayHeaders = daysContainer.createDiv({ cls: 'lapse-calendar-day-headers' });
+		const dayHeaders = daysContainer.createDiv({ cls: 'fulcrum-timer-calendar-day-headers' });
 		for (const day of days) {
-			const header = dayHeaders.createDiv({ cls: 'lapse-calendar-day-header' });
+			const header = dayHeaders.createDiv({ cls: 'fulcrum-timer-calendar-day-header' });
 			header.createDiv({ 
 				text: day.toLocaleDateString('en-US', { weekday: 'short' }),
-				cls: 'lapse-calendar-day-weekday'
+				cls: 'fulcrum-timer-calendar-day-weekday'
 			});
 			header.createDiv({ 
 				text: String(day.getDate()),
-				cls: 'lapse-calendar-day-number'
+				cls: 'fulcrum-timer-calendar-day-number'
 			});
 		}
 
 		// Day columns with time slots
-		const dayColumns = daysContainer.createDiv({ cls: 'lapse-calendar-day-columns' });
+		const dayColumns = daysContainer.createDiv({ cls: 'fulcrum-timer-calendar-day-columns' });
 		for (const day of days) {
-			const dayColumn = dayColumns.createDiv({ cls: 'lapse-calendar-day-column' });
+			const dayColumn = dayColumns.createDiv({ cls: 'fulcrum-timer-calendar-day-column' });
 			dayColumn.dataset.day = day.toISOString();
 			const dayStart = new Date(day);
 			dayStart.setHours(0, 0, 0, 0);
@@ -7592,7 +6686,7 @@ class LapseCalendarView extends ItemView {
 
 			// Create time slot containers
 			for (const timeSlot of timeSlots) {
-				const slot = dayColumn.createDiv({ cls: 'lapse-calendar-day-slot' });
+				const slot = dayColumn.createDiv({ cls: 'fulcrum-timer-calendar-day-slot' });
 				slot.dataset.time = timeSlot;
 			}
 
@@ -7642,7 +6736,7 @@ class LapseCalendarView extends ItemView {
 		const height = Math.max((durationMinutes / minutesPerSlot) * slotHeight, 20); // Minimum 20px height
 
 		// Create entry block
-		const block = dayColumn.createDiv({ cls: 'lapse-calendar-entry-block' });
+		const block = dayColumn.createDiv({ cls: 'fulcrum-timer-calendar-entry-block' });
 		block.style.top = `${top}px`;
 		block.style.height = `${height}px`;
 		block.draggable = true;
@@ -7660,18 +6754,18 @@ class LapseCalendarView extends ItemView {
 		}
 
 		// Drag handles for resizing
-		const resizeStartHandle = block.createDiv({ cls: 'lapse-calendar-resize-handle lapse-calendar-resize-start' });
+		const resizeStartHandle = block.createDiv({ cls: 'fulcrum-timer-calendar-resize-handle fulcrum-timer-calendar-resize-start' });
 		resizeStartHandle.title = 'Drag to change start time';
 		
-		const resizeEndHandle = block.createDiv({ cls: 'lapse-calendar-resize-handle lapse-calendar-resize-end' });
+		const resizeEndHandle = block.createDiv({ cls: 'fulcrum-timer-calendar-resize-handle fulcrum-timer-calendar-resize-end' });
 		resizeEndHandle.title = 'Drag to change end time';
 
 		// Entry content
-		const label = block.createDiv({ cls: 'lapse-calendar-entry-label' });
+		const label = block.createDiv({ cls: 'fulcrum-timer-calendar-entry-label' });
 		label.textContent = item.entry.label || 'Untitled';
 		label.title = `${item.noteName}${item.project ? ` - ${item.project}` : ''}`;
 
-		const time = block.createDiv({ cls: 'lapse-calendar-entry-time' });
+		const time = block.createDiv({ cls: 'fulcrum-timer-calendar-entry-time' });
 		const startTimeStr = entryStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 		const endTimeStr = entryEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 		time.textContent = `${startTimeStr} - ${endTimeStr}`;
@@ -7718,11 +6812,11 @@ class LapseCalendarView extends ItemView {
 			this.dragState.plannedData = null;
 			this.dragState.startTime = item.entry.startTime!;
 			e.dataTransfer!.effectAllowed = 'move';
-			block.addClass('lapse-calendar-entry-dragging');
+			block.addClass('fulcrum-timer-calendar-entry-dragging');
 		};
 
 		block.ondragend = () => {
-			block.removeClass('lapse-calendar-entry-dragging');
+			block.removeClass('fulcrum-timer-calendar-entry-dragging');
 			this.dragState.type = null;
 			this.dragState.entryBlock = null;
 			this.dragState.entryData = null;
@@ -7735,8 +6829,8 @@ class LapseCalendarView extends ItemView {
 
 		// Add active indicator if timer is running
 		if (!item.entry.endTime) {
-			block.addClass('lapse-calendar-entry-active');
-			const activeIndicator = block.createDiv({ cls: 'lapse-calendar-entry-active-indicator' });
+			block.addClass('fulcrum-timer-calendar-entry-active');
+			const activeIndicator = block.createDiv({ cls: 'fulcrum-timer-calendar-entry-active-indicator' });
 			activeIndicator.textContent = '●';
 		}
 	}
@@ -7758,7 +6852,7 @@ class LapseCalendarView extends ItemView {
 		const height = Math.max((durationMinutes / minutesPerSlot) * slotHeight, 20);
 
 		const block = dayColumn.createDiv({
-			cls: 'lapse-calendar-entry-block lapse-calendar-planned-block',
+			cls: 'fulcrum-timer-calendar-entry-block fulcrum-timer-calendar-planned-block',
 		});
 		block.style.top = `${top}px`;
 		block.style.height = `${height}px`;
@@ -7775,16 +6869,16 @@ class LapseCalendarView extends ItemView {
 			}
 		}
 
-		const resizeStartHandle = block.createDiv({ cls: 'lapse-calendar-resize-handle lapse-calendar-resize-start' });
+		const resizeStartHandle = block.createDiv({ cls: 'fulcrum-timer-calendar-resize-handle fulcrum-timer-calendar-resize-start' });
 		resizeStartHandle.title = 'Drag to change start time';
-		const resizeEndHandle = block.createDiv({ cls: 'lapse-calendar-resize-handle lapse-calendar-resize-end' });
+		const resizeEndHandle = block.createDiv({ cls: 'fulcrum-timer-calendar-resize-handle fulcrum-timer-calendar-resize-end' });
 		resizeEndHandle.title = 'Drag to change end time';
 
-		const label = block.createDiv({ cls: 'lapse-calendar-entry-label' });
+		const label = block.createDiv({ cls: 'fulcrum-timer-calendar-entry-label' });
 		label.textContent = blockData.label || 'Planned';
 		label.title = 'Planned (not logged)';
 
-		const time = block.createDiv({ cls: 'lapse-calendar-entry-time' });
+		const time = block.createDiv({ cls: 'fulcrum-timer-calendar-entry-time' });
 		const startTimeStr = entryStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 		const endTimeStr = entryEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 		time.textContent = `${startTimeStr} - ${endTimeStr}`;
@@ -7824,9 +6918,9 @@ class LapseCalendarView extends ItemView {
 			e.dataTransfer!.effectAllowed = 'move';
 			try {
 				e.dataTransfer!.setData(
-					LAPSE_PLANNED_DRAG_MIME,
+					FULCRUM_PLANNED_DRAG_MIME,
 					JSON.stringify({
-						kind: 'lapse-planned',
+						kind: 'fulcrum-timer-planned',
 						id: blockData.id,
 						dateIso: item.dateIso,
 						startTime: blockData.startTime,
@@ -7838,11 +6932,11 @@ class LapseCalendarView extends ItemView {
 			} catch {
 				/* ignore */
 			}
-			block.addClass('lapse-calendar-entry-dragging');
+			block.addClass('fulcrum-timer-calendar-entry-dragging');
 		};
 
 		block.ondragend = () => {
-			block.removeClass('lapse-calendar-entry-dragging');
+			block.removeClass('fulcrum-timer-calendar-entry-dragging');
 			this.dragState.type = null;
 			this.dragState.entryBlock = null;
 			this.dragState.plannedData = null;
@@ -7857,7 +6951,7 @@ class LapseCalendarView extends ItemView {
 		const menu = new Modal(this.plugin.app);
 		menu.contentEl.createEl('h2', { text: 'Planned block' });
 		menu.contentEl.createEl('p', { text: item.block.label });
-		const row = menu.contentEl.createDiv({ cls: 'lapse-calendar-draw-modal-buttons' });
+		const row = menu.contentEl.createDiv({ cls: 'fulcrum-timer-calendar-draw-modal-buttons' });
 		const openBtn = row.createEl('button', { text: 'Open planner note', cls: 'mod-cta' });
 		openBtn.onclick = () => {
 			void this.plugin.app.workspace.openLinkText(item.file.path, '', false);
@@ -7866,7 +6960,7 @@ class LapseCalendarView extends ItemView {
 		const timerBtn = row.createEl('button', { text: 'Quick start timer' });
 		timerBtn.onclick = () => {
 			menu.close();
-			new LapseQuickStartModal(this.plugin.app, this.plugin).open();
+			new TimerQuickStartModal(this.plugin.app, this.plugin).open();
 		};
 		const doneBtn = row.createEl('button', { text: 'Remove plan' });
 		doneBtn.onclick = async () => {
@@ -7952,13 +7046,13 @@ class LapseCalendarView extends ItemView {
 		noteName: string;
 	}>, planned: Array<{ file: TFile; block: PlannedBlock; dateIso: string }>, startDate: Date) {
 		// Month view - simplified calendar grid
-		const monthGrid = container.createDiv({ cls: 'lapse-calendar-month-grid' });
+		const monthGrid = container.createDiv({ cls: 'fulcrum-timer-calendar-month-grid' });
 		
 		// Weekday headers
 		const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-		const weekdayHeader = monthGrid.createDiv({ cls: 'lapse-calendar-month-weekdays' });
+		const weekdayHeader = monthGrid.createDiv({ cls: 'fulcrum-timer-calendar-month-weekdays' });
 		for (const day of weekdays) {
-			weekdayHeader.createDiv({ text: day, cls: 'lapse-calendar-month-weekday' });
+			weekdayHeader.createDiv({ text: day, cls: 'fulcrum-timer-calendar-month-weekday' });
 		}
 
 		// Calendar days
@@ -7967,21 +7061,21 @@ class LapseCalendarView extends ItemView {
 		lastDay.setMonth(lastDay.getMonth() + 1);
 		lastDay.setDate(0); // Last day of month
 
-		const daysGrid = monthGrid.createDiv({ cls: 'lapse-calendar-month-days' });
+		const daysGrid = monthGrid.createDiv({ cls: 'fulcrum-timer-calendar-month-days' });
 		
 		// Fill empty cells for days before month starts
 		const firstDayOfWeek = firstDay.getDay();
 		for (let i = 0; i < firstDayOfWeek; i++) {
-			daysGrid.createDiv({ cls: 'lapse-calendar-month-day empty' });
+			daysGrid.createDiv({ cls: 'fulcrum-timer-calendar-month-day empty' });
 		}
 
 		// Render each day of the month
 		const currentDay = new Date(firstDay);
 		while (currentDay <= lastDay) {
-			const dayCell = daysGrid.createDiv({ cls: 'lapse-calendar-month-day' });
+			const dayCell = daysGrid.createDiv({ cls: 'fulcrum-timer-calendar-month-day' });
 			dayCell.createDiv({ 
 				text: String(currentDay.getDate()),
-				cls: 'lapse-calendar-month-day-number'
+				cls: 'fulcrum-timer-calendar-month-day-number'
 			});
 
 			// Get entries for this day
@@ -8009,16 +7103,16 @@ class LapseCalendarView extends ItemView {
 						return sum;
 					}, 0);
 
-					const timeDisplay = dayCell.createDiv({ cls: 'lapse-calendar-month-day-time' });
+					const timeDisplay = dayCell.createDiv({ cls: 'fulcrum-timer-calendar-month-day-time' });
 					timeDisplay.textContent = this.plugin.formatTimeForButton(totalTime);
 					
-					const countDisplay = dayCell.createDiv({ cls: 'lapse-calendar-month-day-count' });
+					const countDisplay = dayCell.createDiv({ cls: 'fulcrum-timer-calendar-month-day-count' });
 					countDisplay.textContent = `${dayEntries.length} entry${dayEntries.length !== 1 ? 'ies' : 'y'}`;
 				}
 				if (dayPlanned.length > 0) {
 					dayCell.createDiv({
 						text: `${dayPlanned.length} planned`,
-						cls: 'lapse-calendar-month-day-planned',
+						cls: 'fulcrum-timer-calendar-month-day-planned',
 					});
 				}
 
@@ -8190,7 +7284,7 @@ class LapseCalendarView extends ItemView {
 		block.style.height = `${height}px`;
 
 		// Update time display
-		const timeEl = block.querySelector('.lapse-calendar-entry-time');
+		const timeEl = block.querySelector('.fulcrum-timer-calendar-entry-time');
 		if (timeEl) {
 			const startTimeStr = entryStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 			const endTimeStr = entryEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -8202,27 +7296,27 @@ class LapseCalendarView extends ItemView {
 		dayColumn.ondragover = (e) => {
 			e.preventDefault();
 			e.dataTransfer!.dropEffect = 'move';
-			dayColumn.addClass('lapse-calendar-day-column-drag-over');
+			dayColumn.addClass('fulcrum-timer-calendar-day-column-drag-over');
 		};
 
 		dayColumn.ondragleave = () => {
-			dayColumn.removeClass('lapse-calendar-day-column-drag-over');
+			dayColumn.removeClass('fulcrum-timer-calendar-day-column-drag-over');
 		};
 
 		dayColumn.ondrop = async (e) => {
 			e.preventDefault();
-			dayColumn.removeClass('lapse-calendar-day-column-drag-over');
+			dayColumn.removeClass('fulcrum-timer-calendar-day-column-drag-over');
 
 			let ext: string | null = null;
 			try {
-				ext = e.dataTransfer?.getData(LAPSE_PLANNED_DRAG_MIME) || null;
+				ext = e.dataTransfer?.getData(FULCRUM_PLANNED_DRAG_MIME) || null;
 			} catch {
 				ext = null;
 			}
 			if (!ext) {
 				try {
 					ext = e.dataTransfer?.getData('text/plain') || null;
-					if (ext && !ext.includes('lapse-planned')) ext = null;
+					if (ext && !ext.includes('fulcrum-timer-planned')) ext = null;
 				} catch {
 					/* ignore */
 				}
@@ -8230,7 +7324,7 @@ class LapseCalendarView extends ItemView {
 			if (ext) {
 				try {
 					const parsed = JSON.parse(ext) as { kind?: string; id?: string; dateIso?: string; startTime?: number; endTime?: number; label?: string; project?: string | null };
-					if (parsed.kind === 'lapse-planned' && parsed.id && parsed.dateIso && parsed.startTime != null && parsed.endTime != null) {
+					if (parsed.kind === 'fulcrum-timer-planned' && parsed.id && parsed.dateIso && parsed.startTime != null && parsed.endTime != null) {
 						const dayColumnRect = dayColumn.getBoundingClientRect();
 						const dropY = e.clientY - dayColumnRect.top;
 						const slotHeight = 60;
@@ -8341,7 +7435,7 @@ class LapseCalendarView extends ItemView {
 		
 		dayColumn.onmousedown = (e) => {
 			// Only create if clicking on empty space (not on an entry block)
-			if ((e.target as HTMLElement).closest('.lapse-calendar-entry-block')) {
+			if ((e.target as HTMLElement).closest('.fulcrum-timer-calendar-entry-block')) {
 				return;
 			}
 			
@@ -8363,10 +7457,10 @@ class LapseCalendarView extends ItemView {
 			createStartY = startY;
 			
 			// Create preview block
-			previewBlock = dayColumn.createDiv({ cls: 'lapse-calendar-entry-block lapse-calendar-entry-preview' });
+			previewBlock = dayColumn.createDiv({ cls: 'fulcrum-timer-calendar-entry-block fulcrum-timer-calendar-entry-preview' });
 			previewBlock.style.top = `${startY}px`;
 			previewBlock.style.height = '20px';
-			previewBlock.createDiv({ cls: 'lapse-calendar-entry-label', text: 'New entry...' });
+			previewBlock.createDiv({ cls: 'fulcrum-timer-calendar-entry-label', text: 'New entry...' });
 			
 			const onMouseMove = (moveEvent: MouseEvent) => {
 				if (!isCreating || !previewBlock) return;
@@ -8492,8 +7586,8 @@ class LapseCalendarView extends ItemView {
 
 	updateActiveTimers() {
 		// Update active timer blocks without full re-render
-		const container = this.containerEl.children[1];
-		const activeBlocks = container.querySelectorAll('.lapse-calendar-entry-active');
+		const container = (this.embedContainer ?? this.containerEl.children[1]) as HTMLElement;
+		const activeBlocks = container.querySelectorAll('.fulcrum-timer-calendar-entry-active');
 		
 		activeBlocks.forEach(block => {
 			// Update time display for active entries

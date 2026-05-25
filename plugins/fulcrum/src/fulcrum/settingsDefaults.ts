@@ -1,7 +1,16 @@
+import type {TimerSettings} from "../timer/settings";
+import {DEFAULT_TIMER_SETTINGS} from "../timer/settings";
+import type {TimeModeTab} from "../timer/types";
+
 export type TaskSourceMode = "taskNotes" | "obsidianTasks" | "both";
 export type ProjectStatusIndication = "frontmatter" | "subfolder";
 export type ProjectSidebarSortBy = "launch" | "nextReview" | "rank" | "name";
 export type ProjectSidebarSortDir = "asc" | "desc";
+
+export type KanbanView = "projects" | "tasks";
+export type KanbanDimension = "area" | "project" | "status" | "date";
+export type KanbanSwimlaneDimension = "none" | KanbanDimension;
+export type KanbanProjectDateSource = "nextReview" | "deadline";
 
 /** Saved time-tracked dashboard range. */
 export type TimeTrackerHorizon = "all" | "7d" | "30d" | "90d";
@@ -84,13 +93,23 @@ export interface FulcrumSettings {
 
 	defaultProjectView: "summary" | "board";
 	openViewsIn: "main" | "sidebar";
-	/** Kanban column grouping */
-	kanbanColumnBy: "status" | "area";
-	/** Kanban hidden column IDs (per grouping mode) */
+	/** Kanban view: projects or tasks board */
+	kanbanView: KanbanView;
+	kanbanColumnBy: KanbanDimension;
+	kanbanSwimlaneBy: KanbanSwimlaneDimension;
+	/** When Date dimension is used for projects: next review vs deadline field */
+	kanbanProjectDateSource: KanbanProjectDateSource;
+	/** Hidden column IDs keyed by `${view}:${dimension}` e.g. projects:status */
+	kanbanHiddenColumns: Record<string, string[]>;
+	/** Column order keyed by `${view}:${dimension}` */
+	kanbanColumnOrder: Record<string, string[]>;
+	/** @deprecated migrated to kanbanHiddenColumns */
 	kanbanHiddenStatus: string[];
+	/** @deprecated migrated to kanbanHiddenColumns */
 	kanbanHiddenArea: string[];
-	/** Kanban column order (IDs). Empty = natural order. */
+	/** @deprecated migrated to kanbanColumnOrder */
 	kanbanOrderStatus: string[];
+	/** @deprecated migrated to kanbanColumnOrder */
 	kanbanOrderArea: string[];
 	/** Calendar view mode */
 	calendarViewMode: "month" | "workWeek" | "week" | "threeDay" | "day";
@@ -115,6 +134,7 @@ export interface FulcrumSettings {
 	projectLastReviewedField: string;
 	projectReviewFrequencyField: string;
 	projectNextReviewField: string;
+	projectDeadlineField: string;
 	projectJiraField: string;
 	/** When project note has no review frequency in frontmatter. */
 	defaultReviewFrequencyDays: number;
@@ -157,6 +177,11 @@ export interface FulcrumSettings {
 
 	/** 0 = Sunday, 1 = Monday (default). */
 	calendarFirstDayOfWeek: number;
+
+	/** Built-in timer / time-tracking (merged from Lapse). */
+	timer: TimerSettings;
+	/** Last selected tab in Project Manager → Time mode. */
+	timeModeTab: TimeModeTab;
 }
 
 /** Root path for area notes (separate from projects when `areasFolder` is set). */
@@ -222,7 +247,12 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 
 	defaultProjectView: "summary",
 	openViewsIn: "main",
+	kanbanView: "projects",
 	kanbanColumnBy: "status",
+	kanbanSwimlaneBy: "none",
+	kanbanProjectDateSource: "nextReview",
+	kanbanHiddenColumns: {},
+	kanbanColumnOrder: {},
 	kanbanHiddenStatus: [],
 	kanbanHiddenArea: [],
 	kanbanOrderStatus: [],
@@ -245,6 +275,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	projectLastReviewedField: "lastReviewed",
 	projectReviewFrequencyField: "reviewFrequency",
 	projectNextReviewField: "nextReview",
+	projectDeadlineField: "deadline",
 	projectJiraField: "jira",
 	defaultReviewFrequencyDays: 7,
 	atomicNoteFolderPrefixes:
@@ -273,6 +304,9 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	timeTrackerExcludedAreaPaths: [],
 
 	calendarFirstDayOfWeek: 1,
+
+	timer: {...DEFAULT_TIMER_SETTINGS},
+	timeModeTab: "overview",
 };
 
 export function parseList(s: string): string[] {

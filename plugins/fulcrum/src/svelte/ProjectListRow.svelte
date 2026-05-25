@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import {showFulcrumProjectCardContextMenu} from "../fulcrum/projectCardContextMenu";
 	import type {IndexedProject} from "../fulcrum/types";
@@ -14,10 +15,12 @@
 	export let tile = false;
 	/** When set (e.g. Dashboard / Kanban / Areas), right-click opens Fulcrum actions without opening the project. */
 	export let plugin: FulcrumHost | undefined = undefined;
+	/** Opens new notes beside Fulcrum when creating from the context menu. */
+	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 
 	function onContextMenu(ev: MouseEvent): void {
 		if (!plugin) return;
-		showFulcrumProjectCardContextMenu(ev, plugin, p);
+		showFulcrumProjectCardContextMenu(ev, plugin, p, hoverParentLeaf);
 	}
 
 	function areaLabel(project: IndexedProject): string {

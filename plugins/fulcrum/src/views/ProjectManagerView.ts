@@ -7,6 +7,7 @@ import ProjectManager from "../svelte/ProjectManager.svelte";
 export type ProjectManagerViewState = {
 	mode?: "dashboard" | "review" | "areas" | "project" | "kanban" | "calendar" | "time";
 	projectPath?: string;
+	timeTab?: import("../timer/types").TimeModeTab;
 };
 
 export type ProjectManagerShellMode =
@@ -24,7 +25,7 @@ export function projectManagerShellLabel(mode: ProjectManagerShellMode): string 
 		areas: "Areas",
 		kanban: "Kanban",
 		calendar: "Calendar",
-		time: "Time tracked",
+		time: "Time",
 	};
 	return names[mode];
 }
@@ -56,7 +57,7 @@ export class ProjectManagerView extends ItemView {
 		if (this.mainMode === "areas") return "Areas";
 		if (this.mainMode === "kanban") return "Kanban";
 		if (this.mainMode === "calendar") return "Calendar";
-		if (this.mainMode === "time") return "Time tracked";
+		if (this.mainMode === "time") return "Time";
 		return "Fulcrum Project Manager";
 	}
 

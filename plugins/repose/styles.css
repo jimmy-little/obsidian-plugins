@@ -102,7 +102,6 @@
 }
 
 .suite-heatmap {
-	--suite-heatmap-accent: var(--interactive-accent);
 	--suite-heatmap-empty: color-mix(in srgb, var(--background-modifier-border) 72%, var(--background-primary));
 	--suite-heatmap-out: color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
 	display: inline-flex;
@@ -264,6 +263,21 @@
 .repose-pm.repose-pm-left-collapsed {
 	--repose-pm-left-w: 2.35rem;
 	--repose-pm-split-w: 0px;
+}
+
+.repose-pm.repose-pm--mobile-detail {
+	display: flex;
+	flex-direction: column;
+	grid-template-columns: minmax(0, 1fr);
+	height: 100%;
+	min-height: 0;
+	min-width: 0;
+}
+
+.repose-pm--mobile-detail .repose-pm__main {
+	flex: 1;
+	min-height: 0;
+	min-width: 0;
 }
 
 .repose-pm.repose-pm--list-only {
@@ -1433,6 +1447,21 @@
 	text-transform: uppercase;
 }
 
+/* Companion leaf: stack hero above the note editor (see reposeCompanionMarkdown.ts). */
+.repose-companion-doc .view-content {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.repose-companion-doc .markdown-source-view,
+.repose-companion-doc .markdown-reading-view {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	width: 100%;
+}
+
 /* Prepended hero on MarkdownView — align toolbar row with Repose media detail (not flush to window top) */
 .repose-companion-chrome-host {
 	flex-shrink: 0;
@@ -1485,6 +1514,35 @@
 .repose-companion-doc .metadata-properties,
 .repose-companion-doc .inline-title {
 	display: none !important;
+}
+
+/* Source / live preview: hide raw YAML (Properties pane still edits frontmatter). */
+.repose-companion-doc .markdown-source-view .cm-line:has(.cm-hmd-frontmatter),
+.repose-companion-doc .markdown-source-view .cm-line.cm-hmd-frontmatter {
+	display: none !important;
+	height: 0 !important;
+	line-height: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	overflow: hidden !important;
+}
+
+.repose-companion-doc .markdown-source-view .cm-line:has(.cm-hmd-frontmatter) .cm-fold-indicator {
+	display: none !important;
+}
+
+/* User notes below the hero — full-width readable column */
+.repose-companion-doc .markdown-preview-view,
+.repose-companion-doc .markdown-source-view .cm-scroller {
+	padding-top: 0.35rem;
+}
+
+.repose-companion-doc .markdown-preview-sizer,
+.repose-companion-doc .markdown-source-view .cm-content {
+	max-width: var(--file-line-width);
+	margin-inline: auto;
+	width: 100%;
+	box-sizing: border-box;
 }
 
 /* Editable bundle note body (podcast) — native Obsidian markdown source editor */
@@ -2225,7 +2283,8 @@
 	flex-shrink: 0;
 }
 
-.repose-show-season__refresh {
+.repose-show-season__refresh,
+.repose-show-season__watch {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -2240,17 +2299,20 @@
 	--icon-size: 1rem;
 }
 
-.repose-show-season__refresh:hover:not(:disabled) {
+.repose-show-season__refresh:hover:not(:disabled),
+.repose-show-season__watch:hover:not(:disabled) {
 	background: rgba(255, 255, 255, 0.1);
 	color: rgba(255, 255, 255, 0.95);
 }
 
-.repose-show-season__refresh:disabled {
+.repose-show-season__refresh:disabled,
+.repose-show-season__watch:disabled {
 	opacity: 0.45;
 	cursor: not-allowed;
 }
 
-.repose-show-season__refresh-icon {
+.repose-show-season__refresh-icon,
+.repose-show-season__watch-icon {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -2821,6 +2883,18 @@
 	word-break: break-word;
 }
 
+.repose-watch-date-modal__actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	margin-top: 1rem;
+}
+
+.repose-watch-date-modal input[type="date"] {
+	font-family: var(--font-interface);
+}
+
 /*
  * Shared “suite people” UI — portrait cards + inline pills.
  * Used by Fulcrum (related people, companion chrome, markdown people links) and
@@ -3176,7 +3250,8 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 .fulcrum-pm__glyph-btn,
 .pulse-pm__glyph-btn,
 .orbit-pm__glyph-btn,
-.repose-pm__glyph-btn {
+.repose-pm__glyph-btn,
+.ratchet-pm__glyph-btn {
 	width: var(--suite-glyph-btn-size);
 	height: var(--suite-glyph-btn-size);
 	min-width: var(--suite-glyph-btn-size);
@@ -3190,7 +3265,8 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 .fulcrum-pm__glyph-btn svg,
 .pulse-pm__glyph-btn svg,
 .orbit-pm__glyph-btn svg,
-.repose-pm__glyph-btn svg {
+.repose-pm__glyph-btn svg,
+.ratchet-pm__glyph-btn svg {
 	width: var(--suite-glyph-icon-size);
 	height: var(--suite-glyph-icon-size);
 	display: block;
@@ -3207,4 +3283,5 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 	font-weight: 600;
 	line-height: 1;
 }
+
 

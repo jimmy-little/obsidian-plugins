@@ -62,7 +62,8 @@
 .fulcrum-pm__glyph-btn,
 .pulse-pm__glyph-btn,
 .orbit-pm__glyph-btn,
-.repose-pm__glyph-btn {
+.repose-pm__glyph-btn,
+.ratchet-pm__glyph-btn {
 	width: var(--suite-glyph-btn-size);
 	height: var(--suite-glyph-btn-size);
 	min-width: var(--suite-glyph-btn-size);
@@ -76,7 +77,8 @@
 .fulcrum-pm__glyph-btn svg,
 .pulse-pm__glyph-btn svg,
 .orbit-pm__glyph-btn svg,
-.repose-pm__glyph-btn svg {
+.repose-pm__glyph-btn svg,
+.ratchet-pm__glyph-btn svg {
 	width: var(--suite-glyph-icon-size);
 	height: var(--suite-glyph-icon-size);
 	display: block;

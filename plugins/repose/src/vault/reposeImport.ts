@@ -247,7 +247,7 @@ export async function addTraktEpisodeToVault(
 	}
 
 	const showTitleForImages = showData.title || "Episode";
-	const imagePaths = await downloadObsidianImages(vault, images, showTitleForImages, {
+	const imagePaths = await downloadObsidianImages(vault, settings, images, showTitleForImages, {
 		showName: showData.title ?? null,
 		season: episodeData.season,
 		episode: episodeData.number,
@@ -349,7 +349,7 @@ export async function addTraktEpisodeNextToShowBundle(
 	}
 
 	const showTitleForImages = showData.title || "Episode";
-	const imagePaths = await downloadObsidianImages(vault, images, showTitleForImages, {
+	const imagePaths = await downloadObsidianImages(vault, settings, images, showTitleForImages, {
 		showName: showData.title ?? null,
 		season: episodeData.season,
 		episode: episodeData.number,

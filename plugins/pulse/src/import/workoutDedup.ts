@@ -2,7 +2,13 @@
  * Cross-source workout de-duplication (e.g. Gravl + Health Auto Export).
  */
 
+import type { TFile } from "obsidian";
+
 export type WorkoutKind = "strength" | "cardio" | "other";
+
+const TIME_BUCKET_MS = 180_000;
+const DURATION_BUCKET_SEC = 30;
+const LOOSE_DURATION_BUCKET_SEC = 300;
 
 const CARDIO_RE =
 	/walk|run|cycl|swim|elliptical|hike|yoga|row|stair|dance|mindful|cooldown|sauna|pilates|barre/i;
@@ -16,6 +22,21 @@ export function inferWorkoutKindFromName(name: string): WorkoutKind {
 	return "other";
 }
 
+const GENERIC_WORKOUT_NAME_RE =
+	/^(traditional strength training|mind & body|core training|pilates|other|workout|unknown)$/i;
+
+export function isGenericWorkoutDisplayName(name: string): boolean {
+	return GENERIC_WORKOUT_NAME_RE.test(name.trim());
+}
+
+export function preferWorkoutDisplayName(a: string, b: string): string {
+	const ta = a.trim();
+	const tb = b.trim();
+	if (ta && !isGenericWorkoutDisplayName(ta)) return ta;
+	if (tb && !isGenericWorkoutDisplayName(tb)) return tb;
+	return ta || tb;
+}
+
 /** Buckets start time (3 min) + duration (30 s) + coarse kind for stable cross-app keys. */
 export function computePulseDedupKey(params: {
 	startIso: string;
@@ -24,9 +45,88 @@ export function computePulseDedupKey(params: {
 }): string {
 	const d = new Date(params.startIso);
 	if (isNaN(d.getTime())) return "";
-	const anchor = Math.round(d.getTime() / 180000) * 180000;
-	const durB = Math.max(30, Math.round(params.durationSec / 30) * 30);
+	const anchor = Math.round(d.getTime() / TIME_BUCKET_MS) * TIME_BUCKET_MS;
+	const durB = Math.max(30, Math.round(params.durationSec / DURATION_BUCKET_SEC) * DURATION_BUCKET_SEC);
 	return `${anchor}|${durB}|${params.kind}`;
+}
+
+/** Kind-agnostic key with wider duration buckets — Gravl vs Health often disagree on minutes. */
+export function computePulseDedupKeyLoose(params: {
+	startIso: string;
+	durationSec: number;
+}): string {
+	const d = new Date(params.startIso);
+	if (isNaN(d.getTime())) return "";
+	const anchor = Math.round(d.getTime() / TIME_BUCKET_MS) * TIME_BUCKET_MS;
+	const durB = Math.max(
+		60,
+		Math.round(params.durationSec / LOOSE_DURATION_BUCKET_SEC) * LOOSE_DURATION_BUCKET_SEC,
+	);
+	return `${anchor}|${durB}`;
+}
+
+export function dedupKeyLooseFromFrontmatter(fm: Record<string, unknown>, path = ""): string | null {
+	const explicit = fm.pulseDedupKeyLoose;
+	if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+
+	const start = startIsoFromWorkoutFrontmatter(fm);
+	if (!start) return null;
+	const durSec = durationSecondsFromWorkoutFrontmatter(fm);
+	if (durSec <= 0) return null;
+	if (!isWorkoutDedupCandidate(fm, path)) return null;
+	return computePulseDedupKeyLoose({ startIso: start, durationSec: durSec });
+}
+
+/** Try strict, cross-kind, adjacent buckets, then loose key. */
+export function lookupDedupTargetFile(
+	strictMap: Map<string, TFile>,
+	looseMap: Map<string, TFile>,
+	startIso: string,
+	durationSec: number,
+	kind: WorkoutKind,
+): TFile | null {
+	if (!startIso || durationSec <= 0) return null;
+
+	const strict = computePulseDedupKey({ startIso, durationSec, kind });
+	if (strict) {
+		const hit = strictMap.get(strict);
+		if (hit) return hit;
+	}
+
+	for (const k of ["strength", "cardio", "other"] as const) {
+		const key = computePulseDedupKey({ startIso, durationSec, kind: k });
+		const hit = strictMap.get(key);
+		if (hit) return hit;
+	}
+
+	const startMs = new Date(startIso).getTime();
+	if (!Number.isNaN(startMs)) {
+		for (const deltaMs of [-TIME_BUCKET_MS, TIME_BUCKET_MS]) {
+			const adj = new Date(startMs + deltaMs).toISOString();
+			for (const k of ["strength", "cardio", "other"] as const) {
+				const key = computePulseDedupKey({ startIso: adj, durationSec, kind: k });
+				const hit = strictMap.get(key);
+				if (hit) return hit;
+			}
+		}
+	}
+
+	for (const dDelta of [-30, 30, -60, 60, -120, 120]) {
+		const adjDur = Math.max(30, durationSec + dDelta);
+		for (const k of ["strength", "cardio", "other"] as const) {
+			const key = computePulseDedupKey({ startIso, durationSec: adjDur, kind: k });
+			const hit = strictMap.get(key);
+			if (hit) return hit;
+		}
+	}
+
+	const loose = computePulseDedupKeyLoose({ startIso, durationSec });
+	if (loose) {
+		const hit = looseMap.get(loose);
+		if (hit) return hit;
+	}
+
+	return null;
 }
 
 export function durationSecondsFromWorkoutFrontmatter(fm: Record<string, unknown>): number {
@@ -50,7 +150,65 @@ export function startIsoFromWorkoutFrontmatter(fm: Record<string, unknown>): str
 	return s;
 }
 
-export function dedupKeyFromFrontmatter(fm: Record<string, unknown>): string | null {
+/** Imported workout notes under `…/Workouts/…` with `YYYYMMDD-HHMM-` filename prefix. */
+export function isLikelyImportedWorkoutPath(path: string, basename?: string): boolean {
+	const norm = path.replace(/\\/g, "/");
+	const base = basename ?? norm.split("/").pop() ?? "";
+	return /\/Workouts\//i.test(norm) && /^\d{8}-\d{4}-/.test(base);
+}
+
+/** Parse date/time/name from import filename when metadata cache is empty or incomplete. */
+export function fallbackWorkoutFrontmatterFromBasename(basename: string): Record<string, unknown> {
+	const base = basename.replace(/\.md$/i, "");
+	const m = base.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})-(.+)$/);
+	if (!m) return { name: base };
+	const [, y, mo, d, hh, mm, rest] = m;
+	return {
+		date: `${y}-${mo}-${d}`,
+		start: `${y}-${mo}-${d}T${hh}:${mm}:00`,
+		name: rest!.replace(/-/g, " "),
+	};
+}
+
+/** Local calendar date (`YYYY-MM-DD`) from workout frontmatter. */
+export function workoutDateFromFrontmatter(fm: Record<string, unknown>): string {
+	const date = fm.date;
+	if (date != null && String(date).trim()) return String(date).trim().slice(0, 10);
+	const start = startIsoFromWorkoutFrontmatter(fm);
+	return start ? start.slice(0, 10) : "";
+}
+
+/** Notes that should participate in cross-source workout de-duplication. */
+export function isWorkoutDedupCandidate(fm: Record<string, unknown>, path = ""): boolean {
+	if (fm.workoutId != null && String(fm.workoutId).trim()) return true;
+	if (fm["pulse-type"] === "session") return true;
+	if (fm.importedStart != null || fm.importedActivityType != null) return true;
+	if (fm.importedAt != null && (fm.calories != null || fm.hrAvg != null)) return true;
+
+	const type = String(fm.type ?? "");
+	if (/meeting|trip/i.test(type)) return false;
+	if (fm.organizer != null || fm.tripFrom != null || fm.tripTo != null) return false;
+
+	const normPath = path.replace(/\\/g, "/");
+	if (normPath.includes("/Time Tracking/")) return false;
+
+	if (/\/Workouts\//i.test(normPath)) {
+		const start = startIsoFromWorkoutFrontmatter(fm);
+		const durSec = durationSecondsFromWorkoutFrontmatter(fm);
+		if (start && durSec > 0) return true;
+	}
+
+	if (fm.calories != null && startIsoFromWorkoutFrontmatter(fm)) return true;
+
+	return false;
+}
+
+export function dedupKeyFromFrontmatter(
+	fm: Record<string, unknown>,
+	path = ""
+): string | null {
+	if (!isWorkoutDedupCandidate(fm, path)) return null;
+
 	const explicit = fm.pulseDedupKey;
 	if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
 
@@ -86,6 +244,11 @@ export function mergeWorkoutImportFrontmatter(
 	}
 	if (dedupKey) {
 		out.pulseDedupKey = dedupKey;
+	}
+	const start = startIsoFromWorkoutFrontmatter({ ...existing, ...incoming } as Record<string, unknown>);
+	const durSec = durationSecondsFromWorkoutFrontmatter({ ...existing, ...incoming } as Record<string, unknown>);
+	if (start && durSec > 0) {
+		out.pulseDedupKeyLoose = computePulseDedupKeyLoose({ startIso: start, durationSec: durSec });
 	}
 	const outLo = out as Record<string, unknown>;
 	const legacyGt = outLo.globalType;

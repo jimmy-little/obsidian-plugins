@@ -411,6 +411,7 @@
 							<div class="fulcrum-dashboard-attention__cell">
 								<ProjectListRow
 									{plugin}
+									{hoverParentLeaf}
 									{p}
 									tile={true}
 									selectedPath={null}
@@ -433,6 +434,7 @@
 							<div class="fulcrum-dashboard-attention__cell">
 								<ProjectListRow
 									{plugin}
+									{hoverParentLeaf}
 									{p}
 									tile={true}
 									selectedPath={null}
@@ -455,6 +457,7 @@
 							<div class="fulcrum-dashboard-attention__cell">
 								<ProjectListRow
 									{plugin}
+									{hoverParentLeaf}
 									{p}
 									tile={true}
 									selectedPath={null}

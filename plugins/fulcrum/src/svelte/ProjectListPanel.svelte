@@ -510,6 +510,8 @@
 			{#each sortIndexedProjects(activeProjectFiltered, sortBy, sortDir) as p (p.file.path)}
 				<li>
 					<ProjectListRow
+						{plugin}
+						{hoverParentLeaf}
 						{p}
 						{selectedPath}
 						{onSelectProject}
@@ -560,6 +562,8 @@
 						{#each g.projects as p}
 							<li>
 								<ProjectListRow
+									{plugin}
+									{hoverParentLeaf}
 									{p}
 									{selectedPath}
 									{onSelectProject}
@@ -597,6 +601,8 @@
 						{#each rg.projects as p}
 							<li>
 								<ProjectListRow
+									{plugin}
+									{hoverParentLeaf}
 									{p}
 									{selectedPath}
 									{onSelectProject}
@@ -634,6 +640,8 @@
 						{#each sg.projects as p}
 							<li>
 								<ProjectListRow
+									{plugin}
+									{hoverParentLeaf}
 									{p}
 									{selectedPath}
 									{onSelectProject}

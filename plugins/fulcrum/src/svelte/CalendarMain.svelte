@@ -32,6 +32,7 @@
 		type CalendarEvent,
 	} from "../fulcrum/utils/calendarEvents";
 	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
+	import {buildTimerCalendarOverlay} from "../fulcrum/utils/timerCalendarOverlay";
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 
@@ -60,6 +61,21 @@
 	$: viewMode = (void sRev, plugin.settings.calendarViewMode) as CalendarViewMode;
 	$: doneTask = new Set(parseList(plugin.settings.taskDoneStatuses));
 	$: weekStart = (void sRev, plugin.settings.calendarFirstDayOfWeek);
+	$: timerLayers = plugin.settings.timer;
+
+	let timerOverlayEvents: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
+	let timerOverlayLoadId = 0;
+
+	async function toggleTimerLayer(
+		key: "calendarShowTasks" | "calendarShowMeetings" | "calendarShowLogged" | "calendarShowPlanned",
+	): Promise<void> {
+		await plugin.patchSettings({
+			timer: {
+				...plugin.settings.timer,
+				[key]: !plugin.settings.timer[key],
+			},
+		});
+	}
 
 	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
 		projects: snapshot.projects,
@@ -72,6 +88,32 @@
 	$: dates = gridDates(focalDate, viewMode, weekStart);
 	$: startDate = gridStartDate(focalDate, viewMode, weekStart);
 	$: dayCount = daysInView(viewMode);
+
+	$: {
+		void rev;
+		void dates;
+		void timerLayers.calendarShowLogged;
+		void timerLayers.calendarShowPlanned;
+		const id = ++timerOverlayLoadId;
+		const end = addDays(startDate, Math.max(dayCount - 1, 0));
+		void (async (): Promise<void> => {
+			if (!timerLayers.calendarShowLogged && !timerLayers.calendarShowPlanned) {
+				if (id === timerOverlayLoadId) timerOverlayEvents = [];
+				return;
+			}
+			const overlay = await buildTimerCalendarOverlay(
+				plugin.timer,
+				startDate,
+				end,
+				{
+					showLogged: timerLayers.calendarShowLogged,
+					showPlanned: timerLayers.calendarShowPlanned,
+				},
+				(path) => plugin.openLinkedNoteFromFulcrum(path, hoverParentLeaf),
+			);
+			if (id === timerOverlayLoadId) timerOverlayEvents = overlay;
+		})();
+	}
 
 	/** Tasks with scheduled or due date */
 	$: datedTasks = snapshot.tasks.filter((t) => {
@@ -86,27 +128,32 @@
 
 	$: projectColors = projectColorMap(snapshot.projects);
 
-	/** Unified calendar events (tasks + meetings) */
-	$: allCalendarEvents = ((): CalendarEvent[] => {
-		const out: CalendarEvent[] = [];
-		for (const t of datedTasks) {
-			for (const e of taskToCalendarEvent(
-				t,
-				() => plugin.openIndexedTask(t, hoverParentLeaf),
-				projectColors,
-			)) {
-				out.push(e);
+	/** Unified calendar events (tasks + meetings + timer overlay) */
+	$: allCalendarEvents = ((): import("../fulcrum/utils/calendarEvents").CalendarEvent[] => {
+		const out: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
+		if (timerLayers.calendarShowTasks) {
+			for (const t of datedTasks) {
+				for (const e of taskToCalendarEvent(
+					t,
+					() => plugin.openIndexedTask(t, hoverParentLeaf),
+					projectColors,
+				)) {
+					out.push(e);
+				}
 			}
 		}
-		for (const m of snapshot.meetings) {
-			if (!meetingPassesWorkFilter(m, snapshot, onlyWork, areaWorkMap)) continue;
-			const e = meetingToCalendarEvent(
-				m,
-				() => plugin.openLinkedNoteFromFulcrum(m.file.path, hoverParentLeaf),
-				projectColors,
-			);
-			if (e) out.push(e);
+		if (timerLayers.calendarShowMeetings) {
+			for (const m of snapshot.meetings) {
+				if (!meetingPassesWorkFilter(m, snapshot, onlyWork, areaWorkMap)) continue;
+				const e = meetingToCalendarEvent(
+					m,
+					() => plugin.openLinkedNoteFromFulcrum(m.file.path, hoverParentLeaf),
+					projectColors,
+				);
+				if (e) out.push(e);
+			}
 		}
+		out.push(...timerOverlayEvents);
 		return out;
 	})();
 
@@ -239,6 +286,33 @@
 				<option value="day">Day</option>
 			</select>
 		</label>
+	</div>
+
+	<div class="fulcrum-calendar__layers" role="group" aria-label="Calendar layers">
+		<button
+			type="button"
+			class="fulcrum-calendar__layer"
+			class:fulcrum-calendar__layer--on={timerLayers.calendarShowTasks}
+			on:click={() => toggleTimerLayer("calendarShowTasks")}
+		>Tasks</button>
+		<button
+			type="button"
+			class="fulcrum-calendar__layer"
+			class:fulcrum-calendar__layer--on={timerLayers.calendarShowMeetings}
+			on:click={() => toggleTimerLayer("calendarShowMeetings")}
+		>Meetings</button>
+		<button
+			type="button"
+			class="fulcrum-calendar__layer"
+			class:fulcrum-calendar__layer--on={timerLayers.calendarShowLogged}
+			on:click={() => toggleTimerLayer("calendarShowLogged")}
+		>Logged</button>
+		<button
+			type="button"
+			class="fulcrum-calendar__layer"
+			class:fulcrum-calendar__layer--on={timerLayers.calendarShowPlanned}
+			on:click={() => toggleTimerLayer("calendarShowPlanned")}
+		>Planned</button>
 	</div>
 
 	{#if isMonthView}

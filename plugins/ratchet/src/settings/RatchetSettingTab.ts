@@ -21,7 +21,7 @@ export class RatchetSettingTab extends PluginSettingTab {
 		});
 
 		containerEl.createEl("p", {
-			text: "URI host must be ratchet. Opens the Ratchet sidebar (same as the ribbon). Do not use action=open.",
+			text: "URI host must be ratchet. Opens Ratchet in a main tab (same as the ribbon). Do not use action=open.",
 			cls: "setting-item-description",
 		});
 		containerEl.createEl("p", {
@@ -29,7 +29,7 @@ export class RatchetSettingTab extends PluginSettingTab {
 			cls: "mod-code",
 		});
 		containerEl.createEl("p", {
-			text: "Month grid in the same leaf: obsidian://ratchet?screen=grid",
+			text: "Week grid in the same leaf: obsidian://ratchet?screen=grid",
 			cls: "mod-code",
 		});
 		containerEl.createEl("p", {
@@ -67,23 +67,6 @@ export class RatchetSettingTab extends PluginSettingTab {
 						this.plugin.settings.firstDayOfWeek = value === "1" ? 1 : 0;
 						await this.plugin.saveSettings();
 						this.plugin.refreshDataManager();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Default increment buttons")
-			.setDesc("Comma-separated values for new trackers (e.g. 1, 5, 10). Default is 1. Each tracker can override in Edit.")
-			.addText((text) =>
-				text
-					.setPlaceholder("1")
-					.setValue(this.plugin.settings.defaultIncrementButtons.join(", "))
-					.onChange(async (value) => {
-						const parsed = value
-							.split(",")
-							.map((s) => parseInt(s.trim(), 10))
-							.filter((n) => !isNaN(n) && n > 0);
-						this.plugin.settings.defaultIncrementButtons = parsed.length > 0 ? parsed : [1];
-						await this.plugin.saveSettings();
 					}),
 			);
 	}

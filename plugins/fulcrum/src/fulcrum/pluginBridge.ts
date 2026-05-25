@@ -3,16 +3,27 @@ import type {FulcrumSettings} from "./settingsDefaults";
 import type {VaultIndex} from "./VaultIndex";
 import type {IndexedTask} from "./types";
 import type {ProjectLogActivityEntry} from "./projectNote";
+import type {TimerModule} from "../timer/TimerModule";
+import type {TimeModeTab} from "../timer/types";
 
 /** Narrow surface passed into Svelte views (avoids circular imports). */
 export interface FulcrumHost {
 	readonly app: App;
 	readonly settings: FulcrumSettings;
 	readonly vaultIndex: VaultIndex;
+	readonly timer: TimerModule;
 	openProjectSummary(path: string): Promise<void>;
 	openDashboard(): Promise<void>;
 	openReview(): Promise<void>;
-	openTimeTracked(): Promise<void>;
+	openTimeTracked(tab?: TimeModeTab): Promise<void>;
+	openActiveTimers(): Promise<void>;
+	openQuickStart(): Promise<void>;
+	openCalendar(): Promise<void>;
+	startTimerForProject(projectName: string, projectFilePath: string): Promise<void>;
+	startTimerInNote(
+		notePath: string,
+		options?: {projectName?: string | null; noteTitle?: string | null},
+	): Promise<void>;
 	refreshIndex(): Promise<void>;
 	appendProjectLogEntry(projectPath: string, text: string): Promise<boolean>;
 	/** Opens modal: optional review note, updates review dates, appends Fulcrum log line. */

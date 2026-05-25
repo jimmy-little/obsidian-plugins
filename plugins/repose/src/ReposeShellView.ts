@@ -1,8 +1,8 @@
-import { ItemView, TFile, WorkspaceLeaf, type ViewStateResult } from "obsidian";
+import { ItemView, Platform, TFile, WorkspaceLeaf, type ViewStateResult } from "obsidian";
 import type { SvelteComponent } from "svelte";
 import type ReposePlugin from "./main";
 import { resolveMediaTypeForFile } from "./media/mediaDetect";
-import { clearReposeCompanionMarkdownPane, syncReposeCompanionPaneForSelection } from "./reposeCompanionMarkdown";
+import { clearReposeCompanionMarkdownPane, navigateEpisodeInCompanionPane, syncReposeCompanionPaneForSelection } from "./reposeCompanionMarkdown";
 import { leafIsInSideDock } from "./workspaceLeaf";
 import ReposeHome from "./svelte/ReposeHome.svelte";
 
@@ -75,7 +75,11 @@ export class ReposeShellView extends ItemView {
 		} else {
 			await this.render();
 		}
-		await this.syncCompanionMarkdownPaneForPath(this.selectedPath);
+		if (Platform.isMobile) {
+			window.setTimeout(() => void this.syncCompanionMarkdownPaneForPath(this.selectedPath), 150);
+		} else {
+			await this.syncCompanionMarkdownPaneForPath(this.selectedPath);
+		}
 	}
 
 	async onOpen(): Promise<void> {
@@ -87,6 +91,9 @@ export class ReposeShellView extends ItemView {
 				});
 			}),
 		);
+		if (Platform.isMobile) {
+			await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+		}
 		await this.render();
 	}
 
@@ -96,6 +103,7 @@ export class ReposeShellView extends ItemView {
 	}
 
 	private isFullView(): boolean {
+		if (Platform.isMobile) return true;
 		return !leafIsInSideDock(this.app, this.leaf);
 	}
 
@@ -114,6 +122,7 @@ export class ReposeShellView extends ItemView {
 				landing: this.showLanding,
 				onSelectPath: (path: string) => void this.onSelected(path),
 				onGoHome: () => void this.goHome(),
+				onBackToList: () => void this.backToList(),
 			},
 		});
 	}
@@ -121,6 +130,23 @@ export class ReposeShellView extends ItemView {
 	private async syncCompanionMarkdownPaneForPath(path: string | null): Promise<void> {
 		const f = path ? this.app.vault.getAbstractFileByPath(path) : null;
 		await syncReposeCompanionPaneForSelection(this.plugin, this.leaf, f instanceof TFile ? f : null);
+	}
+
+	/** Update sidebar/detail selection without opening or splitting companion markdown panes. */
+	updateSelection(path: string): void {
+		this.showLanding = false;
+		this.selectedPath = path;
+		this.component?.$set({
+			selectedPath: path,
+			landing: false,
+			detailOnly: this.detailOnly,
+		});
+	}
+
+	private backToList(): void {
+		this.showLanding = false;
+		this.selectedPath = null;
+		this.component?.$set({ selectedPath: null, landing: false, detailOnly: this.detailOnly });
 	}
 
 	private async goHome(): Promise<void> {
@@ -151,35 +177,43 @@ export class ReposeShellView extends ItemView {
 		this.showLanding = false;
 
 		const file = this.app.vault.getAbstractFileByPath(path);
-		if (file instanceof TFile && resolveMediaTypeForFile(this.app, file, this.plugin.settings) === "book") {
-			this.selectedPath = path;
-			this.component?.$set({ selectedPath: path, landing: false, detailOnly: this.detailOnly });
-			await syncReposeCompanionPaneForSelection(this.plugin, this.leaf, file);
-			return;
+		if (file instanceof TFile) {
+			const mt = resolveMediaTypeForFile(this.app, file, this.plugin.settings);
+			if (mt === "episode") {
+				const navigated = await navigateEpisodeInCompanionPane(this.plugin, file);
+				if (navigated) {
+					this.updateSelection(path);
+					return;
+				}
+			}
+			if (mt === "book") {
+				this.updateSelection(path);
+				await syncReposeCompanionPaneForSelection(this.plugin, this.leaf, file);
+				return;
+			}
 		}
 
 		/* Non-book: keep Repose focused in the main workspace when the list lives in a dock. */
-		if (leafIsInSideDock(this.app, this.leaf)) {
-			const mainLeaf = this.app.workspace.getLeaf("tab");
+		if (leafIsInSideDock(this.app, this.leaf) && !Platform.isMobile) {
+			let mainLeaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_REPOSE).find(
+				(l) => !leafIsInSideDock(this.app, l),
+			);
+			if (!mainLeaf) mainLeaf = this.app.workspace.getLeaf("tab");
 			await mainLeaf.setViewState({
 				type: VIEW_TYPE_REPOSE,
 				active: true,
 				state: { selectedPath: path },
 			});
 			await this.app.workspace.revealLeaf(mainLeaf);
-			this.selectedPath = path;
-			this.component?.$set({ selectedPath: path, landing: false, detailOnly: this.detailOnly });
-			await this.syncCompanionMarkdownPaneForPath(path);
+			this.updateSelection(path);
 			return;
 		}
 
+		this.updateSelection(path);
 		await this.leaf.setViewState({
 			type: VIEW_TYPE_REPOSE,
 			active: true,
 			state: { selectedPath: path },
 		});
-		this.selectedPath = path;
-		this.component?.$set({ landing: false, detailOnly: this.detailOnly });
-		await this.syncCompanionMarkdownPaneForPath(path);
 	}
 }

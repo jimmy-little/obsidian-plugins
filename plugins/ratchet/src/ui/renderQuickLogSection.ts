@@ -57,7 +57,7 @@ export function renderQuickLogSection(
 
 	void (async () => {
 		const dm = plugin.getDataManager();
-		const trackers = (await dm.getAllTrackers()).slice().sort((a, b) => a.name.localeCompare(b.name));
+		const trackers = (await dm.getActiveTrackers()).slice().sort((a, b) => a.name.localeCompare(b.name));
 		const firstDow = plugin.settings.firstDayOfWeek;
 		const now = new Date();
 		const bounds = getScopeBounds(scope, now, firstDow);

@@ -300,6 +300,7 @@ export async function refreshShowFromTrakt(
 			if (stillUrl) {
 				const imgPaths = await downloadObsidianImages(
 					app.vault,
+					settings,
 					{ episodeStill: stillUrl },
 					showTitle,
 					{
@@ -499,6 +500,7 @@ async function applyTraktRefreshToTvEpisodeNote(
 		if (stillUrl) {
 			const imgPaths = await downloadObsidianImages(
 				app.vault,
+				settings,
 				{ episodeStill: stillUrl },
 				showApi.title || "Episode",
 				{

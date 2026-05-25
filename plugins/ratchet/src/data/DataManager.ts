@@ -2,6 +2,8 @@ import type { Vault } from "obsidian";
 import { getMonthKey, isInPeriod, type ResetPeriod } from "../utils/DateUtils";
 import { parseEventLine, eventToLine, type RatchetEvent } from "./EventLog";
 import type { TrackerConfig, RatchetConfigFile, GoalType } from "./TrackerConfig";
+import { isCheckOffHabit, isCheckOffPeriodMet } from "./TrackerConfig";
+import { countCheckOffsFromEvents } from "../ui/checkOffDay";
 
 const CONFIG_FILE = "config.json";
 const EVENTS_DIR = "events";
@@ -54,16 +56,41 @@ export class DataManager {
 		await this.vault.adapter.write(this.configPath(), JSON.stringify(config, null, "\t"));
 	}
 
-	private normalizeTracker(t: TrackerConfig): TrackerConfig {
+	private normalizeTracker(t: TrackerConfig & { abstinence?: boolean; checkOff?: boolean }): TrackerConfig {
+		const goalTypeIn = t.goalType ?? "at least";
+		const checkOff = t.checkOff ?? t.abstinence ?? (goalTypeIn === "at most" && t.goal === 0);
+		let goal = t.goal ?? 0;
+		let goalType = goalTypeIn;
+		if (checkOff) {
+			if (goal === 0) goal = 1;
+			goalType = "at least";
+		}
 		return {
-			...t,
-			goalType: (t as TrackerConfig & { goalType?: GoalType }).goalType ?? "at least",
+			id: t.id,
+			name: t.name,
+			icon: t.icon,
+			resetPeriod: t.resetPeriod,
+			color: t.color,
+			unit: t.unit ?? "",
+			goal,
+			goalType,
+			checkOff,
+			archived: t.archived ?? false,
+			created: t.created,
 		};
 	}
 
 	async getAllTrackers(): Promise<TrackerConfig[]> {
 		const config = await this.readConfig();
 		return Object.values(config.trackers).map((t) => this.normalizeTracker(t));
+	}
+
+	async getActiveTrackers(): Promise<TrackerConfig[]> {
+		return (await this.getAllTrackers()).filter((t) => !t.archived);
+	}
+
+	async getArchivedTrackers(): Promise<TrackerConfig[]> {
+		return (await this.getAllTrackers()).filter((t) => t.archived);
 	}
 
 	async getTracker(id: string): Promise<TrackerConfig | null> {
@@ -82,7 +109,7 @@ export class DataManager {
 		const data = await this.readConfig();
 		const existing = data.trackers[id];
 		if (!existing) return;
-		data.trackers[id] = { ...existing, ...updates };
+		data.trackers[id] = this.normalizeTracker({ ...existing, ...updates });
 		await this.writeConfig(data);
 	}
 
@@ -132,12 +159,12 @@ export class DataManager {
 		const now = new Date();
 		const keys = this.monthKeysToRead(period, now);
 		const events = await this.readEventsForTracker(trackerId, keys);
-		let sum = 0;
-		for (const e of events) {
-			if (isInPeriod(e.timestamp, period, now, this.firstDayOfWeek)) {
-				sum += e.value;
-			}
+		const inPeriod = events.filter((e) => isInPeriod(e.timestamp, period, now, this.firstDayOfWeek));
+		if (tracker && isCheckOffHabit(tracker)) {
+			return countCheckOffsFromEvents(inPeriod);
 		}
+		let sum = 0;
+		for (const e of inPeriod) sum += e.value;
 		return sum;
 	}
 
@@ -148,7 +175,12 @@ export class DataManager {
 	 */
 	async getGoalWasEverMetThisPeriod(trackerId: string): Promise<boolean> {
 		const tracker = await this.getTracker(trackerId);
-		if (!tracker || tracker.goalType === "none") return false;
+		if (!tracker) return false;
+		if (isCheckOffHabit(tracker)) {
+			const count = await this.getCurrentCount(trackerId);
+			return isCheckOffPeriodMet(tracker, count);
+		}
+		if (tracker.goalType === "none") return false;
 		const now = new Date();
 		const period = tracker.resetPeriod;
 		const keys = this.monthKeysToRead(period, now);
@@ -188,11 +220,19 @@ export class DataManager {
 	 */
 	async getGoalStatusForDay(trackerId: string, date: Date): Promise<"met" | "not_met" | "no_data"> {
 		const tracker = await this.getTracker(trackerId);
-		if (!tracker || tracker.goalType === "none") return "no_data";
+		if (!tracker) return "no_data";
 		const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 		const end = new Date(start);
 		end.setDate(end.getDate() + 1);
 		const events = await this.getHistory(trackerId, start, new Date(end.getTime() - 1));
+		if (isCheckOffHabit(tracker)) {
+			if (events.length === 0) return "not_met";
+			const count = events.reduce((sum, e) => sum + e.value, 0);
+			const hasDone = events.some((e) => e.value === 0);
+			if (count > 0) return "not_met";
+			return hasDone ? "met" : "not_met";
+		}
+		if (tracker.goalType === "none") return "no_data";
 		if (events.length === 0) return "no_data";
 		const count = events.reduce((sum, e) => sum + e.value, 0);
 		const met =

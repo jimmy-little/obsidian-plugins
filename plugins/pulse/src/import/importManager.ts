@@ -13,22 +13,35 @@ import {
 } from "./parsers";
 import {
 	computePulseDedupKey,
+	computePulseDedupKeyLoose,
 	dedupKeyFromFrontmatter,
+	dedupKeyLooseFromFrontmatter,
+	durationSecondsFromWorkoutFrontmatter,
 	inferWorkoutKindFromName,
+	isWorkoutDedupCandidate,
+	isGenericWorkoutDisplayName,
+	lookupDedupTargetFile,
 	mergeWorkoutImportBodies,
 	mergeWorkoutImportFrontmatter,
+	startIsoFromWorkoutFrontmatter,
+	preferWorkoutDisplayName,
 	type WorkoutKind,
 } from "./workoutDedup";
 import {
 	AUTOEXPORT_METRIC_TO_FRONTMATTER,
-	WORKOUT_TYPE_TO_ICON,
-	ACTIVITY_ICONS_FOLDER,
 	KG_TO_LB,
 } from "./types";
 import type { ImportedWorkoutData, RoutePoint } from "./types";
 import type { HealthAutoExportDailyRow } from "./parsers";
 import type { WorkoutDataManager } from "../workout/WorkoutDataManager";
 import type { SessionData, SessionExercise, ExerciseLogEntry } from "../workout/types";
+import { ensureVaultFolder } from "../vaultFolders";
+import {
+	getActivityIconResourcePath,
+	normalizeWorkoutLabel,
+	resolveWorkoutIconName,
+	scanVaultForActivityIcon,
+} from "../workout/workoutIcon";
 
 const DEFAULT_STATS_PATH_TEMPLATE = "60 Logs/{year}/Stats/{month}/{date}.md";
 
@@ -37,6 +50,8 @@ export class ImportManager {
 	private workoutIdIndex: Map<string, TFile> | null = null;
 	/** Maps `pulseDedupKey` → note file for cross-source merge. */
 	private dedupKeyIndex: Map<string, TFile> | null = null;
+	/** Kind-agnostic / loose time+duration buckets for Gravl vs Health Auto Export. */
+	private dedupKeyLooseIndex: Map<string, TFile> | null = null;
 	/** Workout IDs already written in this import run (skips duplicate CSV rows). */
 	private currentImportWorkoutIds = new Set<string>();
 
@@ -45,12 +60,14 @@ export class ImportManager {
 		private app: import("obsidian").App,
 		private settings: PulseSettings,
 		private persistSettings: (() => Promise<void>) | undefined,
-		private workoutDataManager: WorkoutDataManager
+		private workoutDataManager: WorkoutDataManager,
+		private onImportComplete?: () => void
 	) {}
 
 	private clearImportCaches(): void {
 		this.workoutIdIndex = null;
 		this.dedupKeyIndex = null;
+		this.dedupKeyLooseIndex = null;
 		this.currentImportWorkoutIds.clear();
 	}
 
@@ -63,31 +80,36 @@ export class ImportManager {
 	}
 
 	private async ensureWorkoutIdIndex(): Promise<void> {
-		if (this.workoutIdIndex && this.dedupKeyIndex) return;
+		if (this.workoutIdIndex && this.dedupKeyIndex && this.dedupKeyLooseIndex) return;
 		const widMap = new Map<string, TFile>();
 		const dedupMap = new Map<string, TFile>();
+		const looseMap = new Map<string, TFile>();
 		for (const f of this.vault.getMarkdownFiles()) {
-			try {
-				const c = await this.vault.read(f);
-				const { frontmatter } = parseFrontmatter(c);
-				const wid = frontmatter.workoutId;
-				if (wid != null && String(wid).trim() !== "") {
-					widMap.set(String(wid), f);
+			const fm = this.app.metadataCache.getFileCache(f)?.frontmatter as
+				| Record<string, unknown>
+				| undefined;
+			if (!fm) continue;
+			const wid = fm.workoutId;
+			if (wid != null && String(wid).trim() !== "") {
+				widMap.set(String(wid), f);
+			}
+			const dk = dedupKeyFromFrontmatter(fm, f.path);
+			if (dk) {
+				const prev = dedupMap.get(dk);
+				if (!prev) dedupMap.set(dk, f);
+				else if (prev.path !== f.path) {
+					console.debug("[Pulse] pulseDedupKey collision (keeping first):", dk, prev.path, f.path);
 				}
-				const dk = dedupKeyFromFrontmatter(frontmatter as unknown as Record<string, unknown>);
-				if (dk) {
-					const prev = dedupMap.get(dk);
-					if (!prev) dedupMap.set(dk, f);
-					else if (prev.path !== f.path) {
-						console.warn("[Pulse] pulseDedupKey collision (keeping first):", dk, prev.path, f.path);
-					}
-				}
-			} catch {
-				/* skip */
+			}
+			const dkLoose = dedupKeyLooseFromFrontmatter(fm, f.path);
+			if (dkLoose) {
+				const prev = looseMap.get(dkLoose);
+				if (!prev) looseMap.set(dkLoose, f);
 			}
 		}
 		this.workoutIdIndex = widMap;
 		this.dedupKeyIndex = dedupMap;
+		this.dedupKeyLooseIndex = looseMap;
 	}
 
 	private async saveImportMeta(): Promise<void> {
@@ -128,9 +150,7 @@ export class ImportManager {
 			const parts = vaultPath.split("/");
 			for (let i = 1; i < parts.length; i++) {
 				const dirPath = parts.slice(0, i).join("/");
-				if (!this.vault.getAbstractFileByPath(dirPath)) {
-					await this.vault.createFolder(dirPath);
-				}
+				await ensureVaultFolder(this.vault, dirPath);
 			}
 			try {
 				await this.vault.create(vaultPath, content);
@@ -182,8 +202,11 @@ export class ImportManager {
 			try {
 				const orphan = await this.processOrphanHeartRateCsvs(folder);
 				if (orphan.success > 0) {
+					const consolidated = await this.consolidateAllWorkoutDuplicatesInVault();
+					const mergeNote =
+						consolidated > 0 ? `; merged ${consolidated} duplicate workout(s)` : "";
 					new Notice(
-						`Pulse: imported ${orphan.success} workout(s) from Heart Rate CSVs${orphan.errors > 0 ? ` (${orphan.errors} error(s))` : ""}.`
+						`Pulse: imported ${orphan.success} workout(s) from Heart Rate CSVs${orphan.errors > 0 ? ` (${orphan.errors} error(s))` : ""}${mergeNote}.`
 					);
 					return;
 				}
@@ -201,10 +224,28 @@ export class ImportManager {
 		new Notice(`Pulse: scanning ${toProcess.length} file(s)...`);
 		try {
 			const result = await this.processVaultFiles(toProcess);
-			const orphan = await this.processOrphanHeartRateCsvs(folder);
+			const bodyCompOnly = toProcess.every(
+				(f) =>
+					isFITINDEXCsvFileName(f.name) ||
+					isRENPHOCsvFileName(f.name) ||
+					isHealthAutoExportDailyCsv(f.name)
+			);
+			const orphan = bodyCompOnly
+				? { success: 0, errors: 0 }
+				: await this.processOrphanHeartRateCsvs(folder);
+			const consolidated = bodyCompOnly ? 0 : await this.consolidateAllWorkoutDuplicatesInVault();
 			const total = result.success + orphan.success;
 			const errTotal = result.errors + orphan.errors;
-			new Notice(`Imported ${total} item(s)${errTotal > 0 ? ` (${errTotal} error(s))` : ""}`);
+			const parts: string[] = [];
+			if (result.bodyComp > 0) parts.push(`${result.bodyComp} body measurement(s)`);
+			if (result.workouts > 0) parts.push(`${result.workouts} workout(s)`);
+			if (result.other > 0) parts.push(`${result.other} other item(s)`);
+			if (consolidated > 0) parts.push(`merged ${consolidated} duplicate workout(s)`);
+			const detail = parts.length > 0 ? parts.join(", ") : `${total} item(s)`;
+			new Notice(`Pulse: imported ${detail}${errTotal > 0 ? ` (${errTotal} error(s))` : ""}`);
+			if (result.bodyComp > 0 || result.workouts > 0) {
+				this.onImportComplete?.();
+			}
 		} catch (err) {
 			new Notice(`Import failed: ${err}`);
 		}
@@ -243,9 +284,14 @@ export class ImportManager {
 		return { success, errors };
 	}
 
-	async processVaultFiles(files: TFile[]): Promise<{ success: number; errors: number }> {
+	async processVaultFiles(
+		files: TFile[]
+	): Promise<{ success: number; errors: number; bodyComp: number; workouts: number; other: number }> {
 		let success = 0;
 		let errors = 0;
+		let bodyComp = 0;
+		let workouts = 0;
+		let other = 0;
 		for (const file of files) {
 			let processed = false;
 			try {
@@ -265,50 +311,60 @@ export class ImportManager {
 					const result = await this.processJSONText(text);
 					success += result.success;
 					errors += result.errors;
+					workouts += result.workouts;
+					other += result.other;
 					processed = true;
 				} else if (ext === "csv" && (isFITINDEXCsvFileName(file.name) || isRENPHOCsvFileName(file.name))) {
 					const rows = parseFITINDEXCsv(text, { indexFallback: isFITINDEXCsvFileName(file.name) });
 					if (rows.length > 0) {
 						const n = await this.processFITINDEXToStatsNotes(rows);
 						success += n;
+						bodyComp += n;
 						if (n > 0) this.markLastBodyCompImport();
 						processed = true;
+					} else {
+						console.warn(
+							`[Pulse] No body-composition rows parsed from ${file.path}. Check CSV headers (Date, Weight(lb), etc.).`
+						);
 					}
 				} else if (ext === "csv" && isHealthAutoExportDailyCsv(file.name)) {
 					const rows = parseHealthAutoExportDailyCsv(text);
 					if (rows.length > 0) {
 						const n = await this.processHealthAutoExportDailyToStatsNotes(rows);
 						success += n;
+						other += n;
 						processed = true;
 					}
 				} else if (ext === "csv" && isHealthAutoExportWorkoutsCsv(file.name)) {
-					const workouts = parseHealthAutoExportWorkoutsCsv(text);
-					for (const workout of workouts) {
+					const workoutRows = parseHealthAutoExportWorkoutsCsv(text);
+					for (const workout of workoutRows) {
 						try {
 							await this.processWorkout(workout, undefined, file.path);
 							success++;
+							workouts++;
 						} catch (error) {
 							console.error("Error processing workout from Workouts CSV:", error);
 							errors++;
 						}
 					}
-					processed = workouts.length > 0;
+					processed = workoutRows.length > 0;
 				} else if (ext === "csv") {
 					const headerLine = text.split(/\r?\n/).find((l) => l.trim()) ?? "";
 					if (isGravlWorkoutsCsv(file.name, headerLine) || isFitbodWorkoutsCsv(file.name, headerLine)) {
-						const workouts = parseGravlWorkoutsCsv(text);
+						const workoutRows = parseGravlWorkoutsCsv(text);
 						const pulseImportSource = file.name.toLowerCase().includes("fitbod") ? "fitbod" : "gravl";
-						for (const workout of workouts) {
+						for (const workout of workoutRows) {
 							(workout as Record<string, unknown>).pulseImportSource = pulseImportSource;
 							try {
 								await this.processWorkout(workout, undefined, file.path);
 								success++;
+								workouts++;
 							} catch (error) {
 								console.error("Error processing workout from Gravl CSV:", error);
 								errors++;
 							}
 						}
-						processed = workouts.length > 0;
+						processed = workoutRows.length > 0;
 					}
 				}
 				if (processed && this.settings.deleteSourceAfterImport) {
@@ -320,22 +376,28 @@ export class ImportManager {
 				errors++;
 			}
 		}
-		return { success, errors };
+		return { success, errors, bodyComp, workouts, other };
 	}
 
-	async processJSONText(jsonText: string, imageData?: string): Promise<{ success: number; errors: number }> {
+	async processJSONText(
+		jsonText: string,
+		imageData?: string
+	): Promise<{ success: number; errors: number; workouts: number; other: number }> {
 		let success = 0;
 		let errors = 0;
+		let workouts = 0;
+		let other = 0;
 		const parsed = parseAutoExportJson(jsonText);
 		if (!isAutoExportJson(parsed)) {
 			throw new Error("Invalid AutoExport JSON");
 		}
-		const { workouts, metrics, sleepAnalysis } = parsed;
-		for (const workout of workouts) {
+		const { workouts: parsedWorkouts, metrics, sleepAnalysis } = parsed;
+		for (const workout of parsedWorkouts) {
 			try {
-				const isFirst = workouts.indexOf(workout) === 0;
+				const isFirst = parsedWorkouts.indexOf(workout) === 0;
 				await this.processWorkout(workout, isFirst ? imageData : undefined, "HealthAutoExport.json");
 				success++;
+				workouts++;
 			} catch (error) {
 				console.error("Error processing workout:", error);
 				errors++;
@@ -345,6 +407,7 @@ export class ImportManager {
 			try {
 				const n = await this.processMetricsToStatsNotes(metrics);
 				success += n;
+				other += n;
 			} catch (err) {
 				console.error("Error processing metrics:", err);
 				errors++;
@@ -354,12 +417,13 @@ export class ImportManager {
 			try {
 				const n = await this.processSleepToStatsNotes(sleepAnalysis);
 				success += n;
+				other += n;
 			} catch (err) {
 				console.error("Error processing sleep:", err);
 				errors++;
 			}
 		}
-		return { success, errors };
+		return { success, errors, workouts, other };
 	}
 
 	async getStatsNoteBodyTemplateContent(): Promise<string> {
@@ -384,12 +448,8 @@ export class ImportManager {
 		}
 		const pathParts = path.split("/");
 		if (pathParts.length > 1) {
-			for (let i = 1; i < pathParts.length; i++) {
-				const folderPath = pathParts.slice(0, i).join("/");
-				if (!this.vault.getAbstractFileByPath(folderPath)) {
-					await this.vault.createFolder(folderPath);
-				}
-			}
+			const folderPath = pathParts.slice(0, -1).join("/");
+			await ensureVaultFolder(this.vault, folderPath);
 		}
 		const dateStr = date.getFullYear() + "-" + (date.getMonth() + 1).toString().padStart(2, "0") + "-" + date.getDate().toString().padStart(2, "0");
 		const bodyTemplate = await this.getStatsNoteBodyTemplateContent();
@@ -743,6 +803,258 @@ export class ImportManager {
 		}
 	}
 
+	private static readonly WORKOUT_MATCH_MIN_OVERLAP_MS = 3 * 60 * 1000;
+	private static readonly WORKOUT_MATCH_MAX_START_DELTA_MS = 18 * 60 * 1000;
+
+	private overlapIntervalMs(a0: number, a1: number, b0: number, b1: number): number {
+		const s = Math.max(a0, b0);
+		const e = Math.min(a1, b1);
+		return Math.max(0, e - s);
+	}
+
+	private isoDateFromStart(startIso: string): string {
+		const m = startIso.match(/^(\d{4}-\d{2}-\d{2})/);
+		return m?.[1] ?? "";
+	}
+
+	private findWorkoutFilesByTimeWindow(
+		startIso: string,
+		durationSec: number,
+		excludePath?: string,
+	): TFile[] {
+		const t0 = new Date(startIso).getTime();
+		if (Number.isNaN(t0) || durationSec <= 0) return [];
+		const t1 = t0 + durationSec * 1000;
+		const dateStr = this.isoDateFromStart(startIso);
+		const matches: TFile[] = [];
+
+		for (const file of this.vault.getMarkdownFiles()) {
+			if (excludePath && file.path === excludePath) continue;
+			const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
+				| Record<string, unknown>
+				| undefined;
+			if (!fm || !isWorkoutDedupCandidate(fm, file.path)) continue;
+
+			const start = startIsoFromWorkoutFrontmatter(fm);
+			const dur = durationSecondsFromWorkoutFrontmatter(fm);
+			if (!start || dur <= 0) continue;
+			if (dateStr && this.isoDateFromStart(start) !== dateStr) continue;
+
+			const sMs = new Date(start).getTime();
+			if (Number.isNaN(sMs)) continue;
+			const eMs = sMs + dur * 1000;
+			const overlap = this.overlapIntervalMs(t0, t1, sMs, eMs);
+			const startDelta = Math.abs(sMs - t0);
+			if (
+				overlap >= ImportManager.WORKOUT_MATCH_MIN_OVERLAP_MS ||
+				startDelta <= ImportManager.WORKOUT_MATCH_MAX_START_DELTA_MS
+			) {
+				matches.push(file);
+			}
+		}
+		return matches;
+	}
+
+	private workoutRichnessScore(content: string, fm: Record<string, unknown>): number {
+		let score = 0;
+		const sessionMatch = content.match(/```pulse-session\n([\s\S]*?)```/);
+		if (sessionMatch) {
+			try {
+				const data = JSON.parse(sessionMatch[1]!) as SessionData;
+				const exercises = data.exercises ?? [];
+				score += 40 + exercises.length * 12;
+				for (const ex of exercises) {
+					score += (ex.sets?.length ?? 0) * 2;
+				}
+			} catch {
+				score += 10;
+			}
+		}
+		if (content.includes("## Heart Rate")) score += 8;
+		if (content.includes("## Route")) score += 4;
+
+		const name = String(fm.name ?? fm.importedActivityType ?? "").trim();
+		if (isGenericWorkoutDisplayName(name)) {
+			score -= 15;
+		} else if (name) {
+			score += 6;
+		}
+		return score;
+	}
+
+	private async mergeWorkoutFileInto(canonical: TFile, other: TFile): Promise<void> {
+		if (canonical.path === other.path) return;
+		const [canonRaw, otherRaw] = await Promise.all([
+			this.vault.read(canonical),
+			this.vault.read(other),
+		]);
+		const canonParsed = parseFrontmatter(canonRaw);
+		const otherParsed = parseFrontmatter(otherRaw);
+		const dedupKey =
+			String(canonParsed.frontmatter.pulseDedupKey ?? otherParsed.frontmatter.pulseDedupKey ?? "").trim() ||
+			dedupKeyFromFrontmatter(canonParsed.frontmatter as Record<string, unknown>, canonical.path) ||
+			"";
+
+		const mergedFm = mergeWorkoutImportFrontmatter(
+			canonParsed.frontmatter,
+			otherParsed.frontmatter as Record<string, unknown>,
+			dedupKey,
+		);
+		mergedFm.name = preferWorkoutDisplayName(
+			String(canonParsed.frontmatter.name ?? ""),
+			String(otherParsed.frontmatter.name ?? ""),
+		);
+
+		let mergedBody = mergeWorkoutImportBodies(canonParsed.body, otherParsed.body);
+		const otherSession = otherParsed.body.match(/```pulse-session\n([\s\S]*?)```/);
+		const canonSession = mergedBody.match(/```pulse-session\n([\s\S]*?)```/);
+		if (otherSession && !canonSession) {
+			mergedBody = this.applyPulseSessionMarkdown(mergedBody, JSON.parse(otherSession[1]!) as SessionData);
+		} else if (otherSession && canonSession) {
+			try {
+				const a = JSON.parse(canonSession[1]!) as SessionData;
+				const b = JSON.parse(otherSession[1]!) as SessionData;
+				if ((b.exercises?.length ?? 0) > (a.exercises?.length ?? 0)) {
+					mergedBody = this.applyPulseSessionMarkdown(mergedBody, b);
+				}
+			} catch {
+				/* keep canonical session block */
+			}
+		}
+
+		const templatePath = String(
+			canonParsed.frontmatter.template ??
+				otherParsed.frontmatter.template ??
+				"pulse:import-without-template",
+		);
+		const bannerRaw = String(mergedFm.banner ?? "").trim();
+		const bannerMatch = bannerRaw.match(/\[\[([^\]|]+)/);
+		const relativeImagePath = bannerMatch?.[1];
+		const workoutName = String(mergedFm.name ?? canonical.basename.replace(/\.md$/i, ""));
+
+		const yamlFrontmatter = this.generateYAMLFrontmatter(
+			mergedFm as Record<string, unknown>,
+			templatePath,
+			relativeImagePath,
+			workoutName,
+		);
+		await this.vault.modify(canonical, `---\n${yamlFrontmatter}---\n\n${mergedBody.trimEnd()}\n`);
+
+		const wid = String(mergedFm.workoutId ?? "").trim();
+		if (wid) this.workoutIdIndex?.set(wid, canonical);
+		const dk = dedupKeyFromFrontmatter(mergedFm as Record<string, unknown>, canonical.path);
+		if (dk) this.dedupKeyIndex?.set(dk, canonical);
+		const dkLoose = dedupKeyLooseFromFrontmatter(mergedFm as Record<string, unknown>, canonical.path);
+		if (dkLoose) this.dedupKeyLooseIndex?.set(dkLoose, canonical);
+	}
+
+	/** Manual merge: fold `source` into `target`, then trash `source`. */
+	async mergeWorkoutIntoTarget(target: TFile, source: TFile): Promise<TFile> {
+		if (target.path === source.path) return target;
+		await this.mergeWorkoutFileInto(target, source);
+		await this.vault.trash(source, true);
+		this.workoutDataManager.invalidateWorkoutListCache();
+		this.clearImportCaches();
+		await this.waitForWorkoutMetadata(target);
+		this.onImportComplete?.();
+		return target;
+	}
+
+	/** After vault.modify, metadata cache can lag briefly — wait before rebuilding lists. */
+	private waitForWorkoutMetadata(file: TFile): Promise<void> {
+		const cache = this.app.metadataCache;
+		const hasWorkoutFm = (): boolean => {
+			const fm = cache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+			if (!fm) return false;
+			return fm["pulse-type"] === "session" || String(fm.workoutId ?? "").trim() !== "";
+		};
+		if (hasWorkoutFm()) return Promise.resolve();
+
+		return new Promise((resolve) => {
+			let settled = false;
+			const finish = (): void => {
+				if (settled) return;
+				settled = true;
+				resolve();
+			};
+			const ref = cache.on("changed", (f) => {
+				if (f.path !== file.path) return;
+				if (hasWorkoutFm()) {
+					cache.offref(ref);
+					finish();
+				}
+			});
+			window.setTimeout(() => {
+				cache.offref(ref);
+				finish();
+			}, 3000);
+		});
+	}
+
+	/** Merge same-day/time duplicates into the richest note and trash the rest. */
+	private async consolidateWorkoutDuplicates(
+		writtenFile: TFile,
+		startIso: string,
+		durationSec: number,
+	): Promise<TFile> {
+		const peers = this.findWorkoutFilesByTimeWindow(startIso, durationSec);
+		const byPath = new Map<string, TFile>();
+		byPath.set(writtenFile.path, writtenFile);
+		for (const p of peers) byPath.set(p.path, p);
+		if (byPath.size <= 1) return writtenFile;
+
+		const scored: { file: TFile; score: number }[] = [];
+		for (const file of byPath.values()) {
+			const raw = await this.vault.read(file);
+			const { frontmatter } = parseFrontmatter(raw);
+			scored.push({
+				file,
+				score: this.workoutRichnessScore(raw, frontmatter as Record<string, unknown>),
+			});
+		}
+		scored.sort((a, b) => b.score - a.score);
+		const canonical = scored[0]!.file;
+
+		for (const { file } of scored.slice(1)) {
+			await this.mergeWorkoutFileInto(canonical, file);
+			await this.vault.trash(file, true);
+			console.debug("[Pulse] Consolidated duplicate workout into", canonical.path, "trashed", file.path);
+		}
+
+		this.workoutDataManager.invalidateWorkoutListCache();
+		return canonical;
+	}
+
+	/** One pass over the vault to merge leftover duplicate workout notes (same day + overlapping time). */
+	private async consolidateAllWorkoutDuplicatesInVault(): Promise<number> {
+		await this.ensureWorkoutIdIndex();
+		const seen = new Set<string>();
+		let trashed = 0;
+
+		for (const file of this.vault.getMarkdownFiles()) {
+			if (seen.has(file.path)) continue;
+			const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
+				| Record<string, unknown>
+				| undefined;
+			if (!fm || !isWorkoutDedupCandidate(fm, file.path)) continue;
+
+			const start = startIsoFromWorkoutFrontmatter(fm);
+			const dur = durationSecondsFromWorkoutFrontmatter(fm);
+			if (!start || dur <= 0) continue;
+
+			const peers = this.findWorkoutFilesByTimeWindow(start, dur);
+			const group = [file, ...peers.filter((p) => p.path !== file.path)];
+			const unique = [...new Map(group.map((f) => [f.path, f])).values()];
+			if (unique.length <= 1) continue;
+
+			for (const f of unique) seen.add(f.path);
+			trashed += unique.length - 1;
+			await this.consolidateWorkoutDuplicates(file, start, dur);
+		}
+
+		return trashed;
+	}
+
 	async processWorkout(workout: Record<string, unknown>, imageData?: string, sourcePath?: string): Promise<string> {
 		let sessionDataForImport: SessionData | null = null;
 		await this.ensureWorkoutIdIndex();
@@ -782,6 +1094,10 @@ export class ImportManager {
 			startIsoRaw && durationSec > 0
 				? computePulseDedupKey({ startIso: startIsoRaw, durationSec, kind })
 				: "";
+		const dedupKeyLoose =
+			startIsoRaw && durationSec > 0
+				? computePulseDedupKeyLoose({ startIso: startIsoRaw, durationSec })
+				: "";
 
 		if (this.currentImportWorkoutIds.has(workoutId)) {
 			const existing = this.workoutIdIndex?.get(workoutId);
@@ -789,8 +1105,14 @@ export class ImportManager {
 		}
 
 		let targetFile: TFile | null = this.workoutIdIndex?.get(workoutId) ?? null;
-		if (!targetFile && dedupKey) {
-			targetFile = this.dedupKeyIndex?.get(dedupKey) ?? null;
+		if (!targetFile) {
+			targetFile = lookupDedupTargetFile(
+				this.dedupKeyIndex ?? new Map(),
+				this.dedupKeyLooseIndex ?? new Map(),
+				startIsoRaw,
+				durationSec,
+				kind,
+			);
 		}
 
 		let finalFilePath = "";
@@ -839,14 +1161,20 @@ export class ImportManager {
 			const pathParts = finalFilePath.split("/");
 			if (pathParts.length > 1) {
 				const folderPath = pathParts.slice(0, -1).join("/");
-				if (!this.vault.getAbstractFileByPath(folderPath)) {
-					await this.vault.createFolder(folderPath);
-				}
+				await ensureVaultFolder(this.vault, folderPath);
 			}
 		}
 
 		const existingHasBanner = Boolean(targetFile && String(existingFm.banner ?? "").trim());
 		const skipNewBanner = Boolean(targetFile && existingHasBanner);
+		const isStrengthApp = pulseImportSource === "gravl" || pulseImportSource === "fitbod";
+		if (pulseImportSource) {
+			(workout as Record<string, unknown>).importSource = pulseImportSource;
+		}
+		(workout as Record<string, unknown>).type =
+			isStrengthApp && kind === "strength"
+				? "[[Traditional Strength Training]]"
+				: `[[${workoutName}]]`;
 		const imageToSave = skipNewBanner ? "" : (imageData ?? (await this.generateWorkoutBannerImage(workout)));
 
 		let relativeImagePath: string | undefined;
@@ -875,6 +1203,9 @@ export class ImportManager {
 		delete mappedData.gravlWorkoutTitle;
 		delete mappedData.gravlSource;
 		delete mappedData.pulseImportSetRows;
+		if (pulseImportSource) {
+			mappedData["importSource"] = pulseImportSource;
+		}
 		delete mappedData.pulseImportSource;
 
 		const year = workoutDate.getFullYear();
@@ -888,8 +1219,10 @@ export class ImportManager {
 		if (dedupKey) {
 			mappedData["pulseDedupKey"] = dedupKey;
 		}
+		if (dedupKeyLoose) {
+			mappedData["pulseDedupKeyLoose"] = dedupKeyLoose;
+		}
 
-		const isStrengthApp = pulseImportSource === "gravl" || pulseImportSource === "fitbod";
 		mappedData["type"] =
 			isStrengthApp && kind === "strength"
 				? "[[Traditional Strength Training]]"
@@ -987,8 +1320,16 @@ export class ImportManager {
 			if (dedupKey) {
 				this.dedupKeyIndex?.set(dedupKey, targetFile);
 			}
+			if (dedupKeyLoose) {
+				this.dedupKeyLooseIndex?.set(dedupKeyLoose, targetFile);
+			}
 		}
 		this.currentImportWorkoutIds.add(workoutId);
+
+		if (targetFile) {
+			targetFile = await this.consolidateWorkoutDuplicates(targetFile, startIsoRaw, durationSec);
+			finalFilePath = targetFile.path;
+		}
 
 		const sessionDateStr = String(yamlData.date ?? mappedData["date"] ?? "");
 		if (sessionDataForImport?.exercises.length && sessionDateStr) {
@@ -1154,9 +1495,7 @@ export class ImportManager {
 	}
 
 	async ensureRoutesFolder(folder: string): Promise<void> {
-		if (folder && !this.vault.getAbstractFileByPath(folder)) {
-			await this.vault.createFolder(folder);
-		}
+		if (folder) await ensureVaultFolder(this.vault, folder);
 	}
 
 	async saveRouteData(workoutId: string, points: RoutePoint[], routesFolder: string): Promise<void> {
@@ -1187,7 +1526,7 @@ export class ImportManager {
 			const pathParts = vaultPath.split("/");
 			for (let i = 1; i < pathParts.length; i++) {
 				const dirPath = pathParts.slice(0, i).join("/");
-				if (!this.vault.getAbstractFileByPath(dirPath)) await this.vault.createFolder(dirPath);
+				await ensureVaultFolder(this.vault, dirPath);
 			}
 			await this.vault.createBinary(vaultPath, bytes.buffer);
 		}
@@ -1327,35 +1666,36 @@ export class ImportManager {
 		return canvas.toDataURL("image/png");
 	}
 
-	async getIconNameForWorkout(workoutName: string): Promise<string> {
-		const key = (workoutName || "").toLowerCase().trim();
-		if (WORKOUT_TYPE_TO_ICON[key]) return WORKOUT_TYPE_TO_ICON[key];
-		for (const [pattern, icon] of Object.entries(WORKOUT_TYPE_TO_ICON)) {
-			if (key.includes(pattern) || pattern.includes(key)) return icon;
-		}
-		const folder = this.vault.getAbstractFileByPath(ACTIVITY_ICONS_FOLDER);
-		if (folder && "children" in folder) {
-			const candidates: { base: string; len: number }[] = [];
-			for (const child of (folder as TFolder).children) {
-				if (child instanceof TFile && child.extension === "png") {
-					const base = child.basename.toLowerCase();
-					if (!base) continue;
-					if (key.includes(base) || base.includes(key)) candidates.push({ base: child.basename, len: base.length });
-				}
-			}
-			if (candidates.length) {
-				candidates.sort((a, b) => b.len - a.len);
-				return candidates[0].base;
-			}
-		}
-		return "other";
+	async getIconNameForWorkout(
+		workout: Record<string, unknown>,
+		opts?: { hasPulseSession?: boolean },
+	): Promise<string> {
+		const icon = resolveWorkoutIconName({
+			name: workout.name != null ? String(workout.name) : undefined,
+			type: workout.type != null ? String(workout.type) : undefined,
+			programDay: workout.programDay != null ? String(workout.programDay) : undefined,
+			importSource: String(workout.importSource ?? workout.pulseImportSource ?? ""),
+			importedActivityType:
+				workout.importedActivityType != null
+					? String(workout.importedActivityType)
+					: undefined,
+			hasPulseSession: opts?.hasPulseSession,
+		});
+		if (icon !== "other") return icon;
+
+		const labels = [
+			workout.name,
+			workout.type,
+			workout.programDay,
+			workout.importedActivityType,
+		]
+			.map((v) => normalizeWorkoutLabel(v != null ? String(v) : ""))
+			.filter(Boolean);
+		return scanVaultForActivityIcon(this.vault, labels) ?? "other";
 	}
 
 	getActivityIconUrl(iconName: string): string | null {
-		const path = `${ACTIVITY_ICONS_FOLDER}/${iconName}.png`;
-		const file = this.vault.getAbstractFileByPath(path);
-		if (file && "path" in file) return this.vault.getResourcePath(file as TFile);
-		return null;
+		return getActivityIconResourcePath(this.vault, iconName);
 	}
 
 	async generateWorkoutBannerImage(workout: Record<string, unknown>): Promise<string> {
@@ -1378,7 +1718,9 @@ export class ImportManager {
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return "";
 
-		const iconName = await this.getIconNameForWorkout(name);
+		const iconName = await this.getIconNameForWorkout(workout, {
+			hasPulseSession: workout._hasPulseSession === true,
+		});
 		const iconUrl = this.getActivityIconUrl(iconName);
 
 		const drawCard = (img: HTMLImageElement | null) => {
@@ -1467,9 +1809,7 @@ export class ImportManager {
 		const folderPath = pathParts.slice(0, -1).join("/");
 		const assetsFolderPath = folderPath ? `${folderPath}/assets` : "assets";
 		const imagePath = `${assetsFolderPath}/${noteFileName}.${extension}`;
-		if (!this.vault.getAbstractFileByPath(assetsFolderPath)) {
-			await this.vault.createFolder(assetsFolderPath);
-		}
+		await ensureVaultFolder(this.vault, assetsFolderPath);
 		const binaryString = atob(base64Data);
 		const bytes = new Uint8Array(binaryString.length);
 		for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
@@ -1482,13 +1822,22 @@ export class ImportManager {
 		return extension;
 	}
 
-	workoutFromFrontmatter(fm: Record<string, string | number>): Record<string, unknown> {
+	workoutFromFrontmatter(
+		fm: Record<string, string | number>,
+		opts?: { hasPulseSession?: boolean },
+	): Record<string, unknown> {
 		return {
 			name: typeof fm.name === "string" ? fm.name : "Workout",
+			type: fm.type != null ? String(fm.type) : undefined,
+			programDay: fm.programDay != null ? String(fm.programDay) : undefined,
+			importSource: fm.importSource != null ? String(fm.importSource) : undefined,
+			importedActivityType:
+				fm.importedActivityType != null ? String(fm.importedActivityType) : undefined,
 			duration: typeof fm.duration === "number" ? fm.duration : undefined,
 			activeEnergyBurned: typeof fm.calories === "number" ? { qty: fm.calories } : undefined,
 			calories: typeof fm.calories === "number" ? fm.calories : undefined,
 			start: fm.startTime ?? fm.start,
+			_hasPulseSession: opts?.hasPulseSession === true,
 		};
 	}
 
@@ -1501,7 +1850,9 @@ export class ImportManager {
 		const content = await this.vault.read(file);
 		const { frontmatter, body } = parseFrontmatter(content);
 		if (!this.isWorkoutNoteFrontmatter(frontmatter)) return false;
-		const workout = this.workoutFromFrontmatter(frontmatter);
+		const workout = this.workoutFromFrontmatter(frontmatter, {
+			hasPulseSession: body.includes("```pulse-session"),
+		});
 		const imageDataUrl = await this.generateWorkoutBannerImage(workout);
 		if (!imageDataUrl) return false;
 		const ext = await this.saveImage(imageDataUrl, file.path);
@@ -1518,6 +1869,10 @@ export class ImportManager {
 		const file = this.app.workspace.getActiveFile();
 		if (!file) { new Notice("No active note."); return; }
 		if (file.extension !== "md") { new Notice("Active file is not a markdown note."); return; }
+		await this.updateBannerForNoteWithNotice(file);
+	}
+
+	async updateBannerForNoteWithNotice(file: TFile): Promise<void> {
 		try {
 			const updated = await this.updateBannerForNote(file);
 			if (updated) new Notice("Banner updated.");
@@ -1572,6 +1927,8 @@ export class ImportManager {
 		const lines: string[] = [];
 		for (const [key, value] of Object.entries(data)) {
 			if (value === null || value === undefined) continue;
+			// Banner is appended once below from relativeImagePath.
+			if (key === "banner" && relativeImagePath) continue;
 			if (typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
 				const obj = value as Record<string, unknown>;
 				if (obj.qty !== undefined) {

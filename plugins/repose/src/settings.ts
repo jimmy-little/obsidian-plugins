@@ -21,8 +21,10 @@ export interface ReposeSettings {
 	twitchClientId: string;
 	/** Twitch app secret — used only to request an app access token for IGDB (stored in plugin data). */
 	twitchClientSecret: string;
-	/** Vault-relative root for imported media notes (was OBSIDIAN_VAULT_PATH + `90 Media`) */
+	/** Vault-relative root for imported media notes */
 	mediaRoot: string;
+	/** Vault-relative folder for imported note images (episode stills, etc.) */
+	noteAttachmentsFolder: string;
 	/**
 	 * When `type` / `mediaType` frontmatter is missing, these rules classify notes.
 	 * Order: movie, show, podcast, book, game — first match wins.
@@ -35,6 +37,8 @@ export interface ReposeSettings {
 	traktRefreshToken: string;
 	/** Epoch ms when access token expires */
 	traktTokenExpiresAt: number;
+	/** When marking an episode “Watch Now”, write Fulcrum timer frontmatter and a ```fulcrum-timer``` block. */
+	trackWatchTimeWithFulcrum: boolean;
 }
 
 const DEFAULT_TYPE_RULES: Record<ReposeRuleMediaType, MediaTypeRule> = {
@@ -90,12 +94,14 @@ export const DEFAULT_SETTINGS: ReposeSettings = {
 	tmdbApiKey: "",
 	twitchClientId: "",
 	twitchClientSecret: "",
-	mediaRoot: "90 Media",
+	mediaRoot: "Media",
+	noteAttachmentsFolder: "attachments",
 	typeRules: cloneTypeRules(),
 	projectWikilink: "[[Downtime]]",
 	traktAccessToken: "",
 	traktRefreshToken: "",
 	traktTokenExpiresAt: 0,
+	trackWatchTimeWithFulcrum: false,
 };
 
 export function normalizeSettings(raw: unknown): ReposeSettings {
@@ -114,6 +120,10 @@ export function normalizeSettings(raw: unknown): ReposeSettings {
 		twitchClientSecret:
 			typeof o.twitchClientSecret === "string" ? o.twitchClientSecret : DEFAULT_SETTINGS.twitchClientSecret,
 		mediaRoot: typeof o.mediaRoot === "string" ? o.mediaRoot : DEFAULT_SETTINGS.mediaRoot,
+		noteAttachmentsFolder:
+			typeof o.noteAttachmentsFolder === "string"
+				? o.noteAttachmentsFolder
+				: DEFAULT_SETTINGS.noteAttachmentsFolder,
 		typeRules: parseTypeRules(o, legacyMovies, legacySeries),
 		projectWikilink:
 			typeof o.projectWikilink === "string" ? o.projectWikilink : DEFAULT_SETTINGS.projectWikilink,
@@ -123,7 +133,16 @@ export function normalizeSettings(raw: unknown): ReposeSettings {
 			typeof o.traktRefreshToken === "string" ? o.traktRefreshToken : DEFAULT_SETTINGS.traktRefreshToken,
 		traktTokenExpiresAt:
 			typeof o.traktTokenExpiresAt === "number" ? o.traktTokenExpiresAt : DEFAULT_SETTINGS.traktTokenExpiresAt,
+		trackWatchTimeWithFulcrum:
+			typeof o.trackWatchTimeWithFulcrum === "boolean"
+				? o.trackWatchTimeWithFulcrum
+				: DEFAULT_SETTINGS.trackWatchTimeWithFulcrum,
 	};
+}
+
+/** Vault-relative attachments root with leading/trailing slashes stripped. */
+export function noteAttachmentsBase(settings: Pick<ReposeSettings, "noteAttachmentsFolder">): string {
+	return normalizePath(settings.noteAttachmentsFolder.replace(/^\/+|\/+$/g, "") || "attachments");
 }
 
 /** Path segments (under media root) used when importing / resolving vault paths for a type. */

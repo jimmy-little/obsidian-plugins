@@ -1,6 +1,7 @@
-import type {App} from "obsidian";
+import {type App, TFile} from "obsidian";
 import type {FulcrumSettings, TimeTrackerHorizon} from "../settingsDefaults";
 import type {ProjectRollup} from "../types";
+import {readTimerEntriesFromFm, sumEntryMinutes} from "./timerEntries";
 import {readTrackedMinutesFromFm} from "./trackedMinutes";
 import {meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
 
@@ -33,8 +34,41 @@ function inWindow(ts: number, cutoff: number): boolean {
 	return ts >= cutoff;
 }
 
-function taskActivityMs(t: ProjectRollup["tasks"][0]): number {
+/** Prefer latest completed timer entry end; fall back to mtime / createdAt. */
+function taskActivityMs(
+	app: App,
+	settings: FulcrumSettings,
+	t: ProjectRollup["tasks"][0],
+): number {
+	const fm = app.metadataCache.getFileCache(t.file)?.frontmatter as
+		| Record<string, unknown>
+		| undefined;
+	const entries = readTimerEntriesFromFm(fm, settings.timer, t.file.path);
+	let latest = 0;
+	for (const e of entries) {
+		if (e.endTime != null && e.endTime > latest) latest = e.endTime;
+	}
+	if (latest > 0) return latest;
 	return Math.max(t.file.stat.mtime, t.createdAtMs ?? 0);
+}
+
+function noteActivityMs(
+	app: App,
+	settings: FulcrumSettings,
+	filePath: string,
+	fallbackMtime: number,
+): number {
+	const f = app.vault.getAbstractFileByPath(filePath);
+	if (!(f instanceof TFile)) return fallbackMtime;
+	const fm = app.metadataCache.getFileCache(f)?.frontmatter as
+		| Record<string, unknown>
+		| undefined;
+	const entries = readTimerEntriesFromFm(fm, settings.timer, filePath);
+	let latest = 0;
+	for (const e of entries) {
+		if (e.endTime != null && e.endTime > latest) latest = e.endTime;
+	}
+	return latest > 0 ? latest : fallbackMtime;
 }
 
 export type ProjectTimeBreakdown = {
@@ -64,16 +98,11 @@ export type TimeTrackedModel = {
 	totalMinutes: number;
 	totalProjectsWithTime: number;
 	topProject: ProjectTimeBreakdown | null;
-	/** Task with highest tracked minutes in window */
 	topSingleTask: {title: string; minutes: number; projectName: string; path: string} | null;
-	/** Project with largest count of tasks that have tracked > 0 in window */
 	mostTasksTrackedProject: {name: string; path: string; count: number} | null;
-	/** Project where meeting time / total is highest (min 15m total) */
 	meetingHeaviestProject: {name: string; path: string; pct: number} | null;
-	/** Average minutes per task (among tasks with track > 0 in window) */
 	avgMinutesPerTrackedTask: number | null;
 	insights: TimeTrackedInsight[];
-	/** Top slices for pie + bar (same order) */
 	topSlices: {label: string; minutes: number; color: string}[];
 };
 
@@ -92,10 +121,6 @@ function sliceColor(i: number): string {
 	return PIE_COLORS[i % PIE_COLORS.length] ?? "var(--text-muted)";
 }
 
-/**
- * Build dashboard model from project rollups. Uses file mtimes / task createdAt / note modifiedMs
- * as a proxy for “activity in window” when a time horizon is selected (refine with real logs later).
- */
 export function buildTimeTrackedModel(
 	app: App,
 	settings: FulcrumSettings,
@@ -136,22 +161,33 @@ export function buildTimeTrackedModel(
 		const pFm = app.metadataCache.getFileCache(p.file)?.frontmatter as
 			| Record<string, unknown>
 			| undefined;
-		const selfMin = readTrackedMinutesFromFm(pFm, field);
-		if (selfMin > 0 && inWindow(p.file.stat.mtime, cutoff)) {
+		const projectEntries = readTimerEntriesFromFm(pFm, settings.timer, path);
+		const selfMin =
+			projectEntries.length > 0
+				? sumEntryMinutes(projectEntries)
+				: readTrackedMinutesFromFm(pFm, field);
+		const selfActivityMs = noteActivityMs(app, settings, path, p.file.stat.mtime);
+		if (selfMin > 0 && inWindow(selfActivityMs, cutoff)) {
 			fromProjectNote = selfMin;
 		}
 
 		for (const t of r.tasks) {
-			if (t.trackedMinutes <= 0) continue;
-			if (!inWindow(taskActivityMs(t), cutoff)) continue;
-			fromTasks += t.trackedMinutes;
+			const fm = app.metadataCache.getFileCache(t.file)?.frontmatter as
+				| Record<string, unknown>
+				| undefined;
+			const entries = readTimerEntriesFromFm(fm, settings.timer, t.file.path);
+			const minutes =
+				entries.length > 0 ? sumEntryMinutes(entries) : t.trackedMinutes;
+			if (minutes <= 0) continue;
+			if (!inWindow(taskActivityMs(app, settings, t), cutoff)) continue;
+			fromTasks += minutes;
 			tasksWithTrack++;
-			sumTaskMinutesForAvg += t.trackedMinutes;
+			sumTaskMinutesForAvg += minutes;
 			countTrackedTasks++;
-			if (!globalTopTask || t.trackedMinutes > globalTopTask.minutes) {
+			if (!globalTopTask || minutes > globalTopTask.minutes) {
 				globalTopTask = {
 					title: t.title,
-					minutes: t.trackedMinutes,
+					minutes,
 					projectName: name,
 					path: t.file.path,
 				};
@@ -161,20 +197,26 @@ export function buildTimeTrackedModel(
 		for (const m of r.meetings) {
 			const mm = meetingEffectiveMinutes(m);
 			if (mm <= 0) continue;
-			if (!inWindow(m.file.stat.mtime, cutoff)) continue;
+			const mActivity = noteActivityMs(app, settings, m.file.path, m.file.stat.mtime);
+			if (!inWindow(mActivity, cutoff)) continue;
 			fromMeetings += mm;
 			meetingsWithTime++;
 		}
 
 		for (const n of r.atomicNotes) {
-			if (n.trackedMinutes <= 0) continue;
-			if (!inWindow(n.modifiedMs, cutoff)) continue;
-			fromAtomic += n.trackedMinutes;
+			const fm = app.metadataCache.getFileCache(n.file)?.frontmatter as
+				| Record<string, unknown>
+				| undefined;
+			const entries = readTimerEntriesFromFm(fm, settings.timer, n.file.path);
+			const minutes = entries.length > 0 ? sumEntryMinutes(entries) : n.trackedMinutes;
+			if (minutes <= 0) continue;
+			const activityMs = noteActivityMs(app, settings, n.file.path, n.modifiedMs);
+			if (!inWindow(activityMs, cutoff)) continue;
+			fromAtomic += minutes;
 			atomicNotesWithTrack++;
 		}
 
-		const totalMinutes =
-			fromTasks + fromMeetings + fromAtomic + fromProjectNote;
+		const totalMinutes = fromTasks + fromMeetings + fromAtomic + fromProjectNote;
 
 		if (totalMinutes <= 0) continue;
 
@@ -297,7 +339,6 @@ export function fmtHours(mins: number): string {
 	return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-/** CSS conic-gradient stops for pie (0–100% cumulative). */
 export function pieConicGradient(slices: {minutes: number; color: string}[]): string {
 	const total = slices.reduce((s, x) => s + x.minutes, 0);
 	if (total <= 0) return "conic-gradient(var(--background-modifier-border) 0deg 360deg)";

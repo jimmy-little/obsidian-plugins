@@ -7,7 +7,7 @@ import type {IndexedMeeting, IndexedProject, IndexedTask} from "../types";
 import {meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
 import {resolveProjectAccentCss} from "./projectVisual";
 
-export type CalendarEventKind = "task" | "meeting";
+export type CalendarEventKind = "task" | "meeting" | "logged" | "planned";
 
 export type CalendarEvent = {
 	kind: CalendarEventKind;

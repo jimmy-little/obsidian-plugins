@@ -54,6 +54,14 @@ function formatDelta(def: BodyMetricDef, delta: number | undefined, hasRange: bo
 	return `${sign}${f}${u}`;
 }
 
+/** Y-axis for weight chart: goal at bottom, headroom above highest reading. */
+function weightChartScale(values: number[], goalWeight: number): { yMin: number; yMax: number } {
+	const maxVal = Math.max(...values);
+	const span = Math.max(maxVal - goalWeight, 1);
+	const pad = Math.max(span * 0.1, 2);
+	return { yMin: goalWeight, yMax: maxVal + pad };
+}
+
 export class BodyCompTab {
 	private plugin: PulsePlugin;
 	private container: HTMLElement | null = null;
@@ -180,6 +188,17 @@ export class BodyCompTab {
 		addStat("Current", formatVal(def, current));
 		addStat("Change", formatDelta(def, delta, points.length >= 2));
 
+		const goalWeight =
+			def.key === "weight" ? this.plugin.settings.bodyGoalWeight : undefined;
+		if (def.key === "weight") {
+			this.renderWeightGoalSetting(left, goalWeight);
+			if (goalWeight != null && goalWeight > 0 && current != null) {
+				const toGo = current - goalWeight;
+				addStat("Goal", formatVal(def, goalWeight));
+				addStat("To go", formatDelta(def, toGo, true));
+			}
+		}
+
 		const chartWrap = card.createDiv({ cls: "pulse-body-card__chart" });
 
 		if (points.length === 0) {
@@ -194,13 +213,55 @@ export class BodyCompTab {
 		canvas.height = 140;
 
 		const chartPoints = points.map((p) => ({ x: p.date.slice(5), y: p.v }));
+		const chartOpts =
+			goalWeight != null && goalWeight > 0
+				? weightChartScale(points.map((p) => p.v), goalWeight)
+				: undefined;
 		try {
-			const chart = await renderSmoothLineChart(canvas, chartPoints, def.label);
+			const chart = await renderSmoothLineChart(canvas, chartPoints, def.label, chartOpts);
 			this.charts.push(chart);
 		} catch (e) {
 			console.warn("Body metric chart error:", e);
 			chartWrap.createEl("p", { text: "Chart unavailable", cls: "pulse-workout-muted" });
 		}
+	}
+
+	private renderWeightGoalSetting(parent: HTMLElement, goalWeight: number | undefined): void {
+		const row = parent.createDiv({ cls: "pulse-body-card__goal" });
+		row.createSpan({ cls: "pulse-body-card__goal-label", text: "Goal weight" });
+
+		const input = row.createEl("input", {
+			type: "number",
+			cls: "pulse-body-card__goal-input",
+			attr: {
+				step: "0.1",
+				min: "0",
+				placeholder: "lb",
+				"aria-label": "Goal weight in pounds",
+			},
+		});
+		if (goalWeight != null && goalWeight > 0) {
+			input.value = String(goalWeight);
+		}
+
+		let saveTimer: ReturnType<typeof setTimeout> | null = null;
+		const persist = () => {
+			const raw = input.value.trim();
+			if (!raw) {
+				this.plugin.settings.bodyGoalWeight = undefined;
+			} else {
+				const n = parseFloat(raw);
+				this.plugin.settings.bodyGoalWeight =
+					Number.isFinite(n) && n > 0 ? n : undefined;
+			}
+			void this.plugin.saveSettings().then(() => this.refreshCards());
+		};
+
+		input.addEventListener("input", () => {
+			if (saveTimer) clearTimeout(saveTimer);
+			saveTimer = setTimeout(persist, 400);
+		});
+		input.addEventListener("change", persist);
 	}
 
 	private destroyCharts(): void {

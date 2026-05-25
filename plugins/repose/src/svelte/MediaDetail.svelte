@@ -23,6 +23,7 @@
 	export let selectedPath: string | null;
 	export let onSelectPath: (path: string) => void;
 	export let onGoHome: () => void;
+	export let onBackToList: (() => void) | undefined = undefined;
 
 	let detailRev = 0;
 	let homeBtnEl: HTMLButtonElement | null = null;
@@ -142,6 +143,15 @@
 					aria-label="Back to series"
 					title="Back to series"
 					on:click={() => onSelectPath(hostForEpisode.path)}
+				></button>
+			{:else if onBackToList}
+				<button
+					type="button"
+					bind:this={backBtnEl}
+					class="repose-banner-btn repose-banner-btn--icon-only repose-media-detail__home-btn"
+					aria-label="Back to list"
+					title="Back to list"
+					on:click={() => onBackToList?.()}
 				></button>
 			{/if}
 			{#if item.mediaType !== "podcast" && item.mediaType !== "book"}

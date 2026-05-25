@@ -29,11 +29,6 @@
 		incompleteProjectTasks,
 		leadingTimelineEmojiFromNoteType,
 	} from "../fulcrum/utils/projectActivity";
-	import {
-		LAPSE_PUBLIC_API_READY_EVENT,
-		LAPSE_PUBLIC_API_UNLOAD_EVENT,
-	} from "@obsidian-suite/interop";
-	import {getLapseApi, runLapseQuickStartForProject} from "../fulcrum/lapseIntegration";
 	import {preferLightForegroundOnAccentCss} from "../fulcrum/utils/projectVisual";
 	import type {ProjectLogActivityEntry} from "../fulcrum/projectNote";
 	import {loadActivityFeedPreviews} from "../fulcrum/loadActivityFeedPreviews";
@@ -236,28 +231,9 @@
 	$: showNewTaskNoteBtn = taskSourceMode === "taskNotes" || taskSourceMode === "both";
 	$: showNewNoteFromTemplateBtn = plugin.settings.projectNewNoteTemplatePath.trim().length > 0;
 
-	let lapseApiAvailable = !!getLapseApi(plugin.app);
-
-	onMount(() => {
-		const sync = (): void => {
-			lapseApiAvailable = !!getLapseApi(plugin.app);
-		};
-		sync();
-		window.addEventListener(LAPSE_PUBLIC_API_READY_EVENT, sync);
-		window.addEventListener(LAPSE_PUBLIC_API_UNLOAD_EVENT, sync);
-		return () => {
-			window.removeEventListener(LAPSE_PUBLIC_API_READY_EVENT, sync);
-			window.removeEventListener(LAPSE_PUBLIC_API_UNLOAD_EVENT, sync);
-		};
-	});
-
-	function startLapseTimer(): void {
+	function startProjectTimer(): void {
 		if (!rollup) return;
-		void runLapseQuickStartForProject(
-			plugin.app,
-			rollup.project.name,
-			rollup.project.file.path,
-		);
+		void plugin.startTimerForProject(rollup.project.name, rollup.project.file.path);
 	}
 </script>
 
@@ -385,34 +361,39 @@
 									{/if}
 								</div>
 							{/if}
-							{#if showNewTaskNoteBtn || lapseApiAvailable}
+							{#if showNewTaskNoteBtn}
 								<div class="fulcrum-banner-btn-row">
-									{#if showNewTaskNoteBtn}
-										<button
-											type="button"
-											class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-											aria-label="New task note"
-											title="New task note"
-											on:click={() => plugin.openTaskNoteCreateForProject(projectPath)}
-										>
-											<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"file-check"} aria-hidden="true"></span>
-										</button>
-									{:else}
-										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
-									{/if}
-									{#if lapseApiAvailable}
-										<button
-											type="button"
-											class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-											aria-label="Start Lapse timer (Quick Start) for this project"
-											title="Start a Lapse timer (Quick Start) for this project"
-											on:click={startLapseTimer}
-										>
-											<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"play"} aria-hidden="true"></span>
-										</button>
-									{:else}
-										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
-									{/if}
+									<button
+										type="button"
+										class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+										aria-label="New task note"
+										title="New task note"
+										on:click={() => plugin.openTaskNoteCreateForProject(projectPath)}
+									>
+										<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"file-check"} aria-hidden="true"></span>
+									</button>
+									<button
+										type="button"
+										class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+										aria-label="Start timer (Quick Start) for this project"
+										title="Start a timer (Quick Start) for this project"
+										on:click={startProjectTimer}
+									>
+										<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"play"} aria-hidden="true"></span>
+									</button>
+								</div>
+							{:else}
+								<div class="fulcrum-banner-btn-row">
+									<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
+									<button
+										type="button"
+										class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
+										aria-label="Start timer (Quick Start) for this project"
+										title="Start a timer (Quick Start) for this project"
+										on:click={startProjectTimer}
+									>
+										<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"play"} aria-hidden="true"></span>
+									</button>
 								</div>
 							{/if}
 						</div>

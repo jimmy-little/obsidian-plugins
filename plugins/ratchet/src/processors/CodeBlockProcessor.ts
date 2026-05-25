@@ -1,12 +1,14 @@
 import type { Plugin } from "obsidian";
 import type RatchetPlugin from "../main";
-import { startOfDayLocal, startOfWeekLocal } from "../utils/DateUtils";
+import { startOfDayLocal } from "../utils/DateUtils";
 import { renderTrackerCard } from "../ui/TrackerCard";
-import { RESET_PERIOD_LABELS } from "../data/TrackerConfig";
+import { RESET_PERIOD_LABELS, isCheckOffHabit, DEFAULT_TRACKER_COLOR } from "../data/TrackerConfig";
+import { toggleCheckOffDay } from "../ui/checkOffDay";
+import { emptyDayDetail } from "../ui/gridMonthModel";
+import { createHabitHeatmapElement } from "../ui/habitHeatmapBuilder";
 
 export interface BlockParams {
 	tracker?: string;
-	buttons?: number[];
 	"show-goal"?: boolean;
 	days?: number;
 	period?: string;
@@ -21,14 +23,7 @@ export function parseBlockParams(source: string): BlockParams {
 		const key = m[1].trim().toLowerCase();
 		const raw = m[2].trim();
 		if (key === "tracker") params.tracker = raw;
-		else if (key === "buttons") {
-			try {
-				const arr = JSON.parse(raw) as number[];
-				if (Array.isArray(arr)) params.buttons = arr;
-			} catch {
-				/* ignore */
-			}
-		} else if (key === "show-goal") params["show-goal"] = /^(true|1|yes)$/i.test(raw);
+		else if (key === "show-goal") params["show-goal"] = /^(true|1|yes)$/i.test(raw);
 		else if (key === "days") {
 			const n = parseInt(raw, 10);
 			if (!isNaN(n) && n > 0) params.days = n;
@@ -45,6 +40,14 @@ export function resolveHeatmapDays(params: BlockParams): number {
 	if (p === "90" || p === "3 months" || p === "quarter") return 90;
 	if (p === "365" || p === "year" || p === "1y") return 365;
 	return 90; // default
+}
+
+/** Comma-separated tracker ids from a block param value. */
+export function parseTrackerIds(raw: string): string[] {
+	return raw
+		.split(",")
+		.map((s) => s.trim())
+		.filter(Boolean);
 }
 
 export function registerRatchetCounter(
@@ -67,7 +70,6 @@ async function renderOneCounter(
 		container.createSpan({ text: `Tracker not found: ${trackerId}`, cls: "ratchet-counter-error" });
 		return false;
 	}
-	const buttons = params.buttons?.length ? params.buttons : tracker.incrementButtons;
 	const showGoal = params["show-goal"] ?? true;
 
 	const wrap = container.createDiv("ratchet-counter-wrap");
@@ -86,17 +88,14 @@ async function renderOneCounter(
 	await updateCount();
 
 	const btnRow = wrap.createDiv("ratchet-counter-buttons");
-	btnRow.createEl("button", { text: "-1" }).addEventListener("click", async () => {
+	btnRow.createEl("button", { text: "−1" }).addEventListener("click", async () => {
 		await dm.increment(trackerId, -1);
 		await updateCount();
 	});
-	for (const v of buttons) {
-		const btn = btnRow.createEl("button", { text: `+${v}` });
-		btn.addEventListener("click", async () => {
-			await dm.increment(trackerId, v);
-			await updateCount();
-		});
-	}
+	btnRow.createEl("button", { text: "+1" }).addEventListener("click", async () => {
+		await dm.increment(trackerId, 1);
+		await updateCount();
+	});
 
 	if (showGoal && tracker.goalType !== "none") {
 		const goalLine = wrap.createDiv("ratchet-counter-goal");
@@ -122,10 +121,7 @@ export async function renderRatchetCounter(
 		el.createSpan({ text: "ratchet-counter: specify tracker: <id> or tracker: id1, id2, id3" });
 		return;
 	}
-	const trackerIds = raw
-		.split(",")
-		.map((s) => s.trim())
-		.filter(Boolean);
+	const trackerIds = parseTrackerIds(raw);
 	if (trackerIds.length === 0) {
 		el.createSpan({ text: "ratchet-counter: specify at least one tracker id" });
 		return;
@@ -148,35 +144,6 @@ export function registerRatchetHeatmap(
 	(plugin as RatchetPlugin).registerMarkdownCodeBlockProcessor("ratchet-heatmap", callback);
 }
 
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-function addDays(d: Date, n: number): Date {
-	const out = new Date(d);
-	out.setDate(out.getDate() + n);
-	return out;
-}
-
-function dateKey(d: Date): string {
-	const y = d.getFullYear();
-	const m = String(d.getMonth() + 1).padStart(2, "0");
-	const day = String(d.getDate()).padStart(2, "0");
-	return `${y}-${m}-${day}`;
-}
-
-function isSameDay(a: Date, b: Date): boolean {
-	return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-/** Format date for hover tooltip e.g. "Mon, Feb 15, 2026" */
-function formatCellTitle(d: Date): string {
-	const day = DAY_NAMES[d.getDay()];
-	const month = MONTH_NAMES[d.getMonth()];
-	const date = d.getDate();
-	const year = d.getFullYear();
-	return `${day}, ${month} ${date}, ${year}`;
-}
-
 /** Parse YYYY-MM-DD into local date at noon */
 function parseDateKey(key: string): Date | null {
 	const [y, m, d] = key.split("-").map(Number);
@@ -184,14 +151,33 @@ function parseDateKey(key: string): Date | null {
 	return new Date(y, m - 1, d, 12, 0, 0, 0);
 }
 
+async function logHabitDay(plugin: RatchetPlugin, trackerId: string, dateKey: string): Promise<void> {
+	const dm = plugin.getDataManager();
+	const tr = await dm.getTracker(trackerId);
+	if (!tr) return;
+	const targetDate = parseDateKey(dateKey);
+	if (!targetDate) return;
+	if (isCheckOffHabit(tr)) {
+		const start = startOfDayLocal(targetDate);
+		const end = new Date(start);
+		end.setDate(end.getDate() + 1);
+		const entries = await dm.getDayEntries(trackerId, start, new Date(end.getTime() - 1));
+		const row = entries[0];
+		await toggleCheckOffDay(
+			dm,
+			trackerId,
+			targetDate,
+			row ? { count: row.count, eventCount: row.eventCount, hasDoneMarker: row.hasDoneMarker } : emptyDayDetail(),
+		);
+	} else {
+		await dm.incrementOnDate(trackerId, 1, targetDate);
+	}
+}
+
 interface HeatmapBuildOptions {
-	source?: string;
-	blockEl?: HTMLElement;
 	hideTitle?: boolean;
 	rerender?: () => Promise<void>;
 }
-
-type HeatmapMeta = { plugin: RatchetPlugin; trackerId: string; rerender?: () => Promise<void> };
 
 /** Build heatmap DOM into container. Used by ratchet-heatmap and ratchet-summary. */
 async function buildHeatmapInto(
@@ -202,110 +188,30 @@ async function buildHeatmapInto(
 	opts?: HeatmapBuildOptions,
 ): Promise<void> {
 	const dm = plugin.getDataManager();
-	const firstDayOfWeek = plugin.settings.firstDayOfWeek;
 	const tracker = await dm.getTracker(trackerId);
 	if (!tracker) return;
 
-	const doRerender =
-		opts?.rerender ??
-		(opts?.source && opts?.blockEl
-			? () => {
-					opts.blockEl!.empty();
-					return renderRatchetHeatmap(opts.source!, opts.blockEl!, plugin);
-				}
-			: undefined);
+	const accent = tracker.color || DEFAULT_TRACKER_COLOR;
+	container.style.setProperty("--ratchet-heatmap-accent", accent);
 
-	(container as HTMLElement & { __ratchetHeatmap?: HeatmapMeta }).__ratchetHeatmap = {
-		plugin,
-		trackerId,
-		rerender: doRerender,
-	};
-	const today = startOfDayLocal(new Date());
-	const startDay = addDays(today, -(days - 1));
-	const weekStart = startOfWeekLocal(startDay, firstDayOfWeek);
-	const weekStarts: Date[] = [];
-	for (
-		let d = new Date(weekStart);
-		d.getTime() <= today.getTime() + 7 * 24 * 60 * 60 * 1000;
-		d = addDays(d, 7)
-	) {
-		weekStarts.push(new Date(d));
+	const daysBack = Math.max(6, days - 1);
+	const heatmap = await createHabitHeatmapElement(plugin, tracker, daysBack, {
+		ariaLabel: `${tracker.name} activity`,
+		onDayClick: opts?.rerender
+			? async (dateKey) => {
+					await logHabitDay(plugin, trackerId, dateKey);
+					await opts.rerender!();
+				}
+			: async (dateKey) => {
+					await logHabitDay(plugin, trackerId, dateKey);
+				},
+	});
+
+	container.empty();
+	if (!opts?.hideTitle) {
+		container.createEl("div", { cls: "ratchet-heatmap-title", text: tracker.name });
 	}
-	const numCols = weekStarts.length;
-	container.style.setProperty("--heatmap-cols", String(numCols));
-	if (!opts?.hideTitle) container.createEl("div", { cls: "ratchet-heatmap-title", text: tracker.name });
-	const body = container.createDiv("ratchet-heatmap-body");
-	const monthRow = body.createDiv("ratchet-heatmap-months");
-	let lastMonth = -1;
-	for (let c = 0; c < weekStarts.length; c++) {
-		const weekDate = weekStarts[c];
-		const m = weekDate.getMonth();
-		const span = monthRow.createSpan("ratchet-heatmap-month");
-		if (m !== lastMonth) {
-			span.textContent = MONTH_NAMES[m];
-			lastMonth = m;
-		}
-	}
-	const dayLabels = body.createDiv("ratchet-heatmap-day-labels");
-	for (let row = 0; row < 7; row++) {
-		const dow = (firstDayOfWeek + row) % 7;
-		dayLabels.createDiv("ratchet-heatmap-day-label").setText(DAY_NAMES[dow]);
-	}
-	const grid = body.createDiv("ratchet-heatmap-grid");
-	const goalByDate = new Map<string, "met" | "not_met" | "no_data">();
-	for (let d = new Date(startDay); d.getTime() <= today.getTime(); d = addDays(d, 1)) {
-		goalByDate.set(dateKey(d), await dm.getGoalStatusForDay(trackerId, d));
-	}
-	const trackerColor = tracker.color || "#7c3aed";
-	const notMetColor = "#dc2626";
-	const noDataColor = "#ebedf0";
-	for (let row = 0; row < 7; row++) {
-		const rowEl = grid.createDiv("ratchet-heatmap-row");
-		for (let col = 0; col < weekStarts.length; col++) {
-			const cellDate = addDays(weekStarts[col], row);
-			const before = cellDate.getTime() < startDay.getTime();
-			const after = cellDate.getTime() > today.getTime();
-			const inRange = !before && !after;
-			const status = goalByDate.get(dateKey(cellDate));
-			const isToday = isSameDay(cellDate, today);
-			const cell = rowEl.createDiv("ratchet-heatmap-cell");
-			if (!inRange) {
-				cell.addClass("ratchet-heatmap-cell-empty");
-				cell.style.backgroundColor = noDataColor;
-			} else if (status === "met") {
-				cell.addClass("ratchet-heatmap-cell-met");
-				cell.style.backgroundColor = trackerColor;
-			} else if (status === "not_met") {
-				cell.addClass("ratchet-heatmap-cell-not-met");
-				cell.style.backgroundColor = notMetColor;
-			} else {
-				cell.addClass("ratchet-heatmap-cell-no-data");
-				cell.style.backgroundColor = noDataColor;
-			}
-			if (isToday) cell.addClass("ratchet-heatmap-cell-today");
-			cell.setAttribute("data-date", dateKey(cellDate));
-			cell.setAttribute("title", formatCellTitle(cellDate));
-			if (inRange) {
-				cell.addClass("ratchet-heatmap-cell-clickable");
-				cell.addEventListener("click", async () => {
-					const heatmapEl = cell.closest(".ratchet-heatmap");
-					const meta = (heatmapEl as HTMLElement & { __ratchetHeatmap?: HeatmapMeta } | null)?.__ratchetHeatmap;
-					if (!meta) return;
-					const { plugin: plug, trackerId: tid, rerender } = meta;
-					const dateKeyVal = cell.getAttribute("data-date");
-					if (!dateKeyVal) return;
-					const targetDate = parseDateKey(dateKeyVal);
-					if (!targetDate) return;
-					const dmm = plug.getDataManager();
-					const tr = await dmm.getTracker(tid);
-					if (!tr) return;
-					const value = tr.goalType === "at most" && tr.goal === 0 ? 0 : 1;
-					await dmm.incrementOnDate(tid, value, targetDate, value === 0 ? "done" : "");
-					if (rerender) await rerender();
-				});
-			}
-		}
-	}
+	container.appendChild(heatmap);
 }
 
 export async function renderRatchetHeatmap(
@@ -314,27 +220,35 @@ export async function renderRatchetHeatmap(
 	plugin: RatchetPlugin,
 ): Promise<void> {
 	const params = parseBlockParams(source);
-	const trackerId = params.tracker?.trim();
-	if (!trackerId) {
-		el.createSpan({ text: "ratchet-heatmap: specify tracker: <id>" });
+	const raw = params.tracker?.trim() ?? "";
+	if (!raw) {
+		el.createSpan({ text: "ratchet-heatmap: specify tracker: <id> or tracker: id1, id2, id3" });
+		return;
+	}
+	const trackerIds = parseTrackerIds(raw);
+	if (trackerIds.length === 0) {
+		el.createSpan({ text: "ratchet-heatmap: specify at least one tracker id" });
 		return;
 	}
 	const days = resolveHeatmapDays(params);
-	const tracker = await plugin.getDataManager().getTracker(trackerId);
-	if (!tracker) {
-		el.createSpan({ text: `Tracker not found: ${trackerId}` });
-		return;
+	const rerender = async (): Promise<void> => {
+		el.empty();
+		await renderRatchetHeatmap(source, el, plugin);
+	};
+	const container = trackerIds.length > 1 ? el.createDiv("ratchet-heatmap-blocks") : el;
+	for (const trackerId of trackerIds) {
+		const parent = trackerIds.length > 1 ? container : el;
+		const tracker = await plugin.getDataManager().getTracker(trackerId);
+		if (!tracker) {
+			parent.createSpan({ text: `Tracker not found: ${trackerId}`, cls: "ratchet-counter-error" });
+			continue;
+		}
+		const blockWrap = parent.createDiv("ratchet-heatmap-block");
+		blockWrap.style.setProperty("--ratchet-heatmap-accent", tracker.color || DEFAULT_TRACKER_COLOR);
+		const heatmapContainer = blockWrap.createDiv("ratchet-heatmap");
+		await buildHeatmapInto(heatmapContainer, trackerId, days, plugin, { rerender });
+		if (trackerIds.length === 1) break;
 	}
-	const blockWrap = el.createDiv("ratchet-heatmap-block");
-	const container = blockWrap.createDiv("ratchet-heatmap");
-	await buildHeatmapInto(container, trackerId, days, plugin, {
-		source,
-		blockEl: el,
-		rerender: async () => {
-			el.empty();
-			await renderRatchetHeatmap(source, el, plugin);
-		},
-	});
 }
 
 export function registerRatchetSummary(
@@ -344,25 +258,20 @@ export function registerRatchetSummary(
 	(plugin as RatchetPlugin).registerMarkdownCodeBlockProcessor("ratchet-summary", callback);
 }
 
-export async function renderRatchetSummary(
-	source: string,
-	el: HTMLElement,
+async function renderOneSummary(
+	container: HTMLElement,
+	trackerId: string,
+	days: number,
 	plugin: RatchetPlugin,
-): Promise<void> {
-	const params = parseBlockParams(source);
-	const trackerId = params.tracker?.trim();
-	if (!trackerId) {
-		el.createSpan({ text: "ratchet-summary: specify tracker: <id>" });
-		return;
-	}
-	const days = resolveHeatmapDays(params);
+	rerender: () => Promise<void>,
+): Promise<boolean> {
 	const dm = plugin.getDataManager();
 	const tracker = await dm.getTracker(trackerId);
 	if (!tracker) {
-		el.createSpan({ text: `Tracker not found: ${trackerId}` });
-		return;
+		container.createSpan({ text: `Tracker not found: ${trackerId}`, cls: "ratchet-counter-error" });
+		return false;
 	}
-	const wrap = el.createDiv("ratchet-summary");
+	const wrap = container.createDiv("ratchet-summary");
 	wrap.style.setProperty("--ratchet-card-accent", tracker.color || "var(--background-modifier-border)");
 	const left = wrap.createDiv("ratchet-summary-card");
 	const right = wrap.createDiv("ratchet-summary-heatmap");
@@ -370,16 +279,42 @@ export async function renderRatchetSummary(
 		tracker,
 		dataManager: dm,
 		onIncrement: async () => {
-			el.empty();
-			await renderRatchetSummary(source, el, plugin);
+			await rerender();
 		},
 	});
 	const heatmapRoot = right.createDiv("ratchet-heatmap");
+	heatmapRoot.style.setProperty("--ratchet-heatmap-accent", tracker.color || DEFAULT_TRACKER_COLOR);
 	await buildHeatmapInto(heatmapRoot, trackerId, days, plugin, {
 		hideTitle: true,
-		rerender: async () => {
-			el.empty();
-			await renderRatchetSummary(source, el, plugin);
-		},
+		rerender,
 	});
+	return true;
+}
+
+export async function renderRatchetSummary(
+	source: string,
+	el: HTMLElement,
+	plugin: RatchetPlugin,
+): Promise<void> {
+	const params = parseBlockParams(source);
+	const raw = params.tracker?.trim() ?? "";
+	if (!raw) {
+		el.createSpan({ text: "ratchet-summary: specify tracker: <id> or tracker: id1, id2, id3" });
+		return;
+	}
+	const trackerIds = parseTrackerIds(raw);
+	if (trackerIds.length === 0) {
+		el.createSpan({ text: "ratchet-summary: specify at least one tracker id" });
+		return;
+	}
+	const days = resolveHeatmapDays(params);
+	const rerender = async (): Promise<void> => {
+		el.empty();
+		await renderRatchetSummary(source, el, plugin);
+	};
+	const container = trackerIds.length > 1 ? el.createDiv("ratchet-summaries") : el;
+	for (const id of trackerIds) {
+		await renderOneSummary(trackerIds.length > 1 ? container : el, id, days, plugin, rerender);
+		if (trackerIds.length === 1) break;
+	}
 }

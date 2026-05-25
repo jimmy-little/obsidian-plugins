@@ -113,6 +113,20 @@ export function findFirstUnwatchedEpisodeNote(
 	return null;
 }
 
+/** Hero / detail title: `S9 E14 | Episode name`. */
+export function episodeDisplayTitle(
+	season: number | undefined,
+	episode: number | undefined,
+	title: string,
+): string {
+	const name = title.trim();
+	if (season != null && episode != null) {
+		const prefix = `S${season} E${episode}`;
+		return name ? `${prefix} | ${name}` : prefix;
+	}
+	return name || title;
+}
+
 export function readEpisodeRow(app: App, file: TFile): EpisodeRow {
 	const cache = app.metadataCache.getFileCache(file);
 	const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;

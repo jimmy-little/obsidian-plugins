@@ -247,7 +247,6 @@ export class VaultIndex {
 					status: statusRaw,
 					priority: fmString(fm, s.taskPriorityField)?.toLowerCase(),
 					startDate: fmString(fm, "startDate"),
-					dueDate: fmString(fm, s.taskDueDateField),
 					completedDate: fmString(fm, "completedDate"),
 					areaFile,
 					areaName: areaFile?.basename.replace(/\.md$/i, ""),
@@ -256,6 +255,7 @@ export class VaultIndex {
 					color: fmString(fm, s.projectColorField),
 					description: fmString(fm, "description"),
 					nextReview: fmString(fm, s.projectNextReviewField),
+					deadline: fmString(fm, s.projectDeadlineField),
 					launchDate,
 					rank: fmNumber(fm, rankKey),
 				});

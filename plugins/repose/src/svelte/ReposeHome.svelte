@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { Platform, setIcon } from "obsidian";
+	import { setIcon } from "obsidian";
 	import type ReposePlugin from "../main";
+	import { reposeMobile } from "../platform";
 	import MediaListPanel from "./MediaListPanel.svelte";
 	import MediaDetail from "./MediaDetail.svelte";
 	import SearchAddPanel from "./SearchAddPanel.svelte";
@@ -17,6 +18,10 @@
 	export let landing = false;
 	export let onSelectPath: (path: string) => void;
 	export let onGoHome: () => void;
+	export let onBackToList: () => void = () => {};
+
+	const mobile = reposeMobile();
+	$: mobileDetail = mobile && !!selectedPath && !landing;
 
 	const LEFT_WIDTH_LS = "repose-pm-left-col-px";
 	const LEFT_MIN = 220;
@@ -123,9 +128,14 @@
 
 	function collapseLeftIfNarrow(): void {
 		if (typeof window === "undefined") return;
-		if (Platform.isMobile || window.matchMedia("(max-width: 768px)").matches) {
+		if (mobile || window.matchMedia("(max-width: 768px)").matches) {
 			leftCollapsed = true;
 		}
+	}
+
+	function backToList(): void {
+		leftCollapsed = false;
+		onBackToList();
 	}
 
 	function selectPath(path: string): void {
@@ -153,8 +163,26 @@
 			{#if landing}
 				<ReposeLanding {plugin} onSelectPath={selectPath} />
 			{:else}
-				<MediaDetail {plugin} {selectedPath} onSelectPath={selectPath} onGoHome={() => onGoHome()} />
+				<MediaDetail
+					{plugin}
+					{selectedPath}
+					onSelectPath={selectPath}
+					onGoHome={() => onGoHome()}
+					onBackToList={mobile ? backToList : undefined}
+				/>
 			{/if}
+		</main>
+	</div>
+{:else if mobileDetail}
+	<div class="repose-pm repose-pm--mobile-detail">
+		<main class="repose-pm__main repose-view-root">
+			<MediaDetail
+				{plugin}
+				{selectedPath}
+				onSelectPath={selectPath}
+				onGoHome={() => onGoHome()}
+				onBackToList={backToList}
+			/>
 		</main>
 	</div>
 {:else}
@@ -229,4 +257,3 @@
 		{/if}
 	</div>
 {/if}
-

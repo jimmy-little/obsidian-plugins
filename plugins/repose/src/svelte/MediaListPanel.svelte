@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import { setIcon, type TFile } from "obsidian";
 	import type ReposePlugin from "../main";
 	import { resolveListThumbnailFile } from "../media/banner";
 	import { collectMediaMarkdownFiles } from "../media/collectMediaFiles";
 	import { resolveMediaTypeForFile } from "../media/mediaDetect";
 	import { readMediaItem, type MediaItem, type ReposeMediaType } from "../media/mediaModel";
+	import { pathUnderMediaRoot, reposeMobile } from "../platform";
 	import {
 		countShowSeasonsAndEpisodes,
 		personalSerialWatchBadgeLabel,
@@ -17,12 +18,15 @@
 	export let onSelectPath: (path: string) => void;
 
 	let searchQuery = "";
-	let filterType: ReposeMediaType | "all" = "all";
+	let filterType: ReposeMediaType | "all" = "show";
 	let listRev = 0;
+	let listReady = !reposeMobile();
+	let bumpTimer: number | undefined;
+	const mobileList = reposeMobile();
 
 	const FILTER_OPTIONS: { type: ReposeMediaType; icon: string; label: string }[] = [
-		{ type: "movie", icon: "clapperboard", label: "Movies" },
 		{ type: "show", icon: "tv", label: "TV shows" },
+		{ type: "movie", icon: "clapperboard", label: "Movies" },
 		{ type: "podcast", icon: "podcast", label: "Podcasts" },
 		{ type: "book", icon: "book-open", label: "Books" },
 		{ type: "game", icon: "gamepad-2", label: "Games" },
@@ -85,7 +89,7 @@
 		return img ? plugin.app.vault.getResourcePath(img) : null;
 	}
 
-	$: files = (listRev, collectMediaMarkdownFiles(plugin.app, plugin.settings));
+	$: files = listReady ? (listRev, collectMediaMarkdownFiles(plugin.app, plugin.settings)) : [];
 	$: sortedFiles = [...files].sort((a, b) =>
 		readMediaItem(plugin.app, a, plugin.settings).title.localeCompare(
 			readMediaItem(plugin.app, b, plugin.settings).title,
@@ -110,20 +114,22 @@
 			let headRight: string;
 			let serialProgress: { watched: number; total: number } | null = null;
 			let serialPersonalBadge: string | null = null;
-			if (item.mediaType === "show" || item.mediaType === "podcast") {
+			if (!mobileList && (item.mediaType === "show" || item.mediaType === "podcast")) {
 				headRight = formatShowCounts(countShowSeasonsAndEpisodes(app, file, plugin.settings));
 				const ep = showEpisodeWatchProgress(app, file, plugin.settings);
 				if (ep.total > 0) serialProgress = ep;
 				if (item.mediaType === "show") {
 					serialPersonalBadge = personalSerialWatchBadgeLabel(ep.watched, ep.total, item.status);
 				}
+			} else if (item.mediaType === "show" || item.mediaType === "podcast") {
+				headRight = shortMediaTypeLabel(item.mediaType);
 			} else {
 				headRight = shortMediaTypeLabel(item.mediaType);
 			}
 			out.push({
 				file,
 				item,
-				thumbUrl: thumbUrlForFile(file),
+				thumbUrl: mobileList ? null : thumbUrlForFile(file),
 				headRight,
 				serialProgress,
 				serialPersonalBadge,
@@ -132,15 +138,47 @@
 		return out;
 	})();
 
-	function bump(): void {
-		listRev++;
+	function scheduleBump(): void {
+		window.clearTimeout(bumpTimer);
+		bumpTimer = window.setTimeout(() => {
+			bumpTimer = undefined;
+			listRev++;
+		}, mobileList ? 600 : 120);
 	}
 
+	function onVaultMetadataChanged(f: TFile): void {
+		if (!pathUnderMediaRoot(f.path, plugin.settings.mediaRoot)) return;
+		scheduleBump();
+	}
+
+	function onVaultFileChanged(f: TFile): void {
+		if (!pathUnderMediaRoot(f.path, plugin.settings.mediaRoot)) return;
+		scheduleBump();
+	}
+
+	const vaultEvents: Array<() => void> = [];
+
 	onMount(() => {
-		plugin.registerEvent(plugin.app.metadataCache.on("changed", bump));
-		plugin.registerEvent(plugin.app.vault.on("create", bump));
-		plugin.registerEvent(plugin.app.vault.on("delete", bump));
-		plugin.registerEvent(plugin.app.vault.on("rename", bump));
+		if (mobileList) {
+			window.setTimeout(() => {
+				listReady = true;
+				listRev++;
+			}, 0);
+		}
+		vaultEvents.push(plugin.app.metadataCache.on("changed", onVaultMetadataChanged));
+		vaultEvents.push(plugin.app.vault.on("create", onVaultFileChanged));
+		vaultEvents.push(plugin.app.vault.on("delete", onVaultFileChanged));
+		vaultEvents.push(
+			plugin.app.vault.on("rename", (f) => {
+				if (f instanceof TFile) onVaultFileChanged(f);
+			}),
+		);
+	});
+
+	onDestroy(() => {
+		window.clearTimeout(bumpTimer);
+		for (const off of vaultEvents) off();
+		vaultEvents.length = 0;
 	});
 
 	function activateRow(path: string): void {

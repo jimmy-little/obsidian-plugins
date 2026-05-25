@@ -1,9 +1,11 @@
-import { Notice, Plugin, normalizePath, type ObsidianProtocolData } from "obsidian";
+import { Notice, Plugin, TFile, normalizePath, type ObsidianProtocolData } from "obsidian";
 import { WorkoutDocumentView, VIEW_TYPE_PULSE_WORKOUT_DOC } from "./views/WorkoutDocumentView";
+import { NutritionDayView, VIEW_TYPE_PULSE_NUTRITION_DAY } from "./views/NutritionDayView";
 import { DEFAULT_SETTINGS, PulseSettingTab } from "./settings";
 import type { PulseSettings } from "./settings";
 import { ImportManager } from "./import/importManager";
 import { WorkoutDataManager } from "./workout/WorkoutDataManager";
+import { NutritionDataManager } from "./nutrition/NutritionDataManager";
 import { PulseView, VIEW_TYPE_PULSE, type PulseViewMode } from "./views/PulseView";
 import { renderExerciseLogBlock, renderSessionBlock } from "./workout/renderers";
 
@@ -11,23 +13,52 @@ export default class PulsePlugin extends Plugin {
 	settings!: PulseSettings;
 	importManager!: ImportManager;
 	workoutDataManager!: WorkoutDataManager;
+	nutritionDataManager!: NutritionDataManager;
 	private ribbonEl: HTMLElement | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
-		this.workoutDataManager = new WorkoutDataManager(this.app.vault, this.settings);
+		this.workoutDataManager = new WorkoutDataManager(
+			this.app.vault,
+			this.settings,
+			this.app.metadataCache,
+		);
+		this.nutritionDataManager = new NutritionDataManager(this.app.vault, this.settings);
 		this.importManager = new ImportManager(
 			this.app.vault,
 			this.app,
 			this.settings,
 			() => this.saveSettings(),
-			this.workoutDataManager
+			this.workoutDataManager,
+			() => void this.refreshOpenPulseViews()
 		);
 
 		// Register leaf view
 		this.registerView(VIEW_TYPE_PULSE, (leaf) => new PulseView(leaf, this));
 		this.registerView(VIEW_TYPE_PULSE_WORKOUT_DOC, (leaf) => new WorkoutDocumentView(leaf, this));
+		this.registerView(VIEW_TYPE_PULSE_NUTRITION_DAY, (leaf) => new NutritionDayView(leaf, this));
+
+		const invalidateWorkoutList = (): void => {
+			this.workoutDataManager.invalidateWorkoutListCache();
+		};
+		this.registerEvent(this.app.vault.on("create", invalidateWorkoutList));
+		this.registerEvent(this.app.vault.on("delete", invalidateWorkoutList));
+		this.registerEvent(this.app.vault.on("rename", invalidateWorkoutList));
+		this.registerEvent(
+			this.app.metadataCache.on("changed", (file) => {
+				if (!(file instanceof TFile) || file.extension !== "md") return;
+				const pathLooksLikeWorkout = /\/Workouts\//i.test(file.path.replace(/\\/g, "/"));
+				const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+				if (!fm) {
+					if (pathLooksLikeWorkout) invalidateWorkoutList();
+					return;
+				}
+				if (fm["pulse-type"] === "session" || fm.workoutId || pathLooksLikeWorkout) {
+					invalidateWorkoutList();
+				}
+			}),
+		);
 
 		// Ribbon icon — opens the full-leaf view
 		if (this.settings.showRibbonIcon) {
@@ -57,14 +88,20 @@ export default class PulsePlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-pulse-history",
-			name: "Open Pulse — History",
-			callback: () => this.openPulseView("history"),
+			name: "Open Pulse — Home",
+			callback: () => this.openPulseView("today"),
 		});
 
 		this.addCommand({
 			id: "open-pulse-body",
 			name: "Open Pulse — Body",
 			callback: () => this.openPulseView("body"),
+		});
+
+		this.addCommand({
+			id: "open-pulse-nutrition",
+			name: "Open Pulse — Nutrition",
+			callback: () => this.openPulseView("nutrition"),
 		});
 
 		this.addCommand({
@@ -100,6 +137,7 @@ export default class PulsePlugin extends Plugin {
 		programs: "program",
 		programmes: "program",
 		exercises: "exercise",
+		history: "today",
 	};
 
 	private handlePulseOpenUri(params: ObsidianProtocolData): void {
@@ -110,7 +148,7 @@ export default class PulsePlugin extends Plugin {
 	}
 
 	private async applyPulseDeepLink(params: ObsidianProtocolData): Promise<void> {
-		const raw = String(params.screen ?? params.mode ?? params.leaf ?? "history")
+		const raw = String(params.screen ?? params.mode ?? params.leaf ?? "today")
 			.trim()
 			.toLowerCase();
 		const route = String(params.route ?? "")
@@ -121,7 +159,7 @@ export default class PulsePlugin extends Plugin {
 			const tail = route.replace(/^pulse\//i, "");
 			modeKey = (tail.split("/")[0] ?? "").toLowerCase();
 		}
-		if (!modeKey) modeKey = "history";
+		if (!modeKey) modeKey = "today";
 
 		const mode: PulseViewMode =
 			this.pulseModeAliases[modeKey] ?? (modeKey as PulseViewMode);
@@ -133,6 +171,7 @@ export default class PulsePlugin extends Plugin {
 			"history",
 			"stats",
 			"body",
+			"nutrition",
 			"new-exercise",
 			"workout-builder",
 			"program-builder",
@@ -151,6 +190,7 @@ export default class PulsePlugin extends Plugin {
 	onunload(): void {
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_PULSE);
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_PULSE_WORKOUT_DOC);
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_PULSE_NUTRITION_DAY);
 	}
 
 	/** Standalone workout leaf (banner + actions + sets), Orbit/Fulcrum-style. */
@@ -165,13 +205,47 @@ export default class PulsePlugin extends Plugin {
 		this.app.workspace.revealLeaf(leaf);
 	}
 
+	/** Daily nutrition breakdown in a split pane. */
+	async openNutritionDayView(date: string): Promise<void> {
+		const leaf = this.app.workspace.getLeaf("split");
+		await leaf.setViewState({
+			type: VIEW_TYPE_PULSE_NUTRITION_DAY,
+			active: true,
+			state: { date },
+		});
+		this.app.workspace.revealLeaf(leaf);
+	}
+
+	async refreshOpenPulseViews(): Promise<void> {
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_PULSE)) {
+			const view = leaf.view;
+			if (view instanceof PulseView) {
+				await view.refresh();
+			}
+		}
+	}
+
+	async renameWorkout(path: string, newName: string, updateProgramDay: boolean): Promise<void> {
+		const trimmed = newName.trim();
+		if (!trimmed) return;
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) return;
+		await this.app.fileManager.processFrontMatter(file, (fm) => {
+			fm.name = trimmed;
+			if (updateProgramDay) {
+				fm.programDay = trimmed;
+			}
+		});
+		this.workoutDataManager.invalidateWorkoutListCache();
+	}
+
 	async openPulseView(mode?: string, path?: string): Promise<void> {
 		const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_PULSE)[0];
 		if (existing) {
 			await existing.setViewState({
 				type: VIEW_TYPE_PULSE,
 				active: true,
-				state: { mode: mode ?? "history", path },
+				state: { mode: mode ?? "today", path },
 			});
 			this.app.workspace.revealLeaf(existing);
 			return;
@@ -181,7 +255,7 @@ export default class PulsePlugin extends Plugin {
 		await leaf.setViewState({
 			type: VIEW_TYPE_PULSE,
 			active: true,
-			state: { mode: mode ?? "history", path },
+			state: { mode: mode ?? "today", path },
 		});
 		this.app.workspace.revealLeaf(leaf);
 	}

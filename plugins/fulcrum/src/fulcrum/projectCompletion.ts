@@ -1,7 +1,21 @@
 import type {App, TFile, Vault} from "obsidian";
-import {normalizePath} from "obsidian";
+import {normalizePath, TFolder} from "obsidian";
 import {appendFulcrumProjectLog, formatFulcrumProjectLogLine} from "./projectNote";
 import {parseList, resolveProjectsRoot, type FulcrumSettings} from "./settingsDefaults";
+import {getImmediateSubfolderNames} from "./utils/paths";
+
+/** Match Kanban / frontmatter status slug to an existing projects-root subfolder name. */
+export function resolveStatusFolderName(
+	vault: Vault,
+	projectsRoot: string,
+	statusSlug: string,
+): string {
+	const slug = statusSlug.trim().toLowerCase();
+	if (!slug) return "active";
+	const folders = getImmediateSubfolderNames(vault, projectsRoot);
+	const match = folders.find((f) => f.toLowerCase() === slug);
+	return match ?? statusSlug.trim();
+}
 
 async function ensureFolderPath(vault: Vault, folderPath: string): Promise<void> {
 	const norm = normalizePath(folderPath.trim());
@@ -11,7 +25,31 @@ async function ensureFolderPath(vault: Vault, folderPath: string): Promise<void>
 	for (const seg of segments) {
 		acc = acc ? `${acc}/${seg}` : seg;
 		if (vault.getAbstractFileByPath(acc)) continue;
-		await vault.createFolder(acc);
+		try {
+			await vault.createFolder(acc);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (!/already exists/i.test(msg)) throw e;
+			const parentPath = acc.includes("/") ? acc.slice(0, acc.lastIndexOf("/")) : "";
+			const folderName = acc.includes("/") ? acc.slice(acc.lastIndexOf("/") + 1) : acc;
+			const parent = parentPath
+				? vault.getAbstractFileByPath(parentPath)
+				: vault.getRoot();
+			const existing =
+				parent && "children" in parent
+					? (parent as TFolder).children.find(
+							(c) =>
+								c instanceof TFolder &&
+								c.name.toLowerCase() === folderName.toLowerCase(),
+						)
+					: undefined;
+			if (existing instanceof TFolder) {
+				acc = existing.path;
+				continue;
+			}
+			if (vault.getAbstractFileByPath(acc)) continue;
+			throw e;
+		}
 	}
 }
 
@@ -85,9 +123,10 @@ export async function moveProjectToStatusFolder(
 		throw new Error("Project is not under the projects folder.");
 	}
 
+	const statusFolder = resolveStatusFolderName(app.vault, root, newStatus);
+
 	const rel = path.slice(root.length + 1);
 	const parts = rel.split("/").filter(Boolean);
-	const statusFolder = newStatus.trim() || "active";
 
 	let destDir: string;
 	if (parts.length >= 2) {
@@ -100,6 +139,15 @@ export async function moveProjectToStatusFolder(
 	}
 
 	destDir = normalizePath(destDir);
+
+	const currentParent = normalizePath(projectFile.parent?.path ?? "");
+	if (
+		currentParent === destDir ||
+		currentParent.toLowerCase() === destDir.toLowerCase()
+	) {
+		return path;
+	}
+
 	await ensureFolderPath(app.vault, destDir);
 
 	const newPath = uniqueFilePathInDir(app.vault, destDir, projectFile.name);

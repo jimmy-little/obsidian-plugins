@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Notice, setIcon, type App, TFile } from "obsidian";
+	import { Notice, Platform, setIcon, type App, TFile } from "obsidian";
 	import type ReposePlugin from "../main";
 	import type { MediaHeroPalette } from "../media/bannerSample";
 	import {
@@ -123,6 +123,10 @@
 		setIcon(node, "refresh-ccw");
 	}
 
+	function seasonWatchGlyph(node: HTMLElement): void {
+		setIcon(node, "check-check");
+	}
+
 	/** Which season is currently running a Trakt refresh (null = idle). */
 	let seasonRefreshSeason: number | null = null;
 
@@ -216,7 +220,7 @@
 		episodes = rows;
 
 		const next: Record<string, string | null> = {};
-		if (!textOnlyBundle) {
+		if (!textOnlyBundle && !Platform.isMobile) {
 			const showTmdb = tmdbIdFromFrontmatter(fm);
 			const apiKey = plugin.settings.tmdbApiKey?.trim() ?? "";
 
@@ -285,8 +289,34 @@
 	}
 
 	async function toggleShowWatched(): Promise<void> {
-		await plugin.toggleWatchedFrontmatter(showFile.path);
+		const fm = (plugin.app.metadataCache.getFileCache(showFile)?.frontmatter ?? {}) as Record<
+			string,
+			unknown
+		>;
+		const watched = isEffectivelyWatchedFromFrontmatter(fm);
+		if (serialKind === "show" && !isTextOnlySerial && !watched) {
+			await plugin.markSeriesEpisodesWatched(showFile.path);
+		} else {
+			await plugin.toggleWatchedFrontmatter(showFile.path);
+		}
 		detailRefresh += 1;
+		void loadDetail(showFile, serialKind);
+	}
+
+	async function markSeasonWatched(seasonNum: number): Promise<void> {
+		await plugin.markSeasonEpisodesWatched(showFile.path, seasonNum);
+		detailRefresh += 1;
+		void loadDetail(showFile, serialKind);
+	}
+
+	function onEpisodeWatchClick(ev: MouseEvent, path: string): void {
+		const f = plugin.app.vault.getAbstractFileByPath(path);
+		if (!(f instanceof TFile)) return;
+		plugin.openEpisodeWatchMenu(f, ev, () => {
+			const row = readEpisodeRow(plugin.app, f);
+			episodes = episodes.map((e) => (e.path === path ? row : e));
+			detailRefresh += 1;
+		});
 	}
 
 	function refreshSuccessNotice(): void {
@@ -490,14 +520,18 @@
 	/>
 
 	{#if !embeddedMarkdownChrome}
-	{#if isPodcast}
-		<section class="repose-bundle-notes" aria-labelledby="repose-bundle-notes-h">
-			<h3 id="repose-bundle-notes-h" class="repose-bundle-notes__title">Notes</h3>
-			{#key showFile.path}
-				<BundleNoteEditor {plugin} file={showFile} />
-			{/key}
-		</section>
-	{/if}
+	{#if isPodcast && !Platform.isMobile}
+			<section class="repose-bundle-notes" aria-labelledby="repose-bundle-notes-h">
+				<h3 id="repose-bundle-notes-h" class="repose-bundle-notes__title">Notes</h3>
+				{#key showFile.path}
+					<BundleNoteEditor {plugin} file={showFile} />
+				{/key}
+			</section>
+		{:else if isPodcast && Platform.isMobile}
+			<p class="repose-muted repose-bundle-notes__mobile-hint">
+				Open the podcast note to edit notes on mobile.
+			</p>
+		{/if}
 
 	{#if serialKind !== "game" && episodes.length === 0}
 		<p class="repose-muted repose-show-detail__empty">
@@ -600,6 +634,16 @@
 							{#if seasonNum >= 0}
 								<button
 									type="button"
+									class="repose-show-season__watch clickable-icon"
+									title="Mark season as watched (unwatched episodes use air date)"
+									aria-label="Mark season {seasonNum} as watched"
+									disabled={seasonRefreshSeason !== null}
+									on:click|stopPropagation={() => void markSeasonWatched(seasonNum)}
+								>
+									<span class="repose-show-season__watch-icon" use:seasonWatchGlyph aria-hidden="true"></span>
+								</button>
+								<button
+									type="button"
 									class="repose-show-season__refresh clickable-icon"
 									title="Refresh this season from Trakt (metadata + watch state for all episodes)"
 									aria-label="Refresh season {seasonNum} from Trakt"
@@ -661,7 +705,7 @@
 														type="button"
 														class="repose-show-episode-row__watch"
 													class:repose-show-episode-row__watch--watched={epIsWatched(ep)}
-														on:click|stopPropagation={() => toggleWatched(ep.path)}
+														on:click|stopPropagation={(ev) => onEpisodeWatchClick(ev, ep.path)}
 													>
 														{epIsWatched(ep) ? "Watched" : "Watch"}
 													</button>

@@ -1,6 +1,6 @@
 import type {App} from "obsidian";
 import {claimLeaf} from "@obsidian-suite/core";
-import {VIEW_PROJECT_MANAGER, VIEW_TIMELINE} from "./constants";
+import {VIEW_PROJECT_MANAGER, VIEW_TIMELINE, VIEW_ACTIVE_TIMERS, VIEW_QUICK_START} from "./constants";
 import type {FulcrumSettings} from "./settingsDefaults";
 import type {ProjectManagerViewState} from "../views/ProjectManagerView";
 import type {TimelineViewState} from "../views/TimelineView";
@@ -58,8 +58,12 @@ export async function revealOrCreateDashboard(
 export async function revealOrCreateTimeTracked(
 	app: App,
 	settings: FulcrumSettings,
+	tab?: import("../timer/types").TimeModeTab,
 ): Promise<void> {
-	await revealOrCreateProjectManager(app, settings, {mode: "time"});
+	if (tab) {
+		settings.timeModeTab = tab;
+	}
+	await revealOrCreateProjectManager(app, settings, {mode: "time", timeTab: tab ?? settings.timeModeTab});
 }
 
 export async function revealOrCreateAreas(
@@ -101,6 +105,50 @@ export async function revealOrCreateTimeline(
 		type: VIEW_TIMELINE,
 		active: true,
 		state: initial?.focalDateIso ? {focalDateIso: initial.focalDateIso} : undefined,
+	});
+	await app.workspace.revealLeaf(leaf);
+}
+
+/** Docked leaf: running timers only (compact sidebar view). */
+export async function revealOrCreateActiveTimers(
+	app: App,
+	settings: FulcrumSettings,
+): Promise<void> {
+	const existing = app.workspace.getLeavesOfType(VIEW_ACTIVE_TIMERS)[0];
+	if (existing) {
+		await existing.setViewState({
+			type: VIEW_ACTIVE_TIMERS,
+			active: true,
+		});
+		await app.workspace.revealLeaf(existing);
+		return;
+	}
+	const leaf = claimLeaf(app, settings.openViewsIn);
+	await leaf.setViewState({
+		type: VIEW_ACTIVE_TIMERS,
+		active: true,
+	});
+	await app.workspace.revealLeaf(leaf);
+}
+
+/** Docked leaf: Quick Start template buttons (sidebar view). */
+export async function revealOrCreateQuickStart(
+	app: App,
+	settings: FulcrumSettings,
+): Promise<void> {
+	const existing = app.workspace.getLeavesOfType(VIEW_QUICK_START)[0];
+	if (existing) {
+		await existing.setViewState({
+			type: VIEW_QUICK_START,
+			active: true,
+		});
+		await app.workspace.revealLeaf(existing);
+		return;
+	}
+	const leaf = claimLeaf(app, settings.openViewsIn);
+	await leaf.setViewState({
+		type: VIEW_QUICK_START,
+		active: true,
 	});
 	await app.workspace.revealLeaf(leaf);
 }

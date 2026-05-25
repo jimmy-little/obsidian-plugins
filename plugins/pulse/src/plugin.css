@@ -210,8 +210,154 @@
 	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
-	gap: 0.5rem 1rem;
+	gap: 0.75rem 1rem;
 	margin-bottom: 0.65rem;
+}
+
+.pulse-pm__main-head-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem 1rem;
+	width: 100%;
+}
+
+.pulse-exercise-head .pulse-pm__main-meta {
+	width: 100%;
+}
+
+.pulse-pm__main-head-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.35rem;
+}
+
+.pulse-pm__head-btn {
+	--input-shadow: none;
+	box-shadow: none;
+	font: inherit;
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+	border-radius: var(--radius-s, 6px);
+	cursor: pointer;
+	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	color: var(--text-normal);
+}
+
+.pulse-pm__head-btn:hover:not(:disabled) {
+	background: var(--background-modifier-hover);
+	border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+}
+
+.pulse-pm__head-btn--icon-only {
+	display: inline-flex !important;
+	align-items: center;
+	justify-content: center;
+	padding: 0.3rem 0.4rem !important;
+	min-width: 2rem;
+	min-height: 2rem;
+	line-height: 0;
+}
+
+.pulse-pm__head-btn__icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 1.05rem;
+	height: 1.05rem;
+}
+
+.pulse-pm__head-btn__icon svg {
+	width: 1.05rem;
+	height: 1.05rem;
+}
+
+.pulse-pm__head-btn--danger:hover:not(:disabled) {
+	color: var(--text-error);
+	border-color: color-mix(in srgb, var(--text-error) 45%, var(--background-modifier-border));
+}
+
+.pulse-workout-section--quick-notes {
+	margin: 0 0 0.85rem;
+}
+
+.pulse-quick-notes-row {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	gap: 0.55rem;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.pulse-quick-note-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: block;
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0.4rem 0.55rem;
+	min-height: calc(1.35em + 0.8rem);
+	max-height: calc(1.35em + 0.8rem);
+	height: calc(1.35em + 0.8rem);
+	resize: none;
+	overflow-x: auto;
+	overflow-y: hidden;
+	line-height: 1.35;
+	font-size: var(--font-ui-small);
+	font-family: inherit;
+	border-radius: var(--radius-s);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.pulse-quick-note-input:focus {
+	border-color: color-mix(in srgb, var(--interactive-accent) 65%, var(--background-modifier-border));
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+	outline: none;
+}
+
+.pulse-quick-note-input:disabled {
+	opacity: 0.55;
+}
+
+.pulse-quick-note-btn {
+	flex: 0 0 auto;
+	align-self: stretch;
+	--input-shadow: none;
+	box-shadow: none;
+	padding: 0.4rem 0.75rem;
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	cursor: pointer;
+	white-space: nowrap;
+	background: var(--interactive-accent) !important;
+	color: var(--text-on-accent) !important;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 82%, rgba(0, 0, 0, 0.12)) !important;
+}
+
+.pulse-quick-note-btn:hover:not(:disabled) {
+	filter: brightness(1.06);
+}
+
+.pulse-quick-note-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.pulse-workout-modal-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	margin-top: 1rem;
 }
 
 .pulse-pm__main-title {
@@ -568,6 +714,41 @@
 	box-sizing: border-box;
 }
 
+.pulse-sidebar__row-inner--workout {
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 0.55rem;
+	padding-left: 0.45rem;
+}
+
+.pulse-sidebar__workout-icon-wrap {
+	flex: 0 0 auto;
+	width: 28px;
+	height: 28px;
+	margin-top: 0.05rem;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary));
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.pulse-sidebar__workout-icon {
+	width: 22px;
+	height: 22px;
+	object-fit: contain;
+	display: block;
+}
+
+.pulse-sidebar__row-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+}
+
 .pulse-sidebar__row-head {
 	display: flex;
 	flex-wrap: wrap;
@@ -614,15 +795,227 @@
 	width: 100%;
 }
 
+.pulse-sidebar__group-header {
+	background: color-mix(in srgb, var(--background-secondary) 65%, var(--background-primary));
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+}
+
 .pulse-sidebar__group-title {
-	padding: 0.35rem 0.45rem 0.25rem;
+	padding: 0.35rem 0.45rem 0.15rem;
 	font-size: calc(var(--font-ui-smaller, 0.78rem) - 1px);
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: var(--text-faint);
-	background: color-mix(in srgb, var(--background-secondary) 65%, var(--background-primary));
-	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+	background: transparent;
+	border-bottom: none;
+}
+
+.pulse-sidebar__group-subtitle {
+	padding: 0 0.45rem 0.3rem;
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 1px);
+	font-weight: 500;
+	text-transform: none;
+	letter-spacing: normal;
+	color: var(--text-muted);
+	line-height: 1.35;
+}
+
+/* ── Workout list rows (sidebar + home timeline) ── */
+.pulse-workout-groups {
+	width: 100%;
+}
+
+.pulse-workout-activity-meta {
+	display: block;
+	margin-top: 0.15rem;
+	font-size: var(--font-ui-smaller, 0.78rem);
+	color: var(--text-muted);
+	line-height: 1.4;
+}
+
+.pulse-workout-activity-notes {
+	margin: 0.25rem 0 0;
+	padding: 0 0 0 1rem;
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 1px);
+	color: var(--text-muted);
+	line-height: 1.4;
+	list-style: disc;
+}
+
+.pulse-workout-activity-notes li {
+	margin: 0.1rem 0;
+}
+
+.pulse-workout-timeline-group {
+	margin-bottom: 1.25rem;
+}
+
+.pulse-workout-timeline-group__title {
+	margin: 0 0 0.45rem;
+	font-size: var(--font-ui-medium);
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+.pulse-workout-activity-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+
+.pulse-workout-activity-list > li {
+	margin: 0;
+	padding: 0;
+}
+
+.pulse-workout-activity-list--timeline > li {
+	border-bottom: none;
+}
+
+.pulse-workout-activity-row {
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	text-align: left;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	font: inherit;
+	color: var(--text-normal);
+	cursor: pointer;
+	outline: none;
+}
+
+.pulse-workout-activity-row--timeline {
+	display: grid;
+	grid-template-columns: 2.65rem minmax(0, 1fr);
+	gap: 0 0.55rem;
+	align-items: stretch;
+	padding: 0 0.35rem 0 0.1rem;
+}
+
+.pulse-workout-activity-timeline__track {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: stretch;
+	width: 100%;
+	min-height: 100%;
+	box-sizing: border-box;
+}
+
+.pulse-workout-activity-timeline__stem {
+	flex: 1 1 0;
+	width: 2px;
+	min-height: 0.35rem;
+	background: var(--background-modifier-border);
+}
+
+.pulse-workout-activity-list--timeline > li:first-child .pulse-workout-activity-timeline__stem--before {
+	visibility: hidden;
+	min-height: 0.4rem;
+}
+
+.pulse-workout-activity-list--timeline > li:last-child .pulse-workout-activity-timeline__stem--after {
+	visibility: hidden;
+	min-height: 0.4rem;
+}
+
+.pulse-workout-activity-timeline__node {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.85rem;
+	height: 1.85rem;
+	border-radius: 50%;
+	border: 2px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	box-sizing: border-box;
+	z-index: 1;
+	font-size: 0.95rem;
+	line-height: 1;
+	overflow: hidden;
+}
+
+.pulse-workout-activity-timeline__icon {
+	width: 1.25rem;
+	height: 1.25rem;
+	object-fit: contain;
+	display: block;
+}
+
+.pulse-workout-activity-timeline__lucide {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1rem;
+	height: 1rem;
+	color: var(--text-muted);
+}
+
+.pulse-workout-activity-timeline__lucide svg {
+	width: 1rem;
+	height: 1rem;
+}
+
+.pulse-workout-activity-timeline__track--accent .pulse-workout-activity-timeline__lucide {
+	color: var(--pulse-workout-accent, var(--interactive-accent));
+}
+
+.pulse-workout-activity-timeline__track--accent {
+	--pulse-workout-accent: var(--interactive-accent);
+}
+
+.pulse-workout-activity-timeline__track--accent .pulse-workout-activity-timeline__stem {
+	background: var(--pulse-workout-accent, var(--background-modifier-border));
+}
+
+.pulse-workout-activity-timeline__track--accent .pulse-workout-activity-timeline__node {
+	border-color: var(--pulse-workout-accent);
+	background: color-mix(in srgb, var(--pulse-workout-accent) 16%, var(--background-primary));
+}
+
+.pulse-workout-activity-row--timeline:hover .pulse-workout-activity-timeline__track--accent .pulse-workout-activity-timeline__node {
+	border-color: color-mix(in srgb, var(--pulse-workout-accent) 55%, var(--background-modifier-border));
+}
+
+.pulse-workout-activity-row__body {
+	min-width: 0;
+	padding: 0.55rem 0 0.6rem;
+}
+
+.pulse-workout-activity-row:hover {
+	background: color-mix(in srgb, var(--background-modifier-hover) 55%, transparent);
+}
+
+.pulse-workout-activity-row:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+.pulse-workout-activity-row__title {
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	line-height: 1.35;
+	color: var(--text-normal);
+}
+
+.pulse-workout-activity-row__meta {
+	margin-top: 0.3rem;
+	font-size: var(--font-ui-smaller);
+	font-weight: 400;
+	line-height: 1.4;
+	color: var(--text-muted);
+	word-break: break-word;
+}
+
+.pulse-workout-history {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
 }
 
 /* ── Sidebar search ── */
@@ -1431,6 +1824,11 @@
 	font-size: 14px;
 }
 
+/* --- Home (scan + history) --- */
+.pulse-pm__home-actions {
+	margin-bottom: 1rem;
+}
+
 /* --- History (calendar + log) --- */
 .pulse-workout-history-wrap {
 	display: flex;
@@ -1513,6 +1911,77 @@
 	min-width: 0;
 }
 
+.pulse-home-cal__cell {
+	min-height: 6.5rem;
+}
+
+.pulse-home-cal .pulse-cal__marks {
+	gap: 0.28rem;
+}
+
+.pulse-cal__card {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	width: 100%;
+	padding: 0.28rem 0.35rem;
+	border-radius: var(--radius-s);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	background: color-mix(in srgb, var(--background-secondary) 55%, var(--background-primary));
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 1px);
+	line-height: 1.25;
+	cursor: pointer;
+	box-sizing: border-box;
+	text-align: left;
+}
+
+.pulse-cal__card:hover {
+	background: var(--background-modifier-hover);
+}
+
+.pulse-cal__card--nutrition {
+	border-color: color-mix(in srgb, #f97316 35%, var(--background-modifier-border));
+}
+
+.pulse-cal__card--body {
+	border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+}
+
+.pulse-cal__card-kcal {
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+.pulse-cal__card-weight {
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+.pulse-cal__card-bfp {
+	color: var(--text-muted);
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 2px);
+}
+
+.pulse-cal__macro-bar {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	width: 100%;
+	height: 0.35rem;
+	border-radius: 999px;
+	overflow: hidden;
+	background: color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+}
+
+.pulse-cal__macro-seg {
+	min-width: 2px;
+	height: 100%;
+}
+
+.pulse-cal__chip--workout {
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 1px);
+}
+
 .pulse-cal__cell--empty {
 	border: none;
 	background: transparent;
@@ -1581,47 +2050,85 @@
 	color: var(--text-normal);
 }
 
-.pulse-workout-history {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
+.pulse-workout-history-cap-hint {
+	margin: 0.65rem 0 0;
+	font-size: var(--font-ui-smaller, 0.75rem);
+	line-height: 1.35;
 }
 
-.pulse-workout-history-row {
+.pulse-workout-merge-modal {
+	padding-top: 0.15rem;
+}
+
+.pulse-workout-merge-lede {
+	margin: 0 0 1rem;
+	font-size: var(--font-ui-small);
+	line-height: 1.5;
+}
+
+.pulse-workout-merge-list {
 	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 12px 8px;
-	border-radius: 8px;
+	flex-direction: column;
+	gap: 0.65rem;
+}
+
+.pulse-workout-merge-option {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.35rem;
+	width: 100%;
+	margin: 0;
+	padding: 0.75rem 0.85rem;
+	text-align: left;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	border-radius: var(--radius-m, 8px);
+	background: var(--background-primary);
+	font: inherit;
+	color: var(--text-normal);
 	cursor: pointer;
-	transition: background 0.1s ease;
+	transition: background 0.15s ease;
 }
 
-.pulse-workout-history-row:hover {
-	background: var(--background-secondary);
+.pulse-workout-merge-option:hover {
+	background: var(--background-modifier-hover);
 }
 
-.pulse-workout-history-info {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
+.pulse-workout-merge-option:focus-visible {
+	outline: 2px solid var(--text-accent);
+	outline-offset: 2px;
 }
 
-.pulse-workout-history-date {
-	font-size: 12px;
-	color: var(--text-muted);
-}
-
-.pulse-workout-history-name {
+.pulse-workout-merge-option__title {
+	display: block;
+	width: 100%;
+	margin: 0;
+	font-size: var(--font-ui-small);
 	font-weight: 600;
+	line-height: 1.4;
 }
 
-.pulse-workout-history-meta {
-	display: flex;
-	gap: 12px;
-	font-size: 13px;
+.pulse-workout-merge-option__meta {
+	display: block;
+	width: 100%;
+	margin: 0;
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
+	line-height: 1.45;
 }
+
+.pulse-workout-merge-option__hint {
+	display: block;
+	width: 100%;
+	margin: 0.15rem 0 0;
+	padding-top: 0.45rem;
+	border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-accent);
+	line-height: 1.35;
+}
+
+/* legacy row styles removed — workout log uses timeline list */
 
 /* --- Detail Views --- */
 .pulse-workout-detail-header {
@@ -1786,6 +2293,46 @@
 .pulse-workout-stats-section h3 {
 	margin: 0 0 8px 0;
 	font-size: 16px;
+}
+
+.pulse-stats-pr-cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: 8px;
+}
+
+.pulse-stats-pr-card .pulse-log-card-label {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.pulse-stats-donut-row {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 1rem;
+}
+
+.pulse-stats-donut-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	min-width: 0;
+}
+
+.pulse-stats-donut-panel__title {
+	margin: 0;
+	font-size: var(--font-ui-medium, 0.875rem);
+	font-weight: 600;
+}
+
+.pulse-stats-donut-panel__subtitle {
+	margin: 0 0 0.35rem;
+	font-size: var(--font-ui-smaller, 0.75rem);
+}
+
+.pulse-stats-donut-panel__chart {
+	height: 180px;
 }
 
 /* --- Heatmap (suite-heatmap-wrap: month row + weekday column; base rules in heatmap.css) --- */
@@ -2894,6 +3441,37 @@
 	font-variant-numeric: tabular-nums;
 }
 
+.pulse-body-card__goal {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem 0.5rem;
+	margin-top: 0.35rem;
+	padding-top: 0.35rem;
+	border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+}
+
+.pulse-body-card__goal-label {
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-muted);
+}
+
+.pulse-body-card__goal-input {
+	width: 5.5rem;
+	padding: 0.2rem 0.4rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+}
+
+.pulse-body-card__goal-input:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
 .pulse-body-card__chart {
 	flex: 1 1 200px;
 	min-width: 160px;
@@ -2968,14 +3546,11 @@
 
 .pulse-workout-doc__banner-wrap {
 	width: 100%;
-	max-height: 180px;
-	overflow: hidden;
-	border-bottom: 1px solid var(--background-modifier-border);
+	overflow: visible;
 	flex-shrink: 0;
 }
 
 .pulse-workout-doc__banner-wrap.pulse-session-banner {
-	max-height: none;
 	border-bottom: none;
 	margin-bottom: 0.75rem;
 }
@@ -3031,18 +3606,17 @@
 	background: var(--background-modifier-hover);
 }
 
-.pulse-workout-doc__head {
-	padding: 0.75rem 1rem 0.25rem;
+.pulse-workout-doc__content {
+	padding: 0.75rem 1rem 0;
+	flex-shrink: 0;
 }
 
-.pulse-workout-doc__title {
-	margin: 0;
-	font-size: 1.35rem;
-	font-weight: 600;
+.pulse-workout-doc__content .pulse-pm__main-head {
+	margin-bottom: 0.5rem;
 }
 
 .pulse-workout-doc__body {
-	padding: 0.5rem 1rem 1.5rem;
+	padding: 0.25rem 0 1.5rem;
 	flex: 1;
 	min-height: 0;
 }
@@ -3058,30 +3632,55 @@
 }
 
 .pulse-session-banner--has-image {
-	min-height: 9.5rem;
+	min-height: 0;
 }
 
 .pulse-session-banner__img {
-	position: absolute;
-	inset: 0;
+	display: block;
 	width: 100%;
-	height: 100%;
-	object-fit: cover;
+	height: auto;
+	max-height: min(45vh, 420px);
+	object-fit: contain;
 	object-position: center;
-	pointer-events: none;
+	background: var(--background-secondary);
 }
 
-.pulse-session-banner__scrim {
+.pulse-session-banner__foot {
 	position: absolute;
-	inset: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 2;
+	display: flex;
+	align-items: flex-end;
+	padding: 0.55rem 0.75rem;
+	background: linear-gradient(to top, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.28) 55%, transparent 100%);
 	pointer-events: none;
-	z-index: 0;
-	background: linear-gradient(
-		105deg,
-		rgba(0, 0, 0, 0.55) 0%,
-		rgba(0, 0, 0, 0.35) 45%,
-		rgba(0, 0, 0, 0.2) 100%
-	);
+	box-sizing: border-box;
+}
+
+.pulse-session-banner__foot-left {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.4rem;
+	pointer-events: auto;
+}
+
+.pulse-session-banner-btn--shell-home {
+	min-width: 1.85rem;
+	min-height: 1.85rem;
+	padding: 0.28rem !important;
+}
+
+.pulse-session-banner-btn--shell-home .pulse-session-banner-btn__icon {
+	width: 0.95rem;
+	height: 0.95rem;
+}
+
+.pulse-session-banner-btn--shell-home .pulse-session-banner-btn__icon svg {
+	width: 0.95rem;
+	height: 0.95rem;
 }
 
 .pulse-session-banner__actions {
@@ -3147,4 +3746,354 @@
 
 .pulse-pm__exercise-name-link {
 	cursor: pointer;
+}
+
+/* ===========================================================
+   Nutrition — monthly calendar + daily breakdown
+   ============================================================ */
+
+.pulse-nutrition-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.pulse-nutrition-foot {
+	font-size: var(--font-ui-smaller, 0.75rem);
+}
+
+.pulse-nutrition-cal__cell--logged {
+	cursor: pointer;
+	background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-primary));
+}
+
+.pulse-nutrition-cal__cell--logged:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+}
+
+.pulse-nutrition-cal__summary {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin-top: 0.15rem;
+}
+
+.pulse-nutrition-cal__calories {
+	font-size: 0.72rem;
+	font-weight: 700;
+	color: var(--text-normal);
+	line-height: 1.2;
+}
+
+.pulse-nutrition-cal__macros {
+	font-size: 0.64rem;
+	color: var(--text-muted);
+	line-height: 1.2;
+}
+
+.pulse-nutrition-cal .pulse-cal__cell {
+	min-height: 5.25rem;
+}
+
+.pulse-nutrition-month-chart {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin-top: 0.25rem;
+}
+
+.pulse-nutrition-month-chart__hint {
+	margin: 0;
+	font-size: var(--font-ui-smaller, 0.75rem);
+}
+
+.pulse-nutrition-month-chart__canvas-wrap {
+	min-height: 260px;
+}
+
+.workspace-leaf[data-type="pulse-nutrition-day"] .workspace-leaf-content {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.workspace-leaf[data-type="pulse-nutrition-day"] .view-content {
+	flex: 1 1 0%;
+	min-height: 0;
+	overflow: auto;
+}
+
+.pulse-nutrition-day-view__body {
+	padding: 0.75rem 1rem 1.5rem;
+}
+
+.pulse-nutrition-day {
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+}
+
+.pulse-nutrition-day__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem 1rem;
+}
+
+.pulse-nutrition-day__title {
+	margin: 0;
+	font-size: 1.25rem;
+	font-weight: 600;
+}
+
+.pulse-nutrition-day__section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.pulse-nutrition-day__totals-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+	gap: 0.5rem;
+}
+
+.pulse-nutrition-day__stat {
+	padding: 0.55rem 0.65rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+}
+
+.pulse-nutrition-day__stat-label {
+	font-size: var(--font-ui-smaller, 0.75rem);
+	color: var(--text-muted);
+}
+
+.pulse-nutrition-day__stat-value {
+	font-size: 1.05rem;
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+.pulse-nutrition-day__charts-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+	gap: 1rem;
+}
+
+@media (max-width: 720px) {
+	.pulse-nutrition-day__charts-row {
+		grid-template-columns: 1fr;
+	}
+}
+
+.pulse-nutrition-day__chart-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.pulse-nutrition-day__chart-title {
+	margin: 0;
+	font-size: var(--font-ui-small, 0.875rem);
+	font-weight: 600;
+	color: var(--text-muted);
+}
+
+.pulse-nutrition-day__chart {
+	min-height: 180px;
+}
+
+.pulse-nutrition-day__chart--doughnut {
+	min-height: 220px;
+	max-width: 360px;
+}
+
+.pulse-nutrition-day__chart--meal {
+	min-height: 140px;
+	max-width: 360px;
+}
+
+.pulse-nutrition-day__meal {
+	padding: 0.75rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+	display: flex;
+	flex-direction: column;
+	gap: 0.65rem;
+}
+
+.pulse-nutrition-day__meal-head {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.pulse-nutrition-day__meal-title-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.35rem 0.65rem;
+}
+
+.pulse-nutrition-day__meal-title {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 600;
+}
+
+.pulse-nutrition-day__meal-time {
+	font-size: var(--font-ui-smaller, 0.75rem);
+	color: var(--text-muted);
+}
+
+.pulse-nutrition-day__meal-stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem 0.65rem;
+	font-size: var(--font-ui-smaller, 0.75rem);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.pulse-nutrition-day__foods-title {
+	margin: 0 0 0.25rem;
+	font-size: var(--font-ui-smaller, 0.75rem);
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+.pulse-nutrition-day__food-list {
+	margin: 0;
+	padding-left: 1.1rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.pulse-nutrition-day__food-item {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25rem 0.5rem;
+	font-size: var(--font-ui-small, 0.875rem);
+}
+
+.pulse-nutrition-day__food-name {
+	color: var(--text-normal);
+}
+
+.pulse-workout-session-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+	gap: 0.5rem;
+	margin-bottom: 1rem;
+}
+
+.pulse-workout-session-stats__card {
+	padding: 0.55rem 0.65rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+}
+
+.pulse-workout-session-stats__label {
+	font-size: var(--font-ui-smaller, 0.75rem);
+	color: var(--text-muted);
+}
+
+.pulse-workout-session-stats__value {
+	font-size: 1.05rem;
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+.pulse-workout-session-sets {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.pulse-workout-session-charts {
+	margin-top: 0.5rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.pulse-nutrition-day__food-meta {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller, 0.75rem);
+}
+
+/* Edit properties modal (@obsidian-suite/core — matches Fulcrum / Orbit) */
+.orbit-person-props .orbit-person-props__scroll {
+	max-height: min(55vh, 28rem);
+	overflow-y: auto;
+	margin-bottom: 0.5rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 8px);
+	padding: 0.4rem;
+	background: var(--background-primary);
+}
+
+.orbit-person-props__row {
+	display: grid;
+	grid-template-columns: minmax(6.5rem, 22%) minmax(0, 1fr) 2rem;
+	gap: 0.35rem 0.45rem;
+	align-items: center;
+	margin-bottom: 0.4rem;
+}
+
+.orbit-person-props__key,
+.orbit-person-props__val {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	height: var(--input-height);
+	padding: 0.25rem 0.45rem;
+	font-size: var(--font-ui-small);
+	border-radius: var(--radius-s, 6px);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.orbit-person-props__remove {
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: var(--radius-s, 4px);
+	font-size: 1rem;
+	line-height: 1;
+	padding: 0.15rem;
+}
+
+.orbit-person-props__remove:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.orbit-person-props-suggest__label {
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+}
+
+.orbit-person-props-suggest__detail {
+	font-size: 0.72rem;
+	color: var(--text-muted);
+	line-height: 1.2;
+	margin-top: 2px;
+}
+
+.orbit-person-props__hr {
+	margin: 0.75rem 0 0.35rem;
+	border: none;
+	border-top: 1px solid var(--background-modifier-border);
 }
