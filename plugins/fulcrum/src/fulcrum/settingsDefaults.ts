@@ -3,6 +3,9 @@ import {DEFAULT_TIMER_SETTINGS} from "../timer/settings";
 import type {TimeModeTab} from "../timer/types";
 
 export type TaskSourceMode = "taskNotes" | "obsidianTasks" | "both";
+
+/** Inline / vault tasks indexed without a [[project]] link. */
+export type TaskIndexScope = "projectLinked" | "all";
 export type ProjectStatusIndication = "frontmatter" | "subfolder";
 export type ProjectSidebarSortBy = "launch" | "nextReview" | "rank" | "name";
 export type ProjectSidebarSortDir = "asc" | "desc";
@@ -78,6 +81,8 @@ export interface FulcrumSettings {
 	obsidianTasksFolderPaths: string;
 	inlineTaskRegex: string;
 	tasksPluginMode: "auto-detect" | "off" | "force";
+	/** Inline checkbox tasks: require project link vs index all in scanned folders. */
+	taskIndexScope: TaskIndexScope;
 
 	taskNotesHttpApiEnabled: boolean;
 	taskNotesHttpApiBaseUrl: string;
@@ -182,6 +187,13 @@ export interface FulcrumSettings {
 	timer: TimerSettings;
 	/** Last selected tab in Project Manager → Time mode. */
 	timeModeTab: TimeModeTab;
+
+	/** Timeline: show time blocks from daily notes under planner heading. */
+	timelineDailyPlannerEnabled: boolean;
+	/** Heading text (exact match) for planner section; empty = whole daily note. */
+	plannerHeading: string;
+	/** Default block height (minutes) for timed planner lines without an end time. */
+	plannerDefaultDurationMinutes: number;
 }
 
 /** Root path for area notes (separate from projects when `areasFolder` is set). */
@@ -232,6 +244,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	obsidianTasksFolderPaths: "",
 	inlineTaskRegex: "",
 	tasksPluginMode: "auto-detect",
+	taskIndexScope: "projectLinked",
 
 	taskNotesHttpApiEnabled: false,
 	taskNotesHttpApiBaseUrl: "http://localhost:8080",
@@ -307,6 +320,10 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 
 	timer: {...DEFAULT_TIMER_SETTINGS},
 	timeModeTab: "overview",
+
+	timelineDailyPlannerEnabled: true,
+	plannerHeading: "Day planner",
+	plannerDefaultDurationMinutes: 30,
 };
 
 export function parseList(s: string): string[] {

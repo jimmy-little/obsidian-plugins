@@ -57,7 +57,8 @@ import {migrateKanbanSettings} from "./fulcrum/kanban/settingsKey";
 import {postTaskNotesToggleStatus} from "./fulcrum/taskNotesApi";
 import {toggleInlineTaskLine, toggleTaskNoteFrontmatter} from "./fulcrum/taskVaultToggle";
 import {bumpSettingsRevision} from "./fulcrum/stores";
-import type {IndexedTask} from "./fulcrum/types";
+import {appendTimeBlockToDailyNote as appendTimeBlockLineToDailyNote} from "./fulcrum/utils/dailyPlannerEvents";
+import type {IndexedPlannerEvent, IndexedTask} from "./fulcrum/types";
 import {registerCompanionDocChrome} from "./fulcrum/companionDocChrome";
 import {
 	registerInlinePeoplePills,
@@ -632,6 +633,51 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			task.source === "inline" && task.line != null
 				? {state: {line: task.line} as Record<string, unknown>, eState: {line: task.line} as Record<string, unknown>}
 				: undefined;
+		void openMarkdownBesideFulcrum(
+			this.app,
+			anchorLeaf,
+			f,
+			this.fulcrumCompanionLeaf,
+			lineState,
+		);
+	}
+
+	async appendTimeBlockToDailyNote(
+		dateIso: string,
+		anchorLeaf?: WorkspaceLeaf,
+	): Promise<void> {
+		const result = await appendTimeBlockLineToDailyNote(
+			this.app,
+			this.settings,
+			dateIso.slice(0, 10),
+		);
+		if (!result) {
+			new Notice(
+				"Could not add a time block. Enable Daily note planner in Fulcrum settings and configure Daily Notes or Periodic Notes.",
+			);
+			return;
+		}
+		this.vaultIndex.scheduleRebuild();
+		const lineState = {
+			state: {line: result.line} as Record<string, unknown>,
+			eState: {line: result.line} as Record<string, unknown>,
+		};
+		void openMarkdownBesideFulcrum(
+			this.app,
+			anchorLeaf,
+			result.file,
+			this.fulcrumCompanionLeaf,
+			lineState,
+		);
+	}
+
+	openPlannerEvent(event: IndexedPlannerEvent, anchorLeaf?: WorkspaceLeaf): void {
+		const f = this.app.vault.getAbstractFileByPath(event.file.path);
+		if (!(f instanceof TFile)) return;
+		const lineState = {
+			state: {line: event.line} as Record<string, unknown>,
+			eState: {line: event.line} as Record<string, unknown>,
+		};
 		void openMarkdownBesideFulcrum(
 			this.app,
 			anchorLeaf,

@@ -3536,6 +3536,13 @@ button.fulcrum-task-card__note-type:focus-visible {
 	border-left: 3px solid var(--fulcrum-event-accent, var(--color-purple, #a855f7));
 }
 
+.fulcrum-calendar__event--planner,
+.fulcrum-calendar__timed-event--planner {
+	background: color-mix(in srgb, var(--text-muted) 12%, var(--background-primary));
+	color: var(--text-normal);
+	border-left: 3px solid var(--text-muted);
+}
+
 .fulcrum-calendar__timed-event--note {
 	background: var(--background-modifier-hover);
 	color: var(--text-muted);
@@ -3626,6 +3633,35 @@ button.fulcrum-task-card__note-type:focus-visible {
 
 .fulcrum-timeline .fulcrum-calendar__today {
 	order: 1;
+}
+
+.fulcrum-timeline__add-block {
+	order: 1;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.28rem 0.55rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
+}
+
+.fulcrum-timeline__add-block:hover:not(:disabled) {
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-timeline__add-block:disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+
+.fulcrum-timeline__add-block-icon {
+	width: 14px;
+	height: 14px;
+	flex-shrink: 0;
 }
 
 .fulcrum-timeline__title--today {
@@ -3854,6 +3890,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 
 .fulcrum-calendar__event--task { color: var(--text-accent); }
 .fulcrum-calendar__event--meeting { color: var(--color-purple, #a855f7); }
+.fulcrum-calendar__event--planner { color: var(--text-muted); }
 .fulcrum-calendar__event--note { color: var(--text-muted); }
 
 .fulcrum-calendar__event-icon {

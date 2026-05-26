@@ -1,7 +1,7 @@
 import type {App, WorkspaceLeaf} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
 import type {VaultIndex} from "./VaultIndex";
-import type {IndexedTask} from "./types";
+import type {IndexedPlannerEvent, IndexedTask} from "./types";
 import type {ProjectLogActivityEntry} from "./projectNote";
 import type {TimerModule} from "../timer/TimerModule";
 import type {TimeModeTab} from "../timer/types";
@@ -63,6 +63,9 @@ export interface FulcrumHost {
 	 */
 	openLinkedNoteFromFulcrum(path: string, anchorLeaf?: WorkspaceLeaf): void;
 	openIndexedTask(task: IndexedTask, anchorLeaf?: WorkspaceLeaf): void;
+	openPlannerEvent(event: IndexedPlannerEvent, anchorLeaf?: WorkspaceLeaf): void;
+	/** Append a new timed line under the daily-note planner heading for the given day. */
+	appendTimeBlockToDailyNote(dateIso: string, anchorLeaf?: WorkspaceLeaf): Promise<void>;
 	toggleIndexedTask(task: IndexedTask): Promise<void>;
 	patchSettings(partial: Partial<FulcrumSettings>): Promise<void>;
 	triggerFulcrumHoverLink(

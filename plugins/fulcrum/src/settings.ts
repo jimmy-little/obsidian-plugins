@@ -184,6 +184,24 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		);
 		this.textSetting("inlineTaskRegex", "Inline task filter (regex, optional)");
 		new Setting(containerEl)
+			.setName("Task index scope")
+			.setDesc(
+				"Project-linked only: inline tasks need a [[project]] link (or live on a project note). All tasks: also index checkbox lines with a scheduled/due date or inline time range, for the Timeline and vault-wide Obsidian Tasks (⏳).",
+			)
+			.addDropdown((d) =>
+				d
+					.addOptions({
+						projectLinked: "Project-linked only",
+						all: "All tasks (include unlinked scheduled)",
+					})
+					.setValue(this.plugin.settings.taskIndexScope)
+					.onChange(async (v) => {
+						this.plugin.settings.taskIndexScope = v as FulcrumSettings["taskIndexScope"];
+						await this.plugin.saveSettings();
+						this.plugin.vaultIndex.scheduleRebuild();
+					}),
+			);
+		new Setting(containerEl)
 			.setName("Tasks plugin integration")
 			.setDesc("Reserved for tasks plugin API detection.")
 			.addDropdown((d) =>
@@ -447,6 +465,42 @@ export class FulcrumSettingTab extends PluginSettingTab {
 						this.plugin.settings.kanbanProjectDateSource =
 							v as FulcrumSettings["kanbanProjectDateSource"];
 						await this.plugin.saveSettings();
+					}),
+			);
+
+		heading(containerEl, "Timeline");
+		new Setting(containerEl)
+			.setName("Daily note planner")
+			.setDesc(
+				"Show time blocks under a heading in each daily note on the Timeline (Day Planner format, e.g. 10:00 - 10:30 Deep work). Uses core Daily Notes or Periodic Notes paths.",
+			)
+			.addToggle((t) =>
+				t.setValue(this.plugin.settings.timelineDailyPlannerEnabled).onChange(async (v) => {
+					this.plugin.settings.timelineDailyPlannerEnabled = v;
+					await this.plugin.saveSettings();
+					this.plugin.vaultIndex.scheduleRebuild();
+				}),
+			);
+		this.textSetting(
+			"plannerHeading",
+			"Planner heading",
+			"Exact heading text for the day plan section. Leave empty to use the whole daily note.",
+		);
+		new Setting(containerEl)
+			.setName("Default time block length (minutes)")
+			.setDesc(
+				"Height for timed blocks without an end time, and length used when adding a new time block.",
+			)
+			.addText((tx) =>
+				tx
+					.setPlaceholder("30")
+					.setValue(String(this.plugin.settings.plannerDefaultDurationMinutes))
+					.onChange(async (v) => {
+						const n = Number.parseInt(v, 10);
+						this.plugin.settings.plannerDefaultDurationMinutes =
+							Number.isFinite(n) && n > 0 ? n : 30;
+						await this.plugin.saveSettings();
+						this.plugin.vaultIndex.scheduleRebuild();
 					}),
 			);
 

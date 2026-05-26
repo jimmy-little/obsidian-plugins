@@ -63,6 +63,19 @@ export interface IndexedTask {
 	trackedMinutes: number;
 }
 
+/** Planner time-block line under the daily-note heading (Day Planner format). */
+export interface IndexedPlannerEvent {
+	file: TFile;
+	/** 0-based line in the daily note */
+	line: number;
+	/** YYYY-MM-DD from the daily note file */
+	dateIso: string;
+	title: string;
+	status: string;
+	startMinutes: number | null;
+	durationMinutes: number | null;
+}
+
 export interface IndexedMeeting {
 	file: TFile;
 	date?: string;
@@ -139,5 +152,6 @@ export interface IndexSnapshot {
 	projects: IndexedProject[];
 	tasks: IndexedTask[];
 	meetings: IndexedMeeting[];
+	plannerEvents: IndexedPlannerEvent[];
 	rebuiltAt: number;
 }

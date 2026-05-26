@@ -3,11 +3,11 @@
  * Parses start/end times from date strings; all-day vs timed placement.
  */
 
-import type {IndexedMeeting, IndexedProject, IndexedTask} from "../types";
+import type {IndexedMeeting, IndexedPlannerEvent, IndexedProject, IndexedTask} from "../types";
 import {meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
 import {resolveProjectAccentCss} from "./projectVisual";
 
-export type CalendarEventKind = "task" | "meeting" | "logged" | "planned";
+export type CalendarEventKind = "task" | "meeting" | "logged" | "planned" | "planner";
 
 export type CalendarEvent = {
 	kind: CalendarEventKind;
@@ -27,6 +27,8 @@ export type CalendarEvent = {
 	task?: IndexedTask;
 	/** For meetings */
 	meeting?: IndexedMeeting;
+	/** Daily-note planner line */
+	planner?: IndexedPlannerEvent;
 };
 
 const DEFAULT_DURATION_MINUTES = 30;
@@ -252,6 +254,29 @@ export function meetingToCalendarEvent(
 			: null,
 		open,
 		meeting: m,
+	};
+}
+
+/** Build calendar event from a daily-note planner checkbox line. */
+export function plannerEventToCalendarEvent(
+	p: IndexedPlannerEvent,
+	open: () => void,
+	defaultDurationMinutes: number,
+): CalendarEvent {
+	const isAllDay = p.startMinutes == null;
+	const duration = isAllDay
+		? null
+		: Math.max(1, p.durationMinutes ?? defaultDurationMinutes);
+
+	return {
+		kind: "planner",
+		dateIso: p.dateIso,
+		startMinutes: p.startMinutes,
+		durationMinutes: duration,
+		title: p.title,
+		accentCss: null,
+		open,
+		planner: p,
 	};
 }
 

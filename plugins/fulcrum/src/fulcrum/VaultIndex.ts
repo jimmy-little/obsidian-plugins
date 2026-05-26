@@ -30,6 +30,8 @@ import {
 	parseCheckboxLineTitle,
 	parseObsidianTasksEmojiDates,
 } from "./utils/inlineTasks";
+import {applyTimeRangeToTaskDates, parseTimeRangeFromLine} from "./utils/dayPlannerTime";
+import {indexDailyPlannerEvents} from "./utils/dailyPlannerEvents";
 import {
 	buildNoteBodyPreview,
 	parseTagsFromFm,
@@ -125,6 +127,7 @@ export class VaultIndex {
 		projects: [],
 		tasks: [],
 		meetings: [],
+		plannerEvents: [],
 		rebuiltAt: 0,
 	};
 	private debounceHandle: number | null = null;
@@ -426,7 +429,22 @@ export class VaultIndex {
 					if (!proj && projectPaths.has(file.path)) {
 						proj = file;
 					}
-					if (!proj) continue;
+					const indexAllTasks = s.taskIndexScope === "all";
+					if (!proj && !indexAllTasks) continue;
+					if (
+						!proj &&
+						indexAllTasks &&
+						!schedEm &&
+						!dueEm &&
+						!parseTimeRangeFromLine(titleEmoji)
+					) {
+						continue;
+					}
+					const enriched = applyTimeRangeToTaskDates({
+						title: titleEmoji,
+						scheduledDate: schedEm,
+						dueDate: dueEm,
+					});
 					const isChecked = item.task === "x" || item.task === "X";
 					const startKey = s.taskStartTimeField?.trim() || "startTime";
 					const endKey = s.taskEndTimeField?.trim() || "endTime";
@@ -436,15 +454,16 @@ export class VaultIndex {
 					const durN = fmNumber(fm, durKey);
 					tasks.push({
 						file,
-						title: titleEmoji,
+						title: enriched.title,
 						status: isChecked ? doneStatus : openStatus,
-						dueDate: dueEm,
-						scheduledDate: schedEm,
+						dueDate: enriched.dueDate,
+						scheduledDate: enriched.scheduledDate,
 						completedDate: undefined,
 						startTime: startTimeRaw || undefined,
 						endTime: endTimeRaw || undefined,
 						durationMinutes:
-							durN != null && Number.isFinite(durN) && durN > 0 ? Math.round(durN) : undefined,
+							enriched.durationMinutes ??
+							(durN != null && Number.isFinite(durN) && durN > 0 ? Math.round(durN) : undefined),
 						projectFile: proj,
 						areaFile,
 						tags: [],
@@ -457,11 +476,14 @@ export class VaultIndex {
 			}
 		}
 
+		const plannerEvents = await indexDailyPlannerEvents(this.app, s);
+
 		this.snapshot = {
 			areas,
 			projects,
 			tasks,
 			meetings,
+			plannerEvents,
 			rebuiltAt: Date.now(),
 		};
 		bumpIndexRevision();

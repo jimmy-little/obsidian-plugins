@@ -84,14 +84,20 @@ export function filterProjectsWorkRelated(
 	return projects.filter((p) => projectIsWorkRelated(p, areaWork));
 }
 
+export type TaskWorkFilterOptions = {
+	/** When true, tasks without a project link still show (Timeline personal / vault tasks). */
+	includeUnlinked?: boolean;
+};
+
 export function taskPassesWorkFilter(
 	t: IndexedTask,
 	snapshot: IndexSnapshot,
 	onlyWork: boolean,
 	areaWork: Map<string, boolean>,
+	options?: TaskWorkFilterOptions,
 ): boolean {
 	if (!onlyWork) return true;
-	if (!t.projectFile) return false;
+	if (!t.projectFile) return options?.includeUnlinked === true;
 	const proj = snapshot.projects.find((p) => p.file.path === t.projectFile!.path);
 	return proj != null && projectIsWorkRelated(proj, areaWork);
 }

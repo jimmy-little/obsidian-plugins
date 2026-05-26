@@ -87,12 +87,14 @@
 
 	$: tasksDueToday = snapshot.tasks.filter(
 		(t) =>
+			t.projectFile &&
 			!doneTask.has(t.status) &&
 			isDueToday(t.dueDate, false) &&
 			taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap),
 	);
 	$: overdueTasks = snapshot.tasks.filter(
 		(t) =>
+			t.projectFile &&
 			!doneTask.has(t.status) &&
 			isOverdue(t.dueDate, false) &&
 			taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap),
@@ -159,6 +161,7 @@
 	$: todayTasks = snapshot.tasks
 		.filter(
 			(t) =>
+				t.projectFile &&
 				!doneTask.has(t.status) &&
 				isDueToday(t.dueDate, false) &&
 				taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap),
