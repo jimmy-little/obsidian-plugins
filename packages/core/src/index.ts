@@ -16,6 +16,7 @@ export {
 	partialWikilinkNeedle,
 	type PropertyValueSuggestItem,
 } from "./notePropertySuggests";
+export { PLUGIN_IDS, getPluginApi, isPluginEnabled, type SuitePluginId } from "./pluginBridge";
 
 /**
  * Choose a leaf for opening a custom view (Fulcrum-style).

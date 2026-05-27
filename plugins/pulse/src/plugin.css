@@ -3760,40 +3760,101 @@
 
 .pulse-nutrition-foot {
 	font-size: var(--font-ui-smaller, 0.75rem);
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.pulse-nutrition-foot__settings-link {
+	color: var(--text-accent);
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.pulse-nutrition-foot__settings-link:hover {
+	text-decoration: underline;
 }
 
 .pulse-nutrition-cal__cell--logged {
 	cursor: pointer;
-	background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-primary));
 }
 
-.pulse-nutrition-cal__cell--logged:hover {
-	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+.pulse-nutrition-cal__cell--logged:hover .pulse-nutrition-cal__day-card {
+	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-secondary));
 	border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
 }
 
-.pulse-nutrition-cal__summary {
+.pulse-nutrition-cal .pulse-cal__cell {
+	min-height: 4.25rem;
+	align-items: stretch;
+	padding: 0.25rem 0.2rem 0.3rem;
+}
+
+.pulse-nutrition-cal .pulse-cal__cell.pulse-nutrition-cal__cell--logged {
+	min-height: 7.25rem;
+}
+
+.pulse-nutrition-cal .pulse-cal__day-num {
+	width: 100%;
+	text-align: center;
+	line-height: 1.1;
+	margin-bottom: 0.15rem;
+	flex-shrink: 0;
+}
+
+.pulse-nutrition-cal__day-card {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
-	margin-top: 0.15rem;
+	align-items: center;
+	justify-content: center;
+	gap: 0.15rem;
+	width: 100%;
+	flex: 1;
+	min-width: 0;
+	padding: 0.28rem 0.2rem;
+	border-radius: var(--radius-s);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	background: var(--background-secondary);
+	box-sizing: border-box;
+	text-align: center;
 }
 
-.pulse-nutrition-cal__calories {
-	font-size: 0.72rem;
+.pulse-nutrition-cal__day-kcal {
+	font-size: 0.68rem;
 	font-weight: 700;
 	color: var(--text-normal);
-	line-height: 1.2;
+	line-height: 1.15;
+	white-space: nowrap;
 }
 
-.pulse-nutrition-cal__macros {
-	font-size: 0.64rem;
+.pulse-nutrition-cal__donut-wrap {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	min-height: 2.35rem;
+	flex-shrink: 0;
+}
+
+.pulse-nutrition-cal__donut {
+	width: 100%;
+	max-width: 2.35rem;
+	height: auto;
+	display: block;
+}
+
+.pulse-nutrition-cal__day-macros {
+	font-size: 0.58rem;
 	color: var(--text-muted);
 	line-height: 1.2;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
 }
 
-.pulse-nutrition-cal .pulse-cal__cell {
-	min-height: 5.25rem;
+.pulse-nutrition-cal__donut-track {
+	stroke: color-mix(in srgb, var(--text-muted) 22%, transparent);
 }
 
 .pulse-nutrition-month-chart {
@@ -3801,11 +3862,6 @@
 	flex-direction: column;
 	gap: 0.5rem;
 	margin-top: 0.25rem;
-}
-
-.pulse-nutrition-month-chart__hint {
-	margin: 0;
-	font-size: var(--font-ui-smaller, 0.75rem);
 }
 
 .pulse-nutrition-month-chart__canvas-wrap {
@@ -3914,7 +3970,7 @@
 }
 
 .pulse-nutrition-day__chart--meal {
-	min-height: 140px;
+	min-height: 160px;
 	max-width: 360px;
 }
 
@@ -3923,9 +3979,37 @@
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	background: var(--background-secondary);
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 0.65rem;
+}
+
+@media (min-width: 640px) {
+	.pulse-nutrition-day__meal {
+		grid-template-columns: minmax(0, 1fr) minmax(200px, 280px);
+		align-items: start;
+		gap: 0.65rem 1.25rem;
+	}
+}
+
+.pulse-nutrition-day__meal-main {
 	display: flex;
 	flex-direction: column;
 	gap: 0.65rem;
+	min-width: 0;
+}
+
+.pulse-nutrition-day__meal .pulse-nutrition-day__chart-wrap--meal {
+	min-width: 0;
+	justify-self: center;
+	width: 100%;
+	max-width: 280px;
+}
+
+@media (min-width: 640px) {
+	.pulse-nutrition-day__meal .pulse-nutrition-day__chart-wrap--meal {
+		justify-self: end;
+	}
 }
 
 .pulse-nutrition-day__meal-head {

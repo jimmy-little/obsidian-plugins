@@ -86,7 +86,7 @@ export class ReposeShellView extends ItemView {
 		this.registerEvent(
 			this.app.workspace.on("layout-change", () => {
 				this.component?.$set({
-					fullView: !leafIsInSideDock(this.app, this.leaf),
+					fullView: this.isFullView(),
 					detailOnly: this.detailOnly,
 				});
 			}),

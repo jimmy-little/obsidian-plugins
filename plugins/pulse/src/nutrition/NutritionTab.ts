@@ -16,7 +16,7 @@ import {
 	sumMealMacros,
 	type NutritionMealEntry,
 } from "./types";
-import { renderMacroStackedBarChart } from "./nutritionCharts";
+import { renderMacroStackedBarChart, renderMacroMiniDonut } from "./nutritionCharts";
 
 export class NutritionTab {
 	private plugin: PulsePlugin;
@@ -63,6 +63,19 @@ export class NutritionTab {
 			text: `Source: ${monthPath}`,
 			cls: "pulse-workout-muted",
 		});
+
+		const goalLine = foot.createDiv({ cls: "pulse-nutrition-foot__goal pulse-workout-muted" });
+		goalLine.appendText("Adjust daily goal in ");
+		const settingsLink = goalLine.createEl("a", {
+			cls: "pulse-nutrition-foot__settings-link",
+			text: "settings",
+			href: "#",
+		});
+		settingsLink.addEventListener("click", (e) => {
+			e.preventDefault();
+			this.plugin.openSettingsTab();
+		});
+		goalLine.appendText(".");
 	}
 
 	private async renderMonthChart(
@@ -79,10 +92,6 @@ export class NutritionTab {
 		section.createEl("h3", {
 			text: "Daily totals",
 			cls: "pulse-pm__section-title",
-		});
-		section.createEl("p", {
-			text: `Stacked macro calories by day. Dashed line = ${goal} cal goal.`,
-			cls: "pulse-workout-muted pulse-nutrition-month-chart__hint",
 		});
 
 		if (dates.length === 0) {
@@ -208,19 +217,24 @@ export class NutritionTab {
 			if (dayMeals.length === 0) continue;
 
 			const totals = sumMealMacros(dayMeals);
+			const mc = macroCaloriesFromGrams(totals);
 			cell.addClass("pulse-nutrition-cal__cell--logged");
 			cell.setAttribute("role", "button");
 			cell.setAttribute("tabindex", "0");
-			cell.setAttribute("title", `Open ${dateStr}`);
+			cell.setAttribute("title", formatDayMacroSummary(dayMeals));
 
-			const summary = cell.createDiv({ cls: "pulse-nutrition-cal__summary" });
-			summary.createDiv({
-				cls: "pulse-nutrition-cal__calories",
+			const dayCard = cell.createDiv({ cls: "pulse-nutrition-cal__day-card" });
+			dayCard.createDiv({
+				cls: "pulse-nutrition-cal__day-kcal",
 				text: `${Math.round(totals.calories)} cal`,
 			});
-			summary.createDiv({
-				cls: "pulse-nutrition-cal__macros",
-				text: `${Math.round(totals.protein)}p · ${Math.round(totals.fat)}f · ${Math.round(totals.netCarbs)}c`,
+
+			const donutWrap = dayCard.createDiv({ cls: "pulse-nutrition-cal__donut-wrap" });
+			donutWrap.appendChild(renderMacroMiniDonut(mc.protein, mc.fat, mc.netCarbs));
+
+			dayCard.createDiv({
+				cls: "pulse-nutrition-cal__day-macros",
+				text: `${Math.round(totals.protein)}g P · ${Math.round(totals.fat)}g F · ${Math.round(totals.netCarbs)}g C`,
 			});
 
 			const openDay = () => void this.plugin.openNutritionDayView(dateStr);
@@ -232,11 +246,6 @@ export class NutritionTab {
 				}
 			});
 		}
-
-		section.createDiv({
-			cls: "pulse-cal__hint pulse-workout-muted",
-			text: "Days with food logs show calorie and macro totals. Click a day to open the daily breakdown in a split pane.",
-		});
 	}
 
 	getCalendarMonth(): { year: number; month: number } {

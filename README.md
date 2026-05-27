@@ -1,6 +1,6 @@
 # Obsidian plugins (monorepo)
 
-npm workspaces containing **Pulse**, **Ratchet**, **Fulcrum**, **Orbit**, and shared packages (`@obsidian-suite/*`). Fulcrum includes built-in time tracking (formerly Lapse).
+npm workspaces containing **Pulse**, **Ratchet**, **Fulcrum**, **Orbit**, **Quill**, and shared packages (`@obsidian-suite/*`). Fulcrum includes built-in time tracking (formerly Lapse).
 
 ## Setup
 
@@ -33,6 +33,7 @@ Each plugin registers **Obsidian URIs** with the [protocol host](https://docs.ob
 | Pulse    | `pulse`         | [plugins/pulse/README.md](plugins/pulse/README.md) |
 | Orbit    | `orbit`         | [plugins/orbit/README.md](plugins/orbit/README.md) |
 | Ratchet  | `ratchet`       | [plugins/ratchet/README.md](plugins/ratchet/README.md) |
+| Quill    | `quill`         | [plugins/quill/README.md](plugins/quill/README.md) |
 
 Each plugin’s **Settings** tab includes a **URL schemes (Obsidian URI)** section with copy-ready examples.
 

@@ -18,6 +18,10 @@ export function formatWorkoutQuickNoteLine(text: string): string {
 const QUICK_NOTE_LINE =
 	/^[-*]\s+\d{1,2}\/\d{1,2}\/\d{2,4},\s+\d{1,2}:\d{2}\s*(?:AM|PM)\s+—\s+(.+)$/i;
 
+function isWorkoutQuickNoteLine(line: string): boolean {
+	return parseWorkoutQuickNoteText(line) != null;
+}
+
 /** Extract quick-note text from a bullet line; returns null if not a quick note. */
 export function parseWorkoutQuickNoteText(line: string): string | null {
 	const trimmed = line.trim();
@@ -36,6 +40,38 @@ export function parseWorkoutQuickNotesFromBody(body: string): string[] {
 	return notes;
 }
 
+function splitFrontmatter(content: string): { prefix: string; body: string } {
+	const match = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+	if (!match) return { prefix: "", body: content };
+	return { prefix: match[0], body: content.slice(match[0].length) };
+}
+
+/** Separate quick-note lines from the rest of the note body (anywhere in the file). */
+export function partitionBodyQuickNotes(body: string): { noteLines: string[]; rest: string } {
+	const noteLines: string[] = [];
+	const restLines: string[] = [];
+	for (const line of body.split(/\r?\n/)) {
+		if (isWorkoutQuickNoteLine(line)) {
+			noteLines.push(line.trimEnd());
+		} else {
+			restLines.push(line);
+		}
+	}
+	return {
+		noteLines,
+		rest: restLines.join("\n").replace(/^\s+|\s+$/g, ""),
+	};
+}
+
+function rebuildWorkoutNoteContent(prefix: string, noteLines: string[], rest: string): string {
+	const notes = noteLines.join("\n");
+	let body = "";
+	if (notes && rest) body = `${notes}\n\n${rest}\n`;
+	else if (notes) body = `${notes}\n`;
+	else if (rest) body = rest.endsWith("\n") ? rest : `${rest}\n`;
+	return `${prefix}${body}`;
+}
+
 export async function appendWorkoutQuickNote(
 	vault: Vault,
 	file: TFile,
@@ -47,8 +83,11 @@ export async function appendWorkoutQuickNote(
 		return false;
 	}
 	try {
-		const line = formatWorkoutQuickNoteLine(trimmed);
-		await vault.append(file, `\n${line}\n`);
+		const content = await vault.read(file);
+		const { prefix, body } = splitFrontmatter(content);
+		const { noteLines, rest } = partitionBodyQuickNotes(body);
+		noteLines.push(formatWorkoutQuickNoteLine(trimmed));
+		await vault.modify(file, rebuildWorkoutNoteContent(prefix, noteLines, rest));
 		new Notice("Added to workout note.");
 		return true;
 	} catch (e) {

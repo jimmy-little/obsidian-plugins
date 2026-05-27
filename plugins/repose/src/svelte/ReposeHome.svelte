@@ -21,7 +21,16 @@
 	export let onBackToList: () => void = () => {};
 
 	const mobile = reposeMobile();
-	$: mobileDetail = mobile && !!selectedPath && !landing;
+
+	/** When true, sidebar shows add panel (search) instead of library list. */
+	let addPanelOpen = false;
+
+	/** Mobile: one full-screen pane at a time (no split / collapse rail). */
+	$: mobileScreen = addPanelOpen
+		? ("add" as const)
+		: selectedPath && !landing
+			? ("detail" as const)
+			: ("list" as const);
 
 	const LEFT_WIDTH_LS = "repose-pm-left-col-px";
 	const LEFT_MIN = 220;
@@ -29,26 +38,18 @@
 	const SPLIT_PX = 5;
 	const ADD_PANEL_LS = "repose-pm-add-panel";
 
-	/** When true, sidebar shows add panel (search) instead of library list. */
-	let addPanelOpen = false;
-
 	let leftCollapsed = false;
 	let pmEl: HTMLDivElement | null = null;
 	let leftWidthPx: number | null = readStoredLeftWidth();
-	let addToggleBtnEl: HTMLButtonElement | null = null;
-	let collapseBtnEl: HTMLButtonElement | null = null;
-	let homeBtnEl: HTMLButtonElement | null = null;
 
-	$: if (addToggleBtnEl) {
-		setIcon(addToggleBtnEl, addPanelOpen ? "list" : "plus");
-	}
-
-	$: if (collapseBtnEl) {
-		setIcon(collapseBtnEl, leftCollapsed ? "panel-left" : "panel-left-close");
-	}
-
-	$: if (homeBtnEl) {
-		setIcon(homeBtnEl, "home");
+	function iconAction(node: HTMLElement, icon: string): { update: (next: string) => void } {
+		setIcon(node, icon);
+		return {
+			update(next: string) {
+				node.empty();
+				setIcon(node, next);
+			},
+		};
 	}
 
 	function readStoredLeftWidth(): number | null {
@@ -74,16 +75,17 @@
 		return Math.min(Math.max(Math.round(w), LEFT_MIN), maxLeftColWidth());
 	}
 
-	function persistLeftWidth(w: number): void {
+	function persistLeftWidth(w: number): number {
 		try {
 			localStorage.setItem(LEFT_WIDTH_LS, String(w));
 		} catch {
 			/* ignore */
 		}
+		return w;
 	}
 
 	function onSplitPointerDown(ev: PointerEvent): void {
-		if (leftCollapsed || !fullView) return;
+		if (mobile || leftCollapsed || !fullView) return;
 		const handle = ev.currentTarget as HTMLElement;
 		ev.preventDefault();
 		handle.setPointerCapture(ev.pointerId);
@@ -95,7 +97,11 @@
 			leftWidthPx = clampLeftWidth(startW + (e.clientX - startX));
 		}
 		function up(e: PointerEvent): void {
-			handle.releasePointerCapture(e.pointerId);
+			try {
+				handle.releasePointerCapture(e.pointerId);
+			} catch {
+				/* ignore */
+			}
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
 			window.removeEventListener("pointercancel", up);
@@ -116,44 +122,58 @@
 		}
 	});
 
-	function toggleAddPanel(): void {
-		addPanelOpen = !addPanelOpen;
+	function closeAddPanel(): void {
+		addPanelOpen = false;
 		try {
-			if (addPanelOpen) localStorage.setItem(ADD_PANEL_LS, "1");
-			else localStorage.removeItem(ADD_PANEL_LS);
+			localStorage.removeItem(ADD_PANEL_LS);
 		} catch {
 			/* ignore */
 		}
 	}
 
-	function collapseLeftIfNarrow(): void {
-		if (typeof window === "undefined") return;
-		if (mobile || window.matchMedia("(max-width: 768px)").matches) {
-			leftCollapsed = true;
+	function openAddPanel(): void {
+		addPanelOpen = true;
+		try {
+			localStorage.setItem(ADD_PANEL_LS, "1");
+		} catch {
+			/* ignore */
 		}
 	}
 
+	function toggleAddPanel(): void {
+		if (addPanelOpen) closeAddPanel();
+		else openAddPanel();
+	}
+
+	function toggleLeftCollapsed(): void {
+		leftCollapsed = !leftCollapsed;
+	}
+
+	function handleGoHome(): void {
+		closeAddPanel();
+		onGoHome();
+	}
+
 	function backToList(): void {
+		closeAddPanel();
 		leftCollapsed = false;
 		onBackToList();
 	}
 
 	function selectPath(path: string): void {
-		collapseLeftIfNarrow();
+		closeAddPanel();
 		onSelectPath(path);
 	}
 
 	function onSplitKeydown(ev: KeyboardEvent): void {
-		if (leftCollapsed || !fullView) return;
+		if (mobile || leftCollapsed || !fullView) return;
 		if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
 		ev.preventDefault();
 		const aside = pmEl?.querySelector(".repose-pm__sidebar--left");
 		const cur = leftWidthPx ?? (aside instanceof HTMLElement ? aside.getBoundingClientRect().width : 352);
 		const step = ev.shiftKey ? 24 : 8;
 		const delta = ev.key === "ArrowRight" ? step : -step;
-		const next = clampLeftWidth(cur + delta);
-		leftWidthPx = next;
-		persistLeftWidth(next);
+		leftWidthPx = persistLeftWidth(clampLeftWidth(cur + delta));
 	}
 </script>
 
@@ -167,23 +187,70 @@
 					{plugin}
 					{selectedPath}
 					onSelectPath={selectPath}
-					onGoHome={() => onGoHome()}
+					onGoHome={() => handleGoHome()}
 					onBackToList={mobile ? backToList : undefined}
 				/>
 			{/if}
 		</main>
 	</div>
-{:else if mobileDetail}
-	<div class="repose-pm repose-pm--mobile-detail">
-		<main class="repose-pm__main repose-view-root">
-			<MediaDetail
-				{plugin}
-				{selectedPath}
-				onSelectPath={selectPath}
-				onGoHome={() => onGoHome()}
-				onBackToList={backToList}
-			/>
-		</main>
+{:else if mobile}
+	<div class="repose-pm repose-pm--mobile-stack">
+		{#if mobileScreen === "list"}
+			<header class="repose-pm__mobile-bar" role="toolbar" aria-label="Repose library">
+				<button
+					type="button"
+					class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
+					aria-label="Repose home"
+					title="Home"
+					on:click|stopPropagation={() => handleGoHome()}
+				>
+					<span class="repose-pm__glyph-icon" use:iconAction={"home"} aria-hidden="true"></span>
+				</button>
+				<span class="repose-pm__mobile-bar-title">Library</span>
+				<button
+					type="button"
+					class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
+					aria-label="Add media"
+					title="Add media"
+					on:click|stopPropagation={openAddPanel}
+				>
+					<span class="repose-pm__glyph-icon" use:iconAction={"plus"} aria-hidden="true"></span>
+				</button>
+			</header>
+			<div class="repose-pm__mobile-body repose-view-root">
+				{#if landing}
+					<ReposeLanding {plugin} onSelectPath={selectPath} />
+				{:else}
+					<MediaListPanel {plugin} {selectedPath} onSelectPath={selectPath} />
+				{/if}
+			</div>
+		{:else if mobileScreen === "add"}
+			<header class="repose-pm__mobile-bar" role="toolbar" aria-label="Add media">
+				<button
+					type="button"
+					class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
+					aria-label="Back to library"
+					title="Back to library"
+					on:click|stopPropagation={closeAddPanel}
+				>
+					<span class="repose-pm__glyph-icon" use:iconAction={"arrow-left"} aria-hidden="true"></span>
+				</button>
+				<span class="repose-pm__mobile-bar-title">Add media</span>
+			</header>
+			<div class="repose-pm__mobile-body repose-view-root">
+				<SearchAddPanel {plugin} />
+			</div>
+		{:else}
+			<div class="repose-pm__mobile-body repose-pm__mobile-body--detail repose-view-root">
+				<MediaDetail
+					{plugin}
+					{selectedPath}
+					onSelectPath={selectPath}
+					onGoHome={() => handleGoHome()}
+					onBackToList={backToList}
+				/>
+			</div>
+		{/if}
 	</div>
 {:else}
 	<div
@@ -199,29 +266,39 @@
 					<button
 						type="button"
 						class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
-						bind:this={collapseBtnEl}
 						aria-label={leftCollapsed ? "Expand media list" : "Collapse media list"}
 						title={leftCollapsed ? "Expand" : "Collapse"}
-						on:click={() => (leftCollapsed = !leftCollapsed)}
-					></button>
+						on:click|stopPropagation={toggleLeftCollapsed}
+					>
+						<span
+							class="repose-pm__glyph-icon"
+							use:iconAction={leftCollapsed ? "panel-left" : "panel-left-close"}
+							aria-hidden="true"
+						></span>
+					</button>
 					<span class="repose-pm__glyph-spacer" aria-hidden="true"></span>
 					<button
 						type="button"
 						class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
-						bind:this={homeBtnEl}
 						aria-label="Repose home"
 						title="Home"
-						on:click={() => onGoHome()}
-					></button>
+						on:click|stopPropagation={() => handleGoHome()}
+					>
+						<span class="repose-pm__glyph-icon" use:iconAction={"home"} aria-hidden="true"></span>
+					</button>
 					<button
 						type="button"
 						class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
-						bind:this={addToggleBtnEl}
 						aria-label={addPanelOpen ? "Show media library" : "Add media"}
 						title={addPanelOpen ? "Library list" : "Add"}
-						disabled={leftCollapsed}
-						on:click={() => toggleAddPanel()}
-					></button>
+						on:click|stopPropagation={toggleAddPanel}
+					>
+						<span
+							class="repose-pm__glyph-icon"
+							use:iconAction={addPanelOpen ? "list" : "plus"}
+							aria-hidden="true"
+						></span>
+					</button>
 				</div>
 				{#if !leftCollapsed}
 					<div class="repose-pm__left-scroll" id="repose-sidebar-panel">

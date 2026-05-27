@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, normalizePath, type ObsidianProtocolData } from "obsidian";
+import { App, Notice, Plugin, TFile, normalizePath, type ObsidianProtocolData } from "obsidian";
 import { WorkoutDocumentView, VIEW_TYPE_PULSE_WORKOUT_DOC } from "./views/WorkoutDocumentView";
 import { NutritionDayView, VIEW_TYPE_PULSE_NUTRITION_DAY } from "./views/NutritionDayView";
 import { DEFAULT_SETTINGS, PulseSettingTab } from "./settings";
@@ -266,5 +266,13 @@ export default class PulsePlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+	}
+
+	openSettingsTab(): void {
+		const setting = (this.app as App & {
+			setting?: { open(): Promise<void>; openTabById(id: string): void };
+		}).setting;
+		if (!setting) return;
+		void setting.open().then(() => setting.openTabById(this.manifest.id));
 	}
 }
