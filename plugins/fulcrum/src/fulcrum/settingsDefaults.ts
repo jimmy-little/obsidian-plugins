@@ -188,6 +188,13 @@ export interface FulcrumSettings {
 	/** Last selected tab in Project Manager → Time mode. */
 	timeModeTab: TimeModeTab;
 
+	/** Sync timer state to Fulcrum/.widget-bridge.json for native widgets. */
+	widgetBridgeEnabled: boolean;
+	/** Vault-relative path to the widget bridge JSON file. */
+	widgetBridgePath: string;
+	/** Stable id for this Obsidian instance when reconciling bridge commands. */
+	widgetBridgeDeviceId: string;
+
 	/** Timeline: show time blocks from daily notes under planner heading. */
 	timelineDailyPlannerEnabled: boolean;
 	/** Heading text (exact match) for planner section; empty = whole daily note. */
@@ -320,6 +327,10 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 
 	timer: {...DEFAULT_TIMER_SETTINGS},
 	timeModeTab: "overview",
+
+	widgetBridgeEnabled: true,
+	widgetBridgePath: "Fulcrum/.widget-bridge.json",
+	widgetBridgeDeviceId: "",
 
 	timelineDailyPlannerEnabled: true,
 	plannerHeading: "Day planner",

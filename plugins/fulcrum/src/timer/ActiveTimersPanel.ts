@@ -133,7 +133,7 @@ export class ActiveTimersPanel {
 		pageData.totalTimeTracked = pageData.entries.reduce((sum, e) => sum + e.duration, 0);
 		await this.plugin.updateFrontmatter(filePath);
 		if (this.container) await this.render(this.container);
-		this.plugin.refreshActivityEmbed();
+		this.plugin.refreshActivityPanel();
 	}
 
 	private async tick(): Promise<void> {

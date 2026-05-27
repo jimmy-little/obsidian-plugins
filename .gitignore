@@ -5,3 +5,10 @@ node_modules/
 .env.local
 .vault-path.local.json
 Thumbs.db
+
+# Xcode / Fulcrum Companion
+companion/**/DerivedData/
+companion/**/*.xcodeproj/
+companion/**/*.xcworkspace/
+companion/**/xcuserdata/
+*.xcuserstate

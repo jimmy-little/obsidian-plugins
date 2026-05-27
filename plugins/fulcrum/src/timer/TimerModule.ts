@@ -183,6 +183,7 @@ export class TimerModule {
 	refreshActivityPanel(): void {
 		void this.activityEmbed?.refresh();
 		void this.activeTimersPanel?.refresh();
+		this.host.scheduleWidgetBridgeSync?.();
 	}
 
 	refreshActivityEmbed(): void {
@@ -3712,6 +3713,7 @@ export class TimerModule {
 		
 		// Invalidate cache for this file since we just modified it
 		this.invalidateCacheForFile(filePath);
+		this.host.scheduleWidgetBridgeSync?.();
 	}
 
 	async activateView(): Promise<void> {

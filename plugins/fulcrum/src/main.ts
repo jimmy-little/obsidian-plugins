@@ -71,6 +71,7 @@ import {injectFulcrumPluginStyles} from "./fulcrum/injectPluginStyles";
 import {FULCRUM_PLUGIN_CSS} from "./generated/pluginStyles";
 import {FulcrumSettingTab} from "./settings";
 import {TimerModule} from "./timer/TimerModule";
+import {WidgetBridge} from "./timer/WidgetBridge";
 import {migrateTimerSettings, mergeTimerDefaults} from "./timer/migration";
 import type {TimeModeTab} from "./timer/types";
 import {ActiveTimersView} from "./views/ActiveTimersView";
@@ -84,6 +85,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	settings: FulcrumSettings = DEFAULT_SETTINGS;
 	vaultIndex!: VaultIndex;
 	timer!: TimerModule;
+	widgetBridge!: WidgetBridge;
 	/** Reused markdown leaf for “open beside” from project / linked surfaces. */
 	private readonly fulcrumCompanionLeaf: FulcrumCompanionLeaf = {current: null};
 
@@ -116,6 +118,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			console.error("Fulcrum timer failed to load", err);
 			new Notice("Fulcrum timer failed to load — time tracking is unavailable.");
 		}
+
+		this.widgetBridge = new WidgetBridge(this);
+		this.widgetBridge.onload();
 
 		this.registerHoverLinkSource(FULCRUM_HOVER_SOURCE, {
 			display: this.manifest.name,
@@ -284,6 +289,20 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 				void this.refreshIndex();
 			},
 		});
+		this.addCommand({
+			id: "fulcrum-widget-bridge-rebuild",
+			name: "Rebuild widget bridge cache",
+			callback: () => {
+				void this.widgetBridge?.rebuild();
+			},
+		});
+		this.addCommand({
+			id: "fulcrum-widget-bridge-reconcile",
+			name: "Apply widget bridge commands now",
+			callback: () => {
+				void this.widgetBridge?.reconcile();
+			},
+		});
 
 		this.registerObsidianProtocolHandler(this.manifest.id, (params) => {
 			this.handleFulcrumOpenUri(params);
@@ -292,7 +311,12 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	onunload(): void {
 		this.vaultIndex.cancelScheduledRebuild();
+		this.widgetBridge?.onunload();
 		void this.timer?.onunload();
+	}
+
+	scheduleWidgetBridgeSync(): void {
+		this.widgetBridge?.schedulePublish();
 	}
 
 	private handleFulcrumOpenUri(params: ObsidianProtocolData): void {

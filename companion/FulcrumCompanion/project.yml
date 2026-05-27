@@ -1,0 +1,63 @@
+name: FulcrumCompanion
+options:
+  bundleIdPrefix: com.fulcrum
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+targets:
+  FulcrumCompanion:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/App
+      - path: Sources/Shared
+    entitlements:
+      path: Config/FulcrumCompanion.entitlements
+    info:
+      path: Config/FulcrumCompanion-Info.plist
+      properties:
+        CFBundleDisplayName: Fulcrum
+        LSApplicationCategoryType: public.app-category.productivity
+    dependencies:
+      - target: FulcrumWidgetsExtension
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fulcrum.companion
+        CODE_SIGN_ENTITLEMENTS: Config/FulcrumCompanion.entitlements
+  FulcrumWidgetsExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/Widgets
+      - path: Sources/Shared
+    entitlements:
+      path: Config/FulcrumWidgets.entitlements
+    info:
+      path: Config/FulcrumWidgets-Info.plist
+      properties:
+        CFBundleDisplayName: Fulcrum Widgets
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fulcrum.companion.widgets
+        CODE_SIGN_ENTITLEMENTS: Config/FulcrumWidgets.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: NO
+        CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: YES
+schemes:
+  FulcrumCompanion:
+    build:
+      targets:
+        FulcrumCompanion: all
+        FulcrumWidgetsExtension: all
+    run:
+      config: Debug
+      target: FulcrumCompanion

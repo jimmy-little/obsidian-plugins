@@ -74,6 +74,8 @@ export interface FulcrumHost {
 		targetEl: HTMLElement,
 		path: string,
 	): void;
+	/** Debounced publish of active timers / quick start into the widget bridge file. */
+	scheduleWidgetBridgeSync?(): void;
 	/** Renders markdown into a host element (e.g. activity note preview). */
 	renderActivityBodyPreview(el: HTMLElement, sourcePath: string, markdown: string): Promise<void>;
 	/** Edit project note YAML in the suite properties modal (same UI as Orbit). */

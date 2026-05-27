@@ -266,4 +266,46 @@ export function displayTimerSettings(containerEl: HTMLElement, plugin: FulcrumPl
 					await saveTimer(plugin, {calendarDrawMode: value as TimerSettings["calendarDrawMode"]});
 				}),
 		);
+
+	heading(containerEl, "Widget companion");
+
+	new Setting(containerEl)
+		.setName("Enable widget bridge")
+		.setDesc(
+			"Sync active timers and Quick Start buttons to a JSON file in your vault for Timery-like Mac/iOS widgets via iCloud.",
+		)
+		.addToggle((toggle) =>
+			toggle.setValue(plugin.settings.widgetBridgeEnabled).onChange(async (value) => {
+				plugin.settings.widgetBridgeEnabled = value;
+				await plugin.saveSettings();
+				if (value) {
+					plugin.widgetBridge?.onload();
+					void plugin.widgetBridge?.rebuild();
+				} else {
+					plugin.widgetBridge?.onunload();
+				}
+			}),
+		);
+
+	new Setting(containerEl)
+		.setName("Widget bridge file path")
+		.setDesc("Vault-relative path. The companion app reads and writes pending commands here.")
+		.addText((text) =>
+			text
+				.setPlaceholder("Fulcrum/.widget-bridge.json")
+				.setValue(plugin.settings.widgetBridgePath)
+				.onChange(async (value) => {
+					plugin.settings.widgetBridgePath = value.trim() || "Fulcrum/.widget-bridge.json";
+					await plugin.saveSettings();
+				}),
+		);
+
+	new Setting(containerEl)
+		.setName("Rebuild widget bridge now")
+		.setDesc("Refresh active timers and Quick Start cache in the bridge file immediately.")
+		.addButton((btn) =>
+			btn.setButtonText("Rebuild").onClick(() => {
+				void plugin.widgetBridge?.rebuild();
+			}),
+		);
 }
