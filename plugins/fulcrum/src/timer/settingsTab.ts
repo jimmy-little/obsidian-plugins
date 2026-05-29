@@ -75,7 +75,7 @@ export function displayTimerSettings(containerEl: HTMLElement, plugin: FulcrumPl
 	new Setting(containerEl)
 		.setName("Default save path for timer notes")
 		.setDesc(
-			"Path pattern for new timer notes. Use YYYY, MM, DD, HH, mm, ss and {{project}}, {{title}}. If it does not end in .md, a filename is appended.",
+			"Path pattern for new timer notes. Date tokens: YYYY, MM, DD, HH, mm, ss (with or without {{ }}). Also {{project}}, {{title}}. If it does not end in .md, a filename is appended.",
 		)
 		.addText((text) =>
 			text
@@ -267,45 +267,10 @@ export function displayTimerSettings(containerEl: HTMLElement, plugin: FulcrumPl
 				}),
 		);
 
+	// Tabled: native macOS/iOS companion + widget bridge (companion/, timer/WidgetBridge.ts).
+	// Use command palette → "Open Floating Timers View" for a desktop pop-out instead.
+	/*
 	heading(containerEl, "Widget companion");
-
-	new Setting(containerEl)
-		.setName("Enable widget bridge")
-		.setDesc(
-			"Sync active timers and Quick Start buttons to a JSON file in your vault for Timery-like Mac/iOS widgets via iCloud.",
-		)
-		.addToggle((toggle) =>
-			toggle.setValue(plugin.settings.widgetBridgeEnabled).onChange(async (value) => {
-				plugin.settings.widgetBridgeEnabled = value;
-				await plugin.saveSettings();
-				if (value) {
-					plugin.widgetBridge?.onload();
-					void plugin.widgetBridge?.rebuild();
-				} else {
-					plugin.widgetBridge?.onunload();
-				}
-			}),
-		);
-
-	new Setting(containerEl)
-		.setName("Widget bridge file path")
-		.setDesc("Vault-relative path. The companion app reads and writes pending commands here.")
-		.addText((text) =>
-			text
-				.setPlaceholder("Fulcrum/.widget-bridge.json")
-				.setValue(plugin.settings.widgetBridgePath)
-				.onChange(async (value) => {
-					plugin.settings.widgetBridgePath = value.trim() || "Fulcrum/.widget-bridge.json";
-					await plugin.saveSettings();
-				}),
-		);
-
-	new Setting(containerEl)
-		.setName("Rebuild widget bridge now")
-		.setDesc("Refresh active timers and Quick Start cache in the bridge file immediately.")
-		.addButton((btn) =>
-			btn.setButtonText("Rebuild").onClick(() => {
-				void plugin.widgetBridge?.rebuild();
-			}),
-		);
+	...
+	*/
 }

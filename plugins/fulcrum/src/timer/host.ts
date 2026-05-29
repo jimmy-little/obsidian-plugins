@@ -12,5 +12,5 @@ export interface FulcrumTimerHost extends Plugin {
 	openQuickStart(): Promise<void>;
 	openCalendar(): Promise<void>;
 	saveSettings(): Promise<void>;
-	scheduleWidgetBridgeSync?(): void;
+	// scheduleWidgetBridgeSync?(): void;
 }

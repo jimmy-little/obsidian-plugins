@@ -1,5 +1,7 @@
 # Fulcrum Companion
 
+> **TABLED** — This native companion and widget bridge are paused. Use Fulcrum’s Obsidian command **Open Floating Timers View** for a desktop pop-out (active timers + quick start) instead. Plugin bridge code remains under `plugins/fulcrum/src/timer/WidgetBridge.ts` for a possible future revisit.
+
 Native Mac and iOS companion for [Fulcrum](https://github.com/) time tracking. Reads and writes `Fulcrum/.widget-bridge.json` in your Obsidian vault (synced via iCloud). The Fulcrum Obsidian plugin reconciles `pendingCommands` into note frontmatter when Obsidian is open.
 
 ## Requirements

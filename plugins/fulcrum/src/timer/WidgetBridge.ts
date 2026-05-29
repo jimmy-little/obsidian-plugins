@@ -1,3 +1,7 @@
+/**
+ * TABLED: Native companion + WidgetKit bridge. Fulcrum now uses Obsidian pop-out
+ * (`Open Floating Timers View` / FloatingTimersView) instead. Code kept for a future revisit.
+ */
 import {normalizePath, Notice, TFile, type EventRef} from "obsidian";
 import type FulcrumPlugin from "../main";
 import {

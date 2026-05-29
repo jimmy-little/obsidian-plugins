@@ -18,6 +18,7 @@
 	import ShowDetail from "./ShowDetail.svelte";
 	import EpisodeDetail from "./EpisodeDetail.svelte";
 	import { resolveMediaTypeForFile, resolveSerialHostFile } from "../media/mediaDetect";
+	import { reposeMobile } from "../platform";
 
 	export let plugin: ReposePlugin;
 	export let selectedPath: string | null;
@@ -92,11 +93,18 @@
 			? resolveSerialHostFile(plugin.app, file, plugin.settings)
 			: null;
 
+	const mobileDetail = reposeMobile();
 	$: companionPath = plugin.reposeCompanionMarkdownPath;
 	$: bookChromeEmbedded =
-		!!file && companionPath === file.path && item?.mediaType === "book";
+		!mobileDetail &&
+		!!file &&
+		companionPath === file.path &&
+		item?.mediaType === "book";
 	$: episodeCompanionSuppress =
-		!!file && companionPath === file.path && item?.mediaType === "episode";
+		!mobileDetail &&
+		!!file &&
+		companionPath === file.path &&
+		item?.mediaType === "episode";
 
 	async function openNote(): Promise<void> {
 		if (!file) return;

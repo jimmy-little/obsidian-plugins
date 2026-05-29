@@ -10,6 +10,7 @@ export class ActiveTimersPanel {
 	private container: HTMLElement | null = null;
 	private readonly timeDisplays = new Map<string, HTMLElement>();
 	private refreshInterval: number | null = null;
+	private tickCount = 0;
 
 	constructor(plugin: TimerModule) {
 		this.plugin = plugin;
@@ -26,6 +27,7 @@ export class ActiveTimersPanel {
 		}
 		this.timeDisplays.clear();
 		this.container = null;
+		this.tickCount = 0;
 	}
 
 	async refresh(): Promise<void> {
@@ -37,7 +39,7 @@ export class ActiveTimersPanel {
 		container.empty();
 		container.addClass("fulcrum-active-timers");
 
-		const activeTimers = this.collectActiveTimers();
+		const activeTimers = await this.plugin.getActiveTimers();
 		if (activeTimers.length === 0) {
 			container.createEl("p", {
 				text: "No active timers",
@@ -58,7 +60,7 @@ export class ActiveTimersPanel {
 		}, 1000);
 	}
 
-	private collectActiveTimers(): ActiveTimerRow[] {
+	private collectActiveTimersFromMemory(): ActiveTimerRow[] {
 		const rows: ActiveTimerRow[] = [];
 		this.plugin.timeData.forEach((pageData, filePath) => {
 			for (const entry of pageData.entries) {
@@ -139,7 +141,13 @@ export class ActiveTimersPanel {
 	private async tick(): Promise<void> {
 		if (!this.container) return;
 
-		const activeTimers = this.collectActiveTimers();
+		this.tickCount++;
+		const shouldRescan =
+			this.timeDisplays.size === 0 || this.tickCount % 3 === 0;
+		const activeTimers = shouldRescan
+			? await this.plugin.getActiveTimers()
+			: this.collectActiveTimersFromMemory();
+
 		const displayedIds = new Set(this.timeDisplays.keys());
 		const activeIds = new Set(activeTimers.map(({entry}) => entry.id));
 		const needsFullRefresh =

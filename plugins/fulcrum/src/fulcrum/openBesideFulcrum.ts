@@ -19,6 +19,32 @@ export function anchorLeafIsInSideDock(app: App, leaf: WorkspaceLeaf): boolean {
 	return r === app.workspace.leftSplit || r === app.workspace.rightSplit;
 }
 
+/** True when the leaf is in a pop-out / auxiliary window, not the main workspace root. */
+export function leafIsInPopoutWindow(app: App, leaf: WorkspaceLeaf): boolean {
+	const r = leaf.getRoot();
+	const ws = app.workspace;
+	return r !== ws.rootSplit && r !== ws.leftSplit && r !== ws.rightSplit;
+}
+
+/**
+ * Open a note in a new tab in the main Obsidian window (not a Fulcrum pop-out).
+ * Focuses the main workspace first when the active leaf is in a pop-out.
+ */
+export async function openMarkdownInMainWorkspaceTab(
+	app: App,
+	file: TFile,
+	openState?: OpenViewState,
+): Promise<void> {
+	const ws = app.workspace;
+	const active = ws.activeLeaf;
+	if (active && leafIsInPopoutWindow(app, active)) {
+		const anchor = ws.getMostRecentLeaf(ws.rootSplit) ?? ws.getLeaf(false);
+		await ws.revealLeaf(anchor);
+	}
+	const leaf = ws.getLeaf("tab");
+	await leaf.openFile(file, {active: true, ...openState});
+}
+
 export type FulcrumCompanionLeaf = {current: WorkspaceLeaf | null};
 
 /**

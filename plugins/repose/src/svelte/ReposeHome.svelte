@@ -1,12 +1,11 @@
 <script lang="ts">
-	import { onMount } from "svelte";
 	import { setIcon } from "obsidian";
 	import type ReposePlugin from "../main";
 	import { reposeMobile } from "../platform";
 	import MediaListPanel from "./MediaListPanel.svelte";
 	import MediaDetail from "./MediaDetail.svelte";
-	import SearchAddPanel from "./SearchAddPanel.svelte";
 	import ReposeLanding from "./ReposeLanding.svelte";
+	import { SearchAddModal } from "../modals/SearchAddModal";
 
 	export let plugin: ReposePlugin;
 	/** When false, only the picker column is shown (sidebar dock); selection opens in the main area. */
@@ -21,16 +20,13 @@
 	export let onBackToList: () => void = () => {};
 
 	const mobile = reposeMobile();
-	$: mobileDetail = mobile && !!selectedPath && !landing;
+	/** Full-screen detail: hide library column, keep one Svelte tree (avoids mobile teardown glitches). */
+	$: mobileDetailMode = mobile && !!selectedPath && !landing;
 
 	const LEFT_WIDTH_LS = "repose-pm-left-col-px";
 	const LEFT_MIN = 220;
 	const MAIN_MIN = 320;
 	const SPLIT_PX = 5;
-	const ADD_PANEL_LS = "repose-pm-add-panel";
-
-	/** When true, sidebar shows add panel (search) instead of library list. */
-	let addPanelOpen = false;
 
 	let leftCollapsed = false;
 	let pmEl: HTMLDivElement | null = null;
@@ -40,7 +36,7 @@
 	let homeBtnEl: HTMLButtonElement | null = null;
 
 	$: if (addToggleBtnEl) {
-		setIcon(addToggleBtnEl, addPanelOpen ? "list" : "plus");
+		setIcon(addToggleBtnEl, "plus");
 	}
 
 	$: if (collapseBtnEl) {
@@ -107,23 +103,8 @@
 		window.addEventListener("pointercancel", up);
 	}
 
-	onMount(() => {
-		if (typeof localStorage === "undefined") return;
-		try {
-			if (localStorage.getItem(ADD_PANEL_LS) === "1") addPanelOpen = true;
-		} catch {
-			/* ignore */
-		}
-	});
-
-	function toggleAddPanel(): void {
-		addPanelOpen = !addPanelOpen;
-		try {
-			if (addPanelOpen) localStorage.setItem(ADD_PANEL_LS, "1");
-			else localStorage.removeItem(ADD_PANEL_LS);
-		} catch {
-			/* ignore */
-		}
+	function openAddMediaModal(): void {
+		new SearchAddModal(plugin.app, plugin).open();
 	}
 
 	function collapseLeftIfNarrow(): void {
@@ -160,29 +141,19 @@
 {#if detailOnly}
 	<div class="repose-pm repose-pm--detail-only">
 		<main class="repose-pm__main repose-view-root">
-			{#if landing}
-				<ReposeLanding {plugin} onSelectPath={selectPath} />
-			{:else}
-				<MediaDetail
-					{plugin}
-					{selectedPath}
-					onSelectPath={selectPath}
-					onGoHome={() => onGoHome()}
-					onBackToList={mobile ? backToList : undefined}
-				/>
-			{/if}
-		</main>
-	</div>
-{:else if mobileDetail}
-	<div class="repose-pm repose-pm--mobile-detail">
-		<main class="repose-pm__main repose-view-root">
-			<MediaDetail
-				{plugin}
-				{selectedPath}
-				onSelectPath={selectPath}
-				onGoHome={() => onGoHome()}
-				onBackToList={backToList}
-			/>
+			{#key landing}
+				{#if landing}
+					<ReposeLanding {plugin} onSelectPath={selectPath} />
+				{:else}
+					<MediaDetail
+						{plugin}
+						{selectedPath}
+						onSelectPath={selectPath}
+						onGoHome={() => onGoHome()}
+						onBackToList={mobile ? backToList : undefined}
+					/>
+				{/if}
+			{/key}
 		</main>
 	</div>
 {:else}
@@ -191,6 +162,7 @@
 		class="repose-pm"
 		class:repose-pm-left-collapsed={leftCollapsed}
 		class:repose-pm--list-only={!fullView}
+		class:repose-pm--mobile-detail={mobileDetailMode}
 		style={fullView && !leftCollapsed && leftWidthPx != null ? `--repose-pm-left-w: ${leftWidthPx}px` : undefined}
 	>
 		<aside class="repose-pm__sidebar repose-pm__sidebar--left">
@@ -198,7 +170,7 @@
 				<div class="repose-pm__glyph-bar" role="toolbar" aria-label="Media sidebar">
 					<button
 						type="button"
-						class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
+						class="repose-pm__glyph-btn clickable-icon"
 						bind:this={collapseBtnEl}
 						aria-label={leftCollapsed ? "Expand media list" : "Collapse media list"}
 						title={leftCollapsed ? "Expand" : "Collapse"}
@@ -207,7 +179,7 @@
 					<span class="repose-pm__glyph-spacer" aria-hidden="true"></span>
 					<button
 						type="button"
-						class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
+						class="repose-pm__glyph-btn clickable-icon"
 						bind:this={homeBtnEl}
 						aria-label="Repose home"
 						title="Home"
@@ -215,21 +187,16 @@
 					></button>
 					<button
 						type="button"
-						class="repose-pm__glyph-btn repose-pm__glyph-btn--icon clickable-icon"
+						class="repose-pm__glyph-btn clickable-icon"
 						bind:this={addToggleBtnEl}
-						aria-label={addPanelOpen ? "Show media library" : "Add media"}
-						title={addPanelOpen ? "Library list" : "Add"}
-						disabled={leftCollapsed}
-						on:click={() => toggleAddPanel()}
+						aria-label="Add media"
+						title="Add media"
+						on:click={() => openAddMediaModal()}
 					></button>
 				</div>
 				{#if !leftCollapsed}
 					<div class="repose-pm__left-scroll" id="repose-sidebar-panel">
-						{#if addPanelOpen}
-							<SearchAddPanel {plugin} />
-						{:else}
-							<MediaListPanel {plugin} {selectedPath} onSelectPath={selectPath} />
-						{/if}
+						<MediaListPanel {plugin} {selectedPath} onSelectPath={selectPath} />
 					</div>
 				{/if}
 			</div>
@@ -248,11 +215,19 @@
 
 		{#if fullView}
 			<main class="repose-pm__main repose-view-root">
-				{#if landing}
-					<ReposeLanding {plugin} onSelectPath={selectPath} />
-				{:else}
-					<MediaDetail {plugin} {selectedPath} onSelectPath={selectPath} onGoHome={() => onGoHome()} />
-				{/if}
+				{#key landing}
+					{#if landing}
+						<ReposeLanding {plugin} onSelectPath={selectPath} />
+					{:else}
+						<MediaDetail
+							{plugin}
+							{selectedPath}
+							onSelectPath={selectPath}
+							onGoHome={() => onGoHome()}
+							onBackToList={mobile ? backToList : undefined}
+						/>
+					{/if}
+				{/key}
 			</main>
 		{/if}
 	</div>

@@ -301,15 +301,8 @@ export async function syncReposeCompanionPaneForSelection(
 	const mt = resolveMediaTypeForFile(plugin.app, file, plugin.settings);
 
 	if (reposeMobile()) {
-		if (mt === "book" || mt === "episode") {
-			plugin.reposeCompanionMarkdownOwnedSplit = false;
-			plugin.reposeCompanionMarkdownPath = file.path;
-			const leaf = plugin.app.workspace.getLeaf("tab");
-			await leaf.openFile(file, { active: true });
-			plugin.reposeCompanionMarkdownLeaf = leaf;
-		} else {
-			clearReposeCompanionMarkdownPane(plugin);
-		}
+		// Keep selection in the Repose ItemView — do not open a markdown tab (no split panes on mobile).
+		clearReposeCompanionMarkdownPane(plugin);
 		return;
 	}
 

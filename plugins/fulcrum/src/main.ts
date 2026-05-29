@@ -24,6 +24,7 @@ import {
 	FULCRUM_HOVER_SOURCE,
 	VIEW_ACTIVE_TIMERS,
 	VIEW_DASHBOARD,
+	VIEW_FLOATING_TIMERS,
 	VIEW_PROJECT,
 	VIEW_PROJECT_MANAGER,
 	VIEW_QUICK_START,
@@ -50,6 +51,7 @@ import {
 	revealOrCreateTimeTracked,
 	revealOrCreateTimeline,
 	revealOrCreateReview,
+	openFloatingTimersPopout,
 } from "./fulcrum/openViews";
 import {openNotePropertiesModal, revealOrCreateView} from "@obsidian-suite/core";
 import {DEFAULT_SETTINGS, DASHBOARD_ACTIVITY_MAX_DAYS, type FulcrumSettings} from "./fulcrum/settingsDefaults";
@@ -71,10 +73,12 @@ import {injectFulcrumPluginStyles} from "./fulcrum/injectPluginStyles";
 import {FULCRUM_PLUGIN_CSS} from "./generated/pluginStyles";
 import {FulcrumSettingTab} from "./settings";
 import {TimerModule} from "./timer/TimerModule";
-import {WidgetBridge} from "./timer/WidgetBridge";
+// Tabled: native macOS/iOS companion + widget bridge (see timer/WidgetBridge.ts, companion/).
+// import {WidgetBridge} from "./timer/WidgetBridge";
 import {migrateTimerSettings, mergeTimerDefaults} from "./timer/migration";
 import type {TimeModeTab} from "./timer/types";
 import {ActiveTimersView} from "./views/ActiveTimersView";
+import {FloatingTimersView} from "./views/FloatingTimersView";
 import {QuickStartView} from "./views/QuickStartView";
 import {DashboardView} from "./views/DashboardView";
 import {ProjectManagerView} from "./views/ProjectManagerView";
@@ -85,7 +89,6 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	settings: FulcrumSettings = DEFAULT_SETTINGS;
 	vaultIndex!: VaultIndex;
 	timer!: TimerModule;
-	widgetBridge!: WidgetBridge;
 	/** Reused markdown leaf for “open beside” from project / linked surfaces. */
 	private readonly fulcrumCompanionLeaf: FulcrumCompanionLeaf = {current: null};
 
@@ -111,6 +114,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		this.registerView(VIEW_TIMELINE, (leaf) => new TimelineView(leaf, this));
 		this.registerView(VIEW_ACTIVE_TIMERS, (leaf) => new ActiveTimersView(leaf, this));
 		this.registerView(VIEW_QUICK_START, (leaf) => new QuickStartView(leaf, this));
+		this.registerView(VIEW_FLOATING_TIMERS, (leaf) => new FloatingTimersView(leaf, this));
 
 		try {
 			await this.timer.onload();
@@ -118,9 +122,6 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			console.error("Fulcrum timer failed to load", err);
 			new Notice("Fulcrum timer failed to load — time tracking is unavailable.");
 		}
-
-		this.widgetBridge = new WidgetBridge(this);
-		this.widgetBridge.onload();
 
 		this.registerHoverLinkSource(FULCRUM_HOVER_SOURCE, {
 			display: this.manifest.name,
@@ -290,17 +291,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			},
 		});
 		this.addCommand({
-			id: "fulcrum-widget-bridge-rebuild",
-			name: "Rebuild widget bridge cache",
+			id: "open-floating-timers",
+			name: "Open Floating Timers View",
 			callback: () => {
-				void this.widgetBridge?.rebuild();
-			},
-		});
-		this.addCommand({
-			id: "fulcrum-widget-bridge-reconcile",
-			name: "Apply widget bridge commands now",
-			callback: () => {
-				void this.widgetBridge?.reconcile();
+				void this.openFloatingTimers();
 			},
 		});
 
@@ -311,12 +305,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	onunload(): void {
 		this.vaultIndex.cancelScheduledRebuild();
-		this.widgetBridge?.onunload();
 		void this.timer?.onunload();
-	}
-
-	scheduleWidgetBridgeSync(): void {
-		this.widgetBridge?.schedulePublish();
 	}
 
 	private handleFulcrumOpenUri(params: ObsidianProtocolData): void {
@@ -360,6 +349,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 		if (screen === "quick_start" || screen === "quickstart" || screen === "buttons") {
 			await this.openQuickStart();
+			return;
+		}
+		if (screen === "floating_timers" || screen === "floating") {
+			await this.openFloatingTimers();
 			return;
 		}
 		const timerTab = timerTabByScreen[screen];
@@ -611,6 +604,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	async openQuickStart(): Promise<void> {
 		await revealOrCreateQuickStart(this.app, this.settings);
+	}
+
+	async openFloatingTimers(): Promise<void> {
+		await openFloatingTimersPopout(this.app);
 	}
 
 	async openCalendar(): Promise<void> {

@@ -30,6 +30,7 @@ import {
 	refreshShowFromTrakt as runRefreshShowFromTrakt,
 	refreshTvSeasonFromTrakt as runRefreshTvSeasonFromTrakt,
 } from "./vault/showRefresh";
+import { SearchAddModal } from "./modals/SearchAddModal";
 import { ReposeSettingTab } from "./ReposeSettingTab";
 import { ReposeShellView, VIEW_TYPE_REPOSE } from "./ReposeShellView";
 import { DEFAULT_SETTINGS, normalizeSettings, type ReposeSettings } from "./settings";
@@ -203,6 +204,14 @@ export default class ReposePlugin extends Plugin {
 			id: "open-repose",
 			name: "Open Repose",
 			callback: () => void this.openRepose(),
+		});
+
+		this.addCommand({
+			id: "add-media",
+			name: "Add media (search)",
+			callback: () => {
+				new SearchAddModal(this.app, this).open();
+			},
 		});
 
 		this.addSettingTab(new ReposeSettingTab(this.app, this));

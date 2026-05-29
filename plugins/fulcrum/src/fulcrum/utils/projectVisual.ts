@@ -49,6 +49,12 @@ export function resolveProjectAccentCss(
 	return t;
 }
 
+/** Shared accent variable for project rows, Quick Start cards, and group headers. */
+export function applyFulcrumProjectAccent(el: HTMLElement, accentCss: string): void {
+	el.style.setProperty("--fulcrum-pl-accent", accentCss);
+	el.setAttribute("data-fulcrum-accent", "true");
+}
+
 function stripEmbedBang(s: string): string {
 	return s.replace(/^\s*!\[\[/, "[[");
 }

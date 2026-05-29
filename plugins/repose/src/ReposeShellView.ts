@@ -75,14 +75,13 @@ export class ReposeShellView extends ItemView {
 		} else {
 			await this.render();
 		}
-		if (Platform.isMobile) {
-			window.setTimeout(() => void this.syncCompanionMarkdownPaneForPath(this.selectedPath), 150);
-		} else {
+		if (!Platform.isMobile) {
 			await this.syncCompanionMarkdownPaneForPath(this.selectedPath);
 		}
 	}
 
 	async onOpen(): Promise<void> {
+		this.contentEl.addClass("repose-shell-mount");
 		this.registerEvent(
 			this.app.workspace.on("layout-change", () => {
 				this.component?.$set({
@@ -114,6 +113,7 @@ export class ReposeShellView extends ItemView {
 
 		this.component = new ReposeHome({
 			target: this.contentEl,
+			intro: false,
 			props: {
 				plugin: this.plugin,
 				fullView: this.isFullView(),
@@ -186,7 +186,7 @@ export class ReposeShellView extends ItemView {
 					return;
 				}
 			}
-			if (mt === "book") {
+			if (mt === "book" && !Platform.isMobile) {
 				this.updateSelection(path);
 				await syncReposeCompanionPaneForSelection(this.plugin, this.leaf, file);
 				return;

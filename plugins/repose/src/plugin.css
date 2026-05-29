@@ -81,9 +81,26 @@
 	box-sizing: border-box;
 }
 
-.repose-pm > .repose-pm__sidebar,
+.repose-pm > .repose-pm__sidebar {
+	min-height: 0;
+	position: relative;
+	z-index: 3;
+}
+
+/*
+ * Main-pane content uses negative horizontal margins (tint / hero bleed). Grid items
+ * default to overflow:visible, so that paint can sit on top of the sidebar column and
+ * steal clicks from the glyph bar + list. Keep sidebar + split above main in the stack.
+ */
+.repose-pm > .repose-pm__split {
+	position: relative;
+	z-index: 3;
+}
+
 .repose-pm > .repose-pm__main {
 	min-height: 0;
+	position: relative;
+	z-index: 0;
 }
 
 .repose-pm.repose-pm-left-collapsed {
@@ -100,10 +117,20 @@
 	min-width: 0;
 }
 
+.repose-pm--mobile-detail .repose-pm__sidebar,
+.repose-pm--mobile-detail .repose-pm__split {
+	display: none !important;
+}
+
 .repose-pm--mobile-detail .repose-pm__main {
-	flex: 1;
+	flex: 1 1 auto;
 	min-height: 0;
 	min-width: 0;
+	width: 100%;
+	overflow-y: auto;
+	overflow-x: hidden;
+	-webkit-overflow-scrolling: touch;
+	padding-bottom: max(5rem, calc(env(safe-area-inset-bottom, 0px) + 4rem));
 }
 
 .repose-pm.repose-pm--list-only {
@@ -241,24 +268,29 @@
 	cursor: not-allowed;
 }
 
+/* One scroll surface (Orbit-style); add vs library swapped inside via {#key}. */
 .repose-pm__left-scroll {
 	flex: 1;
 	min-height: 0;
+	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
 	overflow: auto;
 	-webkit-overflow-scrolling: touch;
-	/* Match Orbit: full-width list, padding only at bottom */
 	padding: 0 0 0.75rem 0;
 }
 
 .repose-pm__main {
 	min-height: 0;
 	min-width: 0;
-	overflow: auto;
-	overflow-x: hidden;
+	overflow-x: clip;
+	overflow-y: auto;
 	-webkit-overflow-scrolling: touch;
 	padding: 0.9rem 1rem;
 	box-sizing: border-box;
 	scrollbar-gutter: stable;
+	/* Avoid `contain: paint` here — it interacted badly with Obsidian/Electron layout
+	   and could spam "ResizeObserver loop completed with undelivered notifications". */
 }
 
 /* Home dashboard — dark canvas; rows use simple horizontal scroll (no nested flex/overflow tricks) */
@@ -2480,8 +2512,28 @@
 	box-sizing: border-box;
 }
 
-/* Mobile: space for Obsidian’s floating bottom toolbar + home indicator */
+/* Mobile: flex layout instead of absolute fill (iOS WebView + :has quirks). */
 @media (max-width: 768px) {
+	.workspace-leaf[data-type="repose-main-view"] .view-content,
+	.workspace-leaf:has(.repose-pm) .view-content {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 auto;
+		min-height: 0;
+		height: 100%;
+		overflow: hidden;
+	}
+
+	.workspace-leaf-content .view-content .repose-pm,
+	.workspace-leaf-content .view-content > .repose-shell-mount {
+		position: relative;
+		inset: auto;
+		flex: 1 1 auto;
+		min-height: 0;
+		width: 100%;
+		height: auto;
+	}
+
 	.repose-view-body {
 		padding-bottom: max(5rem, calc(env(safe-area-inset-bottom, 0px) + 4rem));
 	}
@@ -2719,4 +2771,30 @@
 
 .repose-watch-date-modal input[type="date"] {
 	font-family: var(--font-interface);
+}
+
+/* Add media: workspace modal (was sidebar swap; avoids split-pane layout loops) */
+.repose-search-add-modal {
+	width: min(92vw, 640px);
+	max-width: 92vw;
+}
+
+.repose-search-add-modal .repose-search-add-modal__content {
+	margin: 0;
+	padding: 0.35rem 0.65rem 0.85rem;
+	max-height: min(82vh, 800px);
+	overflow-y: auto;
+	overflow-x: hidden;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	box-sizing: border-box;
+}
+
+.repose-search-add-modal__mount {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
 }

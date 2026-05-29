@@ -188,7 +188,7 @@ export interface FulcrumSettings {
 	/** Last selected tab in Project Manager → Time mode. */
 	timeModeTab: TimeModeTab;
 
-	/** Sync timer state to Fulcrum/.widget-bridge.json for native widgets. */
+	/** Tabled: native widget bridge — use Open Floating Timers View instead. */
 	widgetBridgeEnabled: boolean;
 	/** Vault-relative path to the widget bridge JSON file. */
 	widgetBridgePath: string;
@@ -328,7 +328,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	timer: {...DEFAULT_TIMER_SETTINGS},
 	timeModeTab: "overview",
 
-	widgetBridgeEnabled: true,
+	widgetBridgeEnabled: false,
 	widgetBridgePath: "Fulcrum/.widget-bridge.json",
 	widgetBridgeDeviceId: "",
 

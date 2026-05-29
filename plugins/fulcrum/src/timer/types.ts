@@ -54,6 +54,7 @@ export interface TemplateData {
 	template: TFile | null;
 	templateName: string;
 	project: string | null;
+	/** Resolved CSS color (via resolveProjectAccentCss), not raw frontmatter token. */
 	projectColor: string | null;
 	groupValue: string | null;
 	projectSourcePath?: string | null;
@@ -82,6 +83,7 @@ export interface QuickStartItemPublic {
 	templatePath: string | null;
 	templateName: string;
 	project: string | null;
+	/** Resolved CSS color (via resolveProjectAccentCss), not raw frontmatter token. */
 	projectColor: string | null;
 	groupValue: string | null;
 	projectSourcePath: string | null;

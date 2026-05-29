@@ -114,22 +114,24 @@
 			let headRight: string;
 			let serialProgress: { watched: number; total: number } | null = null;
 			let serialPersonalBadge: string | null = null;
-			if (!mobileList && (item.mediaType === "show" || item.mediaType === "podcast")) {
-				headRight = formatShowCounts(countShowSeasonsAndEpisodes(app, file, plugin.settings));
-				const ep = showEpisodeWatchProgress(app, file, plugin.settings);
-				if (ep.total > 0) serialProgress = ep;
-				if (item.mediaType === "show") {
-					serialPersonalBadge = personalSerialWatchBadgeLabel(ep.watched, ep.total, item.status);
+			if (item.mediaType === "show" || item.mediaType === "podcast") {
+				if (!mobileList) {
+					headRight = formatShowCounts(countShowSeasonsAndEpisodes(app, file, plugin.settings));
+					const ep = showEpisodeWatchProgress(app, file, plugin.settings);
+					if (ep.total > 0) serialProgress = ep;
+					if (item.mediaType === "show") {
+						serialPersonalBadge = personalSerialWatchBadgeLabel(ep.watched, ep.total, item.status);
+					}
+				} else {
+					headRight = shortMediaTypeLabel(item.mediaType);
 				}
-			} else if (item.mediaType === "show" || item.mediaType === "podcast") {
-				headRight = shortMediaTypeLabel(item.mediaType);
 			} else {
 				headRight = shortMediaTypeLabel(item.mediaType);
 			}
 			out.push({
 				file,
 				item,
-				thumbUrl: mobileList ? null : thumbUrlForFile(file),
+				thumbUrl: thumbUrlForFile(file),
 				headRight,
 				serialProgress,
 				serialPersonalBadge,

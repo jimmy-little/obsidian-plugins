@@ -265,9 +265,19 @@
 			const raw = await searchTrakt(clientId, q, typeFilter);
 			results = dedupeTraktSearchResults(raw);
 			const tmdbKey = plugin.settings.tmdbApiKey.trim();
-			thumbs = tmdbKey
-				? await Promise.all(results.map((row) => getThumbnailUrlForSearchHit(tmdbKey, row)))
-				: results.map(() => null);
+			if (tmdbKey && results.length > 0) {
+				thumbs = await Promise.all(
+					results.map(async (row) => {
+						try {
+							return await getThumbnailUrlForSearchHit(tmdbKey, row);
+						} catch {
+							return null;
+						}
+					}),
+				);
+			} else {
+				thumbs = results.map(() => null);
+			}
 			panelView = "search";
 		} catch (e) {
 			new Notice(e instanceof Error ? e.message : String(e));

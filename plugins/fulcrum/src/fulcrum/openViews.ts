@@ -1,6 +1,13 @@
-import type {App} from "obsidian";
+import type {App, WorkspaceLeaf} from "obsidian";
+import {Notice, Platform} from "obsidian";
 import {claimLeaf} from "@obsidian-suite/core";
-import {VIEW_PROJECT_MANAGER, VIEW_TIMELINE, VIEW_ACTIVE_TIMERS, VIEW_QUICK_START} from "./constants";
+import {
+	VIEW_PROJECT_MANAGER,
+	VIEW_TIMELINE,
+	VIEW_ACTIVE_TIMERS,
+	VIEW_QUICK_START,
+	VIEW_FLOATING_TIMERS,
+} from "./constants";
 import type {FulcrumSettings} from "./settingsDefaults";
 import type {ProjectManagerViewState} from "../views/ProjectManagerView";
 import type {TimelineViewState} from "../views/TimelineView";
@@ -151,6 +158,35 @@ export async function revealOrCreateQuickStart(
 		active: true,
 	});
 	await app.workspace.revealLeaf(leaf);
+}
+
+const FLOATING_TIMERS_POPOUT_SIZE = {width: 360, height: 520};
+
+/** Desktop pop-out: active timers + quick start (no native companion app). */
+export async function openFloatingTimersPopout(app: App): Promise<void> {
+	if (!Platform.isDesktopApp) {
+		new Notice("Floating timers require the Obsidian desktop app.");
+		return;
+	}
+
+	const existingLeaves: WorkspaceLeaf[] = [];
+	app.workspace.iterateAllLeaves((leaf) => {
+		if (leaf.view.getViewType() === VIEW_FLOATING_TIMERS) {
+			existingLeaves.push(leaf);
+		}
+	});
+
+	const existingLeaf = existingLeaves[0];
+	if (existingLeaf) {
+		await existingLeaf.setViewState({type: VIEW_FLOATING_TIMERS, active: true});
+		app.workspace.revealLeaf(existingLeaf);
+		return;
+	}
+
+	const leaf = app.workspace.openPopoutLeaf({
+		size: FLOATING_TIMERS_POPOUT_SIZE,
+	});
+	await leaf.setViewState({type: VIEW_FLOATING_TIMERS, active: true});
 }
 
 export async function openProjectSummaryLeaf(

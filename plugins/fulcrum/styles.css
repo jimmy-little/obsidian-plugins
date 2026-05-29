@@ -6392,6 +6392,72 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 	text-align: center;
 }
 
+/* Fulcrum Timers pop-out: active timers on top, quick start scrolls below */
+.workspace-leaf[data-type="fulcrum-floating-timers"] .view-content {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+}
+
+.fulcrum-floating-timers {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+	padding: 0.5rem 0.65rem 0.65rem;
+	box-sizing: border-box;
+	gap: 0.5rem;
+}
+
+.fulcrum-floating-timers__active-host {
+	flex: 0 0 auto;
+	min-height: 0;
+}
+
+.fulcrum-floating-timers__active-host .fulcrum-active-timers {
+	padding: 0;
+}
+
+.fulcrum-floating-timers__quick-host {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.fulcrum-floating-timers__quick-host .fulcrum-timer-buttons-view--compact {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	height: 100%;
+	padding: 0;
+}
+
+.fulcrum-floating-timers__quick-host .fulcrum-timer-buttons-filter-bar-host {
+	flex: 0 0 auto;
+}
+
+.fulcrum-floating-timers__quick-host .fulcrum-timer-buttons-filter-bar {
+	margin-bottom: 0.5rem;
+}
+
+.fulcrum-floating-timers__quick-host .fulcrum-timer-buttons-count {
+	flex: 0 0 auto;
+	margin: 0 0 0.35rem;
+}
+
+.fulcrum-floating-timers__quick-host .fulcrum-timer-buttons-content {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.fulcrum-floating-timers__quick-host .fulcrum-timer-buttons-grid {
+	grid-template-columns: 1fr;
+}
+
 /* Pie Chart Section */
 .fulcrum-timer-sidebar-chart-section {
     margin-top: 16px;
@@ -6991,8 +7057,9 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
     vertical-align: top;
 }
 
-/* Quick Start / Timery-style cards */
+/* Quick Start / Timery-style cards — accent uses same token as .fulcrum-pl-row */
 .fulcrum-timer-button--timery {
+    --fulcrum-pl-accent: var(--background-modifier-border);
     --fulcrum-timer-play-bg: var(--text-muted);
     --fulcrum-timer-play-fg: var(--background-primary);
 
@@ -7003,6 +7070,15 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
     height: auto;
     min-height: 56px;
     padding: 6px 10px 6px 8px;
+}
+
+.fulcrum-timer-button--timery[data-fulcrum-accent] {
+    border-left-color: var(--fulcrum-pl-accent);
+    --fulcrum-timer-play-bg: var(--fulcrum-pl-accent);
+}
+
+.fulcrum-timer-button--timery[data-fulcrum-accent] .fulcrum-timer-button-project-name {
+    color: var(--fulcrum-pl-accent);
 }
 
 .fulcrum-timer-button--timery:focus-visible {
@@ -7388,6 +7464,14 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 
 .fulcrum-timer-buttons-project-section .fulcrum-timer-group-header {
     border-left: 3px solid var(--background-modifier-border);
+}
+
+.fulcrum-timer-buttons-project-section .fulcrum-timer-group-header[data-fulcrum-accent] {
+    border-left-color: var(--fulcrum-pl-accent);
+}
+
+.fulcrum-timer-buttons-project-section .fulcrum-timer-group-header[data-fulcrum-accent] .fulcrum-timer-group-title {
+    color: var(--fulcrum-pl-accent);
 }
 
 .fulcrum-timer-buttons-project-section .fulcrum-timer-group-title {

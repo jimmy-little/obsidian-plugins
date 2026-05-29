@@ -20,7 +20,7 @@ import {
 	readTimerEntriesFromFm,
 	resolveEntriesWriteKey,
 } from "../fulcrum/utils/timerEntries";
-import {allPlannedReadKeys} from "./settings";
+import {allPlannedReadKeys, allEntriesReadKeys} from "./settings";
 import type {
 	TimeEntry,
 	PlannedBlock,
@@ -38,6 +38,12 @@ import type {
 } from "./types";
 import {FULCRUM_PLANNED_DRAG_MIME} from "./types";
 import {ActiveTimersPanel} from "./ActiveTimersPanel";
+import {openMarkdownInMainWorkspaceTab} from "../fulcrum/openBesideFulcrum";
+import {
+	applyFulcrumProjectAccent,
+	preferLightForegroundOnAccentCss,
+	resolveProjectAccentCss,
+} from "../fulcrum/utils/projectVisual";
 
 export class TimerModule {
 	host: FulcrumTimerHost;
@@ -118,6 +124,9 @@ export class TimerModule {
 	quickStartPanel: TimerQuickStartView | null = null;
 	entryGridEmbed: TimerEntryGridView | null = null;
 	activeTimersPanel: ActiveTimersPanel | null = null;
+	/** Separate instances for the floating pop-out HUD (do not share docked leaf containers). */
+	floatingActiveTimersPanel: ActiveTimersPanel | null = null;
+	floatingQuickStartPanel: TimerQuickStartView | null = null;
 
 	async loadTimerCache(): Promise<void> {
 		const data = await this.loadData();
@@ -180,10 +189,39 @@ export class TimerModule {
 		this.activeTimersPanel?.unmount();
 	}
 
+	async mountFloatingTimersHud(root: HTMLElement): Promise<void> {
+		root.empty();
+		root.addClass("fulcrum-floating-timers");
+
+		const activeHost = root.createDiv({cls: "fulcrum-floating-timers__active-host"});
+		if (!this.floatingActiveTimersPanel) {
+			this.floatingActiveTimersPanel = new ActiveTimersPanel(this);
+		}
+		await this.floatingActiveTimersPanel.render(activeHost);
+
+		const quickHost = root.createDiv({cls: "fulcrum-floating-timers__quick-host"});
+		if (!this.floatingQuickStartPanel) {
+			this.floatingQuickStartPanel = new TimerQuickStartView(this);
+		}
+		this.floatingQuickStartPanel.compactChrome = true;
+		this.floatingQuickStartPanel.embedContainer = quickHost;
+		await this.floatingQuickStartPanel.render();
+	}
+
+	unmountFloatingTimersHud(): void {
+		this.floatingActiveTimersPanel?.unmount();
+		this.floatingQuickStartPanel?.unmount();
+		if (this.floatingQuickStartPanel?.embedContainer) {
+			this.floatingQuickStartPanel.embedContainer.empty();
+			this.floatingQuickStartPanel.embedContainer = null;
+		}
+	}
+
 	refreshActivityPanel(): void {
 		void this.activityEmbed?.refresh();
 		void this.activeTimersPanel?.refresh();
-		this.host.scheduleWidgetBridgeSync?.();
+		void this.floatingActiveTimersPanel?.refresh();
+		// Native widget bridge (tabled): this.host.scheduleWidgetBridgeSync?.();
 	}
 
 	refreshActivityEmbed(): void {
@@ -196,6 +234,7 @@ export class TimerModule {
 
 	refreshQuickStartPanel(): void {
 		this.quickStartPanel?.invalidateQuickStartDataCache();
+		this.floatingQuickStartPanel?.invalidateQuickStartDataCache();
 	}
 
 	refreshEntryGridPanel(): void {
@@ -272,9 +311,19 @@ export class TimerModule {
 		// Listen to metadata cache changes to automatically invalidate stale cache entries
 		this.registerEvent(
 			this.app.metadataCache.on('changed', (file) => {
-				// Invalidate cache for this file when its metadata changes
+				if (!(file instanceof TFile)) return;
 				this.invalidateCacheForFile(file.path);
-			})
+				const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
+					| Record<string, unknown>
+					| undefined;
+				if (!this.fileHasTimerFrontmatter(fm) && !this.timeData.has(file.path)) {
+					return;
+				}
+				void this.loadEntriesFromFrontmatter(file.path).then(() => {
+					this.refreshActivityPanel();
+					this.updateStatusBar();
+				});
+			}),
 		);
 
 		// Also invalidate on file deletion/rename
@@ -1362,55 +1411,65 @@ export class TimerModule {
 		return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 	}
 
+	/** Resolved CSS accent (same mapping as project page / sidebar). */
 	async getProjectColor(projectName: string): Promise<string | null> {
 		if (!projectName) {
 			return null;
 		}
 
-		// Try to find the project note by wikilink resolution
-		const file = this.app.metadataCache.getFirstLinkpathDest(projectName, '');
-		
-		if (!file || !(file instanceof TFile)) {
+		const file = this.app.metadataCache.getFirstLinkpathDest(projectName, "");
+		if (!(file instanceof TFile)) {
 			return null;
 		}
 
+		const indexed = this.host.vaultIndex.resolveProjectByPath(file.path);
+		if (indexed?.color?.trim()) {
+			return resolveProjectAccentCss(indexed.color);
+		}
+
+		const raw = await this.readProjectColorRaw(file);
+		return raw ? resolveProjectAccentCss(raw) : null;
+	}
+
+	private async readProjectColorRaw(file: TFile): Promise<string | null> {
 		try {
 			const content = await this.app.vault.read(file);
 			const frontmatterRegex = /^---\n([\s\S]*?)\n---/;
 			const match = content.match(frontmatterRegex);
-			
 			if (!match) {
 				return null;
 			}
-			
-			const frontmatter = match[1];
-			const lines = frontmatter.split('\n');
-			
-			// Look for color field (trying common variations)
-			const colorKeys = ['color', 'colour', 'fulcrum-timer-color'];
-			
+
+			const configured = this.host.settings.projectColorField.trim() || "color";
+			const colorKeys = [configured, "color", "colour", "fulcrum-timer-color"].filter(
+				(k, i, arr) => k && arr.indexOf(k) === i,
+			);
+			const lines = match[1].split("\n");
+
 			for (const key of colorKeys) {
-				for (let i = 0; i < lines.length; i++) {
-					const line = lines[i].trim();
-					
-					if (line.startsWith(`${key}:`)) {
-						let value = line.replace(new RegExp(`^${key}:\\s*`), '').trim();
-						
-						// Remove quotes if present
-						value = value.replace(/^["']+|["']+$/g, '');
-						
-						// Validate it looks like a color (hex, named color, or CSS variable)
-						if (value.match(/^#[0-9A-Fa-f]{3,8}$/) || value.match(/^[a-zA-Z]+$/) || value.match(/^var\(/)) {
-							return value;
-						}
+				for (const line of lines) {
+					if (!line.trim().startsWith(`${key}:`)) continue;
+					let value = line.split(":").slice(1).join(":").trim();
+					value = value.replace(/^["']+|["']+$/g, "");
+					if (
+						value.match(/^#[0-9A-Fa-f]{3,8}$/) ||
+						value.match(/^[a-zA-Z]+$/) ||
+						value.match(/^var\(/)
+					) {
+						return value;
 					}
 				}
 			}
 		} catch (error) {
-			console.error('Error reading project color:', error);
+			console.error("Error reading project color:", error);
 		}
-		
 		return null;
+	}
+
+	applyProjectAccent(el: HTMLElement, accentCss: string): void {
+		applyFulcrumProjectAccent(el, accentCss);
+		const fg = preferLightForegroundOnAccentCss(accentCss) ? "#ffffff" : "#1e1e1e";
+		el.style.setProperty("--fulcrum-timer-play-fg", fg);
 	}
 
 	async processTimerCodeBlock(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) {
@@ -1576,6 +1635,7 @@ export class TimerModule {
 		let updateInterval: number | null = null;
 		if (activeTimer) {
 			updateInterval = window.setInterval(updateDisplays, 1000);
+			this.refreshActivityPanel();
 		}
 
 		// Adjust start time backward (<<)
@@ -3132,7 +3192,7 @@ export class TimerModule {
 		return t.length > 0 ? t : 'untitled';
 	}
 
-	/** Moment-style path tokens (YYYY, MM, DD, HH, mm, ss, …) plus {{project}}, {{title}} */
+	/** Moment-style path tokens (YYYY, MM, DD, …) with or without {{ }}; plus {{project}}, {{title}}. */
 	expandTimerPathTokens(pattern: string, date: Date, vars: { project?: string; title?: string }): string {
 		const pad = (n: number, w = 2) => String(n).padStart(w, '0');
 		const y = date.getFullYear();
@@ -3150,6 +3210,19 @@ export class TimerModule {
 		let out = pattern
 			.replace(/\{\{project\}\}/gi, this.sanitizePathSegment(vars.project ?? ''))
 			.replace(/\{\{title\}\}/gi, this.sanitizePathSegment(vars.title ?? ''));
+
+		// Braced date tokens first (e.g. {{YYYY}}) so inner YYYY is not left inside {{ }}.
+		out = out
+			.replace(/\{\{YYYY\}\}/gi, String(y))
+			.replace(/\{\{MMMM\}\}/gi, monthLong[M0])
+			.replace(/\{\{MMM\}\}/gi, monthShort[M0])
+			.replace(/\{\{MM\}\}/gi, pad(M0 + 1))
+			.replace(/\{\{DD\}\}/gi, pad(d))
+			.replace(/\{\{HH\}\}/gi, pad(h))
+			.replace(/\{\{mm\}\}/gi, pad(mi))
+			.replace(/\{\{ss\}\}/gi, pad(s))
+			.replace(/\{\{dddd\}\}/gi, dayLong[dayMs])
+			.replace(/\{\{ddd\}\}/gi, dayShort[dayMs]);
 
 		out = out
 			.replace(/YYYY/g, String(y))
@@ -3231,9 +3304,7 @@ export class TimerModule {
 	}
 
 	async openTimerNoteInNewTab(file: TFile): Promise<void> {
-		const ws = this.app.workspace as Workspace & { getLeaf(split?: boolean | 'tab'): WorkspaceLeaf };
-		const leaf = ws.getLeaf('tab');
-		await leaf.openFile(file);
+		await openMarkdownInMainWorkspaceTab(this.app, file);
 	}
 
 	async createTimerNoteFromContent(relativePath: string, body: string): Promise<TFile> {
@@ -3290,6 +3361,8 @@ export class TimerModule {
 		pageData.entries.push(entry);
 		await this.updateFrontmatter(file.path);
 		await this.addDefaultTagToNote(file.path);
+		this.refreshActivityPanel();
+		this.updateStatusBar();
 	}
 
 	async createQuickStartFromProject(project: string, projectSourcePath: string | null): Promise<void> {
@@ -3534,7 +3607,9 @@ export class TimerModule {
 				p.areaName?.trim() ||
 				p.areaFile?.basename.replace(/\.md$/i, "") ||
 				null;
-			const projectColor = p.color || (await this.getProjectColor(projectName));
+			const projectColor = p.color
+				? resolveProjectAccentCss(p.color)
+				: await this.getProjectColor(projectName);
 
 			list.push({
 				kind: "project",
@@ -3713,7 +3788,8 @@ export class TimerModule {
 		
 		// Invalidate cache for this file since we just modified it
 		this.invalidateCacheForFile(filePath);
-		this.host.scheduleWidgetBridgeSync?.();
+		this.refreshActivityPanel();
+		this.updateStatusBar();
 	}
 
 	async activateView(): Promise<void> {
@@ -3739,47 +3815,68 @@ export class TimerModule {
 	async getActiveTimers(): Promise<Array<{ filePath: string; entry: TimeEntry }>> {
 		const activeTimers: Array<{ filePath: string; entry: TimeEntry }> = [];
 
-		// Check entries already loaded in memory
+		// Entries already loaded in memory
 		this.timeData.forEach((pageData, filePath) => {
-			pageData.entries.forEach(entry => {
+			pageData.entries.forEach((entry) => {
 				if (entry.startTime && !entry.endTime) {
-					activeTimers.push({ filePath, entry });
+					activeTimers.push({filePath, entry});
 				}
 			});
 		});
 
-		// Also check frontmatter for any files with active timers that aren't in memory
-		// Get all markdown files
+		// Discover active timers in notes not yet loaded (metadata-only scan; read on match)
 		const markdownFiles = this.app.vault.getMarkdownFiles();
-		
 		for (const file of markdownFiles) {
 			const filePath = file.path;
-			
-			// Skip excluded folders
-			if (this.isFileExcluded(filePath)) {
+			if (this.isFileExcluded(filePath) || this.timeData.has(filePath)) {
 				continue;
 			}
-			
-			// Skip if already checked in memory
-			if (this.timeData.has(filePath)) {
+			const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
+				| Record<string, unknown>
+				| undefined;
+			if (!this.frontmatterMayHaveActiveTimer(fm)) {
 				continue;
 			}
-			
-			// Load entries from frontmatter
 			await this.loadEntriesFromFrontmatter(filePath);
-			
-			// Check for active timers
 			const pageData = this.timeData.get(filePath);
-			if (pageData) {
-				pageData.entries.forEach(entry => {
-					if (entry.startTime && !entry.endTime) {
-						activeTimers.push({ filePath, entry });
-					}
-				});
-			}
+			if (!pageData) continue;
+			pageData.entries.forEach((entry) => {
+				if (entry.startTime && !entry.endTime) {
+					activeTimers.push({filePath, entry});
+				}
+			});
 		}
 
 		return activeTimers;
+	}
+
+	private fileHasTimerFrontmatter(fm: Record<string, unknown> | undefined): boolean {
+		if (!fm) return false;
+		for (const key of allEntriesReadKeys(this.settings)) {
+			const raw = fm[key];
+			if (Array.isArray(raw) && raw.length > 0) return true;
+		}
+		const startKey = this.settings.startTimeKey.trim();
+		if (startKey && fm[startKey] != null && String(fm[startKey]).trim()) return true;
+		return false;
+	}
+
+	private frontmatterMayHaveActiveTimer(fm: Record<string, unknown> | undefined): boolean {
+		if (!fm) return false;
+		for (const key of allEntriesReadKeys(this.settings)) {
+			const raw = fm[key];
+			if (!Array.isArray(raw)) continue;
+			for (const item of raw) {
+				if (!item || typeof item !== "object") continue;
+				const o = item as Record<string, unknown>;
+				const start = o.start ?? o.startTime;
+				const end = o.end ?? o.endTime;
+				if (start != null && String(start).trim() && (end == null || !String(end).trim())) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	async onunload() {
@@ -4358,6 +4455,9 @@ function mountQuickStartFilterBar(
 		onFilterInput?: () => void;
 		onGroupByChange: () => void | Promise<void>;
 		onRefreshContent: () => void | Promise<void>;
+		/** Pop-out HUD: refresh control lives on the filter row. */
+		showRefresh?: boolean;
+		onRefreshTemplates?: () => void | Promise<void>;
 	},
 ): HTMLInputElement {
 	const bar = container.createDiv({cls: "fulcrum-timer-buttons-filter-bar"});
@@ -4415,6 +4515,17 @@ function mountQuickStartFilterBar(
 		clearBtn.style.display = filterInput.value ? "flex" : "none";
 		opts.onFilterInput?.();
 	};
+
+	if (opts.showRefresh && opts.onRefreshTemplates) {
+		const refreshBtn = bar.createEl("button", {
+			cls: "fulcrum-timer-buttons-refresh-btn clickable-icon",
+			attr: {"aria-label": "Refresh template list"},
+		});
+		setIcon(refreshBtn, "refresh-cw");
+		refreshBtn.onclick = () => {
+			void opts.onRefreshTemplates?.();
+		};
+	}
 
 	return filterInput;
 }
@@ -4498,12 +4609,9 @@ function appendQuickStartButton(
 		}
 	}) as HTMLElement;
 
-	const accent = data.projectColor || '';
+	const accent = data.projectColor || "";
 	if (accent) {
-		button.style.borderLeftColor = accent;
-		button.style.setProperty('--fulcrum-timer-timer-accent', accent);
-		button.style.setProperty('--fulcrum-timer-play-bg', accent);
-		button.style.setProperty('--fulcrum-timer-play-fg', plugin.getContrastColor(accent));
+		plugin.applyProjectAccent(button, accent);
 	}
 
 	const playWrap = button.createSpan({ cls: 'fulcrum-timer-button-play', attr: { 'aria-hidden': 'true' } });
@@ -4518,9 +4626,6 @@ function appendQuickStartButton(
 		plugin.displayQuickStartLabel(data.templateName);
 	const projectEl = titleBlock.createSpan({ cls: "fulcrum-timer-button-project-name" });
 	projectEl.textContent = projectLabel;
-	if (accent) {
-		projectEl.style.color = accent;
-	}
 
 	const meta = topRow.createDiv({ cls: "fulcrum-timer-button-meta" });
 	meta.createSpan({
@@ -4575,8 +4680,7 @@ async function renderTemplateGroups(container: HTMLElement, plugin: TimerModule,
 			const sectionColor =
 				(await plugin.getProjectColor(displayGroup)) ?? projectTemplates[0].projectColor;
 			if (sectionColor) {
-				header.style.borderLeftColor = sectionColor;
-				title.style.color = sectionColor;
+				plugin.applyProjectAccent(header, sectionColor);
 			}
 		}
 
@@ -5484,6 +5588,8 @@ class TimerEntryGridView extends TimerEmbedPanel {
 }
 
 class TimerQuickStartView extends TimerEmbedPanel {
+	/** Pop-out HUD: no page title; refresh on filter row. */
+	compactChrome = false;
 	filterText: string = '';
 	contentContainer: HTMLElement | null = null;
 	countStatEl: HTMLElement | null = null;
@@ -5514,30 +5620,37 @@ class TimerQuickStartView extends TimerEmbedPanel {
 		const container = this.panelEl();
 		container.empty();
 		container.addClass('fulcrum-timer-buttons-view');
+		if (this.compactChrome) {
+			container.addClass('fulcrum-timer-buttons-view--compact');
+		}
 
-		// Header
-		const header = container.createDiv({ cls: 'fulcrum-timer-buttons-header' });
-		header.createEl('h2', { text: 'Quick Start' });
+		if (!this.compactChrome) {
+			const header = container.createDiv({cls: 'fulcrum-timer-buttons-header'});
+			header.createEl('h2', {text: 'Quick Start'});
 
-		const headerButtons = header.createDiv({ cls: 'fulcrum-timer-buttons-header-buttons' });
+			const headerButtons = header.createDiv({cls: 'fulcrum-timer-buttons-header-buttons'});
+			const refreshBtn = headerButtons.createEl('button', {
+				cls: 'fulcrum-timer-buttons-refresh-btn clickable-icon',
+				attr: {'aria-label': 'Refresh template list'},
+			});
+			setIcon(refreshBtn, 'refresh-cw');
+			refreshBtn.onclick = async () => {
+				this.templateListCache = null;
+				await this.renderContent();
+			};
+		}
 
-		const refreshBtn = headerButtons.createEl('button', {
-			cls: 'fulcrum-timer-buttons-refresh-btn clickable-icon',
-			attr: { 'aria-label': 'Refresh template list' }
-		});
-		setIcon(refreshBtn, 'refresh-cw');
-		refreshBtn.onclick = async () => {
-			this.templateListCache = null;
-			await this.renderContent();
-		};
-
-		const filterContainer = container.createDiv({ cls: "fulcrum-timer-buttons-filter-bar-host" });
+		const filterContainer = container.createDiv({cls: "fulcrum-timer-buttons-filter-bar-host"});
 		const scheduleContentRefresh = () => {
 			if (this.filterDebounceHandle !== null) window.clearTimeout(this.filterDebounceHandle);
 			this.filterDebounceHandle = window.setTimeout(() => {
 				this.filterDebounceHandle = null;
 				void this.renderContent();
 			}, 120);
+		};
+		const refreshTemplates = async () => {
+			this.templateListCache = null;
+			await this.renderContent();
 		};
 		const filterInput = mountQuickStartFilterBar(filterContainer, {
 			plugin: this.plugin,
@@ -5550,6 +5663,8 @@ class TimerQuickStartView extends TimerEmbedPanel {
 				this.templateListCache = null;
 			},
 			onRefreshContent: () => this.renderContent(),
+			showRefresh: this.compactChrome,
+			onRefreshTemplates: refreshTemplates,
 		});
 		this.filterInputEl = filterInput;
 
@@ -5574,7 +5689,7 @@ class TimerQuickStartView extends TimerEmbedPanel {
 		this.contentContainer = container.createDiv({ cls: 'fulcrum-timer-buttons-content' });
 		await this.renderContent();
 
-		if (!this.filterFocusApplied) {
+		if (!this.compactChrome && !this.filterFocusApplied) {
 			this.filterFocusApplied = true;
 			window.requestAnimationFrame(() => this.filterInputEl?.focus());
 		}
