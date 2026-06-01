@@ -1,8 +1,9 @@
 <script lang="ts">
 	import {onMount} from "svelte";
+	import {Notice} from "obsidian";
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
-	import type {IndexedMeeting, IndexedTask} from "../fulcrum/types";
+	import type {IndexedTask} from "../fulcrum/types";
 	import {indexRevision, settingsRevision, workRelatedOnly} from "../fulcrum/stores";
 	import {
 		buildAreaWorkRelatedMap,
@@ -10,6 +11,7 @@
 		taskPassesWorkFilter,
 	} from "../fulcrum/utils/workRelatedProjectFilter";
 	import {parseList} from "../fulcrum/settingsDefaults";
+	import type {CalendarTaskScheduleField} from "../fulcrum/settingsDefaults";
 	import {
 		gridDates,
 		addDays,
@@ -33,6 +35,14 @@
 	} from "../fulcrum/utils/calendarEvents";
 	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
 	import {buildTimerCalendarOverlay} from "../fulcrum/utils/timerCalendarOverlay";
+	import {applyTaskScheduleOnDate} from "../fulcrum/kanban/taskFieldUpdate";
+	import {
+		FULCRUM_CALENDAR_TASK_MIME,
+		calendarTaskDragKey,
+		findTaskByDragKey,
+		promptTaskScheduleField,
+		waitForMetadataCache,
+	} from "../fulcrum/calendar/calendarTaskSchedule";
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 
@@ -61,10 +71,14 @@
 	$: viewMode = (void sRev, plugin.settings.calendarViewMode) as CalendarViewMode;
 	$: doneTask = new Set(parseList(plugin.settings.taskDoneStatuses));
 	$: weekStart = (void sRev, plugin.settings.calendarFirstDayOfWeek);
-	$: timerLayers = plugin.settings.timer;
+	$: timerLayers = (void sRev, plugin.settings.timer);
+	$: scheduleDateMode = (void sRev, plugin.settings.calendarTaskScheduleField);
 
 	let timerOverlayEvents: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
 	let timerOverlayLoadId = 0;
+
+	let draggedTaskKey: string | null = null;
+	let dragOverDate: string | null = null;
 
 	async function toggleTimerLayer(
 		key: "calendarShowTasks" | "calendarShowMeetings" | "calendarShowLogged" | "calendarShowPlanned",
@@ -126,6 +140,17 @@
 		);
 	});
 
+	/** Open tasks with no due or scheduled date (respects vault task index settings). */
+	$: unscheduledTasks = snapshot.tasks
+		.filter((t) => {
+			if (doneTask.has(t.status)) return false;
+			if (!taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap)) return false;
+			const sched = t.scheduledDate?.slice(0, 10);
+			const due = t.dueDate?.slice(0, 10);
+			return !sched && !due;
+		})
+		.sort((a, b) => a.title.localeCompare(b.title, undefined, {sensitivity: "base"}));
+
 	$: projectColors = projectColorMap(snapshot.projects);
 
 	/** Unified calendar events (tasks + meetings + timer overlay) */
@@ -175,39 +200,74 @@
 		return eventsByDate.get(iso) ?? {allDay: [], timed: []};
 	}
 
-	/** For month view: legacy tasks/meetings by date (no CalendarEvent wrapper) */
-	$: tasksByDate = (() => {
-		const m = new Map<string, IndexedTask[]>();
-		for (const t of datedTasks) {
-			const sched = t.scheduledDate?.slice(0, 10);
-			const due = t.dueDate?.slice(0, 10);
-			for (const key of [sched, due].filter(Boolean) as string[]) {
-				const cur = m.get(key) ?? [];
-				if (!cur.includes(t)) cur.push(t);
-				m.set(key, cur);
-			}
-		}
-		return m;
-	})();
+	function calendarEventKey(e: CalendarEvent): string {
+		if (e.task) return `task:${e.task.file.path}:${e.task.line ?? ""}:${e.dateIso}`;
+		if (e.meeting) return `meeting:${e.meeting.file.path}:${e.dateIso}`;
+		if (e.planner) return `planner:${e.planner.file.path}:${e.planner.line}`;
+		return `${e.kind}:${e.title}:${e.dateIso}:${e.startMinutes ?? "a"}`;
+	}
 
-	$: meetingsByDate = (() => {
-		const m = new Map<string, IndexedMeeting[]>();
-		for (const mt of snapshot.meetings) {
-			if (!meetingPassesWorkFilter(mt, snapshot, onlyWork, areaWorkMap)) continue;
-			const key = mt.date?.slice(0, 10) ?? "";
-			if (!key) continue;
-			const cur = m.get(key) ?? [];
-			cur.push(mt);
-			m.set(key, cur);
-		}
-		return m;
-	})();
+	function onTaskDragStart(ev: DragEvent, task: IndexedTask): void {
+		const key = calendarTaskDragKey(task);
+		draggedTaskKey = key;
+		ev.dataTransfer?.setData(FULCRUM_CALENDAR_TASK_MIME, key);
+		if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+	}
 
-	function legacyEventsForDate(iso: string): {tasks: IndexedTask[]; meetings: IndexedMeeting[]} {
-		return {
-			tasks: tasksByDate.get(iso) ?? [],
-			meetings: meetingsByDate.get(iso) ?? [],
-		};
+	function onTaskDragEnd(): void {
+		draggedTaskKey = null;
+		dragOverDate = null;
+	}
+
+	function onDropZoneDragOver(ev: DragEvent, iso: string): void {
+		const types = ev.dataTransfer?.types ?? [];
+		if (!draggedTaskKey && !types.includes(FULCRUM_CALENDAR_TASK_MIME)) return;
+		ev.preventDefault();
+		if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+		dragOverDate = iso;
+	}
+
+	function onDropZoneDragLeave(iso: string): void {
+		if (dragOverDate === iso) dragOverDate = null;
+	}
+
+	async function onScheduleModeChange(ev: Event): Promise<void> {
+		const v = (ev.currentTarget as HTMLSelectElement).value as CalendarTaskScheduleField;
+		await plugin.patchSettings({calendarTaskScheduleField: v});
+	}
+
+	async function onDropZoneDrop(ev: DragEvent, iso: string): Promise<void> {
+		ev.preventDefault();
+		dragOverDate = null;
+		const key = ev.dataTransfer?.getData(FULCRUM_CALENDAR_TASK_MIME) || draggedTaskKey;
+		draggedTaskKey = null;
+		if (!key) return;
+		const task = findTaskByDragKey(snapshot.tasks, key);
+		if (!task) {
+			new Notice("Task not found — try again after the index refreshes.");
+			return;
+		}
+		let field: "due" | "scheduled";
+		if (scheduleDateMode === "ask") {
+			const picked = await promptTaskScheduleField(plugin.app);
+			if (!picked) return;
+			field = picked;
+		} else {
+			field = scheduleDateMode;
+		}
+		try {
+			await applyTaskScheduleOnDate(plugin.app, task, plugin.settings, iso, field);
+			await waitForMetadataCache(plugin.app, task.file);
+			await plugin.vaultIndex.rebuild();
+		} catch (e) {
+			console.error(e);
+			const msg = e instanceof Error ? e.message : String(e);
+			new Notice(msg.length < 120 ? msg : "Could not schedule task.");
+		}
+	}
+
+	function dropTargetClass(iso: string): string {
+		return dragOverDate === iso ? "fulcrum-calendar__drop-target--active" : "";
 	}
 
 	async function onViewModeChange(ev: Event): Promise<void> {
@@ -259,7 +319,11 @@
 			}));
 </script>
 
-<div class="fulcrum-calendar" data-fulcrum-calendar-root>
+<div
+	class="fulcrum-calendar"
+	class:fulcrum-calendar--dragging-task={!!draggedTaskKey}
+	data-fulcrum-calendar-root
+>
 	<div class="fulcrum-calendar__toolbar">
 		<button type="button" class="fulcrum-calendar__nav-btn" aria-label="Previous" on:click={goPrev}>
 			‹
@@ -315,6 +379,7 @@
 		>Planned</button>
 	</div>
 
+	<div class="fulcrum-calendar__scroll">
 	{#if isMonthView}
 		<div class="fulcrum-calendar__month" role="grid" aria-label="Month calendar">
 			<div class="fulcrum-calendar__month-header" role="row">
@@ -332,56 +397,45 @@
 							{@const cell = dates[idx]}
 							{#if cell}
 								{@const iso = toISODate(cell.date)}
-								{@const {tasks, meetings} = legacyEventsForDate(iso)}
-								{@const hasEvents = tasks.length > 0 || meetings.length > 0}
+								{@const {allDay, timed} = eventsForDate(iso)}
+								{@const dayEvents = [...allDay, ...timed]}
+								{@const hasEvents = dayEvents.length > 0}
 								<div
-									class="fulcrum-calendar__day-cell"
+									class="fulcrum-calendar__day-cell {dropTargetClass(iso)}"
 									class:fulcrum-calendar__day-cell--other-month={!cell.isCurrentMonth}
 									class:fulcrum-calendar__day-cell--has-events={hasEvents}
 									role="gridcell"
 									data-date={iso}
 									data-drop-target=""
+									on:dragover={(e) => onDropZoneDragOver(e, iso)}
+									on:dragleave={() => onDropZoneDragLeave(iso)}
+									on:drop={(e) => void onDropZoneDrop(e, iso)}
 								>
 									<span class="fulcrum-calendar__day-num">{formatDayNum(cell.date)}</span>
 									<div class="fulcrum-calendar__day-events">
-										{#each tasks.slice(0, 3) as t (t.file.path + (t.line ?? ""))}
-											{@const accent = t.projectFile && projectColors.get(t.projectFile.path) ? resolveProjectAccentCss(projectColors.get(t.projectFile.path)) : null}
+										{#each dayEvents.slice(0, 5) as e (calendarEventKey(e))}
 											<button
 												type="button"
-												class="fulcrum-calendar__event fulcrum-calendar__event--task"
-												style={accent ? `--fulcrum-event-accent: ${accent}` : undefined}
+												class="fulcrum-calendar__event fulcrum-calendar__event--{e.kind}"
+												style={e.accentCss ? `--fulcrum-event-accent: ${e.accentCss}` : undefined}
 												data-fulcrum-calendar-event
-												data-task-path={t.file.path}
-												data-task-line={t.line ?? ""}
-												data-draggable-placeholder=""
-												on:click={() => plugin.openIndexedTask(t, hoverParentLeaf)}
+												on:click={(ev) => { ev.preventDefault(); e.open(); }}
 											>
 												<span class="fulcrum-calendar__event-icon" aria-hidden="true">
-													<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+													{#if e.kind === "task" || e.kind === "logged"}
+														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+													{:else if e.kind === "planned" || e.kind === "planner"}
+														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+													{:else}
+														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+													{/if}
 												</span>
-												{t.title}
+												<span class="fulcrum-calendar__event-title">{e.title}</span>
 											</button>
 										{/each}
-										{#each meetings.slice(0, 2) as m (m.file.path)}
-											{@const accent = m.projectFile && projectColors.get(m.projectFile.path) ? resolveProjectAccentCss(projectColors.get(m.projectFile.path)) : null}
-											<button
-												type="button"
-												class="fulcrum-calendar__event fulcrum-calendar__event--meeting"
-												style={accent ? `--fulcrum-event-accent: ${accent}` : undefined}
-												data-fulcrum-calendar-event
-												data-meeting-path={m.file.path}
-												data-draggable-placeholder=""
-												on:click={() => plugin.openLinkedNoteFromFulcrum(m.file.path, hoverParentLeaf)}
-											>
-												<span class="fulcrum-calendar__event-icon" aria-hidden="true">
-													<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-												</span>
-												{m.title ?? "Meeting"}
-											</button>
-										{/each}
-										{#if tasks.length + meetings.length > 5}
+										{#if dayEvents.length > 5}
 											<span class="fulcrum-calendar__more">
-												+{tasks.length + meetings.length - 5} more
+												+{dayEvents.length - 5} more
 											</span>
 										{/if}
 									</div>
@@ -412,7 +466,14 @@
 				{#each dayCols as {date}}
 					{@const iso = toISODate(date)}
 					{@const {allDay} = eventsForDate(iso)}
-					<div class="fulcrum-calendar__allday-cell" data-date={iso} data-drop-target="">
+					<div
+						class="fulcrum-calendar__allday-cell {dropTargetClass(iso)}"
+						data-date={iso}
+						data-drop-target=""
+						on:dragover={(e) => onDropZoneDragOver(e, iso)}
+						on:dragleave={() => onDropZoneDragLeave(iso)}
+						on:drop={(e) => void onDropZoneDrop(e, iso)}
+					>
 						{#each allDay as e (e.task ? `${e.task.file.path}:${e.task.line ?? ""}` : (e.meeting?.file.path ?? ""))}
 							<button
 								type="button"
@@ -428,7 +489,7 @@
 										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
 									{/if}
 								</span>
-								{e.title}
+								<span class="fulcrum-calendar__event-title">{e.title}</span>
 							</button>
 						{/each}
 					</div>
@@ -448,7 +509,15 @@
 					<div class="fulcrum-calendar__time-grid-day-col">
 						<div class="fulcrum-calendar__time-slots">
 							{#each Array(24) as _, hour}
-								<div class="fulcrum-calendar__time-slot" data-date={iso} data-hour={hour} data-drop-target=""></div>
+								<div
+									class="fulcrum-calendar__time-slot {dropTargetClass(iso)}"
+									data-date={iso}
+									data-hour={hour}
+									data-drop-target=""
+									on:dragover={(e) => onDropZoneDragOver(e, iso)}
+									on:dragleave={() => onDropZoneDragLeave(iso)}
+									on:drop={(e) => void onDropZoneDrop(e, iso)}
+								></div>
 							{/each}
 						</div>
 						<div class="fulcrum-calendar__day-events-overlay">
@@ -486,4 +555,59 @@
 			</div>
 		</div>
 	{/if}
+
+	<section class="fulcrum-calendar__unscheduled" aria-label="Unscheduled tasks">
+		<div class="fulcrum-calendar__unscheduled-head">
+			<h3 class="fulcrum-calendar__unscheduled-title">Unscheduled tasks</h3>
+			<label class="fulcrum-calendar__schedule-mode">
+				<span class="fulcrum-calendar__schedule-mode-label">Set date as</span>
+				<select
+					class="dropdown fulcrum-calendar__schedule-mode-select"
+					aria-label="Date field when scheduling tasks"
+					value={scheduleDateMode}
+					on:change={(e) => void onScheduleModeChange(e)}
+				>
+					<option value="due">Due</option>
+					<option value="scheduled">Scheduled</option>
+					<option value="ask">Ask each time</option>
+				</select>
+			</label>
+		</div>
+		{#if unscheduledTasks.length === 0}
+			<p class="fulcrum-calendar__unscheduled-empty fulcrum-muted">No open tasks without a due or scheduled date.</p>
+		{:else}
+			<div class="fulcrum-calendar__unscheduled-list" role="list">
+				{#each unscheduledTasks as task (calendarTaskDragKey(task))}
+					{@const accent =
+						task.projectFile && projectColors.get(task.projectFile.path)
+							? resolveProjectAccentCss(projectColors.get(task.projectFile.path))
+							: null}
+					<div
+						class="fulcrum-calendar__unscheduled-card"
+						class:fulcrum-calendar__unscheduled-card--dragging={draggedTaskKey === calendarTaskDragKey(task)}
+						role="listitem"
+						draggable="true"
+						on:dragstart={(e) => onTaskDragStart(e, task)}
+						on:dragend={onTaskDragEnd}
+					>
+						<span class="fulcrum-calendar__unscheduled-grip" aria-hidden="true">⋮⋮</span>
+						<button
+							type="button"
+							class="fulcrum-calendar__unscheduled-body"
+							style={accent ? `--fulcrum-event-accent: ${accent}` : undefined}
+							on:click={() => plugin.openIndexedTask(task, hoverParentLeaf)}
+						>
+							<span class="fulcrum-calendar__unscheduled-title-text">{task.title}</span>
+							{#if task.projectFile}
+								<span class="fulcrum-calendar__unscheduled-project">
+									{task.projectFile.basename.replace(/\.md$/i, "")}
+								</span>
+							{/if}
+						</button>
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</section>
+	</div>
 </div>

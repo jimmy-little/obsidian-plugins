@@ -128,6 +128,16 @@ export async function migrateTimerSettings(
 	return {timer: migrated, entryCache: cache};
 }
 
+function migrateEntriesKeySettings(timer: TimerSettings): void {
+	if (timer.entriesKey !== "fulcrumTimerEntries") return;
+	timer.entriesKey = "timeEntries";
+	const legacy = new Set(timer.legacyEntriesKeys);
+	legacy.delete("timeEntries");
+	legacy.add("fulcrumTimerEntries");
+	if (!legacy.has("lapseEntries")) legacy.add("lapseEntries");
+	timer.legacyEntriesKeys = [...legacy];
+}
+
 export function mergeTimerDefaults(
 	partial?: Partial<TimerSettings> & {quickStartGroupByKey?: string},
 ): TimerSettings {
@@ -137,5 +147,6 @@ export function mergeTimerDefaults(
 	merged.quickStartGroupBy = normalizeQuickStartGroupBy(
 		rest.quickStartGroupBy ?? legacyGroupKey,
 	);
+	migrateEntriesKeySettings(merged);
 	return merged;
 }

@@ -705,6 +705,32 @@
 	box-sizing: border-box;
 }
 
+.fulcrum-active-timers__header {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	flex-shrink: 0;
+	margin-bottom: 0.35rem;
+}
+
+.fulcrum-active-timers__refresh {
+	padding: 4px;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+	opacity: 0.6;
+	transition: opacity 0.2s;
+}
+
+.fulcrum-active-timers__refresh:hover {
+	opacity: 1;
+}
+
+.fulcrum-active-timers__refresh svg {
+	width: 16px;
+	height: 16px;
+}
+
 .fulcrum-active-timers__list {
 	display: flex;
 	flex-direction: column;

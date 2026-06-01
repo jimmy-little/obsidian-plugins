@@ -39,6 +39,17 @@ export class ActiveTimersPanel {
 		container.empty();
 		container.addClass("fulcrum-active-timers");
 
+		const header = container.createDiv({cls: "fulcrum-active-timers__header"});
+		const refreshBtn = header.createEl("button", {
+			cls: "fulcrum-active-timers__refresh clickable-icon",
+			attr: {"aria-label": "Refresh"},
+		});
+		setIcon(refreshBtn, "refresh-cw");
+		refreshBtn.onclick = async () => {
+			this.plugin.timeData.clear();
+			if (this.container) await this.render(this.container);
+		};
+
 		const activeTimers = await this.plugin.getActiveTimers();
 		if (activeTimers.length === 0) {
 			container.createEl("p", {

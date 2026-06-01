@@ -34,6 +34,7 @@ export async function buildTimerCalendarOverlay(
 				const endMs = entry.endTime ?? Date.now();
 				if (endMs < rangeStart.getTime() || entry.startTime > rangeEnd.getTime()) continue;
 				const startD = new Date(entry.startTime);
+				const isActive = entry.endTime == null;
 				out.push({
 					kind: "logged",
 					dateIso: localDateIso(startD),
@@ -42,6 +43,9 @@ export async function buildTimerCalendarOverlay(
 					title: entry.label || file.basename,
 					accentCss: "var(--color-green)",
 					open: () => openNote(file.path),
+					timerEntryId: entry.id,
+					timerStartMs: entry.startTime,
+					isActiveTimer: isActive,
 				});
 			}
 		}

@@ -51,8 +51,8 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
 	showSeconds: true,
 	startTimeKey: "startTime",
 	endTimeKey: "endTime",
-	entriesKey: "fulcrumTimerEntries",
-	legacyEntriesKeys: ["timeEntries", "lapseEntries"],
+	entriesKey: "timeEntries",
+	legacyEntriesKeys: ["fulcrumTimerEntries", "lapseEntries"],
 	totalTimeKey: "totalTimeTracked",
 	projectKey: "project",
 	quickStartGroupBy: "project",
@@ -95,16 +95,16 @@ export function normalizeQuickStartGroupBy(value: unknown): QuickStartGroupBy {
 	return "project";
 }
 
-/** All frontmatter keys to read entry arrays from. */
+/** All frontmatter keys to read entry arrays from. Primary key first for dedupe preference. */
 export function allEntriesReadKeys(timer: TimerSettings): string[] {
-	const keys = new Set<string>();
+	const keys: string[] = [];
+	const primary = timer.entriesKey.trim();
+	if (primary) keys.push(primary);
 	for (const k of timer.legacyEntriesKeys) {
 		const t = k.trim();
-		if (t) keys.add(t);
+		if (t && t !== primary && !keys.includes(t)) keys.push(t);
 	}
-	const primary = timer.entriesKey.trim();
-	if (primary) keys.add(primary);
-	return [...keys];
+	return keys;
 }
 
 /** All frontmatter keys to read planned blocks from. */

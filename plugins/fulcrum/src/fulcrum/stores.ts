@@ -38,3 +38,10 @@ export const settingsRevision = writable(0);
 export function bumpSettingsRevision(): void {
 	settingsRevision.update((n: number) => n + 1);
 }
+
+/** Incremented when timers start, stop, or entries change (timeline overlay refresh). */
+export const timerRevision = writable(0);
+
+export function bumpTimerRevision(): void {
+	timerRevision.update((n: number) => n + 1);
+}

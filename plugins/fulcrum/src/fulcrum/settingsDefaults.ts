@@ -27,6 +27,8 @@ export const DASHBOARD_ACTIVITY_MAX_DAYS = 7 as const;
 /** After filtering by date, cap rows so the feed stays scannable. */
 export const DASHBOARD_ACTIVITY_MAX_ROWS = 80 as const;
 
+export type CalendarTaskScheduleField = "due" | "scheduled" | "ask";
+
 export interface FulcrumSettings {
 	/** Legacy combined root; used when optional folders below are empty. */
 	areasProjectsFolder: string;
@@ -79,6 +81,7 @@ export interface FulcrumSettings {
 	/** Multi-line or comma-separated; empty = whole vault. */
 	taskNotesFolderPaths: string;
 	obsidianTasksFolderPaths: string;
+	/** Include/exclude paths and `!file:` basename rules; see settings UI. */
 	inlineTaskRegex: string;
 	tasksPluginMode: "auto-detect" | "off" | "force";
 	/** Inline checkbox tasks: require project link vs index all in scanned folders. */
@@ -118,6 +121,8 @@ export interface FulcrumSettings {
 	kanbanOrderArea: string[];
 	/** Calendar view mode */
 	calendarViewMode: "month" | "workWeek" | "week" | "threeDay" | "day";
+	/** Default date field when dragging unscheduled tasks onto the calendar. */
+	calendarTaskScheduleField: CalendarTaskScheduleField;
 	showRibbonIcon: boolean;
 	dateDisplayFormat: string;
 	completionThresholdPercent: number;
@@ -278,6 +283,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	kanbanOrderStatus: [],
 	kanbanOrderArea: [],
 	calendarViewMode: "week",
+	calendarTaskScheduleField: "ask",
 	showRibbonIcon: true,
 	dateDisplayFormat: "YYYY-MM-DD",
 	completionThresholdPercent: 100,

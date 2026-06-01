@@ -94,6 +94,23 @@ export function setInlineTaskDue(line: string, dueIso: string | null): string | 
 	return `${m[1]}[${m[2]}] ${rest}`.replace(/\s+$/, "");
 }
 
+/** Replace or append scheduled date emoji on a checkbox line; null removes scheduled markers. */
+export function setInlineTaskScheduled(line: string, schedIso: string | null): string | null {
+	const m = line.match(/^(\s*[-*+]\s*)\[([^\]]*)\](.*)$/);
+	if (!m) return null;
+	let rest = m[3] ?? "";
+	rest = rest
+		.replace(/(?:⏳|⏫)\s*\d{4}-\d{2}-\d{2}/gu, " ")
+		.replace(/\[scheduled::\s*\d{4}-\d{2}-\d{2}\s*\]/giu, " ")
+		.replace(/(?:^|[\s,])scheduled::\s*\d{4}-\d{2}-\d{2}/giu, " ")
+		.replace(/\s+/gu, " ")
+		.trim();
+	if (schedIso) {
+		rest = rest ? `${rest} ⏳ ${schedIso}` : `⏳ ${schedIso}`;
+	}
+	return `${m[1]}[${m[2]}] ${rest}`.replace(/\s+$/, "");
+}
+
 /** Set project wikilink on checkbox line (replaces existing project links in title portion). */
 export function setInlineTaskProjectLink(
 	line: string,

@@ -1,4 +1,4 @@
-import type {App, TFile} from "obsidian";
+import {MarkdownView, type App, type TFile} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
 import {resolveAreasRoot, resolveProjectsRoot} from "./settingsDefaults";
 import {parseList} from "./settingsDefaults";
@@ -25,7 +25,12 @@ import {readTrackedMinutesFromFm} from "./utils/trackedMinutes";
 import {meetingEffectiveMinutes, meetingHasPositiveTrackedMinutes} from "./utils/meetingEffectiveMinutes";
 import {resolveBannerImageSrc, resolveProjectAccentCss} from "./utils/projectVisual";
 import {bumpIndexRevision} from "./stores";
-import {fileMatchesFolderScope, parseFolderPathList} from "./utils/folderScopes";
+import {
+	fileMatchesFolderScope,
+	fileMatchesFolderScopeWithExcludes,
+	parseFolderPathList,
+	parseFolderScopeList,
+} from "./utils/folderScopes";
 import {
 	parseCheckboxLineTitle,
 	parseObsidianTasksEmojiDates,
@@ -132,9 +137,13 @@ export class VaultIndex {
 	};
 	private debounceHandle: number | null = null;
 	private maxWaitHandle: number | null = null;
+	private idleDebounceHandle: number | null = null;
 
-	static readonly REBUILD_DEBOUNCE_MS = 120;
-	static readonly REBUILD_MAX_WAIT_MS = 750;
+	/** Debounce for background metadata changes (non-active notes). */
+	static readonly REBUILD_DEBOUNCE_MS = 400;
+	static readonly REBUILD_MAX_WAIT_MS = 2000;
+	/** While a note is open in an editor, wait for a typing pause before re-indexing. */
+	static readonly IDLE_REBUILD_MS = 2500;
 
 	constructor(app: App, getSettings: () => FulcrumSettings) {
 		this.app = app;
@@ -166,6 +175,37 @@ export class VaultIndex {
 		}
 	}
 
+	/**
+	 * Metadata cache updates for the note being edited fire on every keystroke.
+	 * Defer those until typing pauses; other files use the normal debounced rebuild.
+	 */
+	scheduleRebuildFromMetadataChange(file: TFile): void {
+		if (this.isFileOpenInMarkdownEditor(file.path)) {
+			this.scheduleIdleRebuild();
+			return;
+		}
+		this.scheduleRebuild();
+	}
+
+	private scheduleIdleRebuild(): void {
+		if (this.idleDebounceHandle != null) {
+			window.clearTimeout(this.idleDebounceHandle);
+		}
+		this.idleDebounceHandle = window.setTimeout(() => {
+			this.idleDebounceHandle = null;
+			void this.rebuild();
+		}, VaultIndex.IDLE_REBUILD_MS);
+	}
+
+	private isFileOpenInMarkdownEditor(path: string): boolean {
+		let open = false;
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const view = leaf.view;
+			if (view instanceof MarkdownView && view.file?.path === path) open = true;
+		});
+		return open;
+	}
+
 	private clearMaxWaitTimer(): void {
 		if (this.maxWaitHandle != null) {
 			window.clearTimeout(this.maxWaitHandle);
@@ -180,6 +220,10 @@ export class VaultIndex {
 			this.debounceHandle = null;
 		}
 		this.clearMaxWaitTimer();
+		if (this.idleDebounceHandle != null) {
+			window.clearTimeout(this.idleDebounceHandle);
+			this.idleDebounceHandle = null;
+		}
 	}
 
 	async rebuild(): Promise<void> {
@@ -327,7 +371,7 @@ export class VaultIndex {
 
 		const projectPaths = new Set(projects.map((p) => p.file.path));
 		const taskNoteRoots = parseFolderPathList(s.taskNotesFolderPaths);
-		const inlineRoots = parseFolderPathList(s.obsidianTasksFolderPaths);
+		const inlineScope = parseFolderScopeList(s.obsidianTasksFolderPaths);
 		const useTaskNotes = s.taskSourceMode === "taskNotes" || s.taskSourceMode === "both";
 		const useInline = s.taskSourceMode === "obsidianTasks" || s.taskSourceMode === "both";
 		let inlineRegex: RegExp | null = null;
@@ -396,7 +440,16 @@ export class VaultIndex {
 
 		if (useInline) {
 			for (const file of this.app.vault.getMarkdownFiles()) {
-				if (!fileMatchesFolderScope(file.path, inlineRoots)) continue;
+				if (
+					!fileMatchesFolderScopeWithExcludes(
+						file.path,
+						inlineScope.include,
+						inlineScope.exclude,
+						inlineScope.excludeFilenames,
+					)
+				) {
+					continue;
+				}
 				const cache = this.app.metadataCache.getFileCache(file);
 				const listItems = cache?.listItems;
 				if (!listItems?.length) continue;

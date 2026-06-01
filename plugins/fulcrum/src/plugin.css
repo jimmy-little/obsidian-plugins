@@ -3038,6 +3038,153 @@ button.fulcrum-task-card__note-type:focus-visible {
 	--fulcrum-cal-gutter-w: 3.65rem;
 }
 
+.fulcrum-calendar__scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+}
+
+.fulcrum-calendar--dragging-task .fulcrum-calendar__event,
+.fulcrum-calendar--dragging-task .fulcrum-calendar__timed-event {
+	pointer-events: none;
+}
+
+.fulcrum-calendar__drop-target--active {
+	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+	box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+}
+
+.fulcrum-calendar__unscheduled {
+	flex: 0 0 auto;
+	border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+	padding: 0.55rem 0.75rem 0.75rem;
+	background: color-mix(in srgb, var(--background-secondary) 45%, var(--background-primary));
+}
+
+.fulcrum-calendar__unscheduled-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem 0.75rem;
+	margin-bottom: 0.55rem;
+}
+
+.fulcrum-calendar__unscheduled-title {
+	margin: 0;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.fulcrum-calendar__schedule-mode {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: var(--font-ui-smaller);
+}
+
+.fulcrum-calendar__schedule-mode-label {
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.fulcrum-calendar__schedule-mode-select {
+	min-width: 8.5rem;
+}
+
+.fulcrum-calendar__unscheduled-empty {
+	margin: 0;
+	font-size: var(--font-ui-smaller);
+}
+
+.fulcrum-calendar__unscheduled-list {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+	gap: 0.5rem;
+	align-items: start;
+}
+
+.fulcrum-calendar__unscheduled-card {
+	display: flex;
+	align-items: stretch;
+	gap: 0.25rem;
+	min-height: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+	cursor: grab;
+}
+
+.fulcrum-calendar__unscheduled-card--dragging {
+	opacity: 0.55;
+}
+
+.fulcrum-calendar__unscheduled-card:active {
+	cursor: grabbing;
+}
+
+.fulcrum-calendar__unscheduled-grip {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.1rem;
+	color: var(--text-faint);
+	font-size: 0.7rem;
+	letter-spacing: -0.12em;
+	user-select: none;
+}
+
+.fulcrum-calendar__unscheduled-body {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	justify-content: center;
+	gap: 0.1rem;
+	min-width: 0;
+	padding: 0.35rem 0.45rem 0.35rem 0;
+	border: none;
+	background: transparent;
+	text-align: left;
+	cursor: pointer;
+	border-left: 3px solid var(--fulcrum-event-accent, var(--text-faint));
+}
+
+.fulcrum-calendar__unscheduled-title-text {
+	font-size: var(--font-ui-smaller);
+	font-weight: 500;
+	color: var(--text-normal);
+	line-height: 1.3;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+.fulcrum-calendar__unscheduled-project {
+	font-size: 0.68rem;
+	color: var(--text-muted);
+	line-height: 1.25;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 1;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+.fulcrum-calendar-schedule-prompt__buttons {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin-top: 0.75rem;
+}
+
 /* Shell toolbar + month / day grid (CalendarMain.svelte, TimelineMain.svelte) */
 .fulcrum-calendar__layers {
 	display: flex;
@@ -3113,12 +3260,10 @@ button.fulcrum-task-card__note-type:focus-visible {
 
 /* ── Month grid ── */
 .fulcrum-calendar__month {
-	flex: 1 1 0;
-	min-height: 0;
-	overflow: auto;
+	flex: 0 0 auto;
 	display: flex;
 	flex-direction: column;
-	padding: 0 0.5rem 0.65rem;
+	padding: 0 0.5rem 0.35rem;
 }
 
 .fulcrum-calendar__month-header {
@@ -3138,7 +3283,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 .fulcrum-calendar__month-body {
-	flex: 1 1 auto;
+	flex: 0 0 auto;
 	display: flex;
 	flex-direction: column;
 	gap: 0;
@@ -3147,7 +3292,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-calendar__month-row {
 	display: grid;
 	grid-template-columns: repeat(7, minmax(0, 1fr));
-	min-height: 5.5rem;
+	min-height: 6.25rem;
 	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border-hover) 80%, transparent);
 }
 
@@ -3159,6 +3304,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	border-right: 1px solid color-mix(in srgb, var(--background-modifier-border-hover) 80%, transparent);
 	overflow: hidden;
 	min-width: 0;
+	min-height: 6.25rem;
 	background: var(--background-primary);
 }
 
@@ -3373,6 +3519,23 @@ button.fulcrum-task-card__note-type:focus-visible {
 	background: var(--background-modifier-hover);
 	color: var(--text-muted);
 	border-left: 3px solid var(--text-faint);
+}
+
+.fulcrum-calendar__timed-event--logged {
+	background: color-mix(in srgb, var(--fulcrum-event-accent, var(--color-green)) 14%, var(--background-primary));
+	color: var(--text-normal);
+	border-left: 3px solid var(--fulcrum-event-accent, var(--color-green));
+}
+
+.fulcrum-calendar__timed-event--planned {
+	background: color-mix(in srgb, var(--fulcrum-event-accent, var(--color-orange)) 14%, var(--background-primary));
+	color: var(--text-normal);
+	border-left: 3px solid var(--fulcrum-event-accent, var(--color-orange));
+}
+
+.fulcrum-calendar__timed-event--active {
+	border-right: 2px dashed var(--fulcrum-event-accent, var(--color-green));
+	z-index: 2;
 }
 
 .fulcrum-calendar__timed-event:hover {
@@ -3692,30 +3855,34 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-calendar__day-events {
 	display: flex;
 	flex-direction: column;
-	gap: 1px;
+	gap: 2px;
 	overflow: hidden;
+	flex: 1 1 auto;
+	min-height: 0;
 }
 
 .fulcrum-calendar__event {
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	gap: 3px;
-	padding: 1px 4px;
+	padding: 2px 4px;
 	border-radius: var(--radius-s);
 	border: none;
 	background: transparent;
 	cursor: pointer;
 	text-align: left;
 	font-size: 11px;
-	line-height: 1.3;
+	line-height: 1.25;
 	color: var(--text-normal);
 	overflow: hidden;
-	white-space: nowrap;
+	min-width: 0;
 }
 .fulcrum-calendar__event:hover { background: var(--background-modifier-hover); }
 
 .fulcrum-calendar__event--task { color: var(--text-accent); }
 .fulcrum-calendar__event--meeting { color: var(--color-purple, #a855f7); }
+.fulcrum-calendar__event--logged { color: var(--text-accent); }
+.fulcrum-calendar__event--planned { color: var(--color-orange, #d97706); }
 .fulcrum-calendar__event--planner { color: var(--text-muted); }
 .fulcrum-calendar__event--note { color: var(--text-muted); }
 
@@ -3726,9 +3893,13 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 .fulcrum-calendar__event-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
 	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	overflow-wrap: anywhere;
 }
 
 .fulcrum-calendar__more {

@@ -180,7 +180,7 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		this.textAreaSetting(
 			"obsidianTasksFolderPaths",
 			"Inline task folders",
-			"Only markdown files under these paths are scanned for - [ ] tasks. Empty = entire vault.",
+			"Paths to scan for - [ ] tasks (one per line). Empty = entire vault. Prefix with ! to exclude a folder (e.g. !Templates/Checklists). Use !file:SKILL.md to skip files with that name (e.g. agent skill checklists).",
 		);
 		this.textSetting("inlineTaskRegex", "Inline task filter (regex, optional)");
 		new Setting(containerEl)

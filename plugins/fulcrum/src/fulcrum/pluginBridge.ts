@@ -82,4 +82,6 @@ export interface FulcrumHost {
 	renderActivityBodyPreview(el: HTMLElement, sourcePath: string, markdown: string): Promise<void>;
 	/** Edit project note YAML in the suite properties modal (same UI as Orbit). */
 	openProjectNoteProperties(projectPath: string): void;
+	/** Notify Svelte views that timer entries changed (start/stop/adjust). */
+	bumpTimerRevision(): void;
 }

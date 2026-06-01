@@ -169,16 +169,15 @@ export function registerLivePreviewPeoplePillScan(
 	let debounceTimer: number | undefined;
 
 	function scanMarkdownLeaves(): void {
-		plugin.app.workspace.iterateAllLeaves((leaf) => {
-			const view = leaf.view;
-			if (!(view instanceof MarkdownView) || !view.file) return;
-			transformPeopleLinksInRoot(
-				plugin.app,
-				view.containerEl,
-				view.file.path,
-				getSettings(),
-			);
-		});
+		const leaf = plugin.app.workspace.activeLeaf;
+		const view = leaf?.view;
+		if (!(view instanceof MarkdownView) || !view.file) return;
+		transformPeopleLinksInRoot(
+			plugin.app,
+			view.containerEl,
+			view.file.path,
+			getSettings(),
+		);
 	}
 
 	function scheduleScan(): void {

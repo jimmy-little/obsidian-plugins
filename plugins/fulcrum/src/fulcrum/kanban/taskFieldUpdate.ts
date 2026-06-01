@@ -8,6 +8,7 @@ import {
 	setInlineTaskChecked,
 	setInlineTaskDue,
 	setInlineTaskProjectLink,
+	setInlineTaskScheduled,
 } from "../utils/inlineTasks";
 import type {KanbanDimension} from "../settingsDefaults";
 import type {DateBucketId} from "./dateBuckets";
@@ -155,6 +156,27 @@ export async function applyTaskDateChange(
 	}
 
 	await updateInlineLine(app, task, (line) => setInlineTaskDue(line, iso));
+}
+
+export type TaskScheduleDateField = "due" | "scheduled";
+
+export async function applyTaskScheduleOnDate(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	dateIso: string,
+	field: TaskScheduleDateField,
+): Promise<void> {
+	if (task.source === "taskNote") {
+		const key =
+			field === "due" ? settings.taskDueDateField : settings.taskScheduledDateField;
+		await updateTaskNoteField(app, task, settings, {[key]: dateIso});
+		return;
+	}
+
+	await updateInlineLine(app, task, (line) =>
+		field === "due" ? setInlineTaskDue(line, dateIso) : setInlineTaskScheduled(line, dateIso),
+	);
 }
 
 export async function applyProjectAreaChange(

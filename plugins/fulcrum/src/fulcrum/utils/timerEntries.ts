@@ -52,7 +52,12 @@ export function dedupeEntries(entries: TimeEntry[]): TimeEntry[] {
 function parseRawEntry(raw: unknown, index: number, filePath: string): TimeEntry | null {
 	if (!raw || typeof raw !== "object") return null;
 	const o = raw as Record<string, unknown>;
-	const label = typeof o.label === "string" ? o.label : "";
+	const label =
+		typeof o.description === "string"
+			? o.description
+			: typeof o.label === "string"
+				? o.label
+				: "";
 	const startTime = parseTimeMs(o.start ?? o.startTime);
 	const endTime = parseTimeMs(o.end ?? o.endTime);
 	const duration = parseDurationMs(o.duration);
@@ -115,5 +120,5 @@ export function resolveEntriesWriteKey(
 		const k = legacy.trim();
 		if (k && Array.isArray(fm[k]) && fm[k]!.length > 0) return k;
 	}
-	return primary || "fulcrumTimerEntries";
+	return primary || "timeEntries";
 }

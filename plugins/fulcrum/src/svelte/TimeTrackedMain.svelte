@@ -150,8 +150,8 @@
 
 <div class="fulcrum-time-dashboard">
 	<p class="fulcrum-time-dashboard__disclaimer fulcrum-muted">
-		Task minutes use merged timer entries (<code>fulcrumTimerEntries</code>, legacy
-		<code>timeEntries</code>/<code>lapseEntries</code>) when present, then your configured tracked field.
+		Task minutes use merged timer entries (<code>timeEntries</code>, legacy
+		<code>fulcrumTimerEntries</code>/<code>lapseEntries</code>) when present, then your configured tracked field.
 		Horizons prefer entry end timestamps; otherwise file modification dates apply.
 		Meetings use your total-minutes field when it’s set and positive; otherwise the scheduled
 		<code>duration</code> (minutes) from the meeting note.

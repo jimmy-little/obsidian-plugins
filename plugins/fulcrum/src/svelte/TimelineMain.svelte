@@ -2,7 +2,7 @@
 	import {onMount} from "svelte";
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
-	import {indexRevision, settingsRevision, workRelatedOnly} from "../fulcrum/stores";
+	import {indexRevision, settingsRevision, timerRevision, workRelatedOnly} from "../fulcrum/stores";
 	import {
 		buildAreaWorkRelatedMap,
 		meetingPassesWorkFilter,
@@ -22,6 +22,8 @@
 		projectColorMap,
 		type CalendarEvent,
 	} from "../fulcrum/utils/calendarEvents";
+	import {buildTimerCalendarOverlay} from "../fulcrum/utils/timerCalendarOverlay";
+	import TimelineActiveTimerBlock from "./TimelineActiveTimerBlock.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -87,6 +89,42 @@
 
 	$: plannerDefaultDur = (void $settingsRevision, plugin.settings.plannerDefaultDurationMinutes);
 
+	$: timerLayers = (void $settingsRevision, plugin.settings.timer);
+
+	let timerOverlayEvents: CalendarEvent[] = [];
+	let timerOverlayLoadId = 0;
+
+	$: {
+		void rev;
+		void iso;
+		void $timerRevision;
+		void timerLayers.calendarShowLogged;
+		void timerLayers.calendarShowPlanned;
+		const id = ++timerOverlayLoadId;
+		const dayStart = new Date(iso + "T00:00:00");
+		const dayEnd = new Date(iso + "T23:59:59");
+		void (async (): Promise<void> => {
+			if (!timerLayers.calendarShowLogged && !timerLayers.calendarShowPlanned) {
+				if (id === timerOverlayLoadId) timerOverlayEvents = [];
+				return;
+			}
+			const overlay = await buildTimerCalendarOverlay(
+				plugin.timer,
+				dayStart,
+				dayEnd,
+				{
+					showLogged: timerLayers.calendarShowLogged,
+					showPlanned: timerLayers.calendarShowPlanned,
+				},
+				(path) => plugin.openLinkedNoteFromFulcrum(path, hoverParentLeaf),
+			);
+			if (id === timerOverlayLoadId) timerOverlayEvents = overlay;
+		})();
+	}
+
+	$: staticTimerEvents = timerOverlayEvents.filter((e) => !e.isActiveTimer);
+	$: activeTimerEvents = timerOverlayEvents.filter((e) => e.isActiveTimer && e.dateIso === iso);
+
 	$: allCalendarEvents = ((): CalendarEvent[] => {
 		const out: CalendarEvent[] = [];
 		const plannerLineKeys = new Set<string>();
@@ -125,6 +163,9 @@
 			);
 			if (e && e.dateIso === iso) out.push(e);
 		}
+		for (const e of staticTimerEvents) {
+			if (e.dateIso === iso) out.push(e);
+		}
 		return out;
 	})();
 
@@ -161,6 +202,13 @@
 
 	function goNext(): void {
 		onFocalIsoChange(addDaysIso(iso, 1));
+	}
+
+	function timedEventKey(e: CalendarEvent): string {
+		if (e.planner) return `${e.planner.file.path}:${e.planner.line}:${e.startMinutes}`;
+		if (e.task) return `${e.task.file.path}:${e.task.line ?? ""}:${e.startMinutes}`;
+		if (e.timerEntryId) return `timer:${e.timerEntryId}:${e.startMinutes}`;
+		return `${e.meeting?.file.path ?? e.kind}:${e.startMinutes}`;
 	}
 
 	function goToday(): void {
@@ -276,7 +324,7 @@
 					{/each}
 				</div>
 				<div class="fulcrum-calendar__day-events-overlay">
-					{#each timed as e (e.planner ? `${e.planner.file.path}:${e.planner.line}:${e.startMinutes}` : e.task ? `${e.task.file.path}:${e.task.line ?? ""}:${e.startMinutes}` : `${e.meeting?.file.path ?? ""}:${e.startMinutes}`)}
+					{#each timed as e (timedEventKey(e))}
 						{@const totalMinutes = 24 * 60}
 						{@const topPct = ((e.startMinutes ?? 0) / totalMinutes) * 100}
 						{@const heightPct = ((e.durationMinutes ?? 30) / totalMinutes) * 100}
@@ -299,12 +347,25 @@
 									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
 								{:else if e.kind === "planner"}
 									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+								{:else if e.kind === "logged" || e.kind === "planned"}
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
 								{:else}
 									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
 								{/if}
 							</span>
 							<span class="fulcrum-calendar__timed-event-title">{e.title}</span>
 						</button>
+					{/each}
+					{#each activeTimerEvents as e (e.timerEntryId)}
+						{#if e.startMinutes != null && e.timerStartMs != null}
+							<TimelineActiveTimerBlock
+								startMinutes={e.startMinutes}
+								startTimeMs={e.timerStartMs}
+								title={e.title}
+								accentCss={e.accentCss}
+								onOpen={e.open}
+							/>
+						{/if}
 					{/each}
 					{#if isToday}
 						<div

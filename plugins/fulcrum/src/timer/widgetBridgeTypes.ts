@@ -73,8 +73,8 @@ export function emptyBridgeFile(deviceId: string): WidgetBridgeFile {
 		activeTimers: [],
 		quickStartItems: [],
 		timerSettings: {
-			entriesKey: "fulcrumTimerEntries",
-			legacyEntriesKeys: ["timeEntries", "lapseEntries"],
+			entriesKey: "timeEntries",
+			legacyEntriesKeys: ["fulcrumTimerEntries", "lapseEntries"],
 			startTimeKey: "startTime",
 			endTimeKey: "endTime",
 			totalTimeKey: "totalTimeTracked",

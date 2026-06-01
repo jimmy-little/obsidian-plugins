@@ -1,5 +1,6 @@
 import {
 	App,
+	MarkdownView,
 	type MarkdownPostProcessorContext,
 	Modal,
 	Notice,
@@ -116,6 +117,9 @@ export class TimerModule {
 	statusBarItem: HTMLElement | null = null; // Status bar element
 	statusBarUpdateInterval: number | null = null; // Interval for updating status bar
 	pendingSaves: Promise<void>[] = []; // Track pending save operations
+	/** Suppress metadata-cache reload while timer frontmatter (or related note YAML) is being written. */
+	private frontmatterReloadSuppressCounts = new Map<string, number>();
+	private timerEntryReloadHandles = new Map<string, number>();
 	colorMeasurementEl: HTMLElement | null = null; // Hidden element for measuring computed colors
 	/** Planner note path → cached planned blocks (mtime-validated). */
 	plannedDayCache: Map<string, { mtime: number; blocks: PlannedBlock[] }> = new Map();
@@ -221,6 +225,7 @@ export class TimerModule {
 		void this.activityEmbed?.refresh();
 		void this.activeTimersPanel?.refresh();
 		void this.floatingActiveTimersPanel?.refresh();
+		this.host.bumpTimerRevision?.();
 		// Native widget bridge (tabled): this.host.scheduleWidgetBridgeSync?.();
 	}
 
@@ -312,6 +317,7 @@ export class TimerModule {
 		this.registerEvent(
 			this.app.metadataCache.on('changed', (file) => {
 				if (!(file instanceof TFile)) return;
+				if (this.isFrontmatterReloadSuppressed(file.path)) return;
 				this.invalidateCacheForFile(file.path);
 				const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
 					| Record<string, unknown>
@@ -319,10 +325,21 @@ export class TimerModule {
 				if (!this.fileHasTimerFrontmatter(fm) && !this.timeData.has(file.path)) {
 					return;
 				}
-				void this.loadEntriesFromFrontmatter(file.path).then(() => {
-					this.refreshActivityPanel();
-					this.updateStatusBar();
-				});
+				// Active editor notes update metadata on every keystroke — reload on save instead.
+				if (this.isFileOpenInMarkdownEditor(file.path)) return;
+				this.scheduleTimerEntryReload(file.path);
+			}),
+		);
+
+		this.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				if (!(file instanceof TFile) || file.extension !== 'md') return;
+				if (this.isFrontmatterReloadSuppressed(file.path)) return;
+				const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
+					| Record<string, unknown>
+					| undefined;
+				if (!this.fileHasTimerFrontmatter(fm) && !this.timeData.has(file.path)) return;
+				this.scheduleTimerEntryReload(file.path, 0);
 			}),
 		);
 
@@ -428,11 +445,7 @@ export class TimerModule {
 					
 					pageData.entries.push(newEntry);
 					
-					// Add default tag to note
-					await this.addDefaultTagToNote(filePath);
-					
-					// Update frontmatter
-					await this.updateFrontmatter(filePath);
+					await this.persistTimerStartToNote(filePath);
 					
 					// Update sidebar
 					this.refreshActivityPanel();
@@ -502,11 +515,7 @@ export class TimerModule {
 					const data = this.timeData.get(filePath)!;
 					data.entries.push(newEntry);
 					
-					// Add default tag to note
-					await this.addDefaultTagToNote(filePath);
-					
-					// Update frontmatter
-					await this.updateFrontmatter(filePath);
+					await this.persistTimerStartToNote(filePath);
 					
 					// Update sidebar
 					this.refreshActivityPanel();
@@ -714,13 +723,77 @@ export class TimerModule {
 		};
 		pageData.entries.push(newEntry);
 		const project = options?.projectName?.trim();
-		if (project) {
-			await this.mergeProjectIntoFrontmatter(notePath, project);
-		}
-		await this.addDefaultTagToNote(notePath);
-		await this.ensureLapseTimerCodeBlockInNote(notePath);
-		await this.updateFrontmatter(notePath);
+		await this.runWithFrontmatterReloadSuppressed(notePath, async () => {
+			if (project) {
+				await this.mergeProjectIntoFrontmatter(notePath, project);
+			}
+			await this.updateFrontmatter(notePath);
+			await this.addDefaultTagToNote(notePath);
+			await this.ensureLapseTimerCodeBlockInNote(notePath);
+		});
 		this.refreshActivityPanel();
+	}
+
+	/** Write running timer to note YAML without metadata-cache reload clobbering in-memory state. */
+	private async persistTimerStartToNote(filePath: string): Promise<void> {
+		await this.runWithFrontmatterReloadSuppressed(filePath, async () => {
+			await this.updateFrontmatter(filePath);
+			await this.addDefaultTagToNote(filePath);
+		});
+	}
+
+	private isFrontmatterReloadSuppressed(filePath: string): boolean {
+		return (this.frontmatterReloadSuppressCounts.get(filePath) ?? 0) > 0;
+	}
+
+	private isFileOpenInMarkdownEditor(path: string): boolean {
+		let open = false;
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const view = leaf.view;
+			if (view instanceof MarkdownView && view.file?.path === path) open = true;
+		});
+		return open;
+	}
+
+	private scheduleTimerEntryReload(filePath: string, delayMs = 800): void {
+		const existing = this.timerEntryReloadHandles.get(filePath);
+		if (existing != null) window.clearTimeout(existing);
+		const id = window.setTimeout(() => {
+			this.timerEntryReloadHandles.delete(filePath);
+			void this.loadEntriesFromFrontmatter(filePath).then(() => {
+				this.refreshActivityPanel();
+				this.updateStatusBar();
+			});
+		}, delayMs);
+		this.timerEntryReloadHandles.set(filePath, id);
+	}
+
+	private beginSuppressFrontmatterReload(filePath: string): void {
+		this.frontmatterReloadSuppressCounts.set(
+			filePath,
+			(this.frontmatterReloadSuppressCounts.get(filePath) ?? 0) + 1,
+		);
+	}
+
+	private endSuppressFrontmatterReload(filePath: string): void {
+		const next = (this.frontmatterReloadSuppressCounts.get(filePath) ?? 1) - 1;
+		if (next <= 0) {
+			this.frontmatterReloadSuppressCounts.delete(filePath);
+		} else {
+			this.frontmatterReloadSuppressCounts.set(filePath, next);
+		}
+	}
+
+	private async runWithFrontmatterReloadSuppressed<T>(
+		filePath: string,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		this.beginSuppressFrontmatterReload(filePath);
+		try {
+			return await fn();
+		} finally {
+			this.endSuppressFrontmatterReload(filePath);
+		}
 	}
 
 	/**
@@ -802,8 +875,21 @@ export class TimerModule {
 		const file = this.app.vault.getAbstractFileByPath(filePath);
 		if (!file || !(file instanceof TFile)) return;
 		try {
+			const previous = this.timeData.get(filePath);
+			const activeInMemory =
+				previous?.entries.filter((e) => e.startTime != null && e.endTime == null) ?? [];
 			const fm = (this.app.metadataCache.getFileCache(file)?.frontmatter ?? {}) as Record<string, unknown>;
-			const entries = readTimerEntriesFromFm(fm, this.settings, filePath);
+			let entries = readTimerEntriesFromFm(fm, this.settings, filePath);
+			for (const active of activeInMemory) {
+				const stillPresent = entries.some(
+					(e) =>
+						(active.id && e.id === active.id) ||
+						(e.startTime === active.startTime && e.endTime == null),
+				);
+				if (!stillPresent) {
+					entries.push(active);
+				}
+			}
 			const projectRaw = fm[this.settings.projectKey];
 			const project = typeof projectRaw === 'string' ? projectRaw : null;
 			const totalTimeTracked = entries
@@ -978,13 +1064,15 @@ export class TimerModule {
 
 	async getDefaultLabel(filePath: string): Promise<string> {
 		const settings = this.settings;
+		const fallback = () => this.labelFallbackForNote(filePath);
 		
 		if (settings.defaultLabelType === 'freeText') {
-			return settings.defaultLabelText || 'Untitled timer';
+			const configured = settings.defaultLabelText?.trim();
+			return configured || fallback();
 		} else if (settings.defaultLabelType === 'frontmatter') {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
 			if (!file || !(file instanceof TFile)) {
-				return 'Untitled timer';
+				return fallback();
 			}
 			
 			try {
@@ -1033,20 +1121,55 @@ export class TimerModule {
 				console.error('Error reading frontmatter for default label:', error);
 			}
 			
-			return 'Untitled timer';
+			return fallback();
 		} else if (settings.defaultLabelType === 'fileName') {
-			const file = this.app.vault.getAbstractFileByPath(filePath);
-			if (file && file instanceof TFile) {
-				let fileName = file.basename || 'Untitled timer';
-				if (settings.removeTimestampFromFileName) {
-					fileName = this.removeTimestampFromFileName(fileName);
-				}
-				return fileName;
-			}
-			return 'Untitled timer';
+			return this.noteTitleForLabel(filePath);
 		}
 		
-		return 'Untitled timer';
+		return fallback();
+	}
+
+	private noteTitleForLabel(filePath: string): string {
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (!file || !(file instanceof TFile)) {
+			return 'Timer';
+		}
+		let fileName = file.basename || 'Timer';
+		if (this.settings.removeTimestampFromFileName) {
+			fileName = this.removeTimestampFromFileName(fileName);
+		}
+		return fileName;
+	}
+
+	private readFrontmatterScalar(file: TFile, key: string): string | null {
+		const trimmedKey = key.trim();
+		if (!trimmedKey) return null;
+		const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
+			| Record<string, unknown>
+			| undefined;
+		if (!fm) return null;
+		const raw = fm[trimmedKey];
+		if (typeof raw !== 'string' || !raw.trim()) return null;
+		const value = raw.replace(/\[\[|\]\]/g, '').replace(/^["']+|["']+$/g, '').trim();
+		return value || null;
+	}
+
+	private labelFallbackForNote(filePath: string): string {
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (file instanceof TFile) {
+			const project = this.readFrontmatterScalar(file, this.settings.projectKey);
+			if (project) return project;
+			const entry = this.readFrontmatterScalar(file, this.settings.quickStartEntryKey);
+			if (entry) return entry;
+		}
+		const lastLabeled = this.timeData
+			.get(filePath)
+			?.entries.filter((e) => e.label.trim())
+			.at(-1);
+		if (lastLabeled?.label.trim()) {
+			return lastLabeled.label.trim();
+		}
+		return this.noteTitleForLabel(filePath);
 	}
 
 	removeTimestampFromFileName(fileName: string): string {
@@ -1772,10 +1895,7 @@ export class TimerModule {
 			}
 
 			// Add default tag to note if configured
-			await this.addDefaultTagToNote(filePath);
-
-			// Update frontmatter
-			await this.updateFrontmatter(filePath);
+			await this.persistTimerStartToNote(filePath);
 
 			// Update UI - convert input to display when timer starts
 			// Use the actual label value (from input or default) not just input.value
@@ -2883,10 +3003,10 @@ export class TimerModule {
 			}
 
 			// Edit button handler - opens modal
-			// Capture the entry index for stable lookup
-			const entryIndex = index;
-			editBtn.onclick = async () => {
-				await this.showEditModal(entryIndex, filePath, labelDisplay, labelInput, () => {
+			const entryId = entry.id;
+			editBtn.onclick = async (ev) => {
+				ev.stopPropagation();
+				await this.showEditModal(entryId, filePath, labelDisplay, labelInput, () => {
 					// Refresh cards after edit
 					const pageData = this.timeData.get(filePath);
 					if (pageData) {
@@ -2896,10 +3016,12 @@ export class TimerModule {
 			};
 
 			// Delete button handler - shows confirmation
-			deleteBtn.onclick = async () => {
+			deleteBtn.onclick = async (ev) => {
+				ev.stopPropagation();
 				const confirmed = await this.showDeleteConfirmation(entry.label);
 				if (confirmed) {
 					const pageData = this.timeData.get(filePath);
+					const entryIndex = pageData?.entries.findIndex((e) => e.id === entryId) ?? -1;
 					if (pageData && entryIndex >= 0 && entryIndex < pageData.entries.length) {
 						// Remove entry by index for stability
 						pageData.entries.splice(entryIndex, 1);
@@ -2914,11 +3036,25 @@ export class TimerModule {
 		});
 	}
 
-	async showEditModal(entryIndex: number, filePath: string, labelDisplay?: HTMLElement, labelInputParam?: HTMLInputElement | null, onSave?: () => void) {
-		// Get the entry from pageData using the index
+	async showEditModal(
+		entryRef: number | string,
+		filePath: string,
+		labelDisplay?: HTMLElement,
+		labelInputParam?: HTMLInputElement | null,
+		onSave?: () => void,
+	) {
+		// Get the entry from pageData using id or index
 		const pageData = this.timeData.get(filePath);
-		if (!pageData || entryIndex < 0 || entryIndex >= pageData.entries.length) {
-			console.error('Invalid entry index or no pageData', entryIndex, filePath);
+		if (!pageData) {
+			console.error('No pageData for edit modal', filePath);
+			return;
+		}
+		const entryIndex =
+			typeof entryRef === 'string'
+				? pageData.entries.findIndex((e) => e.id === entryRef)
+				: entryRef;
+		if (entryIndex < 0 || entryIndex >= pageData.entries.length) {
+			console.error('Invalid entry reference or no pageData', entryRef, filePath);
 			return;
 		}
 		const entry = pageData.entries[entryIndex];
@@ -3359,8 +3495,10 @@ export class TimerModule {
 			tags
 		};
 		pageData.entries.push(entry);
-		await this.updateFrontmatter(file.path);
-		await this.addDefaultTagToNote(file.path);
+		await this.runWithFrontmatterReloadSuppressed(file.path, async () => {
+			await this.updateFrontmatter(file.path);
+			await this.addDefaultTagToNote(file.path);
+		});
 		this.refreshActivityPanel();
 		this.updateStatusBar();
 	}
@@ -3654,13 +3792,14 @@ export class TimerModule {
 	}
 
 	async updateFrontmatter(filePath: string) {
-		const file = this.app.vault.getAbstractFileByPath(filePath);
-		if (!file || !(file instanceof TFile)) return;
+		return this.runWithFrontmatterReloadSuppressed(filePath, async () => {
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (!file || !(file instanceof TFile)) return;
 
-		const pageData = this.timeData.get(filePath);
-		if (!pageData) return;
+			const pageData = this.timeData.get(filePath);
+			if (!pageData) return;
 
-		const content = await this.app.vault.read(file);
+			const content = await this.app.vault.read(file);
 		
 		// Calculate startTime (earliest start from all entries that have started)
 		const startedEntries = pageData.entries.filter(e => e.startTime !== null);
@@ -3674,24 +3813,11 @@ export class TimerModule {
 			? Math.max(...completedEntries.map(e => e.endTime!))
 			: null;
 
-		// Build entries array (all entries - save everything)
-		const entries = pageData.entries.map(entry => ({
-			label: entry.label,
-			start: this.formatTimestampForFrontmatter(entry.startTime),
-			end: this.formatTimestampForFrontmatter(entry.endTime),
-			duration: Math.floor(entry.duration / 1000),
-			tags: entry.tags || []
-		}));
-
-		// Calculate totalTimeTracked (sum of all completed entry durations)
 		const totalTimeTracked = pageData.entries
 			.filter(e => e.endTime !== null)
 			.reduce((sum, e) => sum + e.duration, 0);
-
-		// Format totalTimeTracked as hh:mm:ss
 		const totalTimeFormatted = this.formatTimeAsHHMMSS(totalTimeTracked);
 
-		// Get configured keys
 		const startTimeKey = this.settings.startTimeKey;
 		const endTimeKey = this.settings.endTimeKey;
 		const entriesKey = resolveEntriesWriteKey(
@@ -3699,6 +3825,7 @@ export class TimerModule {
 			this.settings,
 		);
 		const totalTimeKey = this.settings.totalTimeKey;
+		const useTaskNotesFormat = entriesKey === this.settings.entriesKey.trim();
 
 		// Build the Lapse frontmatter section as a string
 		let lapseFrontmatter = '';
@@ -3713,22 +3840,40 @@ export class TimerModule {
 		}
 		
 		// Add entries as YAML array
-		if (entries.length > 0) {
+		if (pageData.entries.length > 0) {
 			lapseFrontmatter += `${entriesKey}:\n`;
-			entries.forEach(entry => {
-				const escapedLabel = entry.label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-				lapseFrontmatter += `  - label: "${escapedLabel}"\n`;
-				if (entry.start) {
-					lapseFrontmatter += `    start: ${entry.start}\n`;
+			for (const entry of pageData.entries) {
+				if (useTaskNotesFormat) {
+					const escapedLabel = entry.label.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+					lapseFrontmatter += `  - description: "${escapedLabel}"\n`;
+					const start = this.formatTimestampForFrontmatter(entry.startTime);
+					const end = this.formatTimestampForFrontmatter(entry.endTime);
+					if (start) {
+						lapseFrontmatter += `    startTime: ${start}\n`;
+					}
+					if (end) {
+						lapseFrontmatter += `    endTime: ${end}\n`;
+					}
+					if (entry.tags?.length) {
+						lapseFrontmatter += `    tags: [${entry.tags.map((t: string) => `"${t}"`).join(", ")}]\n`;
+					}
+				} else {
+					const escapedLabel = entry.label.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+					lapseFrontmatter += `  - label: "${escapedLabel}"\n`;
+					const start = this.formatTimestampForFrontmatter(entry.startTime);
+					const end = this.formatTimestampForFrontmatter(entry.endTime);
+					if (start) {
+						lapseFrontmatter += `    start: ${start}\n`;
+					}
+					if (end) {
+						lapseFrontmatter += `    end: ${end}\n`;
+					}
+					lapseFrontmatter += `    duration: ${Math.floor(entry.duration / 1000)}\n`;
+					if (entry.tags?.length) {
+						lapseFrontmatter += `    tags: [${entry.tags.map((t: string) => `"${t}"`).join(", ")}]\n`;
+					}
 				}
-				if (entry.end) {
-					lapseFrontmatter += `    end: ${entry.end}\n`;
-				}
-				lapseFrontmatter += `    duration: ${entry.duration}\n`;
-				if (entry.tags && entry.tags.length > 0) {
-					lapseFrontmatter += `    tags: [${entry.tags.map((t: string) => `"${t}"`).join(', ')}]\n`;
-				}
-			});
+			}
 		} else {
 			lapseFrontmatter += `${entriesKey}: []\n`;
 		}
@@ -3790,6 +3935,7 @@ export class TimerModule {
 		this.invalidateCacheForFile(filePath);
 		this.refreshActivityPanel();
 		this.updateStatusBar();
+		});
 	}
 
 	async activateView(): Promise<void> {
@@ -3886,6 +4032,11 @@ export class TimerModule {
 			window.clearInterval(this.statusBarUpdateInterval);
 			this.statusBarUpdateInterval = null;
 		}
+
+		for (const id of this.timerEntryReloadHandles.values()) {
+			window.clearTimeout(id);
+		}
+		this.timerEntryReloadHandles.clear();
 		
 		// Wait for any pending cache saves to complete
 		if (this.pendingSaves.length > 0) {

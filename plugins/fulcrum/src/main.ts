@@ -58,7 +58,7 @@ import {DEFAULT_SETTINGS, DASHBOARD_ACTIVITY_MAX_DAYS, type FulcrumSettings} fro
 import {migrateKanbanSettings} from "./fulcrum/kanban/settingsKey";
 import {postTaskNotesToggleStatus} from "./fulcrum/taskNotesApi";
 import {toggleInlineTaskLine, toggleTaskNoteFrontmatter} from "./fulcrum/taskVaultToggle";
-import {bumpSettingsRevision} from "./fulcrum/stores";
+import {bumpSettingsRevision, bumpTimerRevision} from "./fulcrum/stores";
 import {appendTimeBlockToDailyNote as appendTimeBlockLineToDailyNote} from "./fulcrum/utils/dailyPlannerEvents";
 import type {IndexedPlannerEvent, IndexedTask} from "./fulcrum/types";
 import {registerCompanionDocChrome} from "./fulcrum/companionDocChrome";
@@ -129,18 +129,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		});
 
 		this.registerEvent(
-			this.app.metadataCache.on("resolve", () => {
-				this.vaultIndex.scheduleRebuild();
-			}),
-		);
-		this.registerEvent(
-			this.app.metadataCache.on("resolved", () => {
-				this.vaultIndex.scheduleRebuild();
-			}),
-		);
-		this.registerEvent(
-			this.app.metadataCache.on("changed", () => {
-				this.vaultIndex.scheduleRebuild();
+			this.app.metadataCache.on("changed", (file) => {
+				if (file instanceof TFile && file.extension === "md") {
+					this.vaultIndex.scheduleRebuildFromMetadataChange(file);
+				}
 			}),
 		);
 		this.registerEvent(
@@ -639,6 +631,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		Object.assign(this.settings, partial);
 		await this.saveSettings();
 		bumpSettingsRevision();
+	}
+
+	bumpTimerRevision(): void {
+		bumpTimerRevision();
 	}
 
 	openLinkedNoteFromFulcrum(path: string, anchorLeaf?: WorkspaceLeaf): void {

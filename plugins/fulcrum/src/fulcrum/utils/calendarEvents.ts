@@ -29,6 +29,12 @@ export type CalendarEvent = {
 	meeting?: IndexedMeeting;
 	/** Daily-note planner line */
 	planner?: IndexedPlannerEvent;
+	/** Timer overlay: entry id for stable keys and live updates */
+	timerEntryId?: string;
+	/** Timer overlay: start timestamp (ms) for growing active blocks */
+	timerStartMs?: number;
+	/** Timer still running (no end time yet) */
+	isActiveTimer?: boolean;
 };
 
 const DEFAULT_DURATION_MINUTES = 30;
