@@ -170,3 +170,61 @@ export async function renderMacroDoughnutChart(
 		},
 	} as Record<string, unknown>);
 }
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Small SVG macro donut for calendar cells (matches daily doughnut colors). */
+export function renderMacroMiniDonut(
+	proteinCal: number,
+	fatCal: number,
+	netCarbsCal: number,
+	size = 40,
+): SVGSVGElement {
+	const stroke = Math.max(3.5, Math.round(size * 0.2));
+	const r = (size - stroke) / 2;
+	const cx = size / 2;
+	const cy = size / 2;
+	const circumference = 2 * Math.PI * r;
+
+	const segments = [
+		{ value: proteinCal, color: MACRO_COLORS.protein },
+		{ value: fatCal, color: MACRO_COLORS.fat },
+		{ value: netCarbsCal, color: MACRO_COLORS.netCarbs },
+	].filter((s) => s.value > 0);
+
+	const svg = document.createElementNS(SVG_NS, "svg");
+	svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+	svg.setAttribute("class", "pulse-nutrition-cal__donut");
+	svg.setAttribute("aria-hidden", "true");
+
+	const track = document.createElementNS(SVG_NS, "circle");
+	track.setAttribute("cx", String(cx));
+	track.setAttribute("cy", String(cy));
+	track.setAttribute("r", String(r));
+	track.setAttribute("fill", "none");
+	track.setAttribute("class", "pulse-nutrition-cal__donut-track");
+	track.setAttribute("stroke-width", String(stroke));
+	svg.appendChild(track);
+
+	const total = segments.reduce((sum, s) => sum + s.value, 0);
+	if (total <= 0) return svg;
+
+	let offset = 0;
+	for (const seg of segments) {
+		const len = (seg.value / total) * circumference;
+		const arc = document.createElementNS(SVG_NS, "circle");
+		arc.setAttribute("cx", String(cx));
+		arc.setAttribute("cy", String(cy));
+		arc.setAttribute("r", String(r));
+		arc.setAttribute("fill", "none");
+		arc.setAttribute("stroke", seg.color);
+		arc.setAttribute("stroke-width", String(stroke));
+		arc.setAttribute("stroke-dasharray", `${len} ${circumference - len}`);
+		arc.setAttribute("stroke-dashoffset", String(-offset));
+		arc.setAttribute("transform", `rotate(-90 ${cx} ${cy})`);
+		svg.appendChild(arc);
+		offset += len;
+	}
+
+	return svg;
+}

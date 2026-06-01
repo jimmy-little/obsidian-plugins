@@ -1,0 +1,8 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"include": ["src/**/*.ts"],
+	"compilerOptions": {
+		"lib": ["DOM", "ES2018", "ES2022"],
+		"types": ["node"]
+	}
+}

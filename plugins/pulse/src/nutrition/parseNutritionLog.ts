@@ -32,10 +32,29 @@ function parseFoodItem(token: string): NutritionFoodItem | null {
 	return { name: trimmed, calories: 0, protein: 0, fat: 0, netCarbs: 0 };
 }
 
+/** Split item list on commas not inside parentheses (e.g. `Turkey (Ground, Cooked) (304cal/41p), …`). */
+function splitFoodItemTokens(raw: string): string[] {
+	const tokens: string[] = [];
+	let depth = 0;
+	let start = 0;
+	for (let i = 0; i < raw.length; i++) {
+		const ch = raw[i];
+		if (ch === "(") depth++;
+		else if (ch === ")") depth = Math.max(0, depth - 1);
+		else if (ch === "," && depth === 0) {
+			const token = raw.slice(start, i).trim();
+			if (token) tokens.push(token);
+			start = i + 1;
+		}
+	}
+	const last = raw.slice(start).trim();
+	if (last) tokens.push(last);
+	return tokens;
+}
+
 function parseFoodItems(raw: string | null): NutritionFoodItem[] {
 	if (!raw?.trim()) return [];
-	return raw
-		.split(",")
+	return splitFoodItemTokens(raw)
 		.map(parseFoodItem)
 		.filter((x): x is NutritionFoodItem => x != null);
 }

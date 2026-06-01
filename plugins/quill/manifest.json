@@ -1,0 +1,11 @@
+{
+	"id": "quill",
+	"name": "Quill",
+	"version": "0.0.5",
+	"minAppVersion": "0.15.0",
+	"description": "A Day One-style journal for Obsidian.",
+	"author": "Jimmy Little",
+	"authorUrl": "https://github.com/jimmy-little/obsidian-plugins",
+	"isDesktopOnly": false,
+	"styles": ["styles.css"]
+}

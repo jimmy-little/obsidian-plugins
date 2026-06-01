@@ -134,8 +134,9 @@ export async function renderNutritionDayBody(
 
 	for (const meal of meals) {
 		const mealBlock = mealsSection.createDiv({ cls: "pulse-nutrition-day__meal" });
+		const mealMain = mealBlock.createDiv({ cls: "pulse-nutrition-day__meal-main" });
 
-		const mealHead = mealBlock.createDiv({ cls: "pulse-nutrition-day__meal-head" });
+		const mealHead = mealMain.createDiv({ cls: "pulse-nutrition-day__meal-head" });
 		const titleRow = mealHead.createDiv({ cls: "pulse-nutrition-day__meal-title-row" });
 		titleRow.createEl("h4", { text: meal.meal, cls: "pulse-nutrition-day__meal-title" });
 		if (meal.time) {
@@ -152,7 +153,7 @@ export async function renderNutritionDayBody(
 		mealStats.createSpan({ text: `${Math.round(meal.netCarbs)}c` });
 
 		if (meal.items.length > 0) {
-			const foods = mealBlock.createDiv({ cls: "pulse-nutrition-day__foods" });
+			const foods = mealMain.createDiv({ cls: "pulse-nutrition-day__foods" });
 			foods.createEl("h5", { text: "Foods", cls: "pulse-nutrition-day__foods-title" });
 			const list = foods.createEl("ul", { cls: "pulse-nutrition-day__food-list" });
 			for (const item of meal.items) {
@@ -170,21 +171,23 @@ export async function renderNutritionDayBody(
 			}
 		}
 
-		const mealChartWrap = mealBlock.createDiv({ cls: "pulse-nutrition-day__chart-wrap pulse-nutrition-day__chart-wrap--meal" });
+		const mealChartWrap = mealBlock.createDiv({
+			cls: "pulse-nutrition-day__chart-wrap pulse-nutrition-day__chart-wrap--meal pulse-nutrition-day__chart-wrap--doughnut",
+		});
 		const mc = macroCaloriesFromGrams(meal);
 		const mealCanvasWrap = mealChartWrap.createDiv({
-			cls: "pulse-workout-chart-container pulse-nutrition-day__chart pulse-nutrition-day__chart--meal",
+			cls: "pulse-workout-chart-container pulse-nutrition-day__chart pulse-nutrition-day__chart--meal pulse-nutrition-day__chart--doughnut",
 		});
 		const mealCanvas = mealCanvasWrap.createEl("canvas");
-		mealCanvas.width = 320;
-		mealCanvas.height = 160;
+		mealCanvas.width = 280;
+		mealCanvas.height = 180;
 		try {
-			const chart = await renderMacroStackedBarChart(mealCanvas, [{
-				label: meal.meal,
-				proteinCal: mc.protein,
-				fatCal: mc.fat,
-				netCarbsCal: mc.netCarbs,
-			}], { compact: true, yTitle: "Cal" });
+			const chart = await renderMacroDoughnutChart(
+				mealCanvas,
+				mc.protein,
+				mc.fat,
+				mc.netCarbs,
+			);
 			charts.push(chart);
 		} catch (e) {
 			console.warn("Nutrition meal chart error:", e);
