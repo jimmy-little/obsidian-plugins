@@ -85,7 +85,8 @@ export function buildHeatmapGrid(
 			const inRange = t >= rangeStart.getTime() && t <= rangeEnd.getTime();
 			const dateKey = toISODateLocal(cellDate);
 			const count = inRange ? (countsMap.get(dateKey) ?? 0) : 0;
-			const level = inRange ? (countToLevel(count, thresholds) as 0 | 1 | 2 | 3 | 4) : 0;
+			let level: 0 | 1 | 2 | 3 | 4 = inRange ? (countToLevel(count, thresholds) as 0 | 1 | 2 | 3 | 4) : 0;
+			if (inRange && count > 0 && level === 0) level = 1;
 			col.push({dateKey, inRange, count, level});
 		}
 		columns.push(col);

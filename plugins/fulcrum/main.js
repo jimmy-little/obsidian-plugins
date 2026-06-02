@@ -196,6 +196,16 @@ ${l}
 	outline-offset: 1px;
 }
 
+/* Visible hover ring \u2014 native \`title\` tooltips alone are easy to miss on 11px cells. */
+.suite-heatmap__day:not(.suite-heatmap__day--out):hover,
+.suite-heatmap__day:not(.suite-heatmap__day--out).suite-heatmap__day--hover,
+.suite-heatmap__day:not(.suite-heatmap__day--out):focus-visible {
+	outline: 2px solid var(--text-normal);
+	outline-offset: -1px;
+	position: relative;
+	z-index: 2;
+}
+
 .suite-heatmap__day--out {
 	background: var(--suite-heatmap-out);
 	border-color: transparent;

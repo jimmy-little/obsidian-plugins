@@ -13,15 +13,16 @@ export function countToLevel(count: number, thresholds: readonly number[] = DEFA
 
 /**
  * Scale thresholds from the max count in the dataset (GitHub-style relative intensity).
- * Produces four ascending thresholds so `countToLevel` maps 1…max into four bands.
+ * First band starts at 1 so any day with activity gets a visible tint (never count>0 + level 0).
  */
 export function relativeThresholds(maxCount: number): number[] {
 	if (maxCount <= 0) return [...DEFAULT_LEVEL_THRESHOLDS];
 	if (maxCount <= 4) return [1, 2, 3, 4];
 	return [
-		Math.max(1, Math.ceil(maxCount * 0.25)),
-		Math.max(1, Math.ceil(maxCount * 0.5)),
-		Math.max(1, Math.ceil(maxCount * 0.75)),
+		1,
+		Math.max(2, Math.ceil(maxCount * 0.25)),
+		Math.max(3, Math.ceil(maxCount * 0.5)),
+		Math.max(4, Math.ceil(maxCount * 0.75)),
 		maxCount,
 	];
 }

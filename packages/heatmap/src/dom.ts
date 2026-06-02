@@ -86,6 +86,7 @@ export function createHeatmapElement(grid: HeatmapGrid, options?: HeatmapDomOpti
 			dayEl.className = "suite-heatmap__day";
 			if (!cell.inRange) dayEl.classList.add("suite-heatmap__day--out");
 			dayEl.dataset.level = String(cell.level);
+			dayEl.dataset.dateKey = cell.dateKey;
 			const label = cell.inRange
 				? `${cell.dateKey} — ${cell.count === 0 ? "No activity" : `${cell.count} ${cell.count === 1 ? "interaction" : "interactions"}`}`
 				: `${cell.dateKey} (outside range)`;
@@ -117,6 +118,22 @@ export function createHeatmapElement(grid: HeatmapGrid, options?: HeatmapDomOpti
 		}
 		gridEl.appendChild(colEl);
 	}
+
+	function clearHoverHighlights(): void {
+		Array.from(gridEl.querySelectorAll(".suite-heatmap__day--hover")).forEach((el) => {
+			el.classList.remove("suite-heatmap__day--hover");
+		});
+	}
+
+	gridEl.addEventListener("mouseover", (e) => {
+		const day = (e.target as HTMLElement | null)?.closest?.(".suite-heatmap__day");
+		if (!(day instanceof HTMLElement) || !gridEl.contains(day)) return;
+		clearHoverHighlights();
+		day.classList.add("suite-heatmap__day--hover");
+	});
+	gridEl.addEventListener("mouseleave", () => {
+		clearHoverHighlights();
+	});
 
 	const topRow = document.createElement("div");
 	topRow.className = "suite-heatmap__top";

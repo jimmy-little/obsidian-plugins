@@ -66,6 +66,10 @@ export function renderWorkoutSessionHeader(
 		mkHeadBtn("layout-dashboard", "Home", goHome);
 	}
 
+	mkHeadBtn("refresh-cw", "Scan for Health and Workout Imports", () => {
+		void plugin.importManager.scanAndImport();
+	});
+
 	mkHeadBtn("pencil", "Rename workout", () => {
 		new WorkoutRenameModal(
 			plugin.app,

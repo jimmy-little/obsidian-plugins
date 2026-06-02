@@ -4,6 +4,7 @@ import { loadBodyCompSeries } from "../stats/loadBodyCompSeries";
 import type { BodyCompDay, BodyMetricDef, BodyTimeRange } from "../stats/bodyCompTypes";
 import { BODY_METRIC_DEFS } from "../stats/bodyCompTypes";
 import { renderSmoothLineChart } from "./charts";
+import { appendScanRefreshButton } from "../views/scanRefreshButton";
 
 const RANGE_OPTIONS: { id: BodyTimeRange; label: string }[] = [
 	{ id: "week", label: "Week" },
@@ -12,6 +13,14 @@ const RANGE_OPTIONS: { id: BodyTimeRange; label: string }[] = [
 	{ id: "year", label: "Year" },
 	{ id: "all", label: "All Time" },
 ];
+
+type GoalMetricKey = "weight" | "bmi" | "bfp";
+
+const GOAL_SETTING_KEY: Record<GoalMetricKey, keyof PulsePlugin["settings"]> = {
+	weight: "bodyGoalWeight",
+	bmi: "bodyGoalBmi",
+	bfp: "bodyGoalBfp",
+};
 
 function toIsoDate(d: Date): string {
 	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -54,12 +63,27 @@ function formatDelta(def: BodyMetricDef, delta: number | undefined, hasRange: bo
 	return `${sign}${f}${u}`;
 }
 
-/** Y-axis for weight chart: goal at bottom, headroom above highest reading. */
-function weightChartScale(values: number[], goalWeight: number): { yMin: number; yMax: number } {
-	const maxVal = Math.max(...values);
-	const span = Math.max(maxVal - goalWeight, 1);
-	const pad = Math.max(span * 0.1, 2);
-	return { yMin: goalWeight, yMax: maxVal + pad };
+/** Y-axis anchored at goal (bottom), headroom above highest reading. */
+function goalChartScale(values: number[], goal: number): { yMin: number; yMax: number } {
+	const maxVal = Math.max(...values, goal);
+	const span = Math.max(maxVal - goal, 1);
+	const pad = Math.max(span * 0.1, defPadForGoal(goal));
+	return { yMin: goal, yMax: maxVal + pad };
+}
+
+function defPadForGoal(goal: number): number {
+	if (goal >= 100) return 2;
+	if (goal >= 10) return 0.5;
+	return 0.2;
+}
+
+function goalForMetric(
+	plugin: PulsePlugin,
+	key: GoalMetricKey,
+): number | undefined {
+	const settingKey = GOAL_SETTING_KEY[key];
+	const raw = plugin.settings[settingKey];
+	return typeof raw === "number" && raw > 0 && Number.isFinite(raw) ? raw : undefined;
 }
 
 export class BodyCompTab {
@@ -87,7 +111,10 @@ export class BodyCompTab {
 		const wrap = container.createDiv({ cls: "pulse-body" });
 
 		const head = wrap.createDiv({ cls: "pulse-body__head" });
-		head.createEl("h2", { text: "Body", cls: "pulse-pm__main-title pulse-body__title" });
+		const headTop = head.createDiv({ cls: "pulse-pm__main-head-row pulse-body__head-top" });
+		headTop.createEl("h2", { text: "Body", cls: "pulse-pm__main-title pulse-body__title" });
+		const headActions = headTop.createDiv({ cls: "pulse-pm__main-head-actions" });
+		appendScanRefreshButton(this.plugin, headActions);
 
 		const seg = head.createDiv({ cls: "pulse-body__segmented", attr: { role: "tablist" } });
 		for (const opt of RANGE_OPTIONS) {
@@ -188,13 +215,17 @@ export class BodyCompTab {
 		addStat("Current", formatVal(def, current));
 		addStat("Change", formatDelta(def, delta, points.length >= 2));
 
-		const goalWeight =
-			def.key === "weight" ? this.plugin.settings.bodyGoalWeight : undefined;
-		if (def.key === "weight") {
-			this.renderWeightGoalSetting(left, goalWeight);
-			if (goalWeight != null && goalWeight > 0 && current != null) {
-				const toGo = current - goalWeight;
-				addStat("Goal", formatVal(def, goalWeight));
+		const goalKey = def.key as GoalMetricKey;
+		const goal =
+			def.key === "weight" || def.key === "bmi" || def.key === "bfp"
+				? goalForMetric(this.plugin, goalKey)
+				: undefined;
+
+		if (goal != null && (def.key === "weight" || def.key === "bmi" || def.key === "bfp")) {
+			this.renderMetricGoalSetting(left, def, goalKey, goal);
+			if (current != null) {
+				const toGo = current - goal;
+				addStat("Goal", formatVal(def, goal));
 				addStat("To go", formatDelta(def, toGo, true));
 			}
 		}
@@ -214,9 +245,7 @@ export class BodyCompTab {
 
 		const chartPoints = points.map((p) => ({ x: p.date.slice(5), y: p.v }));
 		const chartOpts =
-			goalWeight != null && goalWeight > 0
-				? weightChartScale(points.map((p) => p.v), goalWeight)
-				: undefined;
+			goal != null && goal > 0 ? goalChartScale(points.map((p) => p.v), goal) : undefined;
 		try {
 			const chart = await renderSmoothLineChart(canvas, chartPoints, def.label, chartOpts);
 			this.charts.push(chart);
@@ -226,32 +255,45 @@ export class BodyCompTab {
 		}
 	}
 
-	private renderWeightGoalSetting(parent: HTMLElement, goalWeight: number | undefined): void {
+	private renderMetricGoalSetting(
+		parent: HTMLElement,
+		def: BodyMetricDef,
+		key: GoalMetricKey,
+		goalValue: number | undefined,
+	): void {
+		const labels: Record<GoalMetricKey, { label: string; placeholder: string; aria: string }> = {
+			weight: { label: "Goal weight", placeholder: "lb", aria: "Goal weight in pounds" },
+			bmi: { label: "Goal BMI", placeholder: "BMI", aria: "Goal BMI" },
+			bfp: { label: "Goal body fat", placeholder: "%", aria: "Goal body fat percentage" },
+		};
+		const copy = labels[key];
+		const settingKey = GOAL_SETTING_KEY[key];
+
 		const row = parent.createDiv({ cls: "pulse-body-card__goal" });
-		row.createSpan({ cls: "pulse-body-card__goal-label", text: "Goal weight" });
+		row.createSpan({ cls: "pulse-body-card__goal-label", text: copy.label });
 
 		const input = row.createEl("input", {
 			type: "number",
 			cls: "pulse-body-card__goal-input",
 			attr: {
-				step: "0.1",
+				step: key === "weight" ? "0.1" : "0.1",
 				min: "0",
-				placeholder: "lb",
-				"aria-label": "Goal weight in pounds",
+				placeholder: copy.placeholder,
+				"aria-label": copy.aria,
 			},
 		});
-		if (goalWeight != null && goalWeight > 0) {
-			input.value = String(goalWeight);
+		if (goalValue != null && goalValue > 0) {
+			input.value = String(goalValue);
 		}
 
 		let saveTimer: ReturnType<typeof setTimeout> | null = null;
 		const persist = () => {
 			const raw = input.value.trim();
 			if (!raw) {
-				this.plugin.settings.bodyGoalWeight = undefined;
+				(this.plugin.settings[settingKey] as number | undefined) = undefined;
 			} else {
 				const n = parseFloat(raw);
-				this.plugin.settings.bodyGoalWeight =
+				(this.plugin.settings[settingKey] as number | undefined) =
 					Number.isFinite(n) && n > 0 ? n : undefined;
 			}
 			void this.plugin.saveSettings().then(() => this.refreshCards());

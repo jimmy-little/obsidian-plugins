@@ -11,7 +11,7 @@ import { renderSessionWorkoutBody } from "./renderSessionWorkoutBody";
 import { renderWorkoutSessionHeader } from "./renderWorkoutSessionHeader";
 import type { ExerciseNote, ExerciseLogEntry } from "../workout/types";
 import { isStandaloneSession } from "../workout/types";
-import { renderProgressChart } from "../workout/charts";
+import { createMainHeadWithRefresh, appendScanRefreshButton } from "./scanRefreshButton";
 import {
 	estimate1RM, daysAgo, relativeDate, bestSet, totalVolumeForEntry,
 	buildProgressSvg, buildActivityHeatmap,
@@ -69,19 +69,9 @@ export class PulseMainContent {
 	// ── Home (import + workout history) ──
 
 	private async renderHome(container: HTMLElement): Promise<void> {
-		const header = container.createDiv({ cls: "pulse-pm__main-head" });
-		header.createEl("h2", { text: "Pulse", cls: "pulse-pm__main-title" });
+		createMainHeadWithRefresh(container, "Pulse", this.plugin);
 
 		const content = container.createDiv({ cls: "pulse-pm__main-body" });
-
-		const actions = content.createDiv({ cls: "pulse-pm__home-actions" });
-		const scanBtn = actions.createEl("button", {
-			text: "Scan for Health & workout imports",
-			cls: "pulse-workout-btn pulse-workout-btn-primary",
-		});
-		scanBtn.addEventListener("click", () => {
-			void this.plugin.importManager.scanAndImport();
-		});
 
 		const entries = this.plugin.workoutDataManager.getAllWorkoutListEntries();
 		const enriched = await this.plugin.workoutDataManager.enrichWorkoutListEntries(entries);
@@ -92,8 +82,7 @@ export class PulseMainContent {
 	// ── Stats ──
 
 	private async renderStats(container: HTMLElement): Promise<void> {
-		const header = container.createDiv({ cls: "pulse-pm__main-head" });
-		header.createEl("h2", { text: "Stats", cls: "pulse-pm__main-title" });
+		createMainHeadWithRefresh(container, "Stats", this.plugin);
 
 		const content = container.createDiv({ cls: "pulse-pm__main-body" });
 		this.statsTab = new StatsTab(this.plugin);
@@ -109,8 +98,7 @@ export class PulseMainContent {
 	}
 
 	private async renderNutrition(container: HTMLElement): Promise<void> {
-		const header = container.createDiv({ cls: "pulse-pm__main-head" });
-		header.createEl("h2", { text: "Nutrition", cls: "pulse-pm__main-title" });
+		createMainHeadWithRefresh(container, "Nutrition", this.plugin);
 
 		const content = container.createDiv({ cls: "pulse-pm__main-body" });
 		this.nutritionTab = new NutritionTab(this.plugin, () => void this.view.refresh());
@@ -166,6 +154,8 @@ export class PulseMainContent {
 		mkExerciseHeadBtn("file-input", "Open note", () => {
 			void this.plugin.app.workspace.getLeaf("tab").openFile(exercise.file);
 		});
+
+		appendScanRefreshButton(this.plugin, actions);
 
 		const meta = header.createDiv({ cls: "pulse-pm__main-meta" });
 		if (fm.movement) meta.createSpan({ text: fm.movement, cls: "pulse-pm__tag" });
@@ -358,7 +348,10 @@ export class PulseMainContent {
 		}
 
 		const header = container.createDiv({ cls: "pulse-pm__main-head" });
-		header.createEl("h2", { text: program.name, cls: "pulse-pm__main-title" });
+		const titleRow = header.createDiv({ cls: "pulse-pm__main-head-row" });
+		titleRow.createEl("h2", { text: program.name, cls: "pulse-pm__main-title" });
+		const programActions = titleRow.createDiv({ cls: "pulse-pm__main-head-actions" });
+		appendScanRefreshButton(this.plugin, programActions);
 
 		const meta = container.createDiv({ cls: "pulse-pm__main-meta" });
 		meta.createSpan({

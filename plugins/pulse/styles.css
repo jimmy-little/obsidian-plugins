@@ -142,6 +142,16 @@
 	outline-offset: 1px;
 }
 
+/* Visible hover ring — native `title` tooltips alone are easy to miss on 11px cells. */
+.suite-heatmap__day:not(.suite-heatmap__day--out):hover,
+.suite-heatmap__day:not(.suite-heatmap__day--out).suite-heatmap__day--hover,
+.suite-heatmap__day:not(.suite-heatmap__day--out):focus-visible {
+	outline: 2px solid var(--text-normal);
+	outline-offset: -1px;
+	position: relative;
+	z-index: 2;
+}
+
 .suite-heatmap__day--out {
 	background: var(--suite-heatmap-out);
 	border-color: transparent;
@@ -2121,6 +2131,64 @@
 	border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
 }
 
+.pulse-cal__card--workout {
+	border-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border));
+}
+
+.pulse-cal__card-workout-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.35rem;
+	min-width: 0;
+}
+
+.pulse-cal__card-workout-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 1.15rem;
+	height: 1.15rem;
+	color: var(--text-muted);
+}
+
+.pulse-cal__card-workout-icon svg {
+	width: 1.05rem;
+	height: 1.05rem;
+}
+
+.pulse-cal__card-workout-icon-img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	display: block;
+}
+
+.pulse-cal__card-workout-text {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+	min-width: 0;
+	flex: 1;
+}
+
+.pulse-cal__card-workout-name {
+	font-weight: 700;
+	color: var(--text-normal);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pulse-cal__card-workout-meta {
+	color: var(--text-muted);
+	font-size: calc(var(--font-ui-smaller, 0.78rem) - 2px);
+	line-height: 1.2;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .pulse-cal__card-kcal {
 	font-weight: 700;
 	color: var(--text-normal);
@@ -3510,10 +3578,12 @@
 
 .pulse-body__head {
 	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	justify-content: space-between;
-	gap: 0.75rem 1rem;
+	flex-direction: column;
+	gap: 0.65rem;
+}
+
+.pulse-body__head-top {
+	width: 100%;
 }
 
 .pulse-body__title {

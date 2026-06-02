@@ -23,7 +23,7 @@ import {
 import {
 	renderHomeBodyCompCalendarCard,
 	renderHomeNutritionCalendarCard,
-	renderHomeWorkoutCalendarChip,
+	renderHomeWorkoutCalendarCard,
 } from "../home/homeCalendarUi";
 import { openStatsNotePath, renderHomeActivityTimeline } from "../home/homeTimelineUi";
 
@@ -268,7 +268,15 @@ export class HistoryTab {
 			}
 
 			for (const entry of byDate.get(dateStr) ?? []) {
-				renderHomeWorkoutCalendarChip(marks, entry, () => this.openSession(entry.path));
+				renderHomeWorkoutCalendarCard(
+					marks,
+					entry,
+					{
+						weightUnit: this.plugin.settings.weightUnit,
+						getIconUrl: (iconName) => this.plugin.importManager.getActivityIconUrl(iconName),
+					},
+					() => this.openSession(entry.path),
+				);
 				hasMarks = true;
 			}
 

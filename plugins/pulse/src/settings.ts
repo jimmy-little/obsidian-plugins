@@ -34,6 +34,10 @@ export interface PulseSettings extends WorkoutSettings {
 	nutritionDailyCalorieGoal: number;
 	/** Target weight (lb) — bottom of the Weight chart on the Body tab. */
 	bodyGoalWeight?: number;
+	/** Target BMI — bottom of the BMI chart on the Body tab. */
+	bodyGoalBmi?: number;
+	/** Target body fat % — bottom of the Body fat chart on the Body tab. */
+	bodyGoalBfp?: number;
 }
 
 export const DEFAULT_SETTINGS: PulseSettings = {
