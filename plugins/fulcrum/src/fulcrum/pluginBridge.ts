@@ -76,6 +76,8 @@ export interface FulcrumHost {
 		targetEl: HTMLElement,
 		path: string,
 	): void;
+	/** After project marked complete — archives empty Reminders list when Conduit is enabled. */
+	notifyConduitProjectCompleted(projectPath: string): Promise<void>;
 	/** Tabled: native widget bridge — see timer/WidgetBridge.ts */
 	// scheduleWidgetBridgeSync?(): void;
 	/** Renders markdown into a host element (e.g. activity note preview). */

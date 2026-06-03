@@ -7,9 +7,17 @@
 	import {buildAreaWorkRelatedMap, filterProjectsWorkRelated} from "../fulcrum/utils/workRelatedProjectFilter";
 	import {buildProjectSidebarCounts} from "../fulcrum/utils/projectSidebarCounts";
 	import {buildKanbanBoard, allColumnDefsForView} from "../fulcrum/kanban/buildBoard";
-	import {applyKanbanDrop} from "../fulcrum/kanban/applyDrop";
-	import {kanbanCellKey} from "../fulcrum/kanban/types";
+	import {applyKanbanDrop, applyKanbanSidebarDrop} from "../fulcrum/kanban/applyDrop";
+	import {kanbanCellKey, kanbanProjectCardId, kanbanTaskCardId} from "../fulcrum/kanban/types";
 	import type {KanbanCard} from "../fulcrum/kanban/types";
+	import {
+		FULCRUM_CALENDAR_TASK_MIME,
+		findTaskByDragKey,
+	} from "../fulcrum/calendar/calendarTaskSchedule";
+	import {
+		FULCRUM_SIDEBAR_PROJECT_MIME,
+		findProjectByDragKey,
+	} from "../fulcrum/sidebar/sidebarDrag";
 	import {kanbanConfigKey, getKanbanHiddenColumns} from "../fulcrum/kanban/settingsKey";
 	import {
 		DATE_BUCKET_IDS,
@@ -217,8 +225,16 @@
 		dragOverCell = null;
 	}
 
+	function sidebarDropTypes(types: readonly string[]): boolean {
+		return (
+			types.includes(FULCRUM_CALENDAR_TASK_MIME) ||
+			types.includes(FULCRUM_SIDEBAR_PROJECT_MIME)
+		);
+	}
+
 	function onCellDragOver(ev: DragEvent, laneId: string, columnId: string): void {
-		if (!draggedCard) return;
+		const types = ev.dataTransfer?.types ?? [];
+		if (!draggedCard && !sidebarDropTypes(types)) return;
 		ev.preventDefault();
 		if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
 		dragOverCell = kanbanCellKey(laneId, columnId);
@@ -229,9 +245,51 @@
 		if (dragOverCell === key) dragOverCell = null;
 	}
 
+	function cardFromSidebarDrop(ev: DragEvent): KanbanCard | null {
+		const types = ev.dataTransfer?.types ?? [];
+		if (types.includes(FULCRUM_CALENDAR_TASK_MIME)) {
+			if (kanbanView !== "tasks") return null;
+			const key = ev.dataTransfer?.getData(FULCRUM_CALENDAR_TASK_MIME);
+			if (!key) return null;
+			const task = findTaskByDragKey(snapshot.tasks, key);
+			if (!task || doneTask.has(task.status)) return null;
+			return {
+				kind: "task",
+				id: kanbanTaskCardId(task),
+				task,
+				done: false,
+			};
+		}
+		if (types.includes(FULCRUM_SIDEBAR_PROJECT_MIME)) {
+			if (kanbanView !== "projects") return null;
+			const key = ev.dataTransfer?.getData(FULCRUM_SIDEBAR_PROJECT_MIME);
+			if (!key) return null;
+			const project = findProjectByDragKey(activeProjects, key);
+			if (!project) return null;
+			return {kind: "project", id: kanbanProjectCardId(project), project};
+		}
+		return null;
+	}
+
 	async function onCellDrop(ev: DragEvent, laneId: string, columnId: string): Promise<void> {
 		ev.preventDefault();
 		dragOverCell = null;
+		const sidebarCard = cardFromSidebarDrop(ev);
+		if (sidebarCard) {
+			try {
+				await applyKanbanSidebarDrop(
+					plugin,
+					plugin.settings,
+					snapshot,
+					sidebarCard,
+					laneId,
+					columnId,
+				);
+			} catch {
+				/* notice in applyKanbanSidebarDrop */
+			}
+			return;
+		}
 		if (!draggedCard) return;
 		const {card, laneId: fromLane, columnId: fromCol} = draggedCard;
 		draggedCard = null;

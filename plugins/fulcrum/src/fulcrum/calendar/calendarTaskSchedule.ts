@@ -77,11 +77,46 @@ export function waitForMetadataCache(app: App, file: TFile, timeoutMs = 2500): P
 			if (settled) return;
 			settled = true;
 			window.clearTimeout(timer);
-			app.metadataCache.offref(ref);
+			if (debounce != null) window.clearTimeout(debounce);
+			app.metadataCache.offref(refChanged);
 			resolve();
 		};
-		const ref = app.metadataCache.on("changed", (f) => {
-			if (f.path === file.path) finish();
+		let debounce: number | undefined;
+		const refChanged = app.metadataCache.on("changed", (f) => {
+			if (f.path !== file.path) return;
+			if (debounce != null) window.clearTimeout(debounce);
+			debounce = window.setTimeout(finish, 80);
+		});
+		const timer = window.setTimeout(finish, timeoutMs);
+	});
+}
+
+/**
+ * Subscribe before writing the file, then await after write so list items / frontmatter
+ * are parsed before the vault index rebuilds.
+ */
+export function waitForNextFileResolved(app: App, file: TFile, timeoutMs = 3000): Promise<void> {
+	return new Promise((resolve) => {
+		let settled = false;
+		const finish = () => {
+			if (settled) return;
+			settled = true;
+			window.clearTimeout(timer);
+			if (debounce != null) window.clearTimeout(debounce);
+			app.vault.offref(modRef);
+			app.metadataCache.offref(changedRef);
+			resolve();
+		};
+		let debounce: number | undefined;
+		const scheduleFinish = () => {
+			if (debounce != null) window.clearTimeout(debounce);
+			debounce = window.setTimeout(finish, 80);
+		};
+		const modRef = app.vault.on("modify", (f) => {
+			if (f.path === file.path) scheduleFinish();
+		});
+		const changedRef = app.metadataCache.on("changed", (f) => {
+			if (f.path === file.path) scheduleFinish();
 		});
 		const timer = window.setTimeout(finish, timeoutMs);
 	});

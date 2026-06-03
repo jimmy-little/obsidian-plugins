@@ -80,6 +80,38 @@ export async function applyKanbanDrop(
 	}
 }
 
+/** Drop from the sidebar onto a kanban cell (no prior board position). */
+export async function applyKanbanSidebarDrop(
+	host: FulcrumHost,
+	settings: FulcrumSettings,
+	snapshot: IndexSnapshot,
+	card: KanbanCard,
+	toLaneId: string,
+	toColumnId: string,
+): Promise<void> {
+	const laneDim = settings.kanbanSwimlaneBy;
+	const colDim = settings.kanbanColumnBy;
+
+	try {
+		if (laneDim !== "none") {
+			await applyAxisChange(host, settings, snapshot, card, {
+				dimension: laneDim,
+				id: toLaneId,
+			});
+		}
+		await applyAxisChange(host, settings, snapshot, card, {
+			dimension: colDim,
+			id: toColumnId,
+		});
+		await host.vaultIndex.rebuild();
+	} catch (e) {
+		console.error(e);
+		const msg = e instanceof Error ? e.message : String(e);
+		new Notice(msg.length < 120 ? msg : "Could not update item.");
+		throw e;
+	}
+}
+
 export function kanbanDimensionsForSettings(settings: FulcrumSettings): {
 	column: KanbanDimension;
 	lane: KanbanSwimlaneDimension;

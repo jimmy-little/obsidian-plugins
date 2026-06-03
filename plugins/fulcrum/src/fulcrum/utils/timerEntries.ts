@@ -49,6 +49,23 @@ export function dedupeEntries(entries: TimeEntry[]): TimeEntry[] {
 	return out;
 }
 
+function isActiveEntry(e: TimeEntry): boolean {
+	return e.startTime != null && e.endTime == null;
+}
+
+/** Keep a single running entry per note (latest startTime); dedupe completed rows. */
+export function normalizeTimerEntries(entries: TimeEntry[]): TimeEntry[] {
+	const deduped = dedupeEntries(entries);
+	const completed = deduped.filter((e) => !isActiveEntry(e));
+	const actives = deduped.filter(isActiveEntry);
+	if (actives.length <= 1) return deduped;
+	let keep = actives[0]!;
+	for (const e of actives.slice(1)) {
+		if ((e.startTime ?? 0) >= (keep.startTime ?? 0)) keep = e;
+	}
+	return [...completed, keep];
+}
+
 function parseRawEntry(raw: unknown, index: number, filePath: string): TimeEntry | null {
 	if (!raw || typeof raw !== "object") return null;
 	const o = raw as Record<string, unknown>;
@@ -92,7 +109,7 @@ export function readTimerEntriesFromFm(
 			if (e) merged.push(e);
 		});
 	}
-	return dedupeEntries(merged);
+	return normalizeTimerEntries(merged);
 }
 
 /** Sum completed entry duration in minutes. */

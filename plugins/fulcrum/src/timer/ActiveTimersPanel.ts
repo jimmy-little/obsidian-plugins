@@ -72,15 +72,7 @@ export class ActiveTimersPanel {
 	}
 
 	private collectActiveTimersFromMemory(): ActiveTimerRow[] {
-		const rows: ActiveTimerRow[] = [];
-		this.plugin.timeData.forEach((pageData, filePath) => {
-			for (const entry of pageData.entries) {
-				if (entry.startTime && !entry.endTime) {
-					rows.push({filePath, entry});
-				}
-			}
-		});
-		return rows;
+		return this.plugin.listActiveTimersInMemory();
 	}
 
 	private renderRow(list: HTMLElement, {filePath, entry}: ActiveTimerRow): void {
@@ -134,17 +126,8 @@ export class ActiveTimersPanel {
 		return this.plugin.removeTimestampFromFileName(name);
 	}
 
-	private async stopTimer(filePath: string, entryId: string): Promise<void> {
-		const pageData = this.plugin.timeData.get(filePath);
-		if (!pageData) return;
-		const entry = pageData.entries.find((e) => e.id === entryId);
-		if (!entry?.startTime || entry.endTime) return;
-
-		const now = Date.now();
-		entry.endTime = now;
-		entry.duration += now - entry.startTime;
-		pageData.totalTimeTracked = pageData.entries.reduce((sum, e) => sum + e.duration, 0);
-		await this.plugin.updateFrontmatter(filePath);
+	private async stopTimer(filePath: string, _entryId: string): Promise<void> {
+		await this.plugin.stopAllActiveEntriesInFile(filePath);
 		if (this.container) await this.render(this.container);
 		this.plugin.refreshActivityPanel();
 	}

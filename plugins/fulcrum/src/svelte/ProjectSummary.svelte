@@ -233,7 +233,10 @@
 
 	function startProjectTimer(): void {
 		if (!rollup) return;
-		void plugin.startTimerForProject(rollup.project.name, rollup.project.file.path);
+		void plugin.startTimerInNote(rollup.project.file.path, {
+			projectName: rollup.project.name,
+			noteTitle: rollup.project.name,
+		});
 	}
 </script>
 
@@ -375,8 +378,8 @@
 									<button
 										type="button"
 										class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-										aria-label="Start timer (Quick Start) for this project"
-										title="Start a timer (Quick Start) for this project"
+										aria-label="Start timer in project note"
+										title="Start a timer in this project note (adds a fulcrum-timer block if needed)"
 										on:click={startProjectTimer}
 									>
 										<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"play"} aria-hidden="true"></span>
@@ -388,8 +391,8 @@
 									<button
 										type="button"
 										class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-										aria-label="Start timer (Quick Start) for this project"
-										title="Start a timer (Quick Start) for this project"
+										aria-label="Start timer in project note"
+										title="Start a timer in this project note (adds a fulcrum-timer block if needed)"
 										on:click={startProjectTimer}
 									>
 										<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"play"} aria-hidden="true"></span>

@@ -4,7 +4,7 @@
  * Uses the same vault resolution as tooling/install-to-vault.mjs (OBSIDIAN_VAULT_PATH or .vault-path.local.json).
  *
  * Plugins (order matters for your mental model; each is built via the root `npm run build` first):
- *   Pulse, Ratchet, Fulcrum, Conduit, Orbit, Repose, Chisel, Quill.
+ *   Pulse, Ratchet, Fulcrum, Orbit, Repose, Chisel, Quill.
  *
  * Usage:
  *   node tooling/install-all-to-vault.mjs
@@ -34,7 +34,6 @@ const PLUGIN_SPECS = [
 	["plugins/pulse"],
 	["plugins/ratchet"],
 	["plugins/fulcrum"],
-	["plugins/conduit"],
 	["plugins/orbit"],
 	["plugins/repose"],
 	["plugins/chisel"],

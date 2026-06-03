@@ -45,3 +45,10 @@ export const timerRevision = writable(0);
 export function bumpTimerRevision(): void {
 	timerRevision.update((n: number) => n + 1);
 }
+
+/** True while a task is being dragged from the sidebar onto the calendar. */
+export const calendarTaskDragActive = writable(false);
+
+export function setCalendarTaskDragActive(active: boolean): void {
+	calendarTaskDragActive.set(active);
+}

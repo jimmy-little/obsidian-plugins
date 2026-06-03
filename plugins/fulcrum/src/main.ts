@@ -84,11 +84,13 @@ import {DashboardView} from "./views/DashboardView";
 import {ProjectManagerView} from "./views/ProjectManagerView";
 import {ProjectView} from "./views/ProjectView";
 import {TimelineView} from "./views/TimelineView";
+import {ConduitService} from "./conduit/conduitService";
 
 export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	settings: FulcrumSettings = DEFAULT_SETTINGS;
 	vaultIndex!: VaultIndex;
 	timer!: TimerModule;
+	conduit: ConduitService | null = null;
 	/** Reused markdown leaf for “open beside” from project / linked surfaces. */
 	private readonly fulcrumCompanionLeaf: FulcrumCompanionLeaf = {current: null};
 
@@ -293,11 +295,29 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		this.registerObsidianProtocolHandler(this.manifest.id, (params) => {
 			this.handleFulcrumOpenUri(params);
 		});
+
+		this.app.workspace.onLayoutReady(() => {
+			void this.restartConduit();
+		});
 	}
 
 	onunload(): void {
 		this.vaultIndex.cancelScheduledRebuild();
+		this.conduit?.stop();
+		this.conduit = null;
 		void this.timer?.onunload();
+	}
+
+	async restartConduit(): Promise<void> {
+		this.conduit?.stop();
+		this.conduit = null;
+		if (!ConduitService.canRun(this.settings)) return;
+		this.conduit = new ConduitService(this);
+		await this.conduit.start();
+	}
+
+	async notifyConduitProjectCompleted(projectPath: string): Promise<void> {
+		await this.conduit?.onProjectCompleted(projectPath);
 	}
 
 	private handleFulcrumOpenUri(params: ObsidianProtocolData): void {
@@ -308,6 +328,29 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	}
 
 	private async applyFulcrumDeepLink(params: ObsidianProtocolData): Promise<void> {
+		const action = String(params.action ?? "")
+			.trim()
+			.toLowerCase();
+		if (action === "open_task") {
+			const path = String(params.path ?? params.file ?? "").trim();
+			const vaultParam = String(params.vault ?? "").trim();
+			if (vaultParam && vaultParam !== this.app.vault.getName()) {
+				new Notice("Fulcrum: link targets a different vault.");
+				return;
+			}
+			if (!path) {
+				new Notice("Fulcrum: open_task requires path= vault-relative file path.");
+				return;
+			}
+			const file = this.app.vault.getAbstractFileByPath(normalizePath(path));
+			if (!(file instanceof TFile)) {
+				new Notice("Fulcrum: task note not found in this vault.");
+				return;
+			}
+			await this.app.workspace.getLeaf(false).openFile(file);
+			return;
+		}
+
 		const screenRaw = String(params.screen ?? params.leaf ?? "")
 			.trim()
 			.toLowerCase()
@@ -507,6 +550,32 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (!Array.isArray(merged.projectSidebarFilterUncheckedArea)) {
 			merged.projectSidebarFilterUncheckedArea =
 				DEFAULT_SETTINGS.projectSidebarFilterUncheckedArea;
+		}
+		if (!Array.isArray(merged.taskSidebarFilterUncheckedStatus)) {
+			merged.taskSidebarFilterUncheckedStatus =
+				DEFAULT_SETTINGS.taskSidebarFilterUncheckedStatus;
+		}
+		if (!Array.isArray(merged.taskSidebarFilterUncheckedArea)) {
+			merged.taskSidebarFilterUncheckedArea = DEFAULT_SETTINGS.taskSidebarFilterUncheckedArea;
+		}
+		if (!Array.isArray(merged.taskSidebarFilterUncheckedProject)) {
+			merged.taskSidebarFilterUncheckedProject =
+				DEFAULT_SETTINGS.taskSidebarFilterUncheckedProject;
+		}
+		if (typeof merged.conduitEnabled !== "boolean") {
+			merged.conduitEnabled = DEFAULT_SETTINGS.conduitEnabled;
+		}
+		if (typeof merged.conduitRemctlPath !== "string") {
+			merged.conduitRemctlPath = DEFAULT_SETTINGS.conduitRemctlPath;
+		}
+		if (typeof merged.conduitVaultNameOverride !== "string") {
+			merged.conduitVaultNameOverride = DEFAULT_SETTINGS.conduitVaultNameOverride;
+		}
+		if (typeof merged.conduitSyncIntervalSeconds !== "number") {
+			merged.conduitSyncIntervalSeconds = DEFAULT_SETTINGS.conduitSyncIntervalSeconds;
+		}
+		if (typeof merged.conduitVaultQuietSeconds !== "number") {
+			merged.conduitVaultQuietSeconds = DEFAULT_SETTINGS.conduitVaultQuietSeconds;
 		}
 		if (
 			merged.calendarViewMode !== "month" &&

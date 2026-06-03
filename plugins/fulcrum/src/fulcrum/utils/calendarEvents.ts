@@ -3,6 +3,8 @@
  * Parses start/end times from date strings; all-day vs timed placement.
  */
 
+import type {TFile} from "obsidian";
+import type {PlannedBlock} from "../../timer/types";
 import type {IndexedMeeting, IndexedPlannerEvent, IndexedProject, IndexedTask} from "../types";
 import {meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
 import {resolveProjectAccentCss} from "./projectVisual";
@@ -31,10 +33,14 @@ export type CalendarEvent = {
 	planner?: IndexedPlannerEvent;
 	/** Timer overlay: entry id for stable keys and live updates */
 	timerEntryId?: string;
+	/** Timer overlay: tracking note path */
+	timerNotePath?: string;
 	/** Timer overlay: start timestamp (ms) for growing active blocks */
 	timerStartMs?: number;
 	/** Timer still running (no end time yet) */
 	isActiveTimer?: boolean;
+	/** Planned block from timer day note */
+	planned?: {file: TFile; block: PlannedBlock; dateIso: string};
 };
 
 const DEFAULT_DURATION_MINUTES = 30;

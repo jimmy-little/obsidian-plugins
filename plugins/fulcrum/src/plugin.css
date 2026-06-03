@@ -3047,14 +3047,45 @@ button.fulcrum-task-card__note-type:focus-visible {
 	gap: 0;
 }
 
-.fulcrum-calendar--dragging-task .fulcrum-calendar__event,
-.fulcrum-calendar--dragging-task .fulcrum-calendar__timed-event {
+/* Sidebar task drag only — keep calendar events draggable for reschedule */
+.fulcrum-calendar--sidebar-task-drag .fulcrum-calendar__event,
+.fulcrum-calendar--sidebar-task-drag .fulcrum-calendar__timed-event {
 	pointer-events: none;
 }
 
+.fulcrum-calendar--task-drag-active .fulcrum-calendar__day-cell,
+.fulcrum-calendar--task-drag-active .fulcrum-calendar__allday-cell,
+.fulcrum-calendar--task-drag-active .fulcrum-calendar__time-slot {
+	transition:
+		background-color 0.08s ease,
+		box-shadow 0.08s ease;
+}
+
+.fulcrum-calendar__drop-target--droppable {
+	outline: 1px dashed color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+	outline-offset: -1px;
+}
+
 .fulcrum-calendar__drop-target--active {
-	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
-	box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+	background: color-mix(in srgb, var(--interactive-accent) 22%, var(--background-primary)) !important;
+	box-shadow:
+		inset 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 75%, transparent),
+		0 0 0 1px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+	z-index: 2;
+}
+
+.fulcrum-calendar--task-drag-active .fulcrum-calendar__day-cell.fulcrum-calendar__drop-target--active {
+	position: relative;
+}
+
+.fulcrum-calendar--task-drag-active .fulcrum-calendar__day-cell.fulcrum-calendar__drop-target--active::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	border-radius: inherit;
+	box-shadow: inset 0 0 0 2px var(--interactive-accent);
+	opacity: 0.85;
 }
 
 .fulcrum-calendar__unscheduled {
@@ -3176,6 +3207,88 @@ button.fulcrum-task-card__note-type:focus-visible {
 	-webkit-line-clamp: 1;
 	overflow: hidden;
 	overflow-wrap: anywhere;
+}
+
+/* Task sidebar (Calendar / Kanban tasks view) */
+.fulcrum-task-list-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.65rem;
+	min-height: 0;
+}
+
+.fulcrum-task-list-panel__unscheduled {
+	flex: 0 0 auto;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+	border-radius: var(--radius-s);
+	padding: 0.5rem 0.55rem 0.6rem;
+	background: color-mix(in srgb, var(--background-secondary) 40%, var(--background-primary));
+}
+
+.fulcrum-task-list-panel__unscheduled-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.4rem 0.55rem;
+	margin-bottom: 0.45rem;
+}
+
+.fulcrum-task-list-panel__unscheduled-title {
+	margin: 0;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.fulcrum-task-list-panel__unscheduled-empty {
+	margin: 0;
+	font-size: var(--font-ui-smaller);
+}
+
+.fulcrum-task-list-panel__unscheduled-list,
+.fulcrum-task-list-panel__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.fulcrum-task-list-panel__drag-row {
+	display: flex;
+	align-items: stretch;
+	gap: 0.2rem;
+	min-width: 0;
+}
+
+.fulcrum-task-list-panel__drag-row--dragging {
+	opacity: 0.55;
+}
+
+.fulcrum-task-list-panel__drag-row .fulcrum-calendar__unscheduled-grip {
+	cursor: grab;
+	flex-shrink: 0;
+	align-self: stretch;
+}
+
+.fulcrum-task-list-panel__drag-row .fulcrum-calendar__unscheduled-grip:active {
+	cursor: grabbing;
+}
+
+.fulcrum-task-list-panel__card-wrap {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.fulcrum-task-list-panel__card-wrap .fulcrum-task-card {
+	width: 100%;
+}
+
+.fulcrum-task-list-panel__filter-panel {
+	max-height: min(50vh, 22rem);
+	overflow-y: auto;
 }
 
 .fulcrum-calendar-schedule-prompt__buttons {
@@ -3388,10 +3501,13 @@ button.fulcrum-task-card__note-type:focus-visible {
 	gap: 0.35rem;
 	width: 100%;
 	margin: 0;
-	padding: 0.4rem 0.55rem;
-	border-radius: var(--radius-m);
+	padding: 0.4rem 0.55rem 0.4rem 0.5rem;
+	border-radius: 0 var(--radius-m) var(--radius-m) 0;
 	background: var(--background-primary);
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	border-left-width: 5px;
+	border-left-style: solid;
+	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
 	box-shadow:
 		0 1px 2px color-mix(in srgb, var(--background-modifier-border) 32%, transparent),
 		0 1px 6px color-mix(in srgb, var(--background-modifier-border) 18%, transparent);
@@ -3399,10 +3515,32 @@ button.fulcrum-task-card__note-type:focus-visible {
 	line-height: 1.35;
 	white-space: normal;
 	text-align: left;
+	color: var(--text-normal);
 }
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event:hover {
 	filter: brightness(0.98);
+	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
+}
+
+.fulcrum-calendar__allday-cell .fulcrum-calendar__event--task {
+	border-left-color: var(--fulcrum-event-accent, var(--text-accent));
+}
+
+.fulcrum-calendar__allday-cell .fulcrum-calendar__event--meeting {
+	border-left-color: var(--fulcrum-event-accent, var(--color-purple, #a855f7));
+}
+
+.fulcrum-calendar__allday-cell .fulcrum-calendar__event--logged {
+	border-left-color: var(--fulcrum-event-accent, var(--color-green));
+}
+
+.fulcrum-calendar__allday-cell .fulcrum-calendar__event--planned {
+	border-left-color: var(--fulcrum-event-accent, var(--color-orange, #d97706));
+}
+
+.fulcrum-calendar__allday-cell .fulcrum-calendar__event--planner {
+	border-left-color: var(--fulcrum-event-accent, var(--text-muted));
 }
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event-icon {
@@ -3478,9 +3616,11 @@ button.fulcrum-task-card__note-type:focus-visible {
 	left: 3px;
 	right: 3px;
 	min-height: 1.35rem;
-	padding: 3px 6px;
-	border: none;
-	border-radius: var(--radius-s);
+	padding: 3px 6px 3px 5px;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+	border-left-width: 5px;
+	border-left-style: solid;
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
 	cursor: pointer;
 	overflow: hidden;
 	display: flex;
@@ -3499,38 +3639,38 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-calendar__timed-event--task {
 	background: color-mix(in srgb, var(--fulcrum-event-accent, var(--text-accent)) 14%, var(--background-primary));
 	color: var(--text-normal);
-	border-left: 3px solid var(--fulcrum-event-accent, var(--text-accent));
+	border-left-color: var(--fulcrum-event-accent, var(--text-accent));
 }
 
 .fulcrum-calendar__timed-event--meeting {
 	background: color-mix(in srgb, var(--fulcrum-event-accent, var(--color-purple, #a855f7)) 14%, var(--background-primary));
 	color: var(--text-normal);
-	border-left: 3px solid var(--fulcrum-event-accent, var(--color-purple, #a855f7));
+	border-left-color: var(--fulcrum-event-accent, var(--color-purple, #a855f7));
 }
 
 .fulcrum-calendar__event--planner,
 .fulcrum-calendar__timed-event--planner {
 	background: color-mix(in srgb, var(--text-muted) 12%, var(--background-primary));
 	color: var(--text-normal);
-	border-left: 3px solid var(--text-muted);
+	border-left-color: var(--fulcrum-event-accent, var(--text-muted));
 }
 
 .fulcrum-calendar__timed-event--note {
 	background: var(--background-modifier-hover);
 	color: var(--text-muted);
-	border-left: 3px solid var(--text-faint);
+	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
 }
 
 .fulcrum-calendar__timed-event--logged {
 	background: color-mix(in srgb, var(--fulcrum-event-accent, var(--color-green)) 14%, var(--background-primary));
 	color: var(--text-normal);
-	border-left: 3px solid var(--fulcrum-event-accent, var(--color-green));
+	border-left-color: var(--fulcrum-event-accent, var(--color-green));
 }
 
 .fulcrum-calendar__timed-event--planned {
 	background: color-mix(in srgb, var(--fulcrum-event-accent, var(--color-orange)) 14%, var(--background-primary));
 	color: var(--text-normal);
-	border-left: 3px solid var(--fulcrum-event-accent, var(--color-orange));
+	border-left-color: var(--fulcrum-event-accent, var(--color-orange));
 }
 
 .fulcrum-calendar__timed-event--active {
@@ -3864,11 +4004,22 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-calendar__event {
 	display: flex;
 	align-items: flex-start;
-	gap: 3px;
-	padding: 2px 4px;
-	border-radius: var(--radius-s);
-	border: none;
-	background: transparent;
+	gap: 0.3rem;
+	width: 100%;
+	margin: 0;
+	padding: 0.28rem 0.4rem 0.28rem 0.35rem;
+	box-sizing: border-box;
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	border-left-width: 5px;
+	border-left-style: solid;
+	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
+	background: color-mix(
+		in srgb,
+		var(--fulcrum-event-accent, var(--background-modifier-border)) 12%,
+		var(--background-primary)
+	);
+	box-shadow: 0 1px 2px color-mix(in srgb, var(--background-modifier-border) 28%, transparent);
 	cursor: pointer;
 	text-align: left;
 	font-size: 11px;
@@ -3877,14 +4028,32 @@ button.fulcrum-task-card__note-type:focus-visible {
 	overflow: hidden;
 	min-width: 0;
 }
-.fulcrum-calendar__event:hover { background: var(--background-modifier-hover); }
 
-.fulcrum-calendar__event--task { color: var(--text-accent); }
-.fulcrum-calendar__event--meeting { color: var(--color-purple, #a855f7); }
-.fulcrum-calendar__event--logged { color: var(--text-accent); }
-.fulcrum-calendar__event--planned { color: var(--color-orange, #d97706); }
-.fulcrum-calendar__event--planner { color: var(--text-muted); }
-.fulcrum-calendar__event--note { color: var(--text-muted); }
+.fulcrum-calendar__event:hover {
+	background: var(--background-modifier-hover);
+	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
+}
+
+.fulcrum-calendar__event--task {
+	border-left-color: var(--fulcrum-event-accent, var(--text-accent));
+}
+
+.fulcrum-calendar__event--meeting {
+	border-left-color: var(--fulcrum-event-accent, var(--color-purple, #a855f7));
+}
+
+.fulcrum-calendar__event--logged {
+	border-left-color: var(--fulcrum-event-accent, var(--color-green));
+}
+
+.fulcrum-calendar__event--planned {
+	border-left-color: var(--fulcrum-event-accent, var(--color-orange, #d97706));
+}
+
+.fulcrum-calendar__event--planner,
+.fulcrum-calendar__event--note {
+	border-left-color: var(--fulcrum-event-accent, var(--text-muted));
+}
 
 .fulcrum-calendar__event-icon {
 	width: 12px;

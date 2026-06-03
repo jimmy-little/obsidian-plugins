@@ -10,6 +10,9 @@ import {
 	setInlineTaskProjectLink,
 	setInlineTaskScheduled,
 } from "../utils/inlineTasks";
+import type {CalendarDropSlot} from "../calendar/calendarDropSlot";
+import {slotStartMinutes} from "../calendar/calendarDropSlot";
+import {formatSlotValue, normalizeIsoDateTime} from "../calendar/isoDateTime";
 import type {KanbanDimension} from "../settingsDefaults";
 import type {DateBucketId} from "./dateBuckets";
 import {representativeDateForBucket} from "./dateBuckets";
@@ -25,6 +28,8 @@ export async function updateTaskNoteField(
 		for (const [k, v] of Object.entries(patch)) {
 			if (v === null || v === undefined) {
 				delete fm[k];
+			} else if (typeof v === "string") {
+				fm[k] = normalizeIsoDateTime(v) ?? v;
 			} else {
 				fm[k] = v;
 			}
@@ -58,7 +63,9 @@ export async function applyTaskStatusChange(
 	const doneStatus = parseList(settings.taskDoneStatuses)[0] ?? "done";
 
 	if (task.source === "taskNote") {
-		const isDone = doneSet.has(targetStatusId);
+		const targetNorm = targetStatusId.trim().toLowerCase();
+		const yamlDone = settings.taskNoteYamlStatusDone.trim().toLowerCase();
+		const isDone = doneSet.has(targetNorm) || (yamlDone.length > 0 && targetNorm === yamlDone);
 		const patch: Record<string, unknown> = {
 			[settings.taskStatusField]: targetStatusId,
 		};
@@ -167,15 +174,33 @@ export async function applyTaskScheduleOnDate(
 	dateIso: string,
 	field: TaskScheduleDateField,
 ): Promise<void> {
+	await applyTaskScheduleOnSlot(
+		app,
+		task,
+		settings,
+		{dateIso, hour: null},
+		field,
+	);
+}
+
+export async function applyTaskScheduleOnSlot(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	slot: CalendarDropSlot,
+	field: TaskScheduleDateField,
+): Promise<void> {
+	const startMinutes = slotStartMinutes(slot);
+	const value = formatSlotValue(slot.dateIso, startMinutes);
 	if (task.source === "taskNote") {
 		const key =
 			field === "due" ? settings.taskDueDateField : settings.taskScheduledDateField;
-		await updateTaskNoteField(app, task, settings, {[key]: dateIso});
+		await updateTaskNoteField(app, task, settings, {[key]: value});
 		return;
 	}
 
 	await updateInlineLine(app, task, (line) =>
-		field === "due" ? setInlineTaskDue(line, dateIso) : setInlineTaskScheduled(line, dateIso),
+		field === "due" ? setInlineTaskDue(line, value) : setInlineTaskScheduled(line, value),
 	);
 }
 

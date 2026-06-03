@@ -5,6 +5,10 @@
 	import type {IndexedProject} from "../fulcrum/types";
 	import {daysUntilCalendar, formatShortMonthDay} from "../fulcrum/utils/dates";
 	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
+	import {
+		FULCRUM_SIDEBAR_PROJECT_MIME,
+		projectDragKey,
+	} from "../fulcrum/sidebar/sidebarDrag";
 
 	export let p: IndexedProject;
 	export let selectedPath: string | null;
@@ -17,6 +21,8 @@
 	export let plugin: FulcrumHost | undefined = undefined;
 	/** Opens new notes beside Fulcrum when creating from the context menu. */
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
+	/** Enable drag to Kanban board from sidebar. */
+	export let sidebarDraggable = false;
 
 	function onContextMenu(ev: MouseEvent): void {
 		if (!plugin) return;
@@ -57,6 +63,14 @@
 		ev.preventDefault();
 		activateRow();
 	}
+
+	function onSidebarDragStart(ev: DragEvent): void {
+		if (!sidebarDraggable) return;
+		ev.stopPropagation();
+		const key = projectDragKey(p);
+		ev.dataTransfer?.setData(FULCRUM_SIDEBAR_PROJECT_MIME, key);
+		if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+	}
 </script>
 
 <!-- div, not button: Obsidian’s default button styles fix height and break multiline rows -->
@@ -72,6 +86,8 @@
 	on:click={activateRow}
 	on:keydown={onRowKeydown}
 	on:contextmenu={onContextMenu}
+	draggable={sidebarDraggable}
+	on:dragstart={onSidebarDragStart}
 >
 	<div class="fulcrum-pl-row__inner">
 		<div class="fulcrum-pl-row__head">

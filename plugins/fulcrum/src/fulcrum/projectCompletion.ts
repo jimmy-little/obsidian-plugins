@@ -1,5 +1,10 @@
 import type {App, TFile, Vault} from "obsidian";
 import {normalizePath, TFolder} from "obsidian";
+import {
+	getSameNamedProjectFolder,
+	moveProjectFileToDir,
+	moveProjectFolderToParent,
+} from "./projectMove";
 import {appendFulcrumProjectLog, formatFulcrumProjectLogLine} from "./projectNote";
 import {parseList, resolveProjectsRoot, type FulcrumSettings} from "./settingsDefaults";
 import {getImmediateSubfolderNames} from "./utils/paths";
@@ -53,18 +58,6 @@ async function ensureFolderPath(vault: Vault, folderPath: string): Promise<void>
 	}
 }
 
-function uniqueFilePathInDir(vault: Vault, dir: string, fileName: string): string {
-	const base = normalizePath(`${dir}/${fileName}`);
-	if (!vault.getAbstractFileByPath(base)) return base;
-	const stem = fileName.replace(/\.md$/i, "");
-	let n = 1;
-	for (;;) {
-		const p = normalizePath(`${dir}/${stem} (${n}).md`);
-		if (!vault.getAbstractFileByPath(p)) return p;
-		n += 1;
-	}
-}
-
 /**
  * Appends a log line, sets project status to the first configured “done” status, then moves the note
  * into the completed-projects folder (unless it is already there). Uses {@link FileManager.renameFile}
@@ -98,14 +91,22 @@ export async function markProjectCompleteAndMove(
 		(fm as Record<string, unknown>)[statusKey] = statusValue;
 	});
 
-	const parent = projectFile.parent?.path ?? "";
-	if (normalizePath(parent) === destDir) {
+	const projectFolder = getSameNamedProjectFolder(projectFile);
+	if (projectFolder) {
+		const folderParent = normalizePath(projectFolder.parent?.path ?? "");
+		if (folderParent === destDir) {
+			return normalizePath(`${projectFolder.path}/${projectFile.name}`);
+		}
+		const newFolderPath = await moveProjectFolderToParent(app, projectFolder, destDir);
+		return normalizePath(`${newFolderPath}/${projectFile.name}`);
+	}
+
+	const parent = normalizePath(projectFile.parent?.path ?? "");
+	if (parent === destDir) {
 		return projectFile.path;
 	}
 
-	const newPath = uniqueFilePathInDir(app.vault, destDir, projectFile.name);
-	await app.fileManager.renameFile(projectFile, newPath);
-	return newPath;
+	return moveProjectFileToDir(app, projectFile, destDir);
 }
 
 /** Move project file to the folder for the given status (subfolder layout). */
@@ -124,6 +125,33 @@ export async function moveProjectToStatusFolder(
 	}
 
 	const statusFolder = resolveStatusFolderName(app.vault, root, newStatus);
+
+	const projectFolder = getSameNamedProjectFolder(projectFile);
+	if (projectFolder) {
+		const relFolder = projectFolder.path.slice(root.length + 1);
+		const folderParts = relFolder.split("/").filter(Boolean);
+		if (folderParts.length < 1) {
+			throw new Error("Invalid project folder path.");
+		}
+		const destParentDir = normalizePath(
+			[root, statusFolder, ...folderParts.slice(1, -1)].filter(Boolean).join("/") ||
+				`${root}/${statusFolder}`,
+		);
+		const currentFolderParent = normalizePath(projectFolder.parent?.path ?? "");
+		if (
+			currentFolderParent === destParentDir ||
+			currentFolderParent.toLowerCase() === destParentDir.toLowerCase()
+		) {
+			return path;
+		}
+		await ensureFolderPath(app.vault, destParentDir);
+		const newFolderPath = await moveProjectFolderToParent(
+			app,
+			projectFolder,
+			destParentDir,
+		);
+		return normalizePath(`${newFolderPath}/${projectFile.name}`);
+	}
 
 	const rel = path.slice(root.length + 1);
 	const parts = rel.split("/").filter(Boolean);
@@ -149,10 +177,5 @@ export async function moveProjectToStatusFolder(
 	}
 
 	await ensureFolderPath(app.vault, destDir);
-
-	const newPath = uniqueFilePathInDir(app.vault, destDir, projectFile.name);
-	if (normalizePath(path) === normalizePath(newPath)) return path;
-
-	await app.fileManager.renameFile(projectFile, newPath);
-	return newPath;
+	return moveProjectFileToDir(app, projectFile, destDir);
 }

@@ -9,6 +9,8 @@
 	import WeeklyReviewMain from "./WeeklyReviewMain.svelte";
 	import AreasMain from "./AreasMain.svelte";
 	import ProjectListPanel from "./ProjectListPanel.svelte";
+	import TaskListPanel from "./TaskListPanel.svelte";
+	import {settingsRevision} from "../fulcrum/stores";
 	import ProjectSummary from "./ProjectSummary.svelte";
 	import FulcrumLeafToolbar from "./FulcrumLeafToolbar.svelte";
 
@@ -76,6 +78,11 @@
 	}
 
 	$: selectedProjectPath = mainMode === "project" ? projectPath : null;
+	$: sRev = $settingsRevision;
+	$: kanbanView = (void sRev, plugin.settings.kanbanView);
+	$: sidebarShowsTasks =
+		mainMode === "calendar" || (mainMode === "kanban" && kanbanView === "tasks");
+	$: sidebarProjectDraggable = mainMode === "kanban" && kanbanView === "projects";
 
 	function maxLeftColWidth(): number {
 		if (!pmEl) return 720;
@@ -233,12 +240,17 @@
 			</div>
 			{#if !leftCollapsed}
 				<div class="fulcrum-pm__left-scroll">
-					<ProjectListPanel
-						{plugin}
-						{hoverParentLeaf}
-						selectedPath={selectedProjectPath}
-						onSelectProject={onProjectSelected}
-					/>
+					{#if sidebarShowsTasks}
+						<TaskListPanel {plugin} {hoverParentLeaf} />
+					{:else}
+						<ProjectListPanel
+							{plugin}
+							{hoverParentLeaf}
+							selectedPath={selectedProjectPath}
+							onSelectProject={onProjectSelected}
+							sidebarDraggable={sidebarProjectDraggable}
+						/>
+					{/if}
 				</div>
 			{/if}
 		</div>

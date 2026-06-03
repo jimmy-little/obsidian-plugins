@@ -23,6 +23,8 @@
 	let collapsedGroups = new Set<string>();
 	export let selectedPath: string | null = null;
 	export let onSelectProject: (path: string) => void;
+	/** When true, project rows can be dragged onto the Kanban board. */
+	export let sidebarDraggable = false;
 
 	let facetsCollapsed = false;
 	let filterOpen = false;
@@ -512,6 +514,7 @@
 					<ProjectListRow
 						{plugin}
 						{hoverParentLeaf}
+						{sidebarDraggable}
 						{p}
 						{selectedPath}
 						{onSelectProject}
@@ -564,6 +567,7 @@
 								<ProjectListRow
 									{plugin}
 									{hoverParentLeaf}
+									{sidebarDraggable}
 									{p}
 									{selectedPath}
 									{onSelectProject}
@@ -603,6 +607,7 @@
 								<ProjectListRow
 									{plugin}
 									{hoverParentLeaf}
+									{sidebarDraggable}
 									{p}
 									{selectedPath}
 									{onSelectProject}
@@ -642,6 +647,7 @@
 								<ProjectListRow
 									{plugin}
 									{hoverParentLeaf}
+									{sidebarDraggable}
 									{p}
 									{selectedPath}
 									{onSelectProject}

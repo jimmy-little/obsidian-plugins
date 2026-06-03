@@ -392,7 +392,7 @@ export class ChangeProjectStatusModal extends Modal {
 			new Setting(this.confirmSection)
 				.setName("Update folder")
 				.setDesc(
-					"Move the note into the folder for this status (under your projects folder).",
+					"Move the project note, or the whole same-named project folder and its files, into the folder for this status.",
 				)
 				.addToggle((t) =>
 					t.setValue(this.updateFolder).onChange((v) => {
@@ -500,6 +500,7 @@ export class MarkProjectCompleteModal extends Modal {
 		try {
 			await this.host.archiveProjectSnapshot(this.projectPath);
 			await markProjectCompleteAndMove(this.app, f, this.host.settings, {note: this.note});
+			await this.host.notifyConduitProjectCompleted(this.projectPath);
 			await this.host.vaultIndex.rebuild();
 			await this.host.openDashboard();
 			new Notice("Project marked complete and moved.");

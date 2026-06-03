@@ -44,6 +44,7 @@ export async function buildTimerCalendarOverlay(
 					accentCss: "var(--color-green)",
 					open: () => openNote(file.path),
 					timerEntryId: entry.id,
+					timerNotePath: file.path,
 					timerStartMs: entry.startTime,
 					isActiveTimer: isActive,
 				});
@@ -63,6 +64,7 @@ export async function buildTimerCalendarOverlay(
 				title: b.label,
 				accentCss: "var(--color-orange)",
 				open: () => openNote(row.file.path),
+				planned: {file: row.file, block: b, dateIso: row.dateIso},
 			});
 		}
 	}

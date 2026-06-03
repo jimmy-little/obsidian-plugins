@@ -18,6 +18,7 @@ import type {TimerSettings, QuickStartGroupBy} from "./settings";
 import type {IndexedProject} from "../fulcrum/types";
 import {isUnderFolder} from "../fulcrum/utils/paths";
 import {
+	normalizeTimerEntries,
 	readTimerEntriesFromFm,
 	resolveEntriesWriteKey,
 } from "../fulcrum/utils/timerEntries";
@@ -45,6 +46,13 @@ import {
 	preferLightForegroundOnAccentCss,
 	resolveProjectAccentCss,
 } from "../fulcrum/utils/projectVisual";
+
+/** Markdown fence for the inline timer UI (legacy alias: `lapse`). */
+export const FULCRUM_TIMER_CODE_BLOCK_LANG = "fulcrum-timer";
+
+const FULCRUM_TIMER_FENCE_SNIPPET = `\n\n\`\`\`${FULCRUM_TIMER_CODE_BLOCK_LANG}\n\`\`\`\n`;
+
+const FULCRUM_TIMER_FENCE_RE = /```[\t ]*(?:lapse|fulcrum-timer)\b/im;
 
 export class TimerModule {
 	host: FulcrumTimerHost;
@@ -395,7 +403,7 @@ export class TimerModule {
 			id: 'fulcrum-timer-insert',
 			name: 'Add time tracker',
 			editorCallback: (editor) => {
-				editor.replaceSelection('```fulcrum-timer\n\n```');
+				editor.replaceSelection(`\`\`\`${FULCRUM_TIMER_CODE_BLOCK_LANG}\n\n\`\`\``);
 			},
 			hotkeys: []
 		});
@@ -410,8 +418,7 @@ export class TimerModule {
 				
 				const filePath = file.path;
 				
-				// Insert the lapse code block
-				editor.replaceSelection('```fulcrum-timer\n\n```');
+				editor.replaceSelection(`\`\`\`${FULCRUM_TIMER_CODE_BLOCK_LANG}\n\n\`\`\``);
 				
 				// Create the timer entry in memory
 				if (!this.timeData.has(filePath)) {
@@ -480,16 +487,9 @@ export class TimerModule {
 				const hasActiveTimer = pageData?.entries.some(e => e.startTime !== null && e.endTime === null);
 				
 				if (hasActiveTimer) {
-					// Stop the active timer instead
-					const activeEntry = pageData!.entries.find(e => e.startTime !== null && e.endTime === null);
-					if (activeEntry) {
-						activeEntry.endTime = Date.now();
-						activeEntry.duration += (activeEntry.endTime - activeEntry.startTime!);
-						await this.updateFrontmatter(filePath);
-						
-						// Update sidebar
-						this.refreshActivityPanel();
-					}
+					pageData!.entries = normalizeTimerEntries(pageData!.entries);
+					await this.stopAllActiveEntriesInFile(filePath);
+					this.refreshActivityPanel();
 				} else {
 					// Start a new timer
 					const label = await this.getDefaultLabel(filePath);
@@ -598,7 +598,7 @@ export class TimerModule {
 			name: 'Insert template button',
 			editorCallback: (editor) => {
 				new TimerButtonModal(this.app, this, (templateName) => {
-					editor.replaceSelection(`\`lapse:${templateName}\``);
+					editor.replaceSelection(`\`${FULCRUM_TIMER_CODE_BLOCK_LANG}:${templateName}\``);
 				}).open();
 			}
 		});
@@ -696,15 +696,13 @@ export class TimerModule {
 			pageData = { entries: [], totalTimeTracked: 0 };
 			this.timeData.set(notePath, pageData);
 		}
-		const hasActiveTimer = pageData.entries.some((e) => e.startTime !== null && e.endTime === null);
+		pageData.entries = normalizeTimerEntries(pageData.entries);
+		const hasActiveTimer = pageData.entries.some(
+			(e) => e.startTime !== null && e.endTime === null,
+		);
 		if (hasActiveTimer) {
-			const activeEntry = pageData.entries.find((e) => e.startTime !== null && e.endTime === null);
-			if (activeEntry) {
-				activeEntry.endTime = Date.now();
-				activeEntry.duration += activeEntry.endTime - activeEntry.startTime!;
-				await this.updateFrontmatter(notePath);
-				this.refreshActivityPanel();
-			}
+			await this.stopAllActiveEntriesInFile(notePath);
+			this.refreshActivityPanel();
 			return;
 		}
 		const titleHint = options?.noteTitle?.trim();
@@ -729,7 +727,7 @@ export class TimerModule {
 			}
 			await this.updateFrontmatter(notePath);
 			await this.addDefaultTagToNote(notePath);
-			await this.ensureLapseTimerCodeBlockInNote(notePath);
+			await this.ensureFulcrumTimerCodeBlockInNote(notePath);
 		});
 		this.refreshActivityPanel();
 	}
@@ -797,16 +795,21 @@ export class TimerModule {
 	}
 
 	/**
-	 * If the note has no ```lapse fence yet, append an empty one so Reading/Live Preview
-	 * shows the timer UI (used by Fulcrum companion and other startTimerInNote callers).
+	 * If the note has no timer fence yet, append an empty ```fulcrum-timer block so Reading/Live
+	 * Preview shows the timer UI (companion header play, project note, etc.).
 	 */
-	private async ensureLapseTimerCodeBlockInNote(filePath: string): Promise<void> {
+	private async ensureFulcrumTimerCodeBlockInNote(filePath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(filePath);
 		if (!file || !(file instanceof TFile)) return;
-		const content = await this.app.vault.read(file);
-		if (/```[\t ]*(?:lapse|fulcrum-timer)\b/im.test(content)) return;
-		const fence = "\n\n```fulcrum-timer\n```\n";
-		await this.app.vault.modify(file, content.replace(/\s*$/, "") + fence);
+		let content = await this.app.vault.read(file);
+		if (FULCRUM_TIMER_FENCE_RE.test(content)) {
+			if (/```[\t ]*lapse\b/im.test(content) && !/```[\t ]*fulcrum-timer\b/im.test(content)) {
+				content = content.replace(/```[\t ]*lapse\b/gim, `\`\`\`${FULCRUM_TIMER_CODE_BLOCK_LANG}`);
+				await this.app.vault.modify(file, content);
+			}
+			return;
+		}
+		await this.app.vault.modify(file, content.replace(/\s*$/, "") + FULCRUM_TIMER_FENCE_SNIPPET);
 	}
 
 	async mergeProjectIntoFrontmatter(filePath: string, projectName: string): Promise<void> {
@@ -890,6 +893,14 @@ export class TimerModule {
 					entries.push(active);
 				}
 			}
+			const beforeNorm = entries.length;
+			const activeBefore = entries.filter(
+				(e) => e.startTime != null && e.endTime == null,
+			).length;
+			entries = normalizeTimerEntries(entries);
+			const activeAfter = entries.filter(
+				(e) => e.startTime != null && e.endTime == null,
+			).length;
 			const projectRaw = fm[this.settings.projectKey];
 			const project = typeof projectRaw === 'string' ? projectRaw : null;
 			const totalTimeTracked = entries
@@ -902,6 +913,14 @@ export class TimerModule {
 				project,
 				totalTime: totalTimeTracked,
 			};
+			if (
+				beforeNorm !== entries.length ||
+				activeBefore > activeAfter
+			) {
+				void this.updateFrontmatter(filePath).catch((err) =>
+					console.error("Error persisting normalized timer entries:", err),
+				);
+			}
 		} catch (error) {
 			console.error('Error loading entries from frontmatter:', error);
 		}
@@ -3426,7 +3445,7 @@ export class TimerModule {
 					? `tags: ["${this.normalizeTagValue(this.settings.defaultTagOnNote)}"]\n`
 					: '';
 			return (
-				`---\n${tagLine}${pk}: ${vars.project ? JSON.stringify(vars.project) : '""'}\n${ek}: []\n---\n\n# ${vars.title || vars.project || 'Timer'}\n`
+				`---\n${tagLine}${pk}: ${vars.project ? JSON.stringify(vars.project) : '""'}\n${ek}: []\n---\n\n# ${vars.title || vars.project || 'Timer'}\n${FULCRUM_TIMER_FENCE_SNIPPET.trimStart()}`
 			);
 		}
 		const f = this.app.vault.getAbstractFileByPath(path);
@@ -3436,7 +3455,8 @@ export class TimerModule {
 		const raw = await this.app.vault.read(f);
 		// File templates: only substitute {{project}} / {{date}} / etc. Do not run path-style
 		// token expansion on the whole body — it breaks Templater (e.g. tp.date.now("YYYY-MM-DD")).
-		return this.applyTimerTemplateVariables(raw, vars);
+		const body = this.applyTimerTemplateVariables(raw, vars);
+		return body.replace(/```[\t ]*lapse\b/gim, `\`\`\`${FULCRUM_TIMER_CODE_BLOCK_LANG}`);
 	}
 
 	async openTimerNoteInNewTab(file: TFile): Promise<void> {
@@ -3498,6 +3518,7 @@ export class TimerModule {
 		await this.runWithFrontmatterReloadSuppressed(file.path, async () => {
 			await this.updateFrontmatter(file.path);
 			await this.addDefaultTagToNote(file.path);
+			await this.ensureFulcrumTimerCodeBlockInNote(file.path);
 		});
 		this.refreshActivityPanel();
 		this.updateStatusBar();
@@ -3993,7 +4014,55 @@ export class TimerModule {
 			});
 		}
 
-		return activeTimers;
+		return this.dedupeActiveTimerRows(activeTimers);
+	}
+
+	/** Active timers from in-memory `timeData` only (normalized, one row per note). */
+	listActiveTimersInMemory(): Array<{filePath: string; entry: TimeEntry}> {
+		const rows: Array<{filePath: string; entry: TimeEntry}> = [];
+		this.timeData.forEach((pageData, filePath) => {
+			pageData.entries = normalizeTimerEntries(pageData.entries);
+			for (const entry of pageData.entries) {
+				if (entry.startTime && !entry.endTime) {
+					rows.push({filePath, entry});
+				}
+			}
+		});
+		return this.dedupeActiveTimerRows(rows);
+	}
+
+	/** One card per note; drop duplicate entry ids from legacy dual-key frontmatter. */
+	private dedupeActiveTimerRows(
+		rows: Array<{filePath: string; entry: TimeEntry}>,
+	): Array<{filePath: string; entry: TimeEntry}> {
+		const byPath = new Map<string, {filePath: string; entry: TimeEntry}>();
+		const seenIds = new Set<string>();
+		for (const row of rows) {
+			if (seenIds.has(row.entry.id)) continue;
+			seenIds.add(row.entry.id);
+			const cur = byPath.get(row.filePath);
+			if (!cur || (row.entry.startTime ?? 0) >= (cur.entry.startTime ?? 0)) {
+				byPath.set(row.filePath, row);
+			}
+		}
+		return [...byPath.values()];
+	}
+
+	async stopAllActiveEntriesInFile(filePath: string): Promise<boolean> {
+		const pageData = this.timeData.get(filePath);
+		if (!pageData) return false;
+		const actives = pageData.entries.filter(
+			(e) => e.startTime !== null && e.endTime === null,
+		);
+		if (actives.length === 0) return false;
+		const now = Date.now();
+		for (const entry of actives) {
+			entry.endTime = now;
+			entry.duration += now - entry.startTime!;
+		}
+		pageData.totalTimeTracked = pageData.entries.reduce((sum, e) => sum + e.duration, 0);
+		await this.updateFrontmatter(filePath);
+		return true;
 	}
 
 	private fileHasTimerFrontmatter(fm: Record<string, unknown> | undefined): boolean {
@@ -4376,6 +4445,32 @@ export class TimerModule {
 		const rest = toBlocks.filter((b) => b.id !== block.id);
 		rest.push(updated);
 		await this.savePlannedBlocksToDay(toIso, rest);
+	}
+
+	/** Reschedule a logged timer entry to a new local start time (preserves duration when ended). */
+	async rescheduleLoggedEntry(
+		filePath: string,
+		entryId: string,
+		newStartMs: number,
+	): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (!(file instanceof TFile)) return;
+		const {entries} = await this.getCachedOrLoadEntries(filePath);
+		const entryIndex = entries.findIndex((e) => e.id === entryId);
+		if (entryIndex < 0) return;
+		const entry = entries[entryIndex]!;
+		const duration =
+			entry.endTime != null && entry.startTime != null
+				? entry.endTime - entry.startTime
+				: entry.duration > 0
+					? entry.duration
+					: 30 * 60 * 1000;
+		entry.startTime = newStartMs;
+		if (entry.endTime != null) {
+			entry.endTime = newStartMs + duration;
+			entry.duration = duration;
+		}
+		await this.updateFrontmatter(filePath);
 	}
 
 	async getCachedOrLoadEntries(filePath: string): Promise<{ entries: TimeEntry[]; project: string | null; totalTime: number }> {
@@ -4924,15 +5019,7 @@ class TimerActivityView extends TimerEmbedPanel {
 			new TimerQuickStartModal(this.app, this.plugin).open();
 		};
 
-		// Get active timers from memory only (not all files) for faster rendering
-		const activeTimers: Array<{ filePath: string; entry: TimeEntry }> = [];
-		this.plugin.timeData.forEach((pageData, filePath) => {
-			pageData.entries.forEach(entry => {
-				if (entry.startTime && !entry.endTime) {
-					activeTimers.push({ filePath, entry });
-				}
-			});
-		});
+		const activeTimers = this.plugin.listActiveTimersInMemory();
 
 		if (activeTimers.length === 0) {
 			container.createEl('p', { text: 'No active timers', cls: 'fulcrum-timer-sidebar-empty' });
@@ -4961,27 +5048,8 @@ class TimerActivityView extends TimerEmbedPanel {
 				setIcon(stopBtn, 'square');
 				stopBtn.onclick = async (e) => {
 					e.stopPropagation();
-					
-					// Find the entry in timeData and update it
-					const pageData = this.plugin.timeData.get(filePath);
-					if (pageData) {
-						const entryInData = pageData.entries.find(e => e.id === entry.id);
-						if (entryInData && entryInData.startTime && !entryInData.endTime) {
-							// Stop the timer
-							const now = Date.now();
-							entryInData.endTime = now;
-							entryInData.duration += (now - entryInData.startTime);
-							
-							// Update total time
-							pageData.totalTimeTracked = pageData.entries.reduce((sum, e) => sum + e.duration, 0);
-							
-							// Update frontmatter in the background
-							await this.plugin.updateFrontmatter(filePath);
-							
-							// Re-render to update the list
-							await this.render();
-						}
-					}
+					await this.plugin.stopAllActiveEntriesInFile(filePath);
+					await this.render();
 				};
 				
 				// Get file name without extension
@@ -5207,15 +5275,7 @@ class TimerActivityView extends TimerEmbedPanel {
 			return;
 		}
 		
-		// Get current active timers from memory only (don't scan all files)
-		const currentActiveTimers: Array<{ filePath: string; entry: TimeEntry }> = [];
-		this.plugin.timeData.forEach((pageData, filePath) => {
-			pageData.entries.forEach(entry => {
-				if (entry.startTime && !entry.endTime) {
-					currentActiveTimers.push({ filePath, entry });
-				}
-			});
-		});
+		const currentActiveTimers = this.plugin.listActiveTimersInMemory();
 		
 		const displayedEntryIds = new Set(this.timeDisplays.keys());
 		const activeEntryIds = new Set(currentActiveTimers.map(({ entry }) => entry.id));

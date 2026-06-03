@@ -9,6 +9,8 @@ export type TaskIndexScope = "projectLinked" | "all";
 export type ProjectStatusIndication = "frontmatter" | "subfolder";
 export type ProjectSidebarSortBy = "launch" | "nextReview" | "rank" | "name";
 export type ProjectSidebarSortDir = "asc" | "desc";
+export type TaskSidebarGroupBy = "area" | "status" | "project" | "none";
+export type TaskSidebarSortBy = "due" | "name" | "project";
 
 export type KanbanView = "projects" | "tasks";
 export type KanbanDimension = "area" | "project" | "status" | "date";
@@ -133,6 +135,16 @@ export interface FulcrumSettings {
 	projectSidebarFilterUncheckedStatus: string[];
 	/** Project sidebar filter: unchecked area keys (empty = all checked). Use __none__ for no area. */
 	projectSidebarFilterUncheckedArea: string[];
+	/** Calendar / Kanban tasks sidebar: group open tasks by area, status, project, or flat. */
+	taskSidebarGroupBy: TaskSidebarGroupBy;
+	taskSidebarSortBy: TaskSidebarSortBy;
+	taskSidebarSortDir: ProjectSidebarSortDir;
+	/** Task sidebar filter: unchecked status keys (empty = all checked). */
+	taskSidebarFilterUncheckedStatus: string[];
+	/** Task sidebar filter: unchecked area keys. */
+	taskSidebarFilterUncheckedArea: string[];
+	/** Task sidebar filter: unchecked project file paths. Use __none__ for no project. */
+	taskSidebarFilterUncheckedProject: string[];
 
 	projectStatusIndication: ProjectStatusIndication;
 	projectStatusField: string;
@@ -206,6 +218,23 @@ export interface FulcrumSettings {
 	plannerHeading: string;
 	/** Default block height (minutes) for timed planner lines without an end time. */
 	plannerDefaultDurationMinutes: number;
+
+	conduitEnabled: boolean;
+	conduitRemctlPath: string;
+	conduitVaultNameOverride: string;
+	conduitSyncIntervalSeconds: number;
+	conduitVaultQuietSeconds: number;
+	conduitInboxListName: string;
+	conduitReminderIdField: string;
+	conduitReminderListIdField: string;
+	conduitListArchivedField: string;
+	conduitArchivedListPrefix: string;
+	conduitImportUnmapped: boolean;
+	conduitDeleteReminderWhenTaskDeleted: boolean;
+	/** Apply project frontmatter color to the matching Reminders list. */
+	conduitSyncListColors: boolean;
+	/** Tag each reminder with the project’s Area name (Reminders tags, --private). */
+	conduitSyncAreaTags: boolean;
 }
 
 /** Root path for area notes (separate from projects when `areasFolder` is set). */
@@ -292,6 +321,12 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	projectSidebarSortDir: "asc",
 	projectSidebarFilterUncheckedStatus: [],
 	projectSidebarFilterUncheckedArea: [],
+	taskSidebarGroupBy: "area",
+	taskSidebarSortBy: "due",
+	taskSidebarSortDir: "asc",
+	taskSidebarFilterUncheckedStatus: [],
+	taskSidebarFilterUncheckedArea: [],
+	taskSidebarFilterUncheckedProject: [],
 
 	projectStatusIndication: "frontmatter",
 	projectStatusField: "status",
@@ -341,6 +376,24 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	timelineDailyPlannerEnabled: true,
 	plannerHeading: "Day planner",
 	plannerDefaultDurationMinutes: 30,
+
+	/** macOS: sync Fulcrum tasks ↔ Apple Reminders via remctl. */
+	conduitEnabled: false,
+	conduitRemctlPath: "",
+	conduitVaultNameOverride: "",
+	/** 0 = manual sync only. */
+	conduitSyncIntervalSeconds: 0,
+	/** Wait after vault changes before bidirectional sync. */
+	conduitVaultQuietSeconds: 60,
+	conduitInboxListName: "Fulcrum Inbox",
+	conduitReminderIdField: "appleReminderId",
+	conduitReminderListIdField: "appleReminderListId",
+	conduitListArchivedField: "conduitListArchived",
+	conduitArchivedListPrefix: "✓ ",
+	conduitImportUnmapped: false,
+	conduitDeleteReminderWhenTaskDeleted: false,
+	conduitSyncListColors: true,
+	conduitSyncAreaTags: true,
 };
 
 export function parseList(s: string): string[] {

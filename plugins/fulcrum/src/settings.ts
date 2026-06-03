@@ -3,6 +3,7 @@ import {getTaskNotesHealth} from "./fulcrum/taskNotesApi";
 import type {FulcrumSettings} from "./fulcrum/settingsDefaults";
 import type FulcrumPlugin from "./main";
 import {displayTimerSettings} from "./timer/settingsTab";
+import {displayConduitSettings} from "./conduit/settingsTab";
 
 export type {FulcrumSettings} from "./fulcrum/settingsDefaults";
 export {DEFAULT_SETTINGS} from "./fulcrum/settingsDefaults";
@@ -636,6 +637,8 @@ export class FulcrumSettingTab extends PluginSettingTab {
 
 		displayTimerSettings(containerEl, this.plugin);
 
+		displayConduitSettings(containerEl, this.plugin);
+
 		heading(containerEl, "URL schemes (Obsidian URI)");
 		containerEl.createEl("p", {
 			text: "Open Fulcrum from bookmarks or automation. The URI host must be the plugin id (fulcrum), not “open”. Example: obsidian://fulcrum?screen=dashboard — query params carry screen, route, projectPath, focalDate. With multiple vaults open, the focused vault is used unless you launch via obsidian://open?vault=VAULT_NAME&…",
@@ -655,6 +658,10 @@ export class FulcrumSettingTab extends PluginSettingTab {
 			],
 			["/fulcrum/classic — standalone dashboard leaf", "obsidian://fulcrum?screen=classic"],
 			["Alternate: route=/fulcrum/dashboard", "obsidian://fulcrum?route=%2Ffulcrum%2Fdashboard"],
+			[
+				"Open task note (Conduit Reminder link)",
+				"obsidian://fulcrum?action=open_task&path=35%20Tasks%2FTaskNotes%2FExample.md",
+			],
 		] as const;
 		for (const [label, uri] of fulcrumUriExamples) {
 			containerEl.createEl("p", {text: label, cls: "fulcrum-settings-lead"});
