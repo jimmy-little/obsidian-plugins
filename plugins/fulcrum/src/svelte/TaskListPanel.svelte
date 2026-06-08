@@ -222,6 +222,14 @@
 		);
 	})();
 
+	/** Tasks eligible for grouped list rows (project list includes unscheduled). */
+	$: groupableTasks = ((): IndexedTask[] => {
+		const q = searchQuery.trim().toLowerCase();
+		return openTasksRaw.filter(
+			(t) => taskPassesSidebarFilters(t) && taskMatchesSearchQuery(t, q, snapshot),
+		);
+	})();
+
 	$: groupBy = (void sRev, plugin.settings.taskSidebarGroupBy);
 	$: effectiveGroupBy = isProjectList
 		? projectListGroupBy
@@ -232,7 +240,7 @@
 	$: sortDir = (void sRev, plugin.settings.taskSidebarSortDir);
 	$: statusOrder = (void sRev, parseTaskStatusChoices(plugin.settings));
 
-	$: flatTasks = sortTasks(searchFiltered);
+	$: flatTasks = sortTasks(isProjectList ? groupableTasks : searchFiltered);
 
 	type TaskGroup = {label: string; groupKeyId: string; tasks: IndexedTask[]; area?: IndexedArea};
 
@@ -271,7 +279,7 @@
 	}
 
 	$: taskGroups = ((): TaskGroup[] => {
-		const list = searchFiltered;
+		const list = isProjectList ? groupableTasks : searchFiltered;
 		if (effectiveGroupBy === "none") {
 			return [{label: "", groupKeyId: "", tasks: sortTasks(list)}];
 		}
@@ -720,6 +728,7 @@
 		</div>
 	{/if}
 
+	{#if !isProjectList}
 	<section class="fulcrum-task-list-panel__unscheduled" aria-label="Unscheduled tasks">
 		<div class="fulcrum-task-list-panel__unscheduled-head">
 			<h3 class="fulcrum-task-list-panel__unscheduled-title">Unscheduled</h3>
@@ -781,12 +790,13 @@
 			</ul>
 		{/if}
 	</section>
+	{/if}
 
 	{#if openTasksRaw.length === 0}
 		<p class="fulcrum-muted fulcrum-project-list-panel__empty">No open tasks in index.</p>
 	{:else if effectiveGroupBy === "none"}
 		{#if flatTasks.length === 0}
-			<p class="fulcrum-muted fulcrum-project-list-panel__empty">No scheduled tasks match your filters.</p>
+			<p class="fulcrum-muted fulcrum-project-list-panel__empty">No tasks match your filters.</p>
 		{:else}
 		<ul class="fulcrum-task-list-panel__list">
 			{#each flatTasks as task (calendarTaskDragKey(task))}
@@ -812,6 +822,9 @@
 		</ul>
 		{/if}
 	{:else}
+		{#if isProjectList && taskGroups.every((g) => g.tasks.length === 0)}
+			<p class="fulcrum-muted fulcrum-project-list-panel__empty">No tasks match your filters.</p>
+		{:else}
 		{#each taskGroups as group (group.groupKeyId || group.label)}
 			{#if group.tasks.length > 0}
 				<section class="fulcrum-project-list-panel__group">
@@ -885,5 +898,6 @@
 				</section>
 			{/if}
 		{/each}
+		{/if}
 	{/if}
 </div>

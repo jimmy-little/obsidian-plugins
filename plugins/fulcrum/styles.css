@@ -4791,6 +4791,7 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 	min-width: 0;
 	min-height: 6.25rem;
 	background: var(--background-primary);
+	position: relative;
 }
 
 .fulcrum-calendar__day-cell:last-child {
@@ -4808,6 +4809,46 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 .fulcrum-calendar__day-cell--has-events .fulcrum-calendar__day-num {
 	font-weight: 700;
 	color: var(--text-normal);
+}
+
+.fulcrum-calendar__cell-add {
+	position: absolute;
+	right: 0.15rem;
+	bottom: 0.15rem;
+	z-index: 3;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.35rem;
+	height: 1.35rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-s);
+	background: color-mix(in srgb, var(--background-secondary) 88%, transparent);
+	color: var(--text-muted);
+	cursor: pointer;
+	opacity: 0;
+	transition:
+		opacity 0.12s ease,
+		color 0.12s ease,
+		background 0.12s ease;
+}
+
+.fulcrum-calendar__day-cell:hover .fulcrum-calendar__cell-add,
+.fulcrum-calendar__allday-cell:hover .fulcrum-calendar__cell-add,
+.fulcrum-calendar__time-slot:hover .fulcrum-calendar__cell-add,
+.fulcrum-calendar__cell-add:focus-visible {
+	opacity: 1;
+}
+
+.fulcrum-calendar__cell-add:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-calendar__cell-add .svg-icon {
+	width: 0.85rem;
+	height: 0.85rem;
 }
 
 /* ── Day / week time grid ── */
@@ -4865,6 +4906,7 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 	min-height: 2rem;
 	border-left: 1px solid color-mix(in srgb, var(--background-modifier-border-hover) 75%, transparent);
 	align-content: flex-start;
+	position: relative;
 }
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event {
@@ -4965,6 +5007,7 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 	min-height: var(--fulcrum-cal-hour-h);
 	box-sizing: border-box;
 	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border-hover) 55%, transparent);
+	position: relative;
 }
 
 .fulcrum-calendar__day-events-overlay {

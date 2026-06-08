@@ -1,6 +1,6 @@
 <script lang="ts">
 	import {onMount} from "svelte";
-	import {Notice, TFile} from "obsidian";
+	import {Notice, TFile, setIcon} from "obsidian";
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import {
@@ -346,6 +346,18 @@
 		showFulcrumTaskContextMenu(ev, plugin, e.task, hoverParentLeaf);
 	}
 
+	function plusIconAction(node: HTMLElement): {destroy?: () => void} {
+		setIcon(node, "plus");
+		return {};
+	}
+
+	function onCellAddClick(ev: MouseEvent, iso: string, hour: number | null = null): void {
+		ev.preventDefault();
+		ev.stopPropagation();
+		if (!filterProjectPath) return;
+		plugin.openProjectCalendarAddTask(filterProjectPath, {dateIso: iso, hour}, ev);
+	}
+
 	async function onDropZoneDrop(
 		ev: DragEvent,
 		iso: string,
@@ -666,6 +678,15 @@
 											</span>
 										{/if}
 									</div>
+									{#if filterProjectPath}
+										<button
+											type="button"
+											class="fulcrum-calendar__cell-add"
+											aria-label="Schedule or add task"
+											use:plusIconAction
+											on:click|stopPropagation={(e) => onCellAddClick(e, iso)}
+										></button>
+									{/if}
 								</div>
 							{/if}
 						{/each}
@@ -725,6 +746,15 @@
 								<span class="fulcrum-calendar__event-title">{e.title}</span>
 							</button>
 						{/each}
+						{#if filterProjectPath}
+							<button
+								type="button"
+								class="fulcrum-calendar__cell-add"
+								aria-label="Schedule or add task"
+								use:plusIconAction
+								on:click|stopPropagation={(e) => onCellAddClick(e, iso)}
+							></button>
+						{/if}
 					</div>
 				{/each}
 			</div>
@@ -750,7 +780,17 @@
 									on:dragover={(e) => onDropZoneDragOver(e, iso, hour)}
 									on:dragleave={(e) => onDropZoneDragLeave(e, iso, hour)}
 									on:drop={(e) => void onDropZoneDrop(e, iso, hour)}
-								></div>
+								>
+									{#if filterProjectPath}
+										<button
+											type="button"
+											class="fulcrum-calendar__cell-add"
+											aria-label="Schedule or add task"
+											use:plusIconAction
+											on:click|stopPropagation={(e) => onCellAddClick(e, iso, hour)}
+										></button>
+									{/if}
+								</div>
 							{/each}
 						</div>
 						<div class="fulcrum-calendar__day-events-overlay">

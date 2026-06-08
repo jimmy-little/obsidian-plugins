@@ -61,6 +61,18 @@ export interface FulcrumHost {
 	openTaskNoteCreateForProject(projectPath: string): void;
 	/** Create a TaskNotes-compatible task note (Fulcrum-native). */
 	openCreateTaskNoteForProject(projectPath: string): void;
+	/** Project calendar cell “+”: pick a task to schedule or create a new one on that date. */
+	openProjectCalendarAddTask(
+		projectPath: string,
+		slot: import("./calendar/calendarDropSlot").CalendarDropSlot,
+		anchorEv?: MouseEvent,
+	): void;
+	/** New task from project calendar cell (inline and/or task note per settings). */
+	openNewTaskFromCalendarCell(
+		projectPath: string,
+		slot: import("./calendar/calendarDropSlot").CalendarDropSlot,
+		anchorEv?: MouseEvent,
+	): void;
 	/** Create subtask linked to parent task note. */
 	openCreateSubtaskForTask(parent: IndexedTask): void;
 	/** Create a note from the configured template; opens beside the project view when possible. */
