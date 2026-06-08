@@ -8,13 +8,10 @@
 		indexRevision,
 		setCalendarTaskDragActive,
 		settingsRevision,
-		workRelatedOnly,
+		areaFilterState,
 	} from "../fulcrum/stores";
-	import {parseList} from "../fulcrum/settingsDefaults";
-	import {
-		buildAreaWorkRelatedMap,
-		taskPassesWorkFilter,
-	} from "../fulcrum/utils/workRelatedProjectFilter";
+	import {isDoneStatus, parseDoneStatusSet, parseList, parseTaskStatusChoices} from "../fulcrum/settingsDefaults";
+	import {buildAreaLifeModeMap, taskPassesAreaFilter} from "../fulcrum/utils/areaFocusFilter";
 	import type {IndexedArea, IndexedTask, IndexSnapshot} from "../fulcrum/types";
 	import {sortIndexedTasks} from "../fulcrum/utils/taskListSort";
 	import {
@@ -28,6 +25,8 @@
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
+	export let filterProjectPath: string | undefined = undefined;
+	export let embedded = false;
 
 	let facetsCollapsed = false;
 	let filterOpen = false;
@@ -62,23 +61,27 @@
 	}
 
 	$: sRev = $settingsRevision;
-	$: doneTask = (void sRev, new Set(parseList(plugin.settings.taskDoneStatuses)));
-	$: onlyWork = $workRelatedOnly;
+	$: doneTask = (void sRev, parseDoneStatusSet(plugin.settings.taskDoneStatuses));
+	$: areaFilter = $areaFilterState;
 	$: scheduleDateMode = (void sRev, plugin.settings.calendarTaskScheduleField);
 
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
 		typeField: plugin.settings.typeField,
 		areaTypeValue: plugin.settings.areaTypeValue,
+		settings: plugin.settings,
 	});
 
-	$: openTasksRaw = snapshot.tasks.filter(
-		(t) => !doneTask.has(t.status) && taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap),
-	);
+	$: openTasksRaw = snapshot.tasks
+		.filter(
+			(t) =>
+				!isDoneStatus(t.status, doneTask) &&
+				taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
+		)
+		.filter((t) => !filterProjectPath || t.projectFile?.path === filterProjectPath);
 
 	$: uncheckedStatus = (void sRev, new Set(plugin.settings.taskSidebarFilterUncheckedStatus ?? []));
-	$: uncheckedArea = (void sRev, new Set(plugin.settings.taskSidebarFilterUncheckedArea ?? []));
 	$: uncheckedProject = (void sRev, new Set(plugin.settings.taskSidebarFilterUncheckedProject ?? []));
 
 	function taskAreaKey(t: IndexedTask, snap: IndexSnapshot): string {
@@ -115,23 +118,34 @@
 
 	function taskPassesSidebarFilters(t: IndexedTask): boolean {
 		const statusSet = uncheckedStatus ?? new Set<string>();
-		const areaSet = uncheckedArea ?? new Set<string>();
 		const projectSet = uncheckedProject ?? new Set<string>();
 		const statusUnchecked = statusSet.size > 0;
-		const areaUnchecked = areaSet.size > 0;
 		const projectUnchecked = projectSet.size > 0;
 		const statusSetLc = new Set([...statusSet].map((s) => s.toLowerCase()));
 		const statusKey = t.status?.trim() ? t.status : NONE_KEY;
-		const areaKey = taskAreaKey(t, snapshot);
 		const projectKey = taskProjectKey(t);
 		const statusPass = !statusUnchecked || !statusSetLc.has(statusKey.toLowerCase());
-		const areaPass = !areaUnchecked || !areaSet.has(areaKey);
 		const projectPass = !projectUnchecked || !projectSet.has(projectKey);
-		return statusPass && areaPass && projectPass;
+		return statusPass && projectPass;
+	}
+
+	function taskMatchesSearchQuery(t: IndexedTask, q: string, snap: IndexSnapshot): boolean {
+		if (!q) return true;
+		if (t.title.toLowerCase().includes(q)) return true;
+		const pk = taskProjectKey(t);
+		if (pk !== NONE_KEY && taskProjectLabel(pk, snap).toLowerCase().includes(q)) {
+			return true;
+		}
+		return false;
 	}
 
 	$: unscheduledTasks = sortIndexedTasks(
-		openTasksRaw.filter((t) => isUnscheduled(t) && taskPassesSidebarFilters(t)),
+		openTasksRaw.filter(
+			(t) =>
+				isUnscheduled(t) &&
+				taskPassesSidebarFilters(t) &&
+				taskMatchesSearchQuery(t, searchQuery.trim().toLowerCase(), snapshot),
+		),
 		"name",
 		"asc",
 	);
@@ -147,22 +161,6 @@
 				key: k,
 				label: k === NONE_KEY ? "None" : k.replace(/\b\w/g, (c) => c.toUpperCase()),
 			});
-		}
-		if (!seen.has(NONE_KEY)) out.push({key: NONE_KEY, label: "None"});
-		out.sort((a, b) =>
-			a.key === NONE_KEY ? 1 : b.key === NONE_KEY ? -1 : a.label.localeCompare(b.label),
-		);
-		return out;
-	})();
-
-	$: areaOptions = ((): {key: string; label: string}[] => {
-		const seen = new Set<string>();
-		const out: {key: string; label: string}[] = [];
-		for (const t of openTasksRaw) {
-			const k = taskAreaKey(t, snapshot);
-			if (seen.has(k)) continue;
-			seen.add(k);
-			out.push({key: k, label: taskAreaLabel(k, snapshot)});
 		}
 		if (!seen.has(NONE_KEY)) out.push({key: NONE_KEY, label: "None"});
 		out.sort((a, b) =>
@@ -189,24 +187,20 @@
 
 	$: searchFiltered = ((): IndexedTask[] => {
 		const q = searchQuery.trim().toLowerCase();
-		const base = openTasksRaw.filter(
-			(t) => !isUnscheduled(t) && taskPassesSidebarFilters(t),
+		return openTasksRaw.filter(
+			(t) =>
+				!isUnscheduled(t) &&
+				taskPassesSidebarFilters(t) &&
+				taskMatchesSearchQuery(t, q, snapshot),
 		);
-		if (!q) return base;
-		return base.filter((t) => {
-			if (t.title.toLowerCase().includes(q)) return true;
-			const pk = taskProjectKey(t);
-			if (pk !== NONE_KEY && taskProjectLabel(pk, snapshot).toLowerCase().includes(q)) {
-				return true;
-			}
-			return false;
-		});
 	})();
 
 	$: groupBy = (void sRev, plugin.settings.taskSidebarGroupBy);
+	$: effectiveGroupBy =
+		filterProjectPath && groupBy === "project" ? "status" : groupBy;
 	$: sortBy = (void sRev, plugin.settings.taskSidebarSortBy);
 	$: sortDir = (void sRev, plugin.settings.taskSidebarSortDir);
-	$: statusOrder = (void sRev, parseList(plugin.settings.taskStatuses));
+	$: statusOrder = (void sRev, parseTaskStatusChoices(plugin.settings));
 
 	$: flatTasks = sortIndexedTasks(searchFiltered, sortBy, sortDir);
 
@@ -214,21 +208,21 @@
 
 	$: taskGroups = ((): TaskGroup[] => {
 		const list = searchFiltered;
-		if (groupBy === "none") {
+		if (effectiveGroupBy === "none") {
 			return [{label: "", tasks: sortIndexedTasks(list, sortBy, sortDir)}];
 		}
 		const map = new Map<string, IndexedTask[]>();
 		for (const t of list) {
 			let key = "";
-			if (groupBy === "status") key = t.status?.trim() || NONE_KEY;
-			else if (groupBy === "project") key = taskProjectKey(t);
+			if (effectiveGroupBy === "status") key = t.status?.trim() || NONE_KEY;
+			else if (effectiveGroupBy === "project") key = taskProjectKey(t);
 			else key = taskAreaKey(t, snapshot);
 			const cur = map.get(key) ?? [];
 			cur.push(t);
 			map.set(key, cur);
 		}
 		const keys = [...map.keys()];
-		if (groupBy === "status") {
+		if (effectiveGroupBy === "status") {
 			keys.sort((a, b) => {
 				const ia = statusOrder.indexOf(a.toLowerCase());
 				const ib = statusOrder.indexOf(b.toLowerCase());
@@ -242,11 +236,11 @@
 				if (a === NONE_KEY) return 1;
 				if (b === NONE_KEY) return -1;
 				const la =
-					groupBy === "project"
+					effectiveGroupBy === "project"
 						? taskProjectLabel(a, snapshot)
 						: taskAreaLabel(a, snapshot);
 				const lb =
-					groupBy === "project"
+					effectiveGroupBy === "project"
 						? taskProjectLabel(b, snapshot)
 						: taskAreaLabel(b, snapshot);
 				return la.localeCompare(lb);
@@ -254,16 +248,16 @@
 		}
 		return keys.map((k) => ({
 			label:
-				groupBy === "status"
+				effectiveGroupBy === "status"
 					? k === NONE_KEY
 						? "None"
 						: k.replace(/\b\w/g, (c) => c.toUpperCase())
-					: groupBy === "project"
+					: effectiveGroupBy === "project"
 						? taskProjectLabel(k, snapshot)
 						: taskAreaLabel(k, snapshot),
 			tasks: sortIndexedTasks(map.get(k) ?? [], sortBy, sortDir),
 			area:
-				groupBy === "area" && k !== NONE_KEY
+				effectiveGroupBy === "area" && k !== NONE_KEY
 					? snapshot.areas.find((a) => a.file.path === k)
 					: undefined,
 		}));
@@ -299,14 +293,6 @@
 		await plugin.patchSettings({taskSidebarFilterUncheckedStatus: arr});
 	}
 
-	async function toggleAreaFilter(key: string): Promise<void> {
-		const arr = [...(plugin.settings.taskSidebarFilterUncheckedArea ?? [])];
-		const i = arr.indexOf(key);
-		if (i >= 0) arr.splice(i, 1);
-		else arr.push(key);
-		await plugin.patchSettings({taskSidebarFilterUncheckedArea: arr});
-	}
-
 	async function toggleProjectFilter(key: string): Promise<void> {
 		const arr = [...(plugin.settings.taskSidebarFilterUncheckedProject ?? [])];
 		const i = arr.indexOf(key);
@@ -319,10 +305,6 @@
 
 	function isStatusChecked(key: string): boolean {
 		return !uncheckedStatusLc.has(key.toLowerCase());
-	}
-
-	function isAreaChecked(key: string): boolean {
-		return !uncheckedArea.has(key);
 	}
 
 	function isProjectChecked(key: string): boolean {
@@ -347,7 +329,7 @@
 	}
 
 	function groupKey(label: string): string {
-		return `${groupBy}:${label}`;
+		return `${effectiveGroupBy}:${label}`;
 	}
 
 	function isGroupCollapsed(label: string): boolean {
@@ -395,6 +377,7 @@
 <svelte:window on:click={handleFilterClickOutside} />
 
 <div class="fulcrum-task-list-panel fulcrum-project-list-panel">
+	{#if !embedded}
 	<div class="fulcrum-project-list-panel__facets-shell">
 		<button
 			type="button"
@@ -418,12 +401,14 @@
 						<select
 							class="dropdown fulcrum-project-list-panel__facet-select"
 							aria-label="Group tasks by"
-							value={groupBy}
+							value={effectiveGroupBy}
 							on:change={(e) => void onGroupByChange(e)}
 						>
 							<option value="area">Area</option>
 							<option value="status">Status</option>
-							<option value="project">Project</option>
+							{#if !filterProjectPath}
+								<option value="project">Project</option>
+							{/if}
 							<option value="none">None</option>
 						</select>
 					</div>
@@ -466,7 +451,7 @@
 								aria-expanded={filterOpen}
 								on:click|stopPropagation={() => openFilterPanel()}
 							>
-								{uncheckedStatus.size > 0 || uncheckedArea.size > 0 || uncheckedProject.size > 0
+								{uncheckedStatus.size > 0 || uncheckedProject.size > 0
 									? "Filtered"
 									: "All"}
 							</button>
@@ -494,19 +479,7 @@
 											</label>
 										{/each}
 									</div>
-									<div class="fulcrum-project-list-panel__filter-section">
-										<div class="fulcrum-project-list-panel__filter-section-title">Area</div>
-										{#each areaOptions as opt}
-											<label class="fulcrum-project-list-panel__filter-check">
-												<input
-													type="checkbox"
-													checked={isAreaChecked(opt.key)}
-													on:change={() => void toggleAreaFilter(opt.key)}
-												/>
-												<span>{opt.label}</span>
-											</label>
-										{/each}
-									</div>
+									{#if !filterProjectPath}
 									<div class="fulcrum-project-list-panel__filter-section">
 										<div class="fulcrum-project-list-panel__filter-section-title">Project</div>
 										{#each projectOptions as opt}
@@ -520,6 +493,7 @@
 											</label>
 										{/each}
 									</div>
+									{/if}
 								</div>
 							{/if}
 						</div>
@@ -540,6 +514,7 @@
 			</div>
 		{/if}
 	</div>
+	{/if}
 
 	<section class="fulcrum-task-list-panel__unscheduled" aria-label="Unscheduled tasks">
 		<div class="fulcrum-task-list-panel__unscheduled-head">
@@ -564,11 +539,11 @@
 			<ul class="fulcrum-task-list-panel__unscheduled-list" role="list">
 				{#each unscheduledTasks as task (calendarTaskDragKey(task))}
 					<li
-						class="fulcrum-task-list-panel__drag-row"
-						class:fulcrum-task-list-panel__drag-row--dragging={draggedTaskKey === calendarTaskDragKey(task)}
+						class="fulcrum-task-drag-row fulcrum-task-list-panel__drag-row"
+						class:fulcrum-task-drag-row--dragging={draggedTaskKey === calendarTaskDragKey(task)}
 					>
 						<span
-							class="fulcrum-calendar__unscheduled-grip"
+							class="fulcrum-task-drag-row__grip fulcrum-calendar__unscheduled-grip"
 							aria-hidden="true"
 							draggable="true"
 							role="button"
@@ -577,12 +552,11 @@
 							on:dragstart={(e) => onTaskDragStart(e, task)}
 							on:dragend={onTaskDragEnd}
 						>⋮⋮</span>
-						<div class="fulcrum-task-list-panel__card-wrap">
+						<div class="fulcrum-task-drag-row__card fulcrum-task-list-panel__card-wrap">
 							<TaskCard
 								{plugin}
 								{task}
 								done={false}
-								showProjectLink={true}
 								anchorLeaf={hoverParentLeaf}
 							/>
 						</div>
@@ -594,18 +568,18 @@
 
 	{#if openTasksRaw.length === 0}
 		<p class="fulcrum-muted fulcrum-project-list-panel__empty">No open tasks in index.</p>
-	{:else if groupBy === "none"}
+	{:else if effectiveGroupBy === "none"}
 		{#if flatTasks.length === 0}
 			<p class="fulcrum-muted fulcrum-project-list-panel__empty">No scheduled tasks match your filters.</p>
 		{:else}
 		<ul class="fulcrum-task-list-panel__list">
 			{#each flatTasks as task (calendarTaskDragKey(task))}
 				<li
-					class="fulcrum-task-list-panel__drag-row"
-					class:fulcrum-task-list-panel__drag-row--dragging={draggedTaskKey === calendarTaskDragKey(task)}
+					class="fulcrum-task-drag-row fulcrum-task-list-panel__drag-row"
+					class:fulcrum-task-drag-row--dragging={draggedTaskKey === calendarTaskDragKey(task)}
 				>
 					<span
-						class="fulcrum-calendar__unscheduled-grip"
+						class="fulcrum-task-drag-row__grip fulcrum-calendar__unscheduled-grip"
 						aria-hidden="true"
 						draggable="true"
 						role="button"
@@ -614,8 +588,8 @@
 						on:dragstart={(e) => onTaskDragStart(e, task)}
 						on:dragend={onTaskDragEnd}
 					>⋮⋮</span>
-					<div class="fulcrum-task-list-panel__card-wrap">
-						<TaskCard {plugin} {task} done={false} showProjectLink={true} anchorLeaf={hoverParentLeaf} />
+					<div class="fulcrum-task-drag-row__card fulcrum-task-list-panel__card-wrap">
+						<TaskCard {plugin} {task} done={false} anchorLeaf={hoverParentLeaf} />
 					</div>
 				</li>
 			{/each}
@@ -658,22 +632,17 @@
 									</h3>
 								{/if}
 							</div>
-							<span
-								class="fulcrum-project-list-panel__group-chevron"
-								class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(group.label)}
-								aria-hidden="true"
-							>▾</span>
 						</div>
 					{/if}
 					{#if !group.label || !isGroupCollapsed(group.label)}
 						<ul class="fulcrum-task-list-panel__list">
 							{#each group.tasks as task (calendarTaskDragKey(task))}
 								<li
-									class="fulcrum-task-list-panel__drag-row"
-									class:fulcrum-task-list-panel__drag-row--dragging={draggedTaskKey === calendarTaskDragKey(task)}
+									class="fulcrum-task-drag-row fulcrum-task-list-panel__drag-row"
+									class:fulcrum-task-drag-row--dragging={draggedTaskKey === calendarTaskDragKey(task)}
 								>
 									<span
-										class="fulcrum-calendar__unscheduled-grip"
+										class="fulcrum-task-drag-row__grip fulcrum-calendar__unscheduled-grip"
 										aria-hidden="true"
 										draggable="true"
 										role="button"
@@ -682,8 +651,8 @@
 										on:dragstart={(e) => onTaskDragStart(e, task)}
 										on:dragend={onTaskDragEnd}
 									>⋮⋮</span>
-									<div class="fulcrum-task-list-panel__card-wrap">
-										<TaskCard {plugin} {task} done={false} showProjectLink={true} anchorLeaf={hoverParentLeaf} />
+									<div class="fulcrum-task-drag-row__card fulcrum-task-list-panel__card-wrap">
+										<TaskCard {plugin} {task} done={false} anchorLeaf={hoverParentLeaf} />
 									</div>
 								</li>
 							{/each}

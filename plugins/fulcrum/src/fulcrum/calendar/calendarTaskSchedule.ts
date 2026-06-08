@@ -1,4 +1,5 @@
 import {App, Modal, TFile} from "obsidian";
+import type {CalendarTaskScheduleField} from "../settingsDefaults";
 import type {IndexedTask} from "../types";
 import type {TaskScheduleDateField} from "../kanban/taskFieldUpdate";
 
@@ -29,6 +30,14 @@ export function findTaskByDragKey(tasks: IndexedTask[], key: string): IndexedTas
 	} catch {
 		return undefined;
 	}
+}
+
+export async function resolveTaskScheduleFieldSetting(
+	app: App,
+	field: CalendarTaskScheduleField,
+): Promise<TaskScheduleDateField | null> {
+	if (field === "ask") return promptTaskScheduleField(app);
+	return field;
 }
 
 /** Modal: choose due vs scheduled when dropping a task on the calendar. */

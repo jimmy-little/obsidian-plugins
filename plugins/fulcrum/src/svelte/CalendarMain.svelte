@@ -8,14 +8,14 @@
 		indexRevision,
 		setCalendarTaskDragActive,
 		settingsRevision,
-		workRelatedOnly,
+		areaFilterState,
 	} from "../fulcrum/stores";
 	import {
-		buildAreaWorkRelatedMap,
-		meetingPassesWorkFilter,
-		taskPassesWorkFilter,
-	} from "../fulcrum/utils/workRelatedProjectFilter";
-	import {parseList} from "../fulcrum/settingsDefaults";
+		buildAreaLifeModeMap,
+		meetingPassesAreaFilter,
+		taskPassesAreaFilter,
+	} from "../fulcrum/utils/areaFocusFilter";
+	import {isDoneStatus, parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
 	import {
 		gridDates,
 		addDays,
@@ -34,9 +34,11 @@
 	import {
 		taskToCalendarEvent,
 		meetingToCalendarEvent,
+		atomicNoteToCalendarEvent,
 		projectColorMap,
 		type CalendarEvent,
 	} from "../fulcrum/utils/calendarEvents";
+	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
 	import {buildTimerCalendarOverlay} from "../fulcrum/utils/timerCalendarOverlay";
 	import {
 		applyCalendarEventToSlot,
@@ -45,14 +47,20 @@
 		FULCRUM_CALENDAR_EVENT_MIME,
 	} from "../fulcrum/calendar/calendarDropApply";
 	import type {CalendarDropSlot} from "../fulcrum/calendar/calendarDropSlot";
+	import {showFulcrumTaskContextMenu} from "../fulcrum/taskContextMenu";
 	import {
 		FULCRUM_CALENDAR_TASK_MIME,
 		findTaskByDragKey,
-		promptTaskScheduleField,
+		resolveTaskScheduleFieldSetting,
 		waitForNextFileResolved,
 	} from "../fulcrum/calendar/calendarTaskSchedule";
+	import ConduitSyncToolbar from "./ConduitSyncToolbar.svelte";
+
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
+	export let filterProjectPath: string | undefined = undefined;
+	export let projectAtomicNotes: import("../fulcrum/types").AtomicNoteRow[] = [];
+	export let embedded = false;
 
 	/** Bumps on an interval so the “now” line position stays current. */
 	let nowLineTick = 0;
@@ -77,7 +85,7 @@
 
 	$: sRev = $settingsRevision;
 	$: viewMode = (void sRev, plugin.settings.calendarViewMode) as CalendarViewMode;
-	$: doneTask = new Set(parseList(plugin.settings.taskDoneStatuses));
+	$: doneTask = parseDoneStatusSet(plugin.settings.taskDoneStatuses);
 	$: weekStart = (void sRev, plugin.settings.calendarFirstDayOfWeek);
 	$: timerLayers = (void sRev, plugin.settings.timer);
 	$: scheduleDateMode = (void sRev, plugin.settings.calendarTaskScheduleField);
@@ -129,13 +137,14 @@
 		});
 	}
 
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+	$: areaFilter = $areaFilterState;
+	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
 		typeField: plugin.settings.typeField,
 		areaTypeValue: plugin.settings.areaTypeValue,
+		settings: plugin.settings,
 	});
-	$: onlyWork = $workRelatedOnly;
 
 	$: dates = gridDates(focalDate, viewMode, weekStart);
 	$: startDate = gridStartDate(focalDate, viewMode, weekStart);
@@ -173,12 +182,43 @@
 		const due = t.dueDate?.slice(0, 10);
 		return (
 			(sched || due) &&
-			!doneTask.has(t.status) &&
-			taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap)
+			!isDoneStatus(t.status, doneTask) &&
+			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap) &&
+			(!filterProjectPath || t.projectFile?.path === filterProjectPath)
 		);
 	});
 
 	$: projectColors = projectColorMap(snapshot.projects);
+
+	$: projectTaskPaths = ((): Set<string> => {
+		if (!filterProjectPath) return new Set();
+		const paths = new Set<string>();
+		for (const t of snapshot.tasks) {
+			if (t.projectFile?.path === filterProjectPath) paths.add(t.file.path);
+		}
+		return paths;
+	})();
+
+	function timerEventLinkedToProject(e: CalendarEvent, projectPath: string): boolean {
+		const paths = [
+			e.timerNotePath,
+			e.planned?.file.path,
+			e.task?.file.path,
+		].filter((p): p is string => Boolean(p));
+		for (const p of paths) {
+			if (p === projectPath || projectTaskPaths.has(p)) return true;
+			if (p.startsWith(`${projectPath}/`)) return true;
+		}
+		return false;
+	}
+
+	$: scopedTimerOverlayEvents = filterProjectPath
+		? timerOverlayEvents.filter((e) => timerEventLinkedToProject(e, filterProjectPath))
+		: timerOverlayEvents;
+
+	$: noteAccentCss = filterProjectPath
+		? resolveProjectAccentCss(projectColors.get(filterProjectPath))
+		: null;
 
 	/** Unified calendar events (tasks + meetings + timer overlay) */
 	$: allCalendarEvents = ((): import("../fulcrum/utils/calendarEvents").CalendarEvent[] => {
@@ -186,7 +226,10 @@
 		void timerLayers.calendarShowMeetings;
 		void timerLayers.calendarShowLogged;
 		void timerLayers.calendarShowPlanned;
-		void timerOverlayEvents;
+		void scopedTimerOverlayEvents;
+		void filterProjectPath;
+		void projectAtomicNotes;
+		void noteAccentCss;
 		const out: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
 		if (timerLayers.calendarShowTasks) {
 			for (const t of datedTasks) {
@@ -201,7 +244,8 @@
 		}
 		if (timerLayers.calendarShowMeetings) {
 			for (const m of snapshot.meetings) {
-				if (!meetingPassesWorkFilter(m, snapshot, onlyWork, areaWorkMap)) continue;
+				if (!meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap)) continue;
+				if (filterProjectPath && m.projectFile?.path !== filterProjectPath) continue;
 				const e = meetingToCalendarEvent(
 					m,
 					() => plugin.openLinkedNoteFromFulcrum(m.file.path, hoverParentLeaf),
@@ -210,7 +254,15 @@
 				if (e) out.push(e);
 			}
 		}
-		out.push(...timerOverlayEvents);
+		for (const n of projectAtomicNotes) {
+			const e = atomicNoteToCalendarEvent(
+				n,
+				() => plugin.openLinkedNoteFromFulcrum(n.file.path, hoverParentLeaf),
+				noteAccentCss,
+			);
+			if (e) out.push(e);
+		}
+		out.push(...scopedTimerOverlayEvents);
 		return out;
 	})();
 
@@ -232,7 +284,7 @@
 	$: calendarRenderKey = [
 		sRev,
 		rev,
-		onlyWork ? "w" : "a",
+		JSON.stringify(areaFilter),
 		viewMode,
 		toISODate(startDate),
 		dayCount,
@@ -242,6 +294,8 @@
 		timerLayers.calendarShowPlanned ? "P" : "",
 		allCalendarEvents.length,
 		timerOverlayEvents.length,
+		projectAtomicNotes.length,
+		filterProjectPath ?? "",
 	].join("|");
 
 	function eventsForDate(iso: string): {allDay: CalendarEvent[]; timed: CalendarEvent[]} {
@@ -280,10 +334,12 @@
 	}
 
 	async function resolveTaskScheduleField(): Promise<"due" | "scheduled" | null> {
-		if (scheduleDateMode === "ask") {
-			return await promptTaskScheduleField(plugin.app);
-		}
-		return scheduleDateMode;
+		return resolveTaskScheduleFieldSetting(plugin.app, scheduleDateMode);
+	}
+
+	function onTaskEventContextMenu(ev: MouseEvent, e: CalendarEvent): void {
+		if (e.kind !== "task" || !e.task) return;
+		showFulcrumTaskContextMenu(ev, plugin, e.task, hoverParentLeaf);
 	}
 
 	async function onDropZoneDrop(
@@ -477,6 +533,10 @@
 				<option value="day">Day</option>
 			</select>
 		</label>
+
+		{#if !embedded}
+		<ConduitSyncToolbar {plugin} />
+		{/if}
 	</div>
 
 	<div class="fulcrum-calendar__layers" role="group" aria-label="Calendar layers">
@@ -551,12 +611,15 @@
 												on:dragstart={(ev) => { ev.stopPropagation(); onCalendarEventDragStart(ev, e); }}
 												on:dragend={onCalendarEventDragEnd}
 												on:click={(ev) => { ev.preventDefault(); e.open(); }}
+												on:contextmenu={(ev) => onTaskEventContextMenu(ev, e)}
 											>
 												<span class="fulcrum-calendar__event-icon" aria-hidden="true">
 													{#if e.kind === "task" || e.kind === "logged"}
 														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
 													{:else if e.kind === "planned" || e.kind === "planner"}
 														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+													{:else if e.kind === "note"}
+														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
 													{:else}
 														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
 													{/if}
@@ -615,10 +678,13 @@
 								on:dragstart={(ev) => { ev.stopPropagation(); onCalendarEventDragStart(ev, e); }}
 								on:dragend={onCalendarEventDragEnd}
 								on:click={(ev) => { ev.preventDefault(); e.open(); }}
+								on:contextmenu={(ev) => onTaskEventContextMenu(ev, e)}
 							>
 								<span class="fulcrum-calendar__event-icon" aria-hidden="true">
 									{#if e.kind === "task"}
 										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+									{:else if e.kind === "note"}
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
 									{:else}
 										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
 									{/if}
@@ -668,10 +734,13 @@
 									on:dragstart={(ev) => { ev.stopPropagation(); onCalendarEventDragStart(ev, e); }}
 									on:dragend={onCalendarEventDragEnd}
 									on:click={(ev) => { ev.preventDefault(); e.open(); }}
+									on:contextmenu={(ev) => onTaskEventContextMenu(ev, e)}
 								>
 									<span class="fulcrum-calendar__timed-event-icon" aria-hidden="true">
 										{#if e.kind === "task"}
 											<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+										{:else if e.kind === "note"}
+											<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
 										{:else}
 											<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
 										{/if}

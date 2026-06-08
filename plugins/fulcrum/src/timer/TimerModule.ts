@@ -2,6 +2,7 @@ import {
 	App,
 	MarkdownView,
 	type MarkdownPostProcessorContext,
+	MarkdownRenderChild,
 	Modal,
 	Notice,
 	Setting,
@@ -128,6 +129,8 @@ export class TimerModule {
 	/** Suppress metadata-cache reload while timer frontmatter (or related note YAML) is being written. */
 	private frontmatterReloadSuppressCounts = new Map<string, number>();
 	private timerEntryReloadHandles = new Map<string, number>();
+	/** Per-note refresh callbacks for inline ```fulcrum-timer widgets. */
+	private timerWidgetRefreshCallbacks = new Map<string, Set<() => void>>();
 	colorMeasurementEl: HTMLElement | null = null; // Hidden element for measuring computed colors
 	/** Planner note path → cached planned blocks (mtime-validated). */
 	plannedDayCache: Map<string, { mtime: number; blocks: PlannedBlock[] }> = new Map();
@@ -520,31 +523,8 @@ export class TimerModule {
 					// Update sidebar
 					this.refreshActivityPanel();
 				}
-				
-				// Force widget to update by briefly toggling view mode
-				const activeLeaf = this.app.workspace.activeLeaf;
-				if (activeLeaf && activeLeaf.view.getViewType() === 'markdown') {
-					const state = activeLeaf.view.getState();
-					// @ts-ignore - state has mode property
-					const currentMode = state.mode || 'source';
-					const tempMode = currentMode === 'source' ? 'preview' : 'source';
-					
-					// Toggle away from current mode
-					await activeLeaf.setViewState({
-						type: 'markdown',
-						// @ts-ignore
-						state: { ...state, mode: tempMode }
-					});
-					
-					// Toggle back to original mode after 50ms
-					setTimeout(async () => {
-						await activeLeaf.setViewState({
-							type: 'markdown',
-							// @ts-ignore
-							state: { ...state, mode: currentMode }
-						});
-					}, 50);
-				}
+
+				this.refreshTimerWidgetsForFile(filePath);
 			}
 		});
 
@@ -703,6 +683,7 @@ export class TimerModule {
 		if (hasActiveTimer) {
 			await this.stopAllActiveEntriesInFile(notePath);
 			this.refreshActivityPanel();
+			this.refreshTimerWidgetsForFile(notePath);
 			return;
 		}
 		const titleHint = options?.noteTitle?.trim();
@@ -730,6 +711,7 @@ export class TimerModule {
 			await this.ensureFulcrumTimerCodeBlockInNote(notePath);
 		});
 		this.refreshActivityPanel();
+		this.refreshTimerWidgetsForFile(notePath);
 	}
 
 	/** Write running timer to note YAML without metadata-cache reload clobbering in-memory state. */
@@ -761,6 +743,7 @@ export class TimerModule {
 			void this.loadEntriesFromFrontmatter(filePath).then(() => {
 				this.refreshActivityPanel();
 				this.updateStatusBar();
+				this.refreshTimerWidgetsForFile(filePath);
 			});
 		}, delayMs);
 		this.timerEntryReloadHandles.set(filePath, id);
@@ -791,6 +774,42 @@ export class TimerModule {
 			return await fn();
 		} finally {
 			this.endSuppressFrontmatterReload(filePath);
+		}
+	}
+
+	private registerTimerWidgetRefresh(
+		filePath: string,
+		callback: () => void,
+		ctx: MarkdownPostProcessorContext,
+		containerEl: HTMLElement,
+	): void {
+		let callbacks = this.timerWidgetRefreshCallbacks.get(filePath);
+		if (!callbacks) {
+			callbacks = new Set();
+			this.timerWidgetRefreshCallbacks.set(filePath, callbacks);
+		}
+		callbacks.add(callback);
+		const registry = this.timerWidgetRefreshCallbacks;
+		ctx.addChild(
+			new (class extends MarkdownRenderChild {
+				constructor(el: HTMLElement) {
+					super(el);
+				}
+				onunload(): void {
+					callbacks!.delete(callback);
+					if (callbacks!.size === 0) {
+						registry.delete(filePath);
+					}
+				}
+			})(containerEl),
+		);
+	}
+
+	private refreshTimerWidgetsForFile(filePath: string): void {
+		const callbacks = this.timerWidgetRefreshCallbacks.get(filePath);
+		if (!callbacks?.size) return;
+		for (const callback of callbacks) {
+			callback();
 		}
 	}
 
@@ -858,7 +877,7 @@ export class TimerModule {
 		} else if (activeTimers.length === 1) {
 			// Single timer: "{Time Entry Name} - {elapsed time}"
 			const { entry } = activeTimers[0];
-			const elapsed = entry.duration + (Date.now() - entry.startTime!);
+			const elapsed = this.getActiveEntryElapsedMs(entry);
 			const timeText = this.formatTimeForTimerDisplay(elapsed);
 			this.statusBarItem.setText(`${entry.label} - ${timeText}`);
 			this.statusBarItem.show();
@@ -866,7 +885,7 @@ export class TimerModule {
 			// Multiple timers: "{2} timers - {total elapsed time}"
 			let totalElapsed = 0;
 			for (const { entry } of activeTimers) {
-				totalElapsed += entry.duration + (Date.now() - entry.startTime!);
+				totalElapsed += this.getActiveEntryElapsedMs(entry);
 			}
 			const timeText = this.formatTimeForTimerDisplay(totalElapsed);
 			this.statusBarItem.setText(`${activeTimers.length} timers - ${timeText}`);
@@ -884,10 +903,27 @@ export class TimerModule {
 			const fm = (this.app.metadataCache.getFileCache(file)?.frontmatter ?? {}) as Record<string, unknown>;
 			let entries = readTimerEntriesFromFm(fm, this.settings, filePath);
 			for (const active of activeInMemory) {
+				if (active.startTime == null) continue;
+				const byIdIdx = active.id
+					? entries.findIndex((e) => e.id === active.id)
+					: -1;
+				if (byIdIdx >= 0) {
+					const fmEntry = entries[byIdIdx]!;
+					if (fmEntry.endTime == null) {
+						// In-memory running entry wins over metadata cache (± adjustments, cache lag).
+						entries[byIdIdx] = {
+							...fmEntry,
+							startTime: active.startTime,
+							duration: active.duration,
+							isPaused: active.isPaused,
+							label: active.label,
+							tags: active.tags,
+						};
+					}
+					continue;
+				}
 				const stillPresent = entries.some(
-					(e) =>
-						(active.id && e.id === active.id) ||
-						(e.startTime === active.startTime && e.endTime == null),
+					(e) => e.startTime === active.startTime && e.endTime == null,
 				);
 				if (!stillPresent) {
 					entries.push(active);
@@ -1628,9 +1664,7 @@ export class TimerModule {
 			});
 		}
 
-		const pageData = this.timeData.get(filePath)!;
-
-		// Find active timer (has startTime but no endTime)
+		let pageData = this.timeData.get(filePath)!;
 		const activeTimer = pageData.entries.find(e => e.startTime !== null && e.endTime === null);
 
 		// Build the container
@@ -1712,42 +1746,11 @@ export class TimerModule {
 		// Today total (right-aligned)
 		const todayLabel = bottomLine.createDiv({ cls: 'fulcrum-timer-today-label' });
 
-		// Helper function to calculate total time (including active timer if running)
-		const calculateTotalTime = (): number => {
-			return pageData.entries.reduce((sum, e) => {
-				if (e.endTime !== null) {
-					return sum + e.duration;
-				} else if (e.startTime !== null) {
-					// Active timer - include current elapsed time
-					return sum + e.duration + (Date.now() - e.startTime);
-				}
-				return sum;
-			}, 0);
-		};
-
-		// Helper function to calculate today's total time
-		const calculateTodayTotal = (): number => {
-			const today = new Date();
-			today.setHours(0, 0, 0, 0);
-			const todayStart = today.getTime();
-
-			return pageData.entries.reduce((sum, e) => {
-				if (e.startTime && e.startTime >= todayStart) {
-					if (e.endTime !== null) {
-						return sum + e.duration;
-					} else if (e.startTime !== null) {
-						// Active timer - include current elapsed time
-						return sum + e.duration + (Date.now() - e.startTime);
-					}
-				}
-				return sum;
-			}, 0);
-		};
-
 		// Update timer display and summary
 		const updateDisplays = () => {
+			const currentPageData = this.timeData.get(filePath) ?? pageData;
 			// Find current active timer
-			const currentActiveTimer = pageData.entries.find(e => e.startTime !== null && e.endTime === null);
+			const currentActiveTimer = currentPageData.entries.find(e => e.startTime !== null && e.endTime === null);
 			
 			// Update button states
 			adjustBackBtn.disabled = !currentActiveTimer;
@@ -1755,18 +1758,37 @@ export class TimerModule {
 			
 			// Update timer display
 			if (currentActiveTimer && currentActiveTimer.startTime) {
-				const elapsed = currentActiveTimer.duration + (Date.now() - currentActiveTimer.startTime);
+				const elapsed = this.getActiveEntryElapsedMs(currentActiveTimer);
 				timerDisplay.setText(this.formatTimeForTimerDisplay(elapsed));
 			} else {
 				timerDisplay.setText('--:--');
 			}
 
 			// Update summary
-			const entryCount = pageData.entries.length;
-			const totalTime = calculateTotalTime();
+			const entryCount = currentPageData.entries.length;
+			const totalTime = currentPageData.entries.reduce((sum, e) => {
+				if (e.endTime !== null) {
+					return sum + e.duration;
+				} else if (e.startTime !== null) {
+					return sum + this.getActiveEntryElapsedMs(e);
+				}
+				return sum;
+			}, 0);
 			summaryLeft.setText(`${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}, ${this.formatTimeAsHHMMSS(totalTime)}`);
 
-			const todayTotal = calculateTodayTotal();
+			const today = new Date();
+			today.setHours(0, 0, 0, 0);
+			const todayStart = today.getTime();
+			const todayTotal = currentPageData.entries.reduce((sum, e) => {
+				if (e.startTime && e.startTime >= todayStart) {
+					if (e.endTime !== null) {
+						return sum + e.duration;
+					} else if (e.startTime !== null) {
+						return sum + this.getActiveEntryElapsedMs(e);
+					}
+				}
+				return sum;
+			}, 0);
 			todayLabel.setText(`Today: ${this.formatTimeAsHHMMSS(todayTotal)}`);
 		};
 
@@ -1790,6 +1812,7 @@ export class TimerModule {
 				// Update frontmatter
 				await this.updateFrontmatter(filePath);
 				updateDisplays();
+				this.refreshActivityPanel();
 			}
 		};
 
@@ -1803,6 +1826,7 @@ export class TimerModule {
 				// Update frontmatter
 				await this.updateFrontmatter(filePath);
 				updateDisplays();
+				this.refreshActivityPanel();
 			}
 		};
 
@@ -1971,6 +1995,65 @@ export class TimerModule {
 			await this.updateFrontmatter(filePath);
 			this.renderEntryCards(cardsContainer, pageData.entries, filePath, labelDisplay, labelInput);
 		};
+
+		const syncWidgetFromPageData = () => {
+			const fresh = this.timeData.get(filePath);
+			if (fresh) {
+				pageData = fresh;
+			}
+			const currentActiveTimer = pageData.entries.find(
+				(e) => e.startTime !== null && e.endTime === null,
+			);
+
+			if (currentActiveTimer) {
+				if (labelInput) {
+					labelInput.remove();
+					labelInput = null;
+					labelDisplay = topLine.createEl('div', {
+						text: currentActiveTimer.label,
+						cls: 'fulcrum-timer-label-display-running',
+					});
+					const playBtn = topLine.querySelector('.fulcrum-timer-btn-play-stop');
+					if (playBtn) {
+						topLine.insertBefore(labelDisplay, playBtn);
+					}
+				} else if (labelDisplay?.classList.contains('fulcrum-timer-label-display-running')) {
+					labelDisplay.setText(currentActiveTimer.label);
+				}
+				setIcon(playStopBtn, 'square');
+				playStopBtn.classList.remove('fulcrum-timer-btn-play');
+				playStopBtn.classList.add('fulcrum-timer-btn-stop');
+				if (!updateInterval) {
+					updateInterval = window.setInterval(updateDisplays, 1000);
+				}
+			} else {
+				if (labelDisplay?.classList.contains('fulcrum-timer-label-display-running')) {
+					labelDisplay.remove();
+					labelInput = topLine.createEl('input', {
+						type: 'text',
+						placeholder: 'Timer label...',
+						cls: 'fulcrum-timer-label-input',
+					}) as HTMLInputElement;
+					const playBtn = topLine.querySelector('.fulcrum-timer-btn-play-stop');
+					if (playBtn) {
+						topLine.insertBefore(labelInput, playBtn);
+					}
+					labelDisplay = labelInput;
+				}
+				setIcon(playStopBtn, 'play');
+				playStopBtn.classList.remove('fulcrum-timer-btn-stop');
+				playStopBtn.classList.add('fulcrum-timer-btn-play');
+				if (updateInterval) {
+					clearInterval(updateInterval);
+					updateInterval = null;
+				}
+			}
+
+			updateDisplays();
+			this.renderEntryCards(cardsContainer, pageData.entries, filePath, labelDisplay, labelInput);
+		};
+
+		this.registerTimerWidgetRefresh(filePath, syncWidgetFromPageData, ctx, el);
 	}
 
 
@@ -3280,6 +3363,12 @@ export class TimerModule {
 		return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 	}
 
+	/** Elapsed ms for a running entry (respects pause and start-time adjustments). */
+	getActiveEntryElapsedMs(entry: TimeEntry): number {
+		if (!entry.startTime) return entry.duration;
+		return entry.duration + (entry.isPaused ? 0 : Date.now() - entry.startTime);
+	}
+
 	formatTimeForButton(milliseconds: number): string {
 		const totalSeconds = Math.floor(milliseconds / 1000);
 		const hours = Math.floor(totalSeconds / 3600);
@@ -4116,10 +4205,10 @@ export class TimerModule {
 		// If there's a debounced save pending, trigger it immediately
 		if (this.cacheSaveTimeout) {
 			clearTimeout(this.cacheSaveTimeout);
-			await this.saveData({
-				...this.settings,
-				entryCache: this.entryCache
-			});
+			const data = (await this.loadData()) as Record<string, unknown>;
+			delete data.entryCache;
+			data.timerEntryCache = this.entryCache;
+			await this.saveData(data);
 			this.cacheSaveTimeout = null;
 		}
 		
@@ -4127,8 +4216,6 @@ export class TimerModule {
 	}
 
 	async saveTimerSettings(): Promise<void> {
-		const data = await this.loadData();
-		await this.saveData({ ...data, timerEntryCache: this.entryCache });
 		await this.host.saveSettings();
 	}
 
@@ -4143,11 +4230,10 @@ export class TimerModule {
 			this.cacheSaveTimeout = window.setTimeout(async () => {
 				try {
 					// Save cache separately from settings
-					const data = await this.loadData();
-					await this.saveData({
-						...data,
-						entryCache: this.entryCache
-					});
+					const data = (await this.loadData()) as Record<string, unknown>;
+					delete data.entryCache;
+					data.timerEntryCache = this.entryCache;
+					await this.saveData(data);
 				} finally {
 					this.cacheSaveTimeout = null;
 					// Remove from pending saves
@@ -5254,18 +5340,17 @@ class TimerActivityView extends TimerEmbedPanel {
 			clearInterval(this.refreshInterval);
 		}
 		
-		// Check more frequently (1 second) to catch changes faster
 		this.refreshInterval = window.setInterval(() => {
 			this.updateTimers().catch(err => console.error('Error updating timers:', err));
-		}, 1000);
+		}, 2500);
 	}
 
 	async updateTimers() {
 		// Increment refresh counter
 		this.refreshCounter++;
 		
-		// Every 30 seconds (30 calls at 1 second interval), do a full refresh to catch metadata changes
-		if (this.refreshCounter >= 30) {
+		// Periodic full refresh for metadata drift (~2.5 min at 2.5s interval)
+		if (this.refreshCounter >= 60) {
 			this.refreshCounter = 0;
 			// Clear cache for files that have active entries to reload fresh metadata
 			this.plugin.timeData.forEach((pageData, filePath) => {

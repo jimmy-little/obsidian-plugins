@@ -3,9 +3,9 @@
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {FulcrumSettings} from "../fulcrum/settingsDefaults";
-	import {indexRevision, settingsRevision, workRelatedOnly} from "../fulcrum/stores";
-	import {buildAreaWorkRelatedMap, filterProjectsWorkRelated} from "../fulcrum/utils/workRelatedProjectFilter";
-	import {parseList} from "../fulcrum/settingsDefaults";
+	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
+	import {buildAreaLifeModeMap, filterProjectsByAreaFocus} from "../fulcrum/utils/areaFocusFilter";
+	import {parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
 	import type {IndexedArea, IndexedProject} from "../fulcrum/types";
 	import {buildProjectSidebarCounts} from "../fulcrum/utils/projectSidebarCounts";
 	import {sortIndexedProjects} from "../fulcrum/utils/projectListSort";
@@ -58,26 +58,26 @@
 
 	$: sRev = $settingsRevision;
 	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
-	$: doneTask = (void sRev, new Set(parseList(plugin.settings.taskDoneStatuses)));
+	$: doneTask = (void sRev, parseDoneStatusSet(plugin.settings.taskDoneStatuses));
 
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+	$: areaFilter = $areaFilterState;
+	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
 		typeField: plugin.settings.typeField,
 		areaTypeValue: plugin.settings.areaTypeValue,
+		settings: plugin.settings,
 	});
-	$: onlyWork = $workRelatedOnly;
 
 	/** Per-project counts for sidebar notifications. */
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
-	$: activeProjectRaw = filterProjectsWorkRelated(
+	$: activeProjectRaw = filterProjectsByAreaFocus(
 		snapshot.projects.filter((p) => !doneProject.has((p.status ?? "").trim().toLowerCase())),
-		onlyWork,
-		areaWorkMap,
+		areaFilter,
+		lifeModeMap,
 	);
 	/** Applied filter (from settings) - used for displayed list. Re-read when settings change. */
 	$: uncheckedStatus = (void sRev, new Set(plugin.settings.projectSidebarFilterUncheckedStatus ?? []));
-	$: uncheckedArea = (void sRev, new Set(plugin.settings.projectSidebarFilterUncheckedArea ?? []));
 
 	// Indexed status options: all unique status values from active projects + None
 	$: statusOptions = ((): { key: string; label: string }[] => {
@@ -103,46 +103,13 @@
 		return out;
 	})();
 
-	// Indexed area options: snapshot.areas + areas linked from projects (covers area files without type=area)
-	$: areaOptions = ((): { key: string; label: string }[] => {
-		const byPath = new Map<string, string>();
-		for (const a of snapshot.areas) {
-			byPath.set(a.file.path, a.name);
-		}
-		for (const p of activeProjectRaw) {
-			for (const af of p.areaFiles) {
-				const label =
-					(p.areaFiles.length === 1
-						? p.areaName?.trim() || af.basename.replace(/\.md$/i, "")
-						: af.basename.replace(/\.md$/i, "")) || af.path;
-				if (!byPath.has(af.path)) byPath.set(af.path, label);
-			}
-		}
-		const out: { key: string; label: string }[] = [];
-		for (const [path, name] of byPath) out.push({ key: path, label: name });
-		const hasNone = activeProjectRaw.some((p) => p.areaFiles.length === 0);
-		if (hasNone || out.length === 0) out.push({ key: NONE_KEY, label: "None" });
-		out.sort((a, b) => (a.key === NONE_KEY ? 1 : b.key === NONE_KEY ? -1 : a.label.localeCompare(b.label)));
-		return out;
-	})();
-
-	// Filter: project passes if (status checked OR all status checked) AND (area checked OR all area checked)
-	// Compare case-insensitively since status can vary in casing across projects.
+	// Filter: project passes if status checked (or all status checked).
 	$: activeProject = ((): IndexedProject[] => {
-		if (uncheckedStatus.size === 0 && uncheckedArea.size === 0) return activeProjectRaw;
-		const statusUnchecked = uncheckedStatus.size > 0;
-		const areaUnchecked = uncheckedArea.size > 0;
+		if (uncheckedStatus.size === 0) return activeProjectRaw;
 		const statusSetLc = new Set([...uncheckedStatus].map((s) => s.toLowerCase()));
 		return activeProjectRaw.filter((p) => {
 			const statusKey = p.status?.trim() ? p.status : NONE_KEY;
-			const areaPass =
-				!areaUnchecked ||
-				(p.areaFiles.length === 0
-					? !uncheckedArea.has(NONE_KEY)
-					: p.areaFiles.some((af) => !uncheckedArea.has(af.path)));
-			const statusPass =
-				!statusUnchecked || !statusSetLc.has(statusKey.toLowerCase());
-			return statusPass && areaPass;
+			return !statusSetLc.has(statusKey.toLowerCase());
 		});
 	})();
 
@@ -291,22 +258,10 @@
 		await plugin.patchSettings({projectSidebarFilterUncheckedStatus: arr});
 	}
 
-	async function toggleAreaFilter(key: string): Promise<void> {
-		const arr = [...(plugin.settings.projectSidebarFilterUncheckedArea ?? [])];
-		const i = arr.indexOf(key);
-		if (i >= 0) arr.splice(i, 1);
-		else arr.push(key);
-		await plugin.patchSettings({projectSidebarFilterUncheckedArea: arr});
-	}
-
 	$: uncheckedStatusLc = new Set([...uncheckedStatus].map((s) => s.toLowerCase()));
 
 	function isStatusChecked(key: string): boolean {
 		return !uncheckedStatusLc.has(key.toLowerCase());
-	}
-
-	function isAreaChecked(key: string): boolean {
-		return !uncheckedArea.has(key);
 	}
 
 	function openFilterPanel(): void {
@@ -433,12 +388,12 @@
 							<button
 								type="button"
 								class="dropdown fulcrum-project-list-panel__facet-select fulcrum-project-list-panel__filter-trigger"
-								aria-label="Filter projects by status and area"
+								aria-label="Filter projects by status"
 								aria-expanded={filterOpen}
 								aria-haspopup="true"
 								on:click|stopPropagation={() => openFilterPanel()}
 							>
-								{uncheckedStatus.size > 0 || uncheckedArea.size > 0 ? "Filtered" : "All"}
+								{uncheckedStatus.size > 0 ? "Filtered" : "All"}
 							</button>
 							<button
 								type="button"
@@ -463,19 +418,6 @@
 													type="checkbox"
 													checked={isStatusChecked(opt.key)}
 													on:change={() => void toggleStatusFilter(opt.key)}
-												/>
-												<span>{opt.label}</span>
-											</label>
-										{/each}
-									</div>
-									<div class="fulcrum-project-list-panel__filter-section">
-										<div class="fulcrum-project-list-panel__filter-section-title">Area</div>
-										{#each areaOptions as opt}
-											<label class="fulcrum-project-list-panel__filter-check">
-												<input
-													type="checkbox"
-													checked={isAreaChecked(opt.key)}
-													on:change={() => void toggleAreaFilter(opt.key)}
 												/>
 												<span>{opt.label}</span>
 											</label>
@@ -554,11 +496,6 @@
 							<h3 class="fulcrum-dashboard__area-group-title">{g.label}</h3>
 						{/if}
 					</div>
-					<span
-						class="fulcrum-project-list-panel__group-chevron"
-						class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(g.label)}
-						aria-hidden="true"
-					>▾</span>
 				</div>
 				{#if !isGroupCollapsed(g.label)}
 					<ul class="fulcrum-sidebar-project-list">
@@ -594,11 +531,6 @@
 					<div class="fulcrum-project-list-panel__group-header-main">
 						<h3 class="fulcrum-dashboard__area-group-title">{rg.label}</h3>
 					</div>
-					<span
-						class="fulcrum-project-list-panel__group-chevron"
-						class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(rg.label)}
-						aria-hidden="true"
-					>▾</span>
 				</div>
 				{#if !isGroupCollapsed(rg.label)}
 					<ul class="fulcrum-sidebar-project-list">
@@ -634,11 +566,6 @@
 					<div class="fulcrum-project-list-panel__group-header-main">
 						<h3 class="fulcrum-dashboard__area-group-title">{sg.label}</h3>
 					</div>
-					<span
-						class="fulcrum-project-list-panel__group-chevron"
-						class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(sg.label)}
-						aria-hidden="true"
-					>▾</span>
 				</div>
 				{#if !isGroupCollapsed(sg.label)}
 					<ul class="fulcrum-sidebar-project-list">

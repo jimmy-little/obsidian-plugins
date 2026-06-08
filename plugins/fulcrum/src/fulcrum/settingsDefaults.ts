@@ -54,6 +54,8 @@ export interface FulcrumSettings {
 	projectTypeValue: string;
 	projectLinkField: string;
 	areaLinkField: string;
+	/** Area note frontmatter: life context grouping (Work, Personal, Professional, Freelance). */
+	areaLifeModeField: string;
 	taskStatusField: string;
 	taskPriorityField: string;
 	taskDueDateField: string;
@@ -68,6 +70,34 @@ export interface FulcrumSettings {
 	taskTitleField: string;
 	taskNoteYamlStatusOpen: string;
 	taskNoteYamlStatusDone: string;
+	/** TaskNotes-compatible extended fields (property key remapping). */
+	taskRecurrenceField: string;
+	taskRemindersField: string;
+	taskRecurrenceAnchorField: string;
+	taskCompleteInstancesField: string;
+	taskSkippedInstancesField: string;
+	taskProjectsField: string;
+	taskRecurrenceParentField: string;
+	taskOccurrenceDateField: string;
+	/** Maintain due/scheduled offset when recurring task rolls forward. */
+	recurrenceMaintainDueOffset: boolean;
+	/** Only index inline checkboxes containing this tag (empty = no tag filter). */
+	inlineTaskIncludeTag: string;
+	taskNoteDefaultFolder: string;
+	taskNoteFilenamePattern: string;
+	taskNoteBodyTemplatePath: string;
+	/** Hide the configured task tag in card/pill metadata display. */
+	taskSuppressDesignatedTagInDisplay: boolean;
+	taskNoteCardShowScheduled: boolean;
+	taskNoteCardShowDue: boolean;
+	taskNoteCardShowProject: boolean;
+	taskNoteCardShowTags: boolean;
+	inlineTaskShowScheduled: boolean;
+	inlineTaskShowDue: boolean;
+	inlineTaskShowProject: boolean;
+	inlineTaskShowTags: boolean;
+	taskCardShowSubtaskCount: boolean;
+	taskCardShowRecurrenceIndicator: boolean;
 	meetingDateField: string;
 	/** Optional. When set, used for date+time (hourly placement). Falls back to meetingDateField when empty. */
 	meetingStartTimeField: string;
@@ -181,6 +211,10 @@ export interface FulcrumSettings {
 
 	/** Project frontmatter field for related people wikilinks (e.g. relatedPeople). */
 	projectRelatedPeopleField: string;
+	/** Project frontmatter field for related project wikilinks (e.g. relatedProjects). */
+	projectRelatedProjectsField: string;
+	/** Project frontmatter field for related product wikilinks (e.g. relatedProducts). */
+	projectRelatedProductsField: string;
 	/** People directory: when set, collect people from related notes/tasks; when empty, only project frontmatter. */
 	peopleFolder: string;
 	/** Frontmatter field on people notes for avatar image (when people directory is set). */
@@ -235,6 +269,8 @@ export interface FulcrumSettings {
 	conduitSyncListColors: boolean;
 	/** Tag each reminder with the project’s Area name (Reminders tags, --private). */
 	conduitSyncAreaTags: boolean;
+	/** Show Conduit sync phase and counts in the status bar while syncing. */
+	conduitShowSyncProgress: boolean;
 }
 
 /** Root path for area notes (separate from projects when `areasFolder` is set). */
@@ -260,6 +296,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	projectTypeValue: "project",
 	projectLinkField: "project",
 	areaLinkField: "area",
+	areaLifeModeField: "life-mode",
 	taskStatusField: "status",
 	taskPriorityField: "priority",
 	taskDueDateField: "dueDate",
@@ -272,6 +309,30 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	taskTitleField: "title",
 	taskNoteYamlStatusOpen: "NONE",
 	taskNoteYamlStatusDone: "DONE",
+	taskRecurrenceField: "recurrence",
+	taskRemindersField: "reminders",
+	taskRecurrenceAnchorField: "recurrence_anchor",
+	taskCompleteInstancesField: "complete_instances",
+	taskSkippedInstancesField: "skipped_instances",
+	taskProjectsField: "projects",
+	taskRecurrenceParentField: "recurrence_parent",
+	taskOccurrenceDateField: "occurrence_date",
+	recurrenceMaintainDueOffset: false,
+	inlineTaskIncludeTag: "task",
+	taskNoteDefaultFolder: "",
+	taskNoteFilenamePattern: "{{title}}",
+	taskNoteBodyTemplatePath: "",
+	taskSuppressDesignatedTagInDisplay: true,
+	taskNoteCardShowScheduled: true,
+	taskNoteCardShowDue: true,
+	taskNoteCardShowProject: true,
+	taskNoteCardShowTags: true,
+	inlineTaskShowScheduled: true,
+	inlineTaskShowDue: true,
+	inlineTaskShowProject: true,
+	inlineTaskShowTags: true,
+	taskCardShowSubtaskCount: true,
+	taskCardShowRecurrenceIndicator: true,
 	meetingDateField: "date",
 	meetingStartTimeField: "",
 	meetingEndTimeField: "",
@@ -354,6 +415,8 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	projectColorField: "color",
 
 	projectRelatedPeopleField: "relatedPeople",
+	projectRelatedProjectsField: "relatedProjects",
+	projectRelatedProductsField: "relatedProducts",
 	peopleFolder: "",
 	peopleAvatarField: "avatar",
 
@@ -394,11 +457,75 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	conduitDeleteReminderWhenTaskDeleted: false,
 	conduitSyncListColors: true,
 	conduitSyncAreaTags: true,
+	conduitShowSyncProgress: true,
 };
 
 export function parseList(s: string): string[] {
 	return s
 		.split(",")
-		.map((x) => x.trim().toLowerCase())
+		.map((x) => x.trim())
 		.filter(Boolean);
+}
+
+/** Case-insensitive key for matching configured status tokens. */
+export function normalizeStatusKey(status: string): string {
+	return status.trim().toLowerCase();
+}
+
+export function parseDoneStatusSet(statusesCsv: string): Set<string> {
+	return new Set(parseList(statusesCsv).map(normalizeStatusKey));
+}
+
+export function isDoneStatus(status: string, doneSet: Set<string>): boolean {
+	return doneSet.has(normalizeStatusKey(status));
+}
+
+export const DEFAULT_TASK_STATUSES = "todo, in-progress, done, cancelled";
+
+/** Parsed task status choices with fallback when settings are empty or invalid. */
+export function parseTaskStatusChoices(settings: FulcrumSettings): string[] {
+	const raw = settings.taskStatuses?.trim();
+	const list = parseList(raw || DEFAULT_TASK_STATUSES);
+	return list.length > 0 ? list : parseList(DEFAULT_TASK_STATUSES);
+}
+
+/** Migrate legacy task card display settings to metadata toggles. */
+export function migrateTaskCardDisplaySettings(
+	merged: FulcrumSettings & Record<string, unknown>,
+): void {
+	const legacyTags = merged.taskCardShowTags;
+	if (typeof merged.taskNoteCardShowTags !== "boolean" && typeof legacyTags === "boolean") {
+		merged.taskNoteCardShowTags = legacyTags;
+		merged.inlineTaskShowTags = legacyTags;
+	}
+	const boolFields = [
+		"taskSuppressDesignatedTagInDisplay",
+		"taskNoteCardShowScheduled",
+		"taskNoteCardShowDue",
+		"taskNoteCardShowProject",
+		"taskNoteCardShowTags",
+		"inlineTaskShowScheduled",
+		"inlineTaskShowDue",
+		"inlineTaskShowProject",
+		"inlineTaskShowTags",
+	] as const;
+	for (const key of boolFields) {
+		if (typeof merged[key] !== "boolean") {
+			merged[key] = DEFAULT_SETTINGS[key];
+		}
+	}
+	if (typeof merged.taskCardShowSubtaskCount !== "boolean") {
+		merged.taskCardShowSubtaskCount = DEFAULT_SETTINGS.taskCardShowSubtaskCount;
+	}
+	if (typeof merged.taskCardShowRecurrenceIndicator !== "boolean") {
+		merged.taskCardShowRecurrenceIndicator = DEFAULT_SETTINGS.taskCardShowRecurrenceIndicator;
+	}
+	delete merged.taskCardShowCreatedAge;
+	delete merged.taskCardShowTags;
+	delete merged.taskCardInlineIcon;
+	delete merged.showInlineSourceNoteOnCard;
+	delete merged.inlineTaskCardVariant;
+	if (merged.inlineTaskIncludeTag === "Tasks") {
+		merged.inlineTaskIncludeTag = "task";
+	}
 }

@@ -8,6 +8,7 @@ import {
 import {readTrackedMinutesFromFm} from "./utils/trackedMinutes";
 import {parseWikiLink} from "./utils/wikilinks";
 import {resolveBannerImageSrc, resolveProjectAccentCss} from "./utils/projectVisual";
+import {isTaskNoteFile} from "./utils/taskNoteFile";
 import {formatTrackedMinutesShort} from "./utils/dates";
 import {leafIsInWorkspace, type FulcrumCompanionLeaf} from "./openBesideFulcrum";
 import {leadingTimelineEmojiFromNoteType} from "./utils/projectActivity";
@@ -399,6 +400,11 @@ function syncCompanionChrome(host: CompanionChromeHost, companion: FulcrumCompan
 
 	const cache = app.metadataCache.getFileCache(file);
 	const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
+
+	if (isTaskNoteFile(fm, host.getSettings())) {
+		clearCompanionChrome(view);
+		return;
+	}
 
 	view.contentEl.classList.add("fulcrum-companion-doc");
 	const prev = view.contentEl.querySelector(":scope > .fulcrum-companion-chrome-host");

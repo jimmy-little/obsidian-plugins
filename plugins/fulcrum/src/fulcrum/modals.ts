@@ -5,6 +5,8 @@ import {
 	Notice,
 	Setting,
 	TFile,
+	TFolder,
+	getAllTags,
 } from "obsidian";
 import {markProjectCompleteAndMove} from "./projectCompletion";
 import {applyProjectStatusChange, getProjectStatusOptions} from "./projectStatusApply";
@@ -15,8 +17,12 @@ import {
 	markProjectReviewDates,
 } from "./projectNote";
 import type {FulcrumHost} from "./pluginBridge";
-import {parseList, resolveProjectsRoot} from "./settingsDefaults";
-import type {IndexedProject} from "./types";
+import {parseList, parseTaskStatusChoices, resolveProjectsRoot} from "./settingsDefaults";
+import type {IndexedProject, IndexedTask} from "./types";
+import {todayLocalISODate} from "./utils/dates";
+import {createTaskNoteFile, type CreateTaskNoteOptions} from "./createTaskNote";
+import {presetRecurrence} from "./recurrence/recurrenceEngine";
+import type {TaskReminderSpec} from "./types";
 
 export class ProjectPickerModal extends FuzzySuggestModal<IndexedProject> {
 	private readonly projects: IndexedProject[];
@@ -569,4 +575,698 @@ export class QuickProjectNoteModal extends Modal {
 		const ok = await this.host.appendProjectLogEntry(this.projectPath, trimmed);
 		if (ok) this.close();
 	}
+}
+
+export type TaskScheduleDateTimeResult = {
+	dateIso: string;
+	time: string | null;
+};
+
+/** Pick date and optional time for scheduling a task from the context menu. */
+export class TaskScheduleDateTimeModal extends Modal {
+	private dateIso: string;
+	private timeValue: string;
+
+	constructor(
+		app: App,
+		private readonly task: IndexedTask,
+		private readonly onSubmit: (result: TaskScheduleDateTimeResult) => void | Promise<void>,
+	) {
+		super(app);
+		const seed =
+			task.scheduledDate?.trim() ||
+			task.dueDate?.trim() ||
+			todayLocalISODate();
+		const datePart = seed.slice(0, 10);
+		this.dateIso = /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : todayLocalISODate();
+		const timePart = seed.length > 10 ? seed.slice(11, 16) : "";
+		this.timeValue = /^\d{2}:\d{2}$/.test(timePart) ? timePart : "";
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {text: "Schedule task"});
+		contentEl.createEl("p", {
+			cls: "fulcrum-muted",
+			text: taskTitleForModal(this.task),
+		});
+
+		new Setting(contentEl)
+			.setName("Date")
+			.addText((t) => {
+				t.inputEl.type = "date";
+				t.setValue(this.dateIso);
+				t.onChange((v) => {
+					this.dateIso = v;
+				});
+			});
+
+		new Setting(contentEl)
+			.setName("Time (optional)")
+			.setDesc("Leave empty for all-day.")
+			.addText((t) => {
+				t.inputEl.type = "time";
+				t.setValue(this.timeValue);
+				t.onChange((v) => {
+					this.timeValue = v;
+				});
+			});
+
+		new Setting(contentEl).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+
+		new Setting(contentEl).addButton((b) =>
+			b
+				.setButtonText("Set")
+				.setCta()
+				.onClick(() => {
+					void this.submit();
+				}),
+		);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+
+	private async submit(): Promise<void> {
+		const dateIso = this.dateIso.trim();
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+			new Notice("Choose a valid date.");
+			return;
+		}
+		const time = this.timeValue.trim();
+		await this.onSubmit({
+			dateIso,
+			time: /^\d{2}:\d{2}$/.test(time) ? time : null,
+		});
+		this.close();
+	}
+}
+
+function taskTitleForModal(task: IndexedTask): string {
+	const t = task.title.trim();
+	return t.length > 0 ? t : "Untitled task";
+}
+
+function splitTaskDateTime(iso: string | undefined): {date: string; time: string} {
+	const init = iso?.trim() ?? "";
+	const date = init.slice(0, 10);
+	const tMatch = init.match(/T(\d{2}:\d{2})/);
+	return {
+		date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "",
+		time: tMatch?.[1] ?? "",
+	};
+}
+
+function combineTaskDateTime(date: string, time: string): string | null {
+	const d = date.trim();
+	if (!d) return null;
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+	const t = time.trim();
+	return /^\d{2}:\d{2}$/.test(t) ? `${d}T${t}` : d;
+}
+
+function addNativeDateSetting(
+	containerEl: HTMLElement,
+	label: string,
+	value: string,
+	onChange: (next: string) => void,
+	desc?: string,
+): void {
+	const row = new Setting(containerEl).setName(label);
+	if (desc) row.setDesc(desc);
+	row.addText((text) => {
+		text.inputEl.type = "date";
+		if (/^\d{4}-\d{2}-\d{2}$/.test(value)) text.setValue(value);
+		text.onChange(onChange);
+	});
+}
+
+function addNativeTimeSetting(
+	containerEl: HTMLElement,
+	label: string,
+	value: string,
+	onChange: (next: string) => void,
+	desc?: string,
+): void {
+	const row = new Setting(containerEl).setName(label);
+	if (desc) row.setDesc(desc);
+	row.addText((text) => {
+		text.inputEl.type = "time";
+		if (/^\d{2}:\d{2}$/.test(value)) text.setValue(value);
+		text.onChange(onChange);
+	});
+}
+
+export function promptDeleteIndexedTask(app: App, task: IndexedTask): Promise<boolean> {
+	return new Promise((resolve) => {
+		let settled = false;
+		const finish = (value: boolean) => {
+			if (settled) return;
+			settled = true;
+			resolve(value);
+		};
+		const modal = new Modal(app);
+		modal.titleEl.setText("Delete task?");
+		const content = modal.contentEl;
+		content.empty();
+		const label = taskTitleForModal(task);
+		content.createEl("p", {
+			text:
+				task.source === "taskNote"
+					? `Delete the task note “${label}”? This moves the file to Obsidian trash.`
+					: `Remove “${label}” from ${task.file.basename}?`,
+		});
+		const row = content.createDiv({cls: "fulcrum-modal-button-row"});
+		const cancelBtn = row.createEl("button", {text: "Cancel"});
+		const deleteBtn = row.createEl("button", {text: "Delete", cls: "mod-warning"});
+		cancelBtn.onclick = () => {
+			finish(false);
+			modal.close();
+		};
+		deleteBtn.onclick = () => {
+			finish(true);
+			modal.close();
+		};
+		modal.onClose = () => finish(false);
+		modal.open();
+	});
+}
+
+export interface CreateTaskNoteModalOptions {
+	projectPath?: string;
+	parentTask?: IndexedTask;
+	onCreated?: (path: string) => void | Promise<void>;
+}
+
+/** Fulcrum-native task note creation (TaskNotes-compatible frontmatter). */
+export class CreateTaskNoteModal extends Modal {
+	private titleValue = "";
+	private statusValue = "";
+	private priorityValue = "";
+	private dueDateValue = "";
+	private dueTimeValue = "";
+	private schedDateValue = "";
+	private schedTimeValue = "";
+
+	constructor(
+		app: App,
+		private readonly host: FulcrumHost,
+		private readonly opts: CreateTaskNoteModalOptions = {},
+	) {
+		super(app);
+		const s = host.settings;
+		const statuses = parseTaskStatusChoices(s);
+		this.statusValue = statuses[0] ?? "todo";
+		const priorities = parseList(s.priorities);
+		this.priorityValue = priorities[1] ?? priorities[0] ?? "medium";
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {
+			text: this.opts.parentTask ? "Create subtask" : "Create task note",
+		});
+
+		new Setting(contentEl)
+			.setName("Title")
+			.addText((t) => {
+				t.setPlaceholder("What needs doing?");
+				t.onChange((v) => {
+					this.titleValue = v;
+				});
+			});
+
+		new Setting(contentEl)
+			.setName("Status")
+			.addDropdown((d) => {
+				for (const st of parseTaskStatusChoices(this.host.settings)) {
+					d.addOption(st, st);
+				}
+				d.setValue(this.statusValue).onChange((v) => {
+					this.statusValue = v;
+				});
+			});
+
+		new Setting(contentEl)
+			.setName("Priority")
+			.addDropdown((d) => {
+				d.addOption("", "(none)");
+				for (const p of parseList(this.host.settings.priorities)) {
+					d.addOption(p, p);
+				}
+				d.setValue(this.priorityValue).onChange((v) => {
+					this.priorityValue = v;
+				});
+			});
+
+		addNativeDateSetting(contentEl, "Due date", this.dueDateValue, (v) => {
+			this.dueDateValue = v;
+		});
+		addNativeTimeSetting(
+			contentEl,
+			"Due time (optional)",
+			this.dueTimeValue,
+			(v) => {
+				this.dueTimeValue = v;
+			},
+			"Leave empty for date-only.",
+		);
+
+		addNativeDateSetting(contentEl, "Scheduled date", this.schedDateValue, (v) => {
+			this.schedDateValue = v;
+		});
+		addNativeTimeSetting(
+			contentEl,
+			"Scheduled time (optional)",
+			this.schedTimeValue,
+			(v) => {
+				this.schedTimeValue = v;
+			},
+			"Leave empty for all-day.",
+		);
+
+		new Setting(contentEl).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+
+		new Setting(contentEl).addButton((b) =>
+			b
+				.setButtonText("Create")
+				.setCta()
+				.onClick(() => void this.submit()),
+		);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+
+	private async submit(): Promise<void> {
+		const title = this.titleValue.trim();
+		if (!title) {
+			new Notice("Enter a task title.");
+			return;
+		}
+		const s = this.host.settings;
+		const createOpts: CreateTaskNoteOptions = {
+			title,
+			status: this.statusValue,
+			priority: this.priorityValue || undefined,
+			dueDate: combineTaskDateTime(this.dueDateValue, this.dueTimeValue),
+			scheduledDate: combineTaskDateTime(this.schedDateValue, this.schedTimeValue),
+			tags: [s.taskTag.trim() || "task"],
+		};
+
+		if (this.opts.parentTask) {
+			const bn = this.opts.parentTask.file.basename.replace(/\.md$/i, "");
+			createOpts.parentTaskLink = `[[${bn}]]`;
+		} else if (this.opts.projectPath) {
+			const pf = this.app.vault.getAbstractFileByPath(this.opts.projectPath);
+			if (pf instanceof TFile) {
+				const lt =
+					this.app.metadataCache.fileToLinktext(pf, pf.path, false) ??
+					pf.basename.replace(/\.md$/i, "");
+				createOpts.projectLinks = [`[[${lt}]]`];
+			}
+		}
+
+		const file = await createTaskNoteFile(this.app, s, createOpts);
+		if (!file) return;
+		await this.host.refreshIndex();
+		new Notice(`Created ${file.path}`);
+		await this.opts.onCreated?.(file.path);
+		this.close();
+	}
+}
+
+export class TaskFieldDateModal extends Modal {
+	private dateValue = "";
+	private timeValue = "";
+
+	constructor(
+		app: App,
+		private readonly label: string,
+		private readonly initial: string | undefined,
+		private readonly onSubmit: (iso: string | null) => void | Promise<void>,
+	) {
+		super(app);
+		const parts = splitTaskDateTime(initial);
+		this.dateValue = parts.date;
+		this.timeValue = parts.time;
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {text: this.label});
+		addNativeDateSetting(contentEl, "Date", this.dateValue, (v) => {
+			this.dateValue = v;
+		});
+		addNativeTimeSetting(
+			contentEl,
+			"Time (optional)",
+			this.timeValue,
+			(v) => {
+				this.timeValue = v;
+			},
+			"Leave empty for all-day.",
+		);
+		new Setting(contentEl).addButton((b) =>
+			b.setButtonText("Clear").onClick(() => {
+				void this.onSubmit(null);
+				this.close();
+			}),
+		);
+		new Setting(contentEl).addButton((b) =>
+			b
+				.setButtonText("Save")
+				.setCta()
+				.onClick(() => void this.save()),
+		);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+
+	private async save(): Promise<void> {
+		const iso = combineTaskDateTime(this.dateValue, this.timeValue);
+		if (this.dateValue.trim() && iso === null) {
+			new Notice("Choose a valid date.");
+			return;
+		}
+		await this.onSubmit(iso);
+		this.close();
+	}
+}
+
+export class TaskRecurrenceModal extends Modal {
+	private ruleValue = "";
+	private anchor: "scheduled" | "done" = "scheduled";
+
+	constructor(
+		app: App,
+		private readonly task: IndexedTask,
+		private readonly onSubmit: (rule: string | null, anchor: "scheduled" | "done") => void | Promise<void>,
+	) {
+		super(app);
+		this.ruleValue = task.recurrence ?? "";
+		this.anchor = task.recurrenceAnchor ?? "scheduled";
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {text: "Recurrence"});
+		contentEl.createEl("p", {
+			cls: "fulcrum-muted",
+			text: "RFC 5545 RRULE with DTSTART, or use presets below.",
+		});
+		new Setting(contentEl)
+			.setName("RRULE")
+			.addTextArea((t) => {
+				t.setValue(this.ruleValue);
+				t.onChange((v) => {
+					this.ruleValue = v;
+				});
+			});
+		new Setting(contentEl)
+			.setName("Repeat from")
+			.addDropdown((d) =>
+				d
+					.addOptions({scheduled: "Scheduled date", done: "Completion date"})
+					.setValue(this.anchor)
+					.onChange((v) => {
+						this.anchor = v as "scheduled" | "done";
+					}),
+			);
+		const presets = contentEl.createDiv({cls: "fulcrum-modal-button-row"});
+		for (const [label, key] of [
+			["Daily", "daily"],
+			["Weekly", "weekly"],
+			["Monthly", "monthly"],
+		] as const) {
+			presets.createEl("button", {text: label}).onclick = () => {
+				const start =
+					this.task.scheduledDate ?? this.task.dueDate ?? todayLocalISODate();
+				this.ruleValue = presetRecurrence(key, start);
+			};
+		}
+		new Setting(contentEl).addButton((b) =>
+			b.setButtonText("Clear recurrence").onClick(() => {
+				void this.onSubmit(null, this.anchor);
+				this.close();
+			}),
+		);
+		new Setting(contentEl).addButton((b) =>
+			b
+				.setButtonText("Save")
+				.setCta()
+				.onClick(() => {
+					const r = this.ruleValue.trim();
+					void this.onSubmit(r.length ? r : null, this.anchor);
+					this.close();
+				}),
+		);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+export class MoveTaskNoteModal extends FuzzySuggestModal<TFolder> {
+	constructor(
+		app: App,
+		private readonly onPick: (folder: string) => void,
+	) {
+		super(app);
+	}
+
+	getItems(): TFolder[] {
+		return this.app.vault.getAllLoadedFiles().filter((f): f is TFolder => f instanceof TFolder);
+	}
+
+	getItemText(item: TFolder): string {
+		return item.path || "/";
+	}
+
+	onChooseItem(item: TFolder): void {
+		this.onPick(item.path);
+		this.close();
+	}
+}
+
+export class MergeTaskNoteTargetModal extends FuzzySuggestModal<TFile> {
+	constructor(
+		app: App,
+		private readonly excludePath: string,
+		private readonly onPick: (path: string) => void,
+	) {
+		super(app);
+	}
+
+	getItems(): TFile[] {
+		return this.app.vault
+			.getMarkdownFiles()
+			.filter((f) => f.path !== this.excludePath);
+	}
+
+	getItemText(item: TFile): string {
+		return item.path;
+	}
+
+	onChooseItem(item: TFile): void {
+		this.onPick(item.path);
+		this.close();
+	}
+}
+
+export class TaskReminderPresetModal extends Modal {
+	constructor(
+		app: App,
+		private readonly onPick: (reminder: TaskReminderSpec) => void | Promise<void>,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {text: "Add reminder"});
+		const presets: {label: string; spec: TaskReminderSpec}[] = [
+			{
+				label: "At scheduled time",
+				spec: {type: "relative", anchor: "scheduled", offset: 0, unit: "minutes", direction: "before"},
+			},
+			{
+				label: "1 day before due",
+				spec: {type: "relative", anchor: "due", offset: 1, unit: "days", direction: "before"},
+			},
+			{
+				label: "1 hour before scheduled",
+				spec: {type: "relative", anchor: "scheduled", offset: 1, unit: "hours", direction: "before"},
+			},
+		];
+		for (const p of presets) {
+			new Setting(contentEl).setName(p.label).addButton((b) =>
+				b.setButtonText("Add").onClick(() => {
+					void this.onPick(p.spec);
+					this.close();
+				}),
+			);
+		}
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+export class EditTaskTitleModal extends Modal {
+	private titleValue: string;
+
+	constructor(
+		app: App,
+		initialTitle: string,
+		private readonly onSubmit: (title: string) => void | Promise<void>,
+	) {
+		super(app);
+		this.titleValue = initialTitle;
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {text: "Edit task title"});
+		new Setting(contentEl)
+			.setName("Title")
+			.addText((t) => {
+				t.setValue(this.titleValue);
+				t.onChange((v) => {
+					this.titleValue = v;
+				});
+				window.setTimeout(() => t.inputEl.focus(), 0);
+			});
+		new Setting(contentEl).addButton((b) =>
+			b
+				.setButtonText("Save")
+				.setCta()
+				.onClick(() => void this.save()),
+		);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+
+	private async save(): Promise<void> {
+		const trimmed = this.titleValue.trim();
+		if (!trimmed) {
+			new Notice("Title is required.");
+			return;
+		}
+		await this.onSubmit(trimmed);
+		this.close();
+	}
+}
+
+export class EditTaskTagsModal extends Modal {
+	private tagsValue: string;
+
+	constructor(
+		app: App,
+		initialTags: string[],
+		private readonly onSubmit: (tags: string[]) => void | Promise<void>,
+	) {
+		super(app);
+		this.tagsValue = initialTags.join(", ");
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {text: "Edit tags"});
+		contentEl.createEl("p", {
+			cls: "fulcrum-muted",
+			text: "Comma-separated tags (without #). Use Suggest to pick from vault tags.",
+		});
+		new Setting(contentEl)
+			.setName("Tags")
+			.addText((t) => {
+				t.setValue(this.tagsValue);
+				t.onChange((v) => {
+					this.tagsValue = v;
+				});
+			});
+		const suggestBtn = contentEl.createEl("button", {text: "Suggest tag…", cls: "mod-cta"});
+		suggestBtn.onclick = () => {
+			const items = collectVaultTagNames(this.app);
+			new TagSuggestModal(this.app, items, (tag) => {
+				const parts = this.tagsValue
+					.split(",")
+					.map((s) => s.trim())
+					.filter(Boolean);
+				if (!parts.some((p) => p.toLowerCase() === tag.toLowerCase())) {
+					parts.push(tag);
+				}
+				this.tagsValue = parts.join(", ");
+			}).open();
+		};
+		new Setting(contentEl).addButton((b) =>
+			b
+				.setButtonText("Save")
+				.setCta()
+				.onClick(() => void this.save()),
+		);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+
+	private async save(): Promise<void> {
+		const tags = this.tagsValue
+			.split(",")
+			.map((s) => s.trim().replace(/^#/, ""))
+			.filter(Boolean);
+		await this.onSubmit(tags);
+		this.close();
+	}
+}
+
+class TagSuggestModal extends FuzzySuggestModal<string> {
+	constructor(
+		app: App,
+		private readonly tags: string[],
+		private readonly onPick: (tag: string) => void,
+	) {
+		super(app);
+	}
+
+	getItems(): string[] {
+		return this.tags.sort((a, b) => a.localeCompare(b));
+	}
+
+	getItemText(item: string): string {
+		return `#${item}`;
+	}
+
+	onChooseItem(item: string, _evt: MouseEvent | KeyboardEvent): void {
+		this.onPick(item);
+		this.close();
+	}
+}
+
+function collectVaultTagNames(app: App): string[] {
+	const tagSet = new Set<string>();
+	for (const file of app.vault.getMarkdownFiles()) {
+		const cache = app.metadataCache.getFileCache(file);
+		if (!cache) continue;
+		const tags = getAllTags(cache);
+		if (!tags) continue;
+		for (const t of tags) tagSet.add(t.replace(/^#/, ""));
+	}
+	return [...tagSet].sort((a, b) => a.localeCompare(b));
 }

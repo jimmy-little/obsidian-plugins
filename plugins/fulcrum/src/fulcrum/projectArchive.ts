@@ -4,7 +4,7 @@ import type {FulcrumSettings} from "./settingsDefaults";
 import type {ProjectRollup} from "./types";
 import {todayLocalISODate} from "./utils/dates";
 import {formatTrackedMinutesShort} from "./utils/dates";
-import {parseList} from "./settingsDefaults";
+import {parseDoneStatusSet, parseList} from "./settingsDefaults";
 import {
 	incompleteProjectTasks,
 	sortMsForMeeting,
@@ -22,7 +22,7 @@ export function buildSnapshotMarkdown(
 	logEntries: ProjectLogActivityEntry[],
 	s: FulcrumSettings,
 ): string {
-	const doneTask = new Set(parseList(s.taskDoneStatuses));
+	const doneTask = parseDoneStatusSet(s.taskDoneStatuses);
 	const openTasks = incompleteProjectTasks(rollup.tasks, doneTask);
 	const timeTracked = formatTrackedMinutesShort(rollup.aggregatedTrackedMinutes) || "0m";
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
+	import AreaFilterPanel from "./AreaFilterPanel.svelte";
 	import DashboardMain from "./DashboardMain.svelte";
 	import ProjectListPanel from "./ProjectListPanel.svelte";
 	import FulcrumLeafToolbar from "./FulcrumLeafToolbar.svelte";
@@ -21,6 +22,7 @@
 		</div>
 	</header>
 
+	<AreaFilterPanel {plugin} />
 	<DashboardMain {plugin} {hoverParentLeaf} />
 
 	<section class="fulcrum-section">

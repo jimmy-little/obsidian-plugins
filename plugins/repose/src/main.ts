@@ -1,8 +1,10 @@
 import { Notice, Plugin, TFile, type ObsidianProtocolData, type WorkspaceLeaf } from "obsidian";
+import { openNotePropertiesModal } from "@obsidian-suite/core";
 import {
 	ensureReposeCompanionMarkdownPane,
 	navigateEpisodeInCompanionPane,
 	openBookCompanionSinglePane,
+	openMediaNoteSplitFromAnchor,
 	openRawEpisodeNote as mountRawEpisodeNote,
 	registerReposeCompanionMarkdownForPlatform,
 } from "./reposeCompanionMarkdown";
@@ -24,14 +26,17 @@ import {
 	markEpisodeWatched as applyEpisodeWatched,
 	markSeasonEpisodesWatched as applySeasonEpisodesWatched,
 	markSeriesEpisodesWatched as applySeriesEpisodesWatched,
+	appendWatchPlayNow,
 	type EpisodeWatchMode,
 } from "./vault/watchState";
+import { logCompletedRead as applyLogCompletedRead, logReadingSession as applyLogReadingSession } from "./vault/readState";
 import {
 	refreshShowFromTrakt as runRefreshShowFromTrakt,
 	refreshTvSeasonFromTrakt as runRefreshTvSeasonFromTrakt,
 } from "./vault/showRefresh";
 import { SearchAddModal } from "./modals/SearchAddModal";
 import { ReposeSettingTab } from "./ReposeSettingTab";
+import { ReposeCalendarView, VIEW_TYPE_REPOSE_CALENDAR } from "./ReposeCalendarView";
 import { ReposeShellView, VIEW_TYPE_REPOSE } from "./ReposeShellView";
 import { DEFAULT_SETTINGS, normalizeSettings, type ReposeSettings } from "./settings";
 
@@ -106,6 +111,35 @@ export default class ReposePlugin extends Plugin {
 		showEpisodeWatchMenu(this, file, ev, onComplete);
 	}
 
+	async logWatchAgain(filePath: string): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(filePath);
+		if (!(f instanceof TFile)) return;
+		await appendWatchPlayNow(this, f);
+	}
+
+	async logReadingSession(filePath: string): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(filePath);
+		if (!(f instanceof TFile)) return;
+		await applyLogReadingSession(this, f);
+	}
+
+	async logCompletedRead(filePath: string): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(filePath);
+		if (!(f instanceof TFile)) return;
+		await applyLogCompletedRead(this, f);
+	}
+
+	/** Orbit / Fulcrum-style YAML editor for media note frontmatter. */
+	openMediaNoteProperties(file: TFile, onSaved?: () => void): void {
+		const modal = openNotePropertiesModal(this.app, file, { displayTitleField: "title" });
+		if (!onSaved) return;
+		const prevClose = modal.onClose.bind(modal);
+		modal.onClose = () => {
+			prevClose();
+			onSaved();
+		};
+	}
+
 	/** Repose list/detail selection only — does not create or retarget the companion markdown pane. */
 	async updateReposeSelectedPath(path: string): Promise<void> {
 		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_REPOSE);
@@ -115,6 +149,18 @@ export default class ReposePlugin extends Plugin {
 				view.updateSelection(path);
 			}
 		}
+	}
+
+	/** Calendar / external: open a consumption note beside the anchor leaf (episode, movie, book, etc.). */
+	async openConsumptionRecordInSplit(path: string, anchorLeaf?: WorkspaceLeaf): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(path);
+		if (!(f instanceof TFile)) return;
+
+		const anchor =
+			anchorLeaf ?? this.app.workspace.activeLeaf ?? this.app.workspace.getLeaf("tab");
+
+		await this.updateReposeSelectedPath(path);
+		await openMediaNoteSplitFromAnchor(this, anchor, f, { splitFromAnchor: true });
 	}
 
 	async openRawEpisodeNote(file: TFile): Promise<void> {
@@ -189,6 +235,7 @@ export default class ReposePlugin extends Plugin {
 		await this.loadSettings();
 
 		this.registerView(VIEW_TYPE_REPOSE, (leaf) => new ReposeShellView(leaf, this));
+		this.registerView(VIEW_TYPE_REPOSE_CALENDAR, (leaf) => new ReposeCalendarView(leaf, this));
 
 		registerReposeCompanionMarkdownForPlatform(this);
 
@@ -204,6 +251,12 @@ export default class ReposePlugin extends Plugin {
 			id: "open-repose",
 			name: "Open Repose",
 			callback: () => void this.openRepose(),
+		});
+
+		this.addCommand({
+			id: "open-repose-calendar",
+			name: "Open Repose calendar",
+			callback: () => void this.openReposeCalendar(),
 		});
 
 		this.addCommand({
@@ -235,6 +288,15 @@ export default class ReposePlugin extends Plugin {
 		for (let i = 1; i < leaves.length; i++) {
 			leaves[i].detach();
 		}
+	}
+
+	/** Open or focus Repose and show the consumption calendar in the main pane (sidebar stays). */
+	async openReposeCalendar(state?: { focalDateIso?: string }): Promise<void> {
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_REPOSE_CALENDAR);
+		await this.openRepose({
+			calendar: true,
+			calendarFocalDateIso: state?.focalDateIso,
+		});
 	}
 
 	/** Open or focus the Repose media list (ribbon, commands, book hero Home). */
@@ -301,5 +363,6 @@ export default class ReposePlugin extends Plugin {
 		this.clearTraktDevicePoll();
 		this.reposeRequestSelectPath = null;
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_REPOSE);
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_REPOSE_CALENDAR);
 	}
 }

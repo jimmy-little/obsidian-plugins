@@ -14,26 +14,15 @@ export function priorityAccentCss(priority: string | undefined): string {
 	return "var(--text-muted)";
 }
 
-export function formatTaskCreatedAge(createdAtMs: number): string {
-	const target = new Date(createdAtMs);
-	target.setHours(12, 0, 0, 0);
-	const now = new Date();
-	now.setHours(12, 0, 0, 0);
-	const diff = Math.round((now.getTime() - target.getTime()) / 86400000);
-	if (diff <= 0) return "Created today";
-	if (diff === 1) return "Created 1 day ago";
-	return `Created ${diff} days ago`;
-}
-
 export function dueChip(
 	due: string | undefined,
 	done: boolean,
 ): {text: string; kind: "none" | "overdue" | "today" | "due"} {
 	if (!(due != null && due.trim()) || done) return {text: "", kind: "none"};
 	const t = formatShortMonthDay(due);
-	if (isOverdue(due, false)) return {text: `Due: ${t} (overdue)`, kind: "overdue"};
-	if (isDueToday(due, false)) return {text: `Due: ${t} (today)`, kind: "today"};
-	return {text: `Due: ${t}`, kind: "due"};
+	if (isOverdue(due, false)) return {text: `${t} (overdue)`, kind: "overdue"};
+	if (isDueToday(due, false)) return {text: `${t} (today)`, kind: "today"};
+	return {text: t, kind: "due"};
 }
 
 export function scheduledChip(
@@ -44,7 +33,7 @@ export function scheduledChip(
 	const d = scheduled.slice(0, 10);
 	const t = formatShortMonthDay(scheduled);
 	const today = todayLocalISODate();
-	if (d < today) return {text: `Scheduled: ${t} (past)`, kind: "past"};
-	if (d === today) return {text: `Scheduled: ${t} (today)`, kind: "today"};
-	return {text: `Scheduled: ${t}`, kind: "scheduled"};
+	if (d < today) return {text: `${t} (past)`, kind: "past"};
+	if (d === today) return {text: `${t} (today)`, kind: "today"};
+	return {text: t, kind: "scheduled"};
 }

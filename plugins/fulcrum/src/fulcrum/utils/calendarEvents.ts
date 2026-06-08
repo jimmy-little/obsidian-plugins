@@ -5,11 +5,17 @@
 
 import type {TFile} from "obsidian";
 import type {PlannedBlock} from "../../timer/types";
-import type {IndexedMeeting, IndexedPlannerEvent, IndexedProject, IndexedTask} from "../types";
+import type {
+	AtomicNoteRow,
+	IndexedMeeting,
+	IndexedPlannerEvent,
+	IndexedProject,
+	IndexedTask,
+} from "../types";
 import {meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
 import {resolveProjectAccentCss} from "./projectVisual";
 
-export type CalendarEventKind = "task" | "meeting" | "logged" | "planned" | "planner";
+export type CalendarEventKind = "task" | "meeting" | "logged" | "planned" | "planner" | "note";
 
 export type CalendarEvent = {
 	kind: CalendarEventKind;
@@ -289,6 +295,25 @@ export function plannerEventToCalendarEvent(
 		accentCss: null,
 		open,
 		planner: p,
+	};
+}
+
+/** Build all-day calendar event from a project-linked atomic note. */
+export function atomicNoteToCalendarEvent(
+	n: AtomicNoteRow,
+	open: () => void,
+	accentCss: string | null,
+): CalendarEvent | null {
+	const dateIso = n.dateSort?.trim().slice(0, 10);
+	if (!dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
+	return {
+		kind: "note",
+		dateIso,
+		startMinutes: null,
+		durationMinutes: null,
+		title: n.entryTitle?.trim() || n.file.basename,
+		accentCss,
+		open,
 	};
 }
 

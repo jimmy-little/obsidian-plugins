@@ -26,6 +26,7 @@ export interface FulcrumHost {
 		notePath: string,
 		options?: {projectName?: string | null; noteTitle?: string | null},
 	): Promise<void>;
+	stopTimerInNote(notePath: string): Promise<void>;
 	refreshIndex(): Promise<void>;
 	appendProjectLogEntry(projectPath: string, text: string): Promise<boolean>;
 	/** Opens modal: optional review note, updates review dates, appends Fulcrum log line. */
@@ -54,6 +55,10 @@ export interface FulcrumHost {
 	openNewInlineTaskForProject(projectPath: string): void;
 	/** TaskNotes “Create new task” with project pre-filled when the plugin exposes it. */
 	openTaskNoteCreateForProject(projectPath: string): void;
+	/** Create a TaskNotes-compatible task note (Fulcrum-native). */
+	openCreateTaskNoteForProject(projectPath: string): void;
+	/** Create subtask linked to parent task note. */
+	openCreateSubtaskForTask(parent: IndexedTask): void;
 	/** Create a note from the configured template; opens beside the project view when possible. */
 	createNewNoteFromTemplateForProject(
 		projectPath: string,
@@ -78,6 +83,15 @@ export interface FulcrumHost {
 	): void;
 	/** After project marked complete — archives empty Reminders list when Conduit is enabled. */
 	notifyConduitProjectCompleted(projectPath: string): Promise<void>;
+	/** macOS + Conduit enabled — show Reminders sync toolbar. */
+	conduitCanSync(): boolean;
+	deleteConduitReminderForTask(task: IndexedTask): Promise<void>;
+	conduitSyncNow(opts?: {
+		force?: import("../conduit/types").ConduitSyncForce;
+		skipQuiet?: boolean;
+	}): Promise<void>;
+	conduitRunDoctor(): Promise<void>;
+	conduitRunAction(id: import("../conduit/actions").ConduitActionId): void;
 	/** Tabled: native widget bridge — see timer/WidgetBridge.ts */
 	// scheduleWidgetBridgeSync?(): void;
 	/** Renders markdown into a host element (e.g. activity note preview). */

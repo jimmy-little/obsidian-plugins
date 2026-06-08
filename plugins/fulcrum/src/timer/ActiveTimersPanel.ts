@@ -99,7 +99,7 @@ export class ActiveTimersPanel {
 			info.createDiv({text: entryLabel, cls: "fulcrum-active-timers__entry-label"});
 		}
 
-		const elapsed = entry.duration + (entry.isPaused ? 0 : Date.now() - entry.startTime!);
+		const elapsed = this.plugin.getActiveEntryElapsedMs(entry);
 		const timeEl = info.createDiv({
 			text: this.plugin.formatTimeAsHHMMSS(elapsed),
 			cls: "fulcrum-active-timers__time",
@@ -136,8 +136,9 @@ export class ActiveTimersPanel {
 		if (!this.container) return;
 
 		this.tickCount++;
+		// Full vault scan is expensive; rescan occasionally, not every few seconds.
 		const shouldRescan =
-			this.timeDisplays.size === 0 || this.tickCount % 3 === 0;
+			this.timeDisplays.size === 0 || this.tickCount % 30 === 0;
 		const activeTimers = shouldRescan
 			? await this.plugin.getActiveTimers()
 			: this.collectActiveTimersFromMemory();
@@ -168,7 +169,7 @@ export class ActiveTimersPanel {
 				await this.render(this.container);
 				return;
 			}
-			const elapsed = found.duration + (found.isPaused ? 0 : Date.now() - found.startTime);
+			const elapsed = this.plugin.getActiveEntryElapsedMs(found);
 			timeEl.setText(this.plugin.formatTimeAsHHMMSS(elapsed));
 		}
 	}

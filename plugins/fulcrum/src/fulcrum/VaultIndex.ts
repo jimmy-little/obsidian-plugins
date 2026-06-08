@@ -1,7 +1,7 @@
-import {MarkdownView, type App, type TFile} from "obsidian";
+import {MarkdownView, type App, TFile} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
 import {resolveAreasRoot, resolveProjectsRoot} from "./settingsDefaults";
-import {parseList} from "./settingsDefaults";
+import {parseDoneStatusSet, isDoneStatus, parseList} from "./settingsDefaults";
 import {readProjectPageMeta} from "./projectNote";
 import type {
 	AtomicNoteRow,
@@ -23,6 +23,7 @@ import {
 } from "./utils/projectLink";
 import {readTrackedMinutesFromFm} from "./utils/trackedMinutes";
 import {meetingEffectiveMinutes, meetingHasPositiveTrackedMinutes} from "./utils/meetingEffectiveMinutes";
+import {readLifeModeFromFrontmatter} from "./utils/areaFocusFilter";
 import {resolveBannerImageSrc, resolveProjectAccentCss} from "./utils/projectVisual";
 import {bumpIndexRevision} from "./stores";
 import {
@@ -33,7 +34,10 @@ import {
 } from "./utils/folderScopes";
 import {
 	parseCheckboxLineTitle,
+	parseInlinePriority,
+	parseInlineTags,
 	parseObsidianTasksEmojiDates,
+	lineIncludesTag,
 } from "./utils/inlineTasks";
 import {applyTimeRangeToTaskDates, parseTimeRangeFromLine} from "./utils/dayPlannerTime";
 import {indexDailyPlannerEvents} from "./utils/dailyPlannerEvents";
@@ -44,6 +48,11 @@ import {
 	resolveNoteType,
 } from "./utils/notePreview";
 import {collectRelatedPeople} from "./projectPeople";
+import {
+	collectRelatedProductsFromFrontmatter,
+	collectRelatedProjectsFromFrontmatter,
+} from "./projectRelatedLinks";
+import {parseRemindersFromFm, readTaskRecurrenceFields} from "./taskFmParse";
 
 function fmString(fm: Record<string, unknown> | undefined, key: string): string | undefined {
 	if (!fm) return undefined;
@@ -122,6 +131,67 @@ function createdAtMsForFile(file: TFile, fm: Record<string, unknown> | undefined
 		}
 	}
 	return file.stat.ctime;
+}
+
+function projectLinksFromFm(
+	fm: Record<string, unknown> | undefined,
+	settings: FulcrumSettings,
+	sourcePath: string,
+	app: App,
+): TFile[] {
+	if (!fm) return [];
+	const out: TFile[] = [];
+	const keys = [
+		settings.taskProjectsField.trim() || "projects",
+		settings.projectLinkField.trim() || "project",
+	];
+	const seen = new Set<string>();
+	for (const key of keys) {
+		const raw = fm[key];
+		const items = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+		for (const item of items) {
+			if (typeof item !== "string") continue;
+			const pl = parseWikiLink(item);
+			if (!pl) continue;
+			const dest = app.metadataCache.getFirstLinkpathDest(pl, sourcePath);
+			if (dest instanceof TFile && !seen.has(dest.path)) {
+				seen.add(dest.path);
+				out.push(dest);
+			}
+		}
+	}
+	return out;
+}
+
+function augmentTaskRelationships(
+	tasks: IndexedTask[],
+	taskNotePaths: Set<string>,
+	app: App,
+	settings: FulcrumSettings,
+): void {
+	const subtaskCounts = new Map<string, number>();
+	for (const t of tasks) {
+		if (t.source !== "taskNote") continue;
+		const cache = app.metadataCache.getFileCache(t.file);
+		const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+		const links = projectLinksFromFm(fm, settings, t.file.path, app);
+		for (const linked of links) {
+			if (!taskNotePaths.has(linked.path)) continue;
+			if (linked.path === t.file.path) continue;
+			t.parentTaskPath = linked.path;
+			subtaskCounts.set(linked.path, (subtaskCounts.get(linked.path) ?? 0) + 1);
+			break;
+		}
+	}
+	for (const t of tasks) {
+		if (t.source === "taskNote" && taskNotePaths.has(t.file.path)) {
+			const n = subtaskCounts.get(t.file.path) ?? 0;
+			if (n > 0) {
+				t.subtaskCount = n;
+				t.isProjectTask = true;
+			}
+		}
+	}
 }
 
 export class VaultIndex {
@@ -254,6 +324,7 @@ export class VaultIndex {
 
 			if (inArea && fm && tVal === areaTypeLc) {
 				const wr = fmBooleanLoose(fm, ["work-related", "workRelated"]);
+				const lifeModeRaw = readLifeModeFromFrontmatter(fm, s);
 				areas.push({
 					file,
 					name: fmString(fm, "name") ?? file.basename,
@@ -262,6 +333,7 @@ export class VaultIndex {
 					icon: fmString(fm, "icon"),
 					description: fmString(fm, "description"),
 					workRelated: wr === true ? true : wr === false ? false : undefined,
+					lifeMode: lifeModeRaw,
 				});
 				continue;
 			}
@@ -385,6 +457,8 @@ export class VaultIndex {
 		}
 		const openStatus = parseList(s.taskStatuses)[0] ?? "todo";
 		const doneStatus = parseList(s.taskDoneStatuses)[0] ?? "done";
+		const taskNotePaths = new Set<string>();
+		const inlineIncludeTag = s.inlineTaskIncludeTag.trim();
 
 		if (useTaskNotes) {
 			for (const file of this.app.vault.getMarkdownFiles()) {
@@ -405,7 +479,7 @@ export class VaultIndex {
 				const areaFile = al
 					? this.app.metadataCache.getFirstLinkpathDest(al, file.path)
 					: null;
-				const status = (fmString(fm, s.taskStatusField) ?? openStatus).toLowerCase();
+				const status = fmString(fm, s.taskStatusField) ?? openStatus;
 				const due =
 					fmString(fm, s.taskDueDateField) || fmString(fm, "due");
 				const sched =
@@ -416,6 +490,8 @@ export class VaultIndex {
 				const startTimeRaw = fmString(fm, startKey)?.trim();
 				const endTimeRaw = fmString(fm, endKey)?.trim();
 				const durN = fmNumber(fm, durKey);
+				const recFields = readTaskRecurrenceFields(fm, s);
+				taskNotePaths.add(file.path);
 				tasks.push({
 					file,
 					title: fmString(fm, s.taskTitleField) ?? file.basename,
@@ -434,6 +510,13 @@ export class VaultIndex {
 					createdAtMs: createdAtMsForFile(file, fm),
 					source: "taskNote",
 					trackedMinutes: readTrackedMinutesFromFm(fm, s.taskTrackedMinutesField),
+					recurrence: recFields.recurrence,
+					recurrenceAnchor: recFields.recurrenceAnchor,
+					completeInstances: recFields.completeInstances,
+					skippedInstances: recFields.skippedInstances,
+					reminders: parseRemindersFromFm(fm, s),
+					recurrenceParentPath: recFields.recurrenceParentPath,
+					occurrenceDate: recFields.occurrenceDate,
 				});
 			}
 		}
@@ -472,6 +555,7 @@ export class VaultIndex {
 					if (titleBare === null) continue;
 					const {title: titleEmoji, dueDate: dueEm, scheduledDate: schedEm} =
 						parseObsidianTasksEmojiDates(titleBare);
+					if (inlineIncludeTag && !lineIncludesTag(titleBare, inlineIncludeTag)) continue;
 					if (inlineRegex && !inlineRegex.test(titleEmoji)) continue;
 					let proj = firstLinkedProjectFileInLine(
 						this.app,
@@ -505,10 +589,13 @@ export class VaultIndex {
 					const startTimeRaw = fmString(fm, startKey)?.trim();
 					const endTimeRaw = fmString(fm, endKey)?.trim();
 					const durN = fmNumber(fm, durKey);
+					const inlineTags = parseInlineTags(titleBare);
+					const inlinePri = parseInlinePriority(titleBare);
 					tasks.push({
 						file,
 						title: enriched.title,
 						status: isChecked ? doneStatus : openStatus,
+						priority: inlinePri,
 						dueDate: enriched.dueDate,
 						scheduledDate: enriched.scheduledDate,
 						completedDate: undefined,
@@ -520,6 +607,7 @@ export class VaultIndex {
 						projectFile: proj,
 						areaFile,
 						tags: [],
+						inlineTags,
 						createdAtMs: file.stat.ctime,
 						source: "inline",
 						line: lineNo,
@@ -528,6 +616,8 @@ export class VaultIndex {
 				}
 			}
 		}
+
+		augmentTaskRelationships(tasks, taskNotePaths, this.app, s);
 
 		const plannerEvents = await indexDailyPlannerEvents(this.app, s);
 
@@ -553,7 +643,7 @@ export class VaultIndex {
 		const project = this.resolveProjectByPath(projectPath);
 		if (!project) return null;
 
-		const done = new Set(parseList(s.taskDoneStatuses));
+		const done = parseDoneStatusSet(s.taskDoneStatuses);
 		const projectTasks = this.snapshot.tasks.filter(
 			(t) => t.projectFile?.path === projectPath,
 		);
@@ -630,7 +720,7 @@ export class VaultIndex {
 		let doneTasks = 0;
 		let overdueTasks = 0;
 		for (const t of projectTasks) {
-			const isDone = done.has(t.status);
+			const isDone = isDoneStatus(t.status, done);
 			if (isDone) doneTasks++;
 			if (isOverdue(t.dueDate, isDone)) overdueTasks++;
 		}
@@ -639,7 +729,7 @@ export class VaultIndex {
 		const completionRatio =
 			totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
 
-		const openTaskList = projectTasks.filter((t) => !done.has(t.status));
+		const openTaskList = projectTasks.filter((t) => !isDoneStatus(t.status, done));
 		const priorityRank: Record<string, number> = {high: 3, medium: 2, low: 1};
 		const nextTasks = [...openTaskList].sort((a, b) => {
 			const ad = a.dueDate ?? "\uffff";
@@ -707,6 +797,19 @@ export class VaultIndex {
 			atomicRows,
 			s,
 		);
+		const relatedProjects = collectRelatedProjectsFromFrontmatter(
+			this.app,
+			projectPath,
+			project.file,
+			(p) => this.resolveProjectByPath(p),
+			s,
+		);
+		const relatedProducts = collectRelatedProductsFromFrontmatter(
+			this.app,
+			projectPath,
+			project.file,
+			s,
+		);
 
 		return {
 			project,
@@ -726,6 +829,8 @@ export class VaultIndex {
 			hasBannerImage: bannerImageSrc != null,
 			hasProjectColor,
 			relatedPeople,
+			relatedProjects,
+			relatedProducts,
 		};
 	}
 

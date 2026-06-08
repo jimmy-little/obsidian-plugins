@@ -13,6 +13,11 @@ import {
 import {conduitSyncTasks} from "./conduitTasks";
 import {pullTasksFromReminders, pushTasksToReminders} from "./taskSync";
 import {parseList} from "../fulcrum/settingsDefaults";
+import {
+	forceToActiveAction,
+	phaseToActiveAction,
+	reportConduitProgress,
+} from "./syncProgress";
 
 export class SyncCoordinator {
 	private running = false;
@@ -63,6 +68,7 @@ export class SyncCoordinator {
 
 		const force = opts?.force ?? "both";
 		const skipQuiet = opts?.skipQuiet === true || force === "pull";
+		const activeAction = forceToActiveAction(force);
 
 		if (!skipQuiet && force !== "push") {
 			const quiet = this.plugin.settings.conduitVaultQuietSeconds;
@@ -79,6 +85,17 @@ export class SyncCoordinator {
 		this.deferReason = null;
 
 		try {
+			reportConduitProgress(
+				{
+					active: true,
+					phase: "waiting",
+					label: "Preparing…",
+					force,
+					activeAction,
+				},
+				{force: true},
+			);
+
 			const remctl = new RemctlClient(this.plugin.settings.conduitRemctlPath);
 			const snap = this.plugin.vaultIndex.getSnapshot();
 			const projects = snap.projects;
@@ -89,6 +106,12 @@ export class SyncCoordinator {
 			const state = await loadConduitSyncState(() => this.plugin.loadData());
 
 			if (!skipQuiet && force === "both") {
+				reportConduitProgress({
+					phase: "waiting",
+					label: "Waiting for vault to settle…",
+					activeAction,
+					force,
+				});
 				const stable = await this.waitVaultFingerprintStable(vaultFp, projects, tasks);
 				if (!stable) {
 					this.deferReason = "vault still changing";
@@ -97,6 +120,12 @@ export class SyncCoordinator {
 				}
 			}
 
+			reportConduitProgress({
+				phase: "lists",
+				label: "Syncing project lists…",
+				activeAction,
+				force,
+			});
 			let lists = indexLists(await remctl.lists());
 			lists = await ensureProjectLists(
 				this.plugin.app,
@@ -109,9 +138,20 @@ export class SyncCoordinator {
 
 			const allRows: import("./types").RemctlReminderRow[] = [];
 			const seenLists = new Set<string>();
-			for (const [, list] of lists.byId) {
+			const listEntries = [...lists.byId.values()];
+			let listIndex = 0;
+			for (const list of listEntries) {
 				if (seenLists.has(list.id)) continue;
 				seenLists.add(list.id);
+				listIndex++;
+				reportConduitProgress({
+					phase: "fetching",
+					label: "Reading Reminders lists…",
+					current: listIndex,
+					total: listEntries.length,
+					activeAction,
+					force,
+				});
 				try {
 					const rows = await remctl.showList({listId: list.id});
 					allRows.push(...rows);
@@ -146,6 +186,16 @@ export class SyncCoordinator {
 					allRows,
 					state,
 					force === "pull",
+					(cur, tot) => {
+						reportConduitProgress({
+							phase: "pulling",
+							label: "Pulling from Reminders…",
+							current: cur,
+							total: tot,
+							activeAction: phaseToActiveAction("pulling", activeAction),
+							force,
+						});
+					},
 				);
 			}
 
@@ -162,6 +212,16 @@ export class SyncCoordinator {
 					lists,
 					state,
 					force === "push",
+					(cur, tot) => {
+						reportConduitProgress({
+							phase: "pushing",
+							label: "Pushing to Reminders…",
+							current: cur,
+							total: tot,
+							activeAction: phaseToActiveAction("pushing", activeAction),
+							force,
+						});
+					},
 				);
 				pushed = pushResult.pushed;
 				pushFailed = pushResult.failed;
@@ -170,10 +230,17 @@ export class SyncCoordinator {
 				}
 			}
 
+			reportConduitProgress({
+				phase: "saving",
+				label: "Saving sync state…",
+				activeAction,
+				force,
+			});
 			state.lastCompletedAt = new Date().toISOString();
 			state.lastVaultFingerprint = vaultFp;
 			state.lastRemindersFingerprint = remFp;
 			await saveConduitSyncState(
+				this.plugin.app,
 				() => this.plugin.loadData(),
 				(d) => this.plugin.saveData(d),
 				state,
@@ -216,7 +283,7 @@ export class SyncCoordinator {
 		if (Date.now() - this.startedAt < 90_000) return;
 		if (this.retryTimer != null) window.clearTimeout(this.retryTimer);
 		this.retryTimer = window.setTimeout(() => {
-			void this.requestSync("retry", {force: "both"});
+			void this.plugin.conduit?.runSync("retry", {force: "both", notify: false});
 		}, ms);
 	}
 

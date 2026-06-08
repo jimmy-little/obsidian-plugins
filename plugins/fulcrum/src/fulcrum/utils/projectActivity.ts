@@ -1,3 +1,4 @@
+import {isDoneStatus} from "../settingsDefaults";
 import type {ProjectLogActivityEntry} from "../projectNote";
 import type {AtomicNoteRow, IndexedMeeting, IndexedTask, ProjectRollup} from "../types";
 import {
@@ -32,6 +33,8 @@ export type ActivityRowModel = {
 	title: string;
 	chips: ActivityChip[];
 	open: () => void;
+	/** Task rows: enables Fulcrum task context menu on right-click. */
+	task?: IndexedTask;
 	hoverPath?: string;
 	/** Notes only: when the type (frontmatter) begins with an emoji, show it in the timeline circle. */
 	timelineEmoji?: string;
@@ -207,12 +210,12 @@ function earliestTodayOrFutureDueOrSched(t: IndexedTask): string | null {
 /** Open tasks (task notes + inline) that are not done by status and have no completion date. */
 export function incompleteProjectTasks(tasks: IndexedTask[], doneTask: Set<string>): IndexedTask[] {
 	return tasks.filter(
-		(t) => !doneTask.has(t.status) && !t.completedDate?.trim(),
+		(t) => !isDoneStatus(t.status, doneTask) && !t.completedDate?.trim(),
 	);
 }
 
 export function taskIsComplete(t: IndexedTask, doneTask: Set<string>): boolean {
-	return doneTask.has(t.status) || Boolean(t.completedDate?.trim());
+	return isDoneStatus(t.status, doneTask) || Boolean(t.completedDate?.trim());
 }
 
 /**
@@ -266,7 +269,7 @@ export function buildNextUpSegments(
 	const meetingPaths = new Set(rollup.meetings.map((m) => m.file.path));
 	const openTaskPaths = new Set(
 		rollup.tasks
-			.filter((t) => !doneTask.has(t.status) && !t.completedDate?.trim())
+			.filter((t) => !isDoneStatus(t.status, doneTask) && !t.completedDate?.trim())
 			.map((t) => t.file.path),
 	);
 	const rows: NextUpSortRow[] = [];
@@ -309,7 +312,7 @@ export function buildAreaNextUpSegments(
 		| {key: string; kind: "meeting"; meeting: IndexedMeeting}
 	> = [];
 	for (const t of tasks) {
-		if (doneTask.has(t.status) || t.completedDate?.trim()) continue;
+		if (isDoneStatus(t.status, doneTask) || t.completedDate?.trim()) continue;
 		const key = earliestTodayOrFutureDueOrSched(t);
 		if (key == null) continue;
 		rows.push({key, kind: "task", task: t});
@@ -366,6 +369,7 @@ export function buildActivityRowModels(
 			title: t.title,
 			chips: appendFileModifiedChip(chipsForTask(t, deps.formatTracked), "task", t.file.stat.mtime),
 			open: () => deps.openTask(t),
+			task: t,
 			hoverPath: t.file.path,
 		});
 	}
@@ -670,6 +674,7 @@ export function buildWeeklyReviewActivityRows(
 						appendFileModifiedChip(chipsForTask(t, deps.formatTracked), "task", t.file.stat.mtime),
 					),
 					open: () => deps.openTask(t),
+					task: t,
 					hoverPath: t.file.path,
 					projectName,
 					accentColorCss,
@@ -700,6 +705,7 @@ export function buildWeeklyReviewActivityRows(
 						),
 					),
 					open: () => deps.openTask(t),
+					task: t,
 					hoverPath: t.file.path,
 					projectName,
 					accentColorCss,
@@ -884,6 +890,7 @@ export function buildAggregatedActivityRows(
 				title: t.title,
 				chips: addProjectChip(appendFileModifiedChip(chipsForTask(t, deps.formatTracked), "task", mtime)),
 				open: () => deps.openTask(t),
+				task: t,
 				hoverPath: t.file.path,
 				projectName,
 				accentColorCss,

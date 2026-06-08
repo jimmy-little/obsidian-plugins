@@ -153,7 +153,7 @@ function parseYamlDateToTime(raw: string): number {
 	return d.getTime();
 }
 
-function yamlStringOrStringList(val: unknown): string[] {
+export function yamlStringOrStringList(val: unknown): string[] {
 	if (typeof val === "string" && val.trim()) return [val.trim()];
 	if (!Array.isArray(val)) return [];
 	const out: string[] = [];

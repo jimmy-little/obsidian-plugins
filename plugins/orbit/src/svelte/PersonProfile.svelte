@@ -385,7 +385,7 @@
 							title="Open note"
 							on:click={() => void openRawNote()}
 						>
-							<span class="orbit-banner-btn__icon" use:orbitBannerIcon={"file-input"} aria-hidden="true"></span>
+							<span class="orbit-banner-btn__icon" use:orbitBannerIcon={"square-arrow-out-up-right"} aria-hidden="true"></span>
 						</button>
 						<button
 							type="button"

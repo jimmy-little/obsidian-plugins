@@ -151,7 +151,7 @@ export class PulseMainContent {
 			};
 		});
 
-		mkExerciseHeadBtn("file-input", "Open note", () => {
+		mkExerciseHeadBtn("square-arrow-out-up-right", "Open note", () => {
 			void this.plugin.app.workspace.getLeaf("tab").openFile(exercise.file);
 		});
 

@@ -3,15 +3,18 @@
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {ProjectLogActivityEntry} from "../fulcrum/projectNote";
 	import type {IndexedMeeting, ProjectRollup} from "../fulcrum/types";
-	import {indexRevision, settingsRevision, workRelatedOnly} from "../fulcrum/stores";
+	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
 	import {
-		buildAreaWorkRelatedMap,
-		filterProjectsWorkRelated,
-		meetingPassesWorkFilter,
-		taskPassesWorkFilter,
-	} from "../fulcrum/utils/workRelatedProjectFilter";
+		buildAreaLifeModeMap,
+		filterProjectsByAreaFocus,
+		meetingPassesAreaFilter,
+		taskPassesAreaFilter,
+	} from "../fulcrum/utils/areaFocusFilter";
 	import {
+		isDoneStatus,
+		parseDoneStatusSet,
 		parseList,
+		parseTaskStatusChoices,
 		DASHBOARD_ACTIVITY_MAX_DAYS,
 		DASHBOARD_ACTIVITY_MAX_ROWS,
 	} from "../fulcrum/settingsDefaults";
@@ -38,6 +41,7 @@
 	import {loadActivityFeedPreviews} from "../fulcrum/loadActivityFeedPreviews";
 	import ActivityRow from "./ActivityRow.svelte";
 	import ProjectListRow from "./ProjectListRow.svelte";
+	import TaskSectionHead from "./TaskSectionHead.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -50,25 +54,26 @@
 	}
 
 	$: sRev = $settingsRevision;
-	$: doneTask = new Set(parseList(plugin.settings.taskDoneStatuses));
+	$: doneTask = parseDoneStatusSet(plugin.settings.taskDoneStatuses);
 	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
 
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+	$: areaFilter = $areaFilterState;
+	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
 		typeField: plugin.settings.typeField,
 		areaTypeValue: plugin.settings.areaTypeValue,
+		settings: plugin.settings,
 	});
-	$: onlyWork = $workRelatedOnly;
 
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
 
 	/** Active projects that qualify for any attention bucket; split by priority (review → tasks → meetings). */
 	$: attentionBuckets = (() => {
-		const candidates = filterProjectsWorkRelated(
+		const candidates = filterProjectsByAreaFocus(
 			snapshot.projects.filter((p) => !doneProject.has((p.status ?? "").trim().toLowerCase())),
-			onlyWork,
-			areaWorkMap,
+			areaFilter,
+			lifeModeMap,
 		);
 		const withSignals = candidates.filter((p) => {
 			const c = projectCounts.get(p.file.path);
@@ -88,25 +93,25 @@
 	$: tasksDueToday = snapshot.tasks.filter(
 		(t) =>
 			t.projectFile &&
-			!doneTask.has(t.status) &&
+			!isDoneStatus(t.status, doneTask) &&
 			isDueToday(t.dueDate, false) &&
-			taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap),
+			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
 	);
 	$: overdueTasks = snapshot.tasks.filter(
 		(t) =>
 			t.projectFile &&
-			!doneTask.has(t.status) &&
+			!isDoneStatus(t.status, doneTask) &&
 			isOverdue(t.dueDate, false) &&
-			taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap),
+			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
 	);
 	$: meetingsToday = snapshot.meetings.filter(
 		(m) =>
 			m.date?.slice(0, 10) === todayLocalISODate() &&
-			meetingPassesWorkFilter(m, snapshot, onlyWork, areaWorkMap),
+			meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap),
 	);
 	$: completedThisWeek = snapshot.tasks.filter((t) => {
-		if (!taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap)) return false;
-		if (!doneTask.has(t.status) || !t.completedDate) return false;
+		if (!taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap)) return false;
+		if (!isDoneStatus(t.status, doneTask) || !t.completedDate) return false;
 		const c = Date.parse(t.completedDate.slice(0, 10));
 		if (Number.isNaN(c)) return false;
 		const weekAgo = dayStartMs(new Date(Date.now() - 7 * 86400000));
@@ -144,7 +149,7 @@
 		const endIso = toISODate(addDays(dashboardWeekStart, 6));
 		const m = new Map<string, IndexedMeeting[]>();
 		for (const mt of snapshot.meetings) {
-			if (!meetingPassesWorkFilter(mt, snapshot, onlyWork, areaWorkMap)) continue;
+			if (!meetingPassesAreaFilter(mt, snapshot, areaFilter, lifeModeMap)) continue;
 			const key = mt.date?.slice(0, 10) ?? "";
 			if (!key || key.length < 10) continue;
 			if (key < startIso || key > endIso) continue;
@@ -162,9 +167,9 @@
 		.filter(
 			(t) =>
 				t.projectFile &&
-				!doneTask.has(t.status) &&
+				!isDoneStatus(t.status, doneTask) &&
 				isDueToday(t.dueDate, false) &&
-				taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap),
+				taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
 		)
 		.slice(0, 20);
 
@@ -173,12 +178,12 @@
 	$: {
 		void rev;
 		void sRev;
-		void onlyWork;
-		void areaWorkMap;
-		const active = filterProjectsWorkRelated(
+		void areaFilter;
+		void lifeModeMap;
+		const active = filterProjectsByAreaFocus(
 			plugin.vaultIndex.getActiveProjects(plugin.settings),
-			onlyWork,
-			areaWorkMap,
+			areaFilter,
+			lifeModeMap,
 		);
 		const load = async (): Promise<void> => {
 			const inputs = await Promise.all(
@@ -376,7 +381,7 @@
 </section>
 
 <section class="fulcrum-section">
-	<h2>Today’s tasks</h2>
+	<TaskSectionHead title="Today's Tasks" {plugin} />
 	{#if todayTasks.length === 0}
 		<p class="fulcrum-muted">Nothing due today in indexed tasks.</p>
 	{:else}
@@ -386,8 +391,7 @@
 					<TaskCard
 						plugin={plugin}
 						task={t}
-						done={doneTask.has(t.status)}
-						showProjectLink={true}
+						done={isDoneStatus(t.status, doneTask)}
 						anchorLeaf={hoverParentLeaf}
 					/>
 				</li>
@@ -490,6 +494,7 @@
 						title={row.title}
 						chips={row.chips}
 						kind={row.kind}
+						task={row.task}
 						timelineEmoji={row.timelineEmoji}
 						whenClick={row.open}
 						{plugin}

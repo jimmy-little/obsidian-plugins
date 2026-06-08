@@ -10,6 +10,7 @@ import { resolveEpisodeTraktIdForFile } from "../trakt/resolveEpisodeTraktId";
 import {
 	ensureTraktAccessToken,
 	pushEpisodeWatchedToTrakt,
+	pushMovieWatchedToTrakt,
 	removeEpisodeWatchedFromTrakt,
 	readTraktIdFromFrontmatter,
 } from "../trakt/watchedSync";
@@ -128,6 +129,48 @@ async function ensureFulcrumTimerBlock(app: App, file: TFile): Promise<void> {
 	await app.vault.modify(file, next);
 }
 
+async function resolveTraktIdForFile(plugin: ReposePlugin, file: TFile): Promise<number | null> {
+	const cache = plugin.app.metadataCache.getFileCache(file);
+	const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
+	let traktId = readTraktIdFromFrontmatter(fm);
+	if (traktId != null) return traktId;
+
+	if (resolveMediaTypeForFile(plugin.app, file, plugin.settings) !== "episode") return null;
+
+	const resolved = await resolveEpisodeTraktIdForFile(plugin.app, plugin.settings, file);
+	if (resolved == null) return null;
+
+	await plugin.app.fileManager.processFrontMatter(file, (fmMut) => {
+		(fmMut as Record<string, unknown>).traktId = resolved;
+	});
+	return resolved;
+}
+
+/** Push a watch play to Trakt when connected (first watch or re-watch). */
+export async function pushWatchPlayToTrakt(
+	plugin: ReposePlugin,
+	file: TFile,
+	calendarDate: string,
+): Promise<void> {
+	if (!calendarDate) return;
+
+	const mediaType = resolveMediaTypeForFile(plugin.app, file, plugin.settings);
+	if (mediaType !== "movie" && mediaType !== "episode") return;
+
+	const traktId = await resolveTraktIdForFile(plugin, file);
+	if (traktId == null) return;
+
+	const token = await ensureTraktAccessToken(plugin);
+	if (!token) return;
+
+	try {
+		if (mediaType === "movie") await pushMovieWatchedToTrakt(plugin, traktId, calendarDate);
+		else await pushEpisodeWatchedToTrakt(plugin, traktId, calendarDate);
+	} catch (e) {
+		new Notice(e instanceof Error ? e.message : "Could not update Trakt watch state.");
+	}
+}
+
 async function syncEpisodeTrakt(
 	plugin: ReposePlugin,
 	file: TFile,
@@ -137,33 +180,43 @@ async function syncEpisodeTrakt(
 ): Promise<void> {
 	if (resolveMediaTypeForFile(plugin.app, file, plugin.settings) !== "episode") return;
 
-	const cacheAfter = plugin.app.metadataCache.getFileCache(file);
-	const fmAfter = (cacheAfter?.frontmatter ?? {}) as Record<string, unknown>;
-
-	let traktId = readTraktIdFromFrontmatter(fmAfter);
-	if (traktId == null) {
-		const resolved = await resolveEpisodeTraktIdForFile(plugin.app, plugin.settings, file);
-		if (resolved != null) {
-			traktId = resolved;
-			await plugin.app.fileManager.processFrontMatter(file, (fm) => {
-				(fm as Record<string, unknown>).traktId = resolved;
-			});
-		}
+	if (!wasWatched && nowWatched && calendarDate) {
+		await pushWatchPlayToTrakt(plugin, file, calendarDate);
+		return;
 	}
-	if (traktId == null) return;
 
-	const token = await ensureTraktAccessToken(plugin);
-	if (!token) return;
+	if (wasWatched && nowWatched && calendarDate) {
+		await pushWatchPlayToTrakt(plugin, file, calendarDate);
+		return;
+	}
 
-	try {
-		if (!wasWatched && nowWatched && calendarDate) {
-			await pushEpisodeWatchedToTrakt(plugin, traktId, calendarDate);
-		} else if (wasWatched && !nowWatched) {
+	if (wasWatched && !nowWatched) {
+		const traktId = await resolveTraktIdForFile(plugin, file);
+		if (traktId == null) return;
+
+		const token = await ensureTraktAccessToken(plugin);
+		if (!token) return;
+
+		try {
 			await removeEpisodeWatchedFromTrakt(plugin, traktId);
+		} catch (e) {
+			new Notice(e instanceof Error ? e.message : "Could not update Trakt watch state.");
 		}
-	} catch (e) {
-		new Notice(e instanceof Error ? e.message : "Could not update Trakt watch state.");
 	}
+}
+
+/** Append another watch play at now (preserves existing `watchedDates`). */
+export async function appendWatchPlayNow(plugin: ReposePlugin, file: TFile): Promise<void> {
+	const now = new Date();
+	const calendarDate = todayCalendar();
+	const isoPlay = now.toISOString();
+
+	await plugin.app.fileManager.processFrontMatter(file, (fm) => {
+		applyWatchedFields(fm, calendarDate, isoPlay);
+	});
+
+	await pushWatchPlayToTrakt(plugin, file, calendarDate);
+	new Notice("Logged watch for today");
 }
 
 export async function markEpisodeUnwatched(plugin: ReposePlugin, file: TFile): Promise<void> {

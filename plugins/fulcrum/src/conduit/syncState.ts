@@ -1,3 +1,5 @@
+import type {App} from "obsidian";
+import {pruneConduitSyncState} from "../fulcrum/pluginDataPrune";
 import type {ConduitSyncState} from "./types";
 
 export const CONDUIT_SYNC_DATA_KEY = "conduitSync";
@@ -27,11 +29,12 @@ export async function loadConduitSyncState(
 }
 
 export async function saveConduitSyncState(
+	app: App,
 	loadData: () => Promise<unknown>,
 	saveData: (data: unknown) => Promise<void>,
 	state: ConduitSyncState,
 ): Promise<void> {
 	const raw = ((await loadData()) as Record<string, unknown> | null) ?? {};
-	raw[CONDUIT_SYNC_DATA_KEY] = state;
+	raw[CONDUIT_SYNC_DATA_KEY] = pruneConduitSyncState(app, state);
 	await saveData(raw);
 }

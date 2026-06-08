@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type {WorkspaceLeaf} from "obsidian";
-	import {setIcon} from "obsidian";
+	import {Menu, setIcon} from "obsidian";
 	import {onMount} from "svelte";
 
 	function bannerBtnIcon(el: HTMLElement, icon: string): { update: (next: string) => void } {
@@ -14,7 +14,7 @@
 	}
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import {indexRevision} from "../fulcrum/stores";
-	import {parseList} from "../fulcrum/settingsDefaults";
+	import {isDoneStatus, parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
 	import type {AtomicNoteRow, ProjectRollup} from "../fulcrum/types";
 	import {
 		daysSinceCalendar,
@@ -26,7 +26,6 @@
 	import {
 		buildActivityRowModels,
 		buildNextUpSegments,
-		incompleteProjectTasks,
 		leadingTimelineEmojiFromNoteType,
 	} from "../fulcrum/utils/projectActivity";
 	import {preferLightForegroundOnAccentCss} from "../fulcrum/utils/projectVisual";
@@ -34,7 +33,23 @@
 	import {loadActivityFeedPreviews} from "../fulcrum/loadActivityFeedPreviews";
 	import ActivityRow from "./ActivityRow.svelte";
 	import NextUpMeetingCard from "./NextUpMeetingCard.svelte";
-	import TaskCard from "./TaskCard.svelte";
+	import TaskListPanel from "./TaskListPanel.svelte";
+	import KanbanMain from "./KanbanMain.svelte";
+	import CalendarMain from "./CalendarMain.svelte";
+	import ProjectFilesTab from "./ProjectFilesTab.svelte";
+	import ProjectListRow from "./ProjectListRow.svelte";
+	import ProjectPageSections from "./ProjectPageSections.svelte";
+
+	type ProjectSummaryTab = "overview" | "list" | "board" | "timeline" | "calendar" | "files";
+	const PROJECT_TABS: {id: ProjectSummaryTab; label: string}[] = [
+		{id: "overview", label: "Overview"},
+		{id: "list", label: "List"},
+		{id: "board", label: "Board"},
+		{id: "timeline", label: "Timeline"},
+		{id: "calendar", label: "Calendar"},
+		{id: "files", label: "Files"},
+	];
+	const PROJECT_TAB_LS = "fulcrum-project-summary-tab";
 
 	export let plugin: FulcrumHost;
 	export let projectPath: string;
@@ -77,7 +92,7 @@
 		void loadLogActivity();
 	}
 
-	$: doneTask = new Set(parseList(plugin.settings.taskDoneStatuses));
+	$: doneTask = parseDoneStatusSet(plugin.settings.taskDoneStatuses);
 
 	$: daysSinceReview = rollup
 		? daysSinceCalendar(rollup.pageMeta.lastReviewed)
@@ -87,6 +102,10 @@
 
 	function openPath(path: string): void {
 		plugin.openLinkedNoteFromFulcrum(path, hoverParentLeaf);
+	}
+
+	function openRelatedProject(path: string): void {
+		void plugin.openProjectSummary(path);
 	}
 
 	function noteChipsNext(n: AtomicNoteRow): import("../fulcrum/utils/projectActivity").ActivityChip[] {
@@ -141,8 +160,6 @@
 		: {meetings: [], items: []};
 	$: nextUpMeetings = nextUpSeg.meetings;
 	$: nextUpListItems = nextUpSeg.items;
-
-	$: openTasks = rollup ? incompleteProjectTasks(rollup.tasks, doneTask) : [];
 
 	$: activityRows = rollup
 		? buildActivityRowModels(rollup, logEntries, {
@@ -238,6 +255,95 @@
 			noteTitle: rollup.project.name,
 		});
 	}
+
+	let activeTab: ProjectSummaryTab = "overview";
+
+	onMount(() => {
+		try {
+			const stored = localStorage.getItem(PROJECT_TAB_LS);
+			if (stored && PROJECT_TABS.some((t) => t.id === stored)) {
+				activeTab = stored as ProjectSummaryTab;
+			}
+		} catch {
+			/* ignore */
+		}
+	});
+
+	function selectTab(id: ProjectSummaryTab): void {
+		activeTab = id;
+		try {
+			localStorage.setItem(PROJECT_TAB_LS, id);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function openHeaderMenu(ev: MouseEvent): void {
+		if (!rollup) return;
+		const menu = new Menu();
+		menu.addItem((item) => {
+			item.setTitle("Open note");
+			item.setIcon("square-arrow-out-up-right");
+			item.onClick(() => openPath(rollup.project.file.path));
+		});
+		if (ticketUrl) {
+			const url = ticketUrl;
+			menu.addItem((item) => {
+				item.setTitle("External link");
+				item.setIcon("external-link");
+				item.onClick(() => window.open(url, "_blank", "noopener,noreferrer"));
+			});
+		}
+		menu.addItem((item) => {
+			item.setTitle("Capture snapshot");
+			item.setIcon("camera");
+			item.onClick(() => void captureSnapshot());
+		});
+		menu.addItem((item) => {
+			item.setTitle("Edit properties");
+			item.setIcon("file-json");
+			item.onClick(() => openProjectProperties());
+		});
+		menu.addItem((item) => {
+			item.setTitle("Mark reviewed");
+			item.setIcon("glasses");
+			item.onClick(() => markReviewed());
+		});
+		menu.addItem((item) => {
+			item.setTitle("Mark project complete");
+			item.setIcon("folder-check");
+			item.onClick(() => markProjectComplete());
+		});
+		if (showNewNoteFromTemplateBtn) {
+			menu.addItem((item) => {
+				item.setTitle("New note from template");
+				item.setIcon("file-plus");
+				item.onClick(() =>
+					void plugin.createNewNoteFromTemplateForProject(projectPath, hoverParentLeaf),
+				);
+			});
+		}
+		if (showNewInlineTaskBtn) {
+			menu.addItem((item) => {
+				item.setTitle("New task");
+				item.setIcon("check");
+				item.onClick(() => plugin.openNewInlineTaskForProject(projectPath));
+			});
+		}
+		if (showNewTaskNoteBtn) {
+			menu.addItem((item) => {
+				item.setTitle("New task note");
+				item.setIcon("file-check");
+				item.onClick(() => plugin.openTaskNoteCreateForProject(projectPath));
+			});
+		}
+		menu.addItem((item) => {
+			item.setTitle("Start timer in project note");
+			item.setIcon("play");
+			item.onClick(() => startProjectTimer());
+		});
+		menu.showAtMouseEvent(ev);
+	}
 </script>
 
 {#if rollupMissing}
@@ -246,11 +352,12 @@
 	<p class="fulcrum-muted">Loading project…</p>
 {:else}
 	<div
-		class="fulcrum-project"
+		class="fulcrum-project fulcrum-project--tabbed"
 		style="--fulcrum-accent: {rollup.accentColorCss}; --fulcrum-cta-fg: {ctaFgOnAccent};"
 	>
+		<div class="fulcrum-project-header">
 		<div
-			class="fulcrum-project-banner"
+			class="fulcrum-project-banner fulcrum-project-banner--compact"
 			class:fulcrum-project-banner--image={bannerMode === "image"}
 			class:fulcrum-project-banner--solid={bannerMode === "solid"}
 			class:fulcrum-project-banner--plain={bannerMode === "plain"}
@@ -261,164 +368,38 @@
 				<div class="fulcrum-project-banner__scrim" />
 			{/if}
 			<div
-				class="fulcrum-project-banner__inner"
-				class:fulcrum-project-banner__inner--has-foot={true}
+				class="fulcrum-project-banner__inner fulcrum-project-banner__inner--compact"
 				class:fulcrum-project-banner__inner--on-dark={bannerLightFg}
 				class:fulcrum-project-banner__inner--on-light={!bannerLightFg}
 			>
-				<div class="fulcrum-project-banner__top">
-					<div class="fulcrum-project-banner__left">
-						<h1 class="fulcrum-project-banner__title">{rollup.project.name}</h1>
+				<div class="fulcrum-project-banner__head">
+					<div class="fulcrum-project-banner__identity">
+						<div class="fulcrum-project-banner__title-row">
+							{#if onBackFromProject}
+								<button
+									type="button"
+									class="fulcrum-banner-btn fulcrum-banner-btn--icon-only fulcrum-project-banner__shell-back"
+									on:click={onBackFromProject}
+									aria-label="Back to {backTargetLabel}"
+									title="Back to {backTargetLabel}"
+								>
+									<span
+										class="fulcrum-banner-btn__icon fulcrum-project-banner__shell-back-icon"
+										use:bannerBtnIcon={"layout-dashboard"}
+										aria-hidden="true"
+									></span>
+								</button>
+							{/if}
+							<h1 class="fulcrum-project-banner__title">{rollup.project.name}</h1>
+						</div>
+						{#if rollup.project.areaName}
+							<div class="fulcrum-project-banner__area">{rollup.project.areaName}</div>
+						{/if}
 						{#if rollup.pageMeta.description}
 							<p class="fulcrum-project-banner__desc">{rollup.pageMeta.description}</p>
 						{/if}
 					</div>
-					<div class="fulcrum-project-banner__right">
-						{#if rollup.project.areaName}
-							<div class="fulcrum-project-banner__area">{rollup.project.areaName}</div>
-						{/if}
-						<div class="fulcrum-project-banner__actions">
-							<div class="fulcrum-banner-btn-row">
-								<button
-									type="button"
-									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-									aria-label="Open note"
-									title="Open note"
-									on:click={() => openPath(rollup.project.file.path)}
-								>
-									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"file-input"} aria-hidden="true"></span>
-								</button>
-								<button
-									type="button"
-									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-									aria-label="Capture snapshot"
-									title="Capture snapshot"
-									on:click={() => void captureSnapshot()}
-								>
-									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"camera"} aria-hidden="true"></span>
-								</button>
-							</div>
-							<div class="fulcrum-banner-btn-row">
-								<button
-									type="button"
-									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-									aria-label="Edit properties"
-									title="Edit properties (YAML)"
-									on:click={openProjectProperties}
-								>
-									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"file-json"} aria-hidden="true"></span>
-								</button>
-								<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
-							</div>
-							<div class="fulcrum-banner-btn-row">
-								<button
-									type="button"
-									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-									aria-label="Mark reviewed"
-									title="Mark reviewed"
-									on:click={markReviewed}
-								>
-									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"glasses"} aria-hidden="true"></span>
-								</button>
-								<button
-									type="button"
-									class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-									aria-label="Mark project complete"
-									title="Mark project complete"
-									on:click={markProjectComplete}
-								>
-									<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"folder-check"} aria-hidden="true"></span>
-								</button>
-							</div>
-							{#if showNewNoteFromTemplateBtn || showNewInlineTaskBtn}
-								<div class="fulcrum-banner-btn-row">
-									{#if showNewNoteFromTemplateBtn}
-										<button
-											type="button"
-											class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-											aria-label="New note from template"
-											title="New note from template"
-											on:click={() =>
-												void plugin.createNewNoteFromTemplateForProject(
-													projectPath,
-													hoverParentLeaf,
-												)}
-										>
-											<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"file-plus"} aria-hidden="true"></span>
-										</button>
-									{:else}
-										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
-									{/if}
-									{#if showNewInlineTaskBtn}
-										<button
-											type="button"
-											class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-											aria-label="New task"
-											title="New task"
-											on:click={() => plugin.openNewInlineTaskForProject(projectPath)}
-										>
-											<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"check"} aria-hidden="true"></span>
-										</button>
-									{:else}
-										<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
-									{/if}
-								</div>
-							{/if}
-							{#if showNewTaskNoteBtn}
-								<div class="fulcrum-banner-btn-row">
-									<button
-										type="button"
-										class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-										aria-label="New task note"
-										title="New task note"
-										on:click={() => plugin.openTaskNoteCreateForProject(projectPath)}
-									>
-										<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"file-check"} aria-hidden="true"></span>
-									</button>
-									<button
-										type="button"
-										class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-										aria-label="Start timer in project note"
-										title="Start a timer in this project note (adds a fulcrum-timer block if needed)"
-										on:click={startProjectTimer}
-									>
-										<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"play"} aria-hidden="true"></span>
-									</button>
-								</div>
-							{:else}
-								<div class="fulcrum-banner-btn-row">
-									<span class="fulcrum-banner-btn-slot" aria-hidden="true"></span>
-									<button
-										type="button"
-										class="fulcrum-banner-btn fulcrum-banner-btn--half fulcrum-banner-btn--icon-only"
-										aria-label="Start timer in project note"
-										title="Start a timer in this project note (adds a fulcrum-timer block if needed)"
-										on:click={startProjectTimer}
-									>
-										<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"play"} aria-hidden="true"></span>
-									</button>
-								</div>
-							{/if}
-						</div>
-					</div>
-				</div>
-				<div class="fulcrum-project-banner__foot">
-					<div class="fulcrum-project-banner__foot-left">
-						{#if onBackFromProject}
-							<button
-								type="button"
-								class="fulcrum-banner-btn fulcrum-banner-btn--icon-only fulcrum-project-banner__shell-back"
-								on:click={onBackFromProject}
-								aria-label="Back to {backTargetLabel}"
-								title="Back to {backTargetLabel}"
-							>
-								<span
-									class="fulcrum-banner-btn__icon fulcrum-project-banner__shell-back-icon"
-									use:bannerBtnIcon={"layout-dashboard"}
-									aria-hidden="true"
-								></span>
-							</button>
-						{/if}
+					<div class="fulcrum-project-banner__head-actions">
 						{#if statusPillText}
 							<button
 								type="button"
@@ -438,21 +419,49 @@
 								{statusPillText}
 							</button>
 						{/if}
-						{#if ticketUrl}
-							<a
-								href={ticketUrl}
-								class="external-link fulcrum-project-banner__extlink"
-								target="_blank"
-								rel="noopener noreferrer"
-							>
-								External link
-							</a>
-						{/if}
+						<button
+							type="button"
+							class="fulcrum-banner-btn fulcrum-banner-btn--icon-only fulcrum-project-banner__menu-btn"
+							aria-label="Project actions"
+							title="Project actions"
+							on:click={openHeaderMenu}
+						>
+							<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"circle-ellipsis"} aria-hidden="true"></span>
+						</button>
 					</div>
 				</div>
 			</div>
 		</div>
 
+		<nav class="fulcrum-project-tabs" aria-label="Project views">
+			{#each PROJECT_TABS as tab (tab.id)}
+				<button
+					type="button"
+					class="fulcrum-project-tabs__btn"
+					class:fulcrum-project-tabs__btn--active={activeTab === tab.id}
+					aria-selected={activeTab === tab.id}
+					role="tab"
+					style={activeTab === tab.id
+						? `--fulcrum-tab-accent: ${rollup.accentColorCss}; --fulcrum-tab-fg: ${ctaFgOnAccent};`
+						: undefined}
+					on:click={() => selectTab(tab.id)}
+				>
+					{tab.label}
+				</button>
+			{/each}
+		</nav>
+		</div>
+
+		<div
+			class="fulcrum-project-tab-panel"
+			class:fulcrum-project-tab-panel--fill={activeTab === "list" ||
+				activeTab === "board" ||
+				activeTab === "calendar"}
+			class:fulcrum-project-tab-panel--scroll={activeTab === "overview" ||
+				activeTab === "files" ||
+				activeTab === "timeline"}
+		>
+		{#if activeTab === "overview"}
 		<div class="fulcrum-project-meta-strip">
 			<div class="fulcrum-project-meta-strip__row">
 				{#if rollup.pageMeta.lastReviewed}
@@ -569,28 +578,7 @@
 			{/if}
 		</section>
 
-		<section class="fulcrum-section">
-			<h2>Tasks</h2>
-			{#if rollup.tasks.length === 0}
-				<p class="fulcrum-muted">No tasks in your indexed sources link to this project.</p>
-			{:else if openTasks.length === 0}
-				<p class="fulcrum-muted">No incomplete tasks.</p>
-			{:else}
-				<ul class="fulcrum-task-list fulcrum-task-agenda-list">
-					{#each openTasks as t}
-						<li>
-							<TaskCard
-								plugin={plugin}
-								task={t}
-								done={false}
-								showProjectLink={false}
-								anchorLeaf={hoverParentLeaf}
-							/>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
+		<ProjectPageSections {plugin} {projectPath} accentColorCss={rollup.accentColorCss} />
 
 		<section class="fulcrum-section">
 			<h2>Activity</h2>
@@ -609,6 +597,7 @@
 								title={row.title}
 								chips={row.chips}
 								kind={row.kind}
+								task={row.task}
 								timelineEmoji={row.timelineEmoji}
 								whenClick={row.open}
 								{plugin}
@@ -660,5 +649,68 @@
 				</div>
 			</section>
 		{/if}
+
+		{#if rollup.relatedProjects?.length > 0}
+			<section class="fulcrum-section">
+				<h2>Related projects</h2>
+				<div class="fulcrum-related-projects-grid">
+					{#each rollup.relatedProjects as p (p.file.path)}
+						<ProjectListRow
+							{plugin}
+							{hoverParentLeaf}
+							{p}
+							tile={true}
+							selectedPath={projectPath}
+							onSelectProject={openRelatedProject}
+						/>
+					{/each}
+				</div>
+			</section>
+		{/if}
+
+		{#if rollup.relatedProducts?.length > 0}
+			<section class="fulcrum-section">
+				<h2>Related products</h2>
+				<div class="fulcrum-related-notes-grid">
+					{#each rollup.relatedProducts as note (note.file.path)}
+						<button
+							type="button"
+							class="fulcrum-related-note-card"
+							aria-label={note.name}
+							on:click={() => openPath(note.file.path)}
+						>
+							<span class="fulcrum-related-note-card__name">{note.name}</span>
+						</button>
+					{/each}
+				</div>
+			</section>
+		{/if}
+
+		{:else if activeTab === "list"}
+			<TaskListPanel
+				{plugin}
+				{hoverParentLeaf}
+				filterProjectPath={projectPath}
+				embedded={true}
+			/>
+		{:else if activeTab === "board"}
+			<KanbanMain {plugin} {hoverParentLeaf} filterProjectPath={projectPath} embedded={true} />
+		{:else if activeTab === "timeline"}
+			<section class="fulcrum-section fulcrum-project-tab-placeholder">
+				<h2>Timeline</h2>
+				<p class="fulcrum-muted">Gantt timeline view is coming soon.</p>
+			</section>
+		{:else if activeTab === "calendar"}
+			<CalendarMain
+				{plugin}
+				{hoverParentLeaf}
+				filterProjectPath={projectPath}
+				projectAtomicNotes={rollup.atomicNotes}
+				embedded={true}
+			/>
+		{:else if activeTab === "files"}
+			<ProjectFilesTab {plugin} {projectPath} {hoverParentLeaf} />
+		{/if}
+		</div>
 	</div>
 {/if}

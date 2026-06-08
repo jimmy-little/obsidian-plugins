@@ -416,11 +416,42 @@
 			if (authors) rows.push({ label: "Author", value: authors });
 			const lh = readingDatesCommaDetail(showFmForMeta, "lastHighlighted");
 			if (lh) rows.push({ label: "Last highlighted", value: lh });
+			const cr = readingDatesCommaDetail(showFmForMeta, "completedRead");
+			if (cr) rows.push({ label: "Completed read", value: cr });
 		}
 		if (item.status) rows.push({ label: "Status", value: item.status });
 		if (bundleWatchedLine) rows.push({ label: isPodcast ? "Listened" : "Watched", value: bundleWatchedLine });
 		return rows;
 	})();
+
+	function handleBookReadingSession(): void {
+		void (async () => {
+			await plugin.logReadingSession(showFile.path);
+			detailRefresh += 1;
+		})();
+	}
+
+	function handleBookCompletedRead(): void {
+		void (async () => {
+			await plugin.logCompletedRead(showFile.path);
+			detailRefresh += 1;
+		})();
+	}
+
+	$: bookHeaderMenuExtras = isBook
+		? [
+				{
+					title: "Log reading session",
+					icon: "highlighter",
+					onClick: handleBookReadingSession,
+				},
+				{
+					title: "Mark completed read",
+					icon: "book-check",
+					onClick: handleBookCompletedRead,
+				},
+			]
+		: [];
 	$: episodeProgress = serialEpisodeProgress(
 		plugin.app,
 		serialKind,
@@ -471,13 +502,21 @@
 		const fm = (plugin.app.metadataCache.getFileCache(f)?.frontmatter ?? {}) as Record<string, unknown>;
 		return isEffectivelyWatchedFromFrontmatter(fm);
 	}
+
+	function openShowProperties(): void {
+		plugin.openMediaNoteProperties(showFile, () => {
+			detailRefresh += 1;
+			void loadDetail(showFile, serialKind);
+		});
+	}
 </script>
 
 {#if suppressReposeBookMirror}
 	<p class="repose-muted repose-book-detail__suppressed">
 		This book’s note is open in the editor beside Repose — read and edit there.
 	</p>
-{:else}
+{/if}
+{#if !suppressReposeBookMirror}
 <div class="repose-show-detail">
 	<MediaHero
 		backdropSrc={bannerSrc}
@@ -505,6 +544,8 @@
 					: "Update series — metadata and new episode notes (Trakt / TMDB)"}
 		onPalette={onPalette}
 		onOpenNote={openShowNote}
+		onEditProperties={openShowProperties}
+		headerMenuExtras={bookHeaderMenuExtras}
 		onToggleWatched={toggleShowWatched}
 		onRefresh={() => void refreshData()}
 		onGoHome={isTextOnlySerial ? onGoHome : undefined}
@@ -527,7 +568,8 @@
 					<BundleNoteEditor {plugin} file={showFile} />
 				{/key}
 			</section>
-		{:else if isPodcast && Platform.isMobile}
+		{/if}
+		{#if isPodcast && Platform.isMobile}
 			<p class="repose-muted repose-bundle-notes__mobile-hint">
 				Open the podcast note to edit notes on mobile.
 			</p>
@@ -541,7 +583,8 @@
 					? "No chapters in this book folder yet."
 					: "No episode notes in this series folder yet."}
 		</p>
-	{:else if serialKind !== "game"}
+	{/if}
+	{#if serialKind !== "game" && episodes.length > 0}
 		{#if isTextOnlySerial}
 			<h3 class="repose-show-detail__episodes-heading">
 				{isBook ? "Chapters" : "Episodes"}
@@ -603,7 +646,8 @@
 					</li>
 				{/each}
 			</ul>
-		{:else}
+		{/if}
+		{#if !isTextOnlySerial}
 		<ul class="repose-show-episodes">
 			{#each seasonGroups as [seasonNum, seasonEps] (seasonNum)}
 				{@const total = seasonEps.length}

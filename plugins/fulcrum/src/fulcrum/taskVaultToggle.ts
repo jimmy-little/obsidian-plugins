@@ -1,6 +1,6 @@
 import type {App} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
-import {parseList} from "./settingsDefaults";
+import {parseDoneStatusSet, isDoneStatus} from "./settingsDefaults";
 import type {IndexedTask} from "./types";
 import {flipMarkdownCheckboxLine} from "./utils/inlineTasks";
 
@@ -9,8 +9,8 @@ export async function toggleTaskNoteFrontmatter(
 	task: IndexedTask,
 	s: FulcrumSettings,
 ): Promise<void> {
-	const done = new Set(parseList(s.taskDoneStatuses));
-	const isDone = done.has(task.status);
+	const done = parseDoneStatusSet(s.taskDoneStatuses);
+	const isDone = isDoneStatus(task.status, done);
 	await app.fileManager.processFrontMatter(task.file, (fm: Record<string, unknown>) => {
 		if (isDone) {
 			fm[s.taskStatusField] = s.taskNoteYamlStatusOpen;

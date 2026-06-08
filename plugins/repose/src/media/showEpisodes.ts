@@ -195,8 +195,46 @@ export function showEpisodeWatchProgress(
 	return { watched, total: files.length };
 }
 
-/**
- * Sidebar / show hero: vault progress + optional series-note `reposeStatus`.
+export function formatSeasonEpisodeCode(season: number | undefined, episode: number | undefined): string {
+	if (season != null && episode != null) {
+		return `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
+	}
+	if (season != null) return `S${String(season).padStart(2, "0")}`;
+	if (episode != null) return `E${String(episode).padStart(2, "0")}`;
+	return "";
+}
+
+export type ShowSeasonGroup = {
+	season: number;
+	label: string;
+	episodes: EpisodeRow[];
+};
+
+/** Episodes grouped by season number, sorted S then E. */
+export function groupShowEpisodesBySeason(
+	app: App,
+	showFile: TFile,
+	settings: ReposeSettings,
+): ShowSeasonGroup[] {
+	const files = collectEpisodeNoteFiles(app, showFile, settings);
+	const bySeason = new Map<number, EpisodeRow[]>();
+	for (const f of files) {
+		const row = readEpisodeRow(app, f);
+		const season = row.season ?? 0;
+		const list = bySeason.get(season);
+		if (list) list.push(row);
+		else bySeason.set(season, [row]);
+	}
+	return [...bySeason.entries()]
+		.sort(([a], [b]) => a - b)
+		.map(([season, episodes]) => ({
+			season,
+			label: season === 0 ? "Specials" : season === 1 ? "Season 1" : `Season ${season}`,
+			episodes,
+		}));
+}
+
+/** Sidebar / show hero: vault progress + optional series-note `reposeStatus`.
  * — DONE: series note `reposeStatus` / status is `watched`
  * — NOT STARTED: no episode notes, or none marked watched
  * — WATCHING: some but not all episode notes watched

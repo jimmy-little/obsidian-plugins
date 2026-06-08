@@ -1,6 +1,7 @@
 import {Notice, Platform, Setting} from "obsidian";
 import type FulcrumPlugin from "../main";
 import {FulcrumSettingTab} from "../settings";
+import {addConduitSyncSettingsRow} from "./actions";
 import {findRemctlBinary} from "./remctlPath";
 import {RemctlClient} from "./remctlClient";
 
@@ -20,7 +21,7 @@ export function displayConduitSettings(containerEl: HTMLElement, plugin: Fulcrum
 	}
 
 	containerEl.createEl("p", {
-		text: "Bidirectional sync for task title, status, and due date. One Reminders list per project. Install remctl, run remctl onboard, then grant Full Disk Access to Obsidian.",
+		text: "Bidirectional sync for task title, status, and due date (uses scheduled when due is empty). One Reminders list per active project; task notes without a project use the Inbox list. Optional: delete linked Reminder when deleting a vault task.",
 		cls: "fulcrum-settings-lead",
 	});
 
@@ -140,21 +141,17 @@ export function displayConduitSettings(containerEl: HTMLElement, plugin: Fulcrum
 			}),
 		);
 
-	const btnRow = containerEl.createDiv({cls: "fulcrum-conduit-sync-buttons"});
-	const addBtn = (label: string, fn: () => void | Promise<void>) => {
-		new Setting(btnRow).addButton((b) => b.setButtonText(label).onClick(() => void fn()));
-	};
+	new Setting(containerEl)
+		.setName("Show sync progress in status bar")
+		.setDesc("Phase and task counts in the footer while Conduit runs. Toolbar badge always shows when syncing.")
+		.addToggle((tg) =>
+			tg.setValue(plugin.settings.conduitShowSyncProgress).onChange(async (v) => {
+				plugin.settings.conduitShowSyncProgress = v;
+				await plugin.saveSettings();
+			}),
+		);
 
-	addBtn("Sync now", () => plugin.conduit?.syncNow({skipQuiet: false}));
-	addBtn("Pull from Reminders", () => plugin.conduit?.syncNow({force: "pull", skipQuiet: true}));
-	addBtn("Push to Reminders", () => plugin.conduit?.syncNow({force: "push", skipQuiet: true}));
-	addBtn("Force pull", () => plugin.conduit?.syncNow({force: "pull", skipQuiet: true}));
-	addBtn("Force push", () => {
-		if (window.confirm("Force push overwrites Reminders with vault data. Continue?")) {
-			void plugin.conduit?.syncNow({force: "push", skipQuiet: true});
-		}
-	});
-	addBtn("Run remctl doctor", () => plugin.conduit?.runDoctor());
+	addConduitSyncSettingsRow(containerEl, plugin);
 }
 
 function textSetting(

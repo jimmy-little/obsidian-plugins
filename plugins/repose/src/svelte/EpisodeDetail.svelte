@@ -8,6 +8,7 @@
 		descriptionFromFrontmatter,
 		episodeHeroLabelFromFrontmatter,
 		genresFromFrontmatter,
+		isEffectivelyWatchedFromFrontmatter,
 		readMediaItem,
 		readingDatesCommaDetail,
 		watchedPlayDatesCommaDetail,
@@ -160,6 +161,64 @@
 			refreshBusy = false;
 		}
 	}
+
+	function openEpisodeProperties(): void {
+		plugin.openMediaNoteProperties(episodeFile, () => {
+			detailRev += 1;
+		});
+	}
+
+	function handleEpisodeWatchAgain(): void {
+		void (async () => {
+			await plugin.logWatchAgain(episodeFile.path);
+			detailRev += 1;
+		})();
+	}
+
+	function handleEpisodeReadingSession(): void {
+		void (async () => {
+			await plugin.logReadingSession(episodeFile.path);
+			detailRev += 1;
+		})();
+	}
+
+	function handleEpisodeCompletedRead(): void {
+		void (async () => {
+			await plugin.logCompletedRead(episodeFile.path);
+			detailRev += 1;
+		})();
+	}
+
+	$: episodeHeaderMenuExtras = ((): {
+		title: string;
+		icon: string;
+		onClick: () => void;
+	}[] => {
+		const extras: { title: string; icon: string; onClick: () => void }[] = [];
+		if (
+			(hostMt === "show" || hostMt === "podcast") &&
+			isEffectivelyWatchedFromFrontmatter(epFm)
+		) {
+			extras.push({
+				title: listenUi ? "Listen again" : "Watch again",
+				icon: "repeat",
+				onClick: handleEpisodeWatchAgain,
+			});
+		}
+		if (hostMt === "book") {
+			extras.push({
+				title: "Log reading session",
+				icon: "highlighter",
+				onClick: handleEpisodeReadingSession,
+			});
+			extras.push({
+				title: "Mark completed read",
+				icon: "book-check",
+				onClick: handleEpisodeCompletedRead,
+			});
+		}
+		return extras;
+	})();
 </script>
 
 {#if suppressDetail}
@@ -188,6 +247,8 @@
 		posterPlaceholderHue={posterHue}
 		onPalette={onPalette}
 		onOpenNote={openEpisodeNote}
+		onEditProperties={openEpisodeProperties}
+		headerMenuExtras={episodeHeaderMenuExtras}
 		onToggleWatched={toggleEpisodeWatched}
 		onRefresh={() => void refreshEpisodeContext()}
 		detailMetaRows={detailMetaRows}

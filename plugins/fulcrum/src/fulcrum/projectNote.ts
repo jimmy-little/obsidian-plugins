@@ -133,6 +133,66 @@ export interface ProjectLogActivityEntry {
 	rawLine: string;
 }
 
+/** One `##` section from a project note body (excluding the project log). */
+export interface ProjectPageSection {
+	title: string;
+	/** Section body markdown (heading line omitted). */
+	markdown: string;
+}
+
+function normalizeSectionHeading(heading: string): string {
+	return heading.replace(/^#+\s*/, "").trim().toLowerCase();
+}
+
+/** Whether a section heading is the configured project log (or a common alias). */
+export function isProjectLogSectionHeading(heading: string, configuredLogHeading: string): boolean {
+	const normalized = normalizeSectionHeading(heading);
+	const configured = normalizeSectionHeading(configuredLogHeading);
+	if (normalized === configured) return true;
+	return normalized === "project log" || normalized === "fulcrum log";
+}
+
+function stripLeadingH2(markdown: string): string {
+	const lines = markdown.split("\n");
+	if (lines[0]?.match(/^##[ \t]/)) {
+		return lines.slice(1).join("\n").trim();
+	}
+	return markdown.trim();
+}
+
+/**
+ * Parse `##` sections from a project note body for the Overview tab.
+ * Omits the project log section (configured heading and common aliases).
+ */
+export function parseProjectPageSections(
+	body: string,
+	logSectionHeading: string,
+): ProjectPageSection[] {
+	const trimmed = body.trim();
+	if (!trimmed) return [];
+
+	const h2Re = /^##[ \t]+(.+)$/gm;
+	const matches: {index: number; title: string}[] = [];
+	let m: RegExpExecArray | null;
+	while ((m = h2Re.exec(trimmed)) !== null) {
+		matches.push({index: m.index, title: m[1]!.trim()});
+	}
+	if (matches.length === 0) return [];
+
+	const sections: ProjectPageSection[] = [];
+	for (let i = 0; i < matches.length; i++) {
+		const match = matches[i]!;
+		if (isProjectLogSectionHeading(match.title, logSectionHeading)) continue;
+		const start = match.index;
+		const end = i + 1 < matches.length ? matches[i + 1]!.index : trimmed.length;
+		const raw = trimmed.slice(start, end).trimEnd();
+		const markdown = stripLeadingH2(raw);
+		if (!markdown) continue;
+		sections.push({title: match.title, markdown});
+	}
+	return sections;
+}
+
 /**
  * Append a bullet line with an HTML comment timestamp so entries sort reliably in the Activity view.
  * Human-readable stamp and message remain in the note for reading outside Fulcrum.

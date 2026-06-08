@@ -1,5 +1,3 @@
-import {execFile} from "child_process";
-import {promisify} from "util";
 import type {RemctlListRow, RemctlReminderRow} from "./types";
 import {
 	formatRemctlNotFoundError,
@@ -7,7 +5,17 @@ import {
 	resolveRemctlBinary,
 } from "./remctlPath";
 
-const execFileAsync = promisify(execFile);
+type ExecFileAsync = (
+	file: string,
+	args: readonly string[],
+	options: {timeout: number; maxBuffer: number; encoding: "utf8"},
+) => Promise<{stdout: string}>;
+
+function getExecFileAsync(): ExecFileAsync {
+	const {execFile} = require("child_process") as typeof import("child_process");
+	const {promisify} = require("util") as typeof import("util");
+	return promisify(execFile) as ExecFileAsync;
+}
 
 export class RemctlClient {
 	private readonly resolvedBinary: string;
@@ -23,6 +31,7 @@ export class RemctlClient {
 	async run(args: string[], timeoutMs = 120_000): Promise<string> {
 		const bin = this.resolvedBinary;
 		try {
+			const execFileAsync = getExecFileAsync();
 			const {stdout} = await execFileAsync(bin, args, {
 				timeout: timeoutMs,
 				maxBuffer: 16 * 1024 * 1024,

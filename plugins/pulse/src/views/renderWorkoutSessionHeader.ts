@@ -87,7 +87,7 @@ export function renderWorkoutSessionHeader(
 		).open();
 	});
 
-	mkHeadBtn("file-input", "Open note", () => {
+	mkHeadBtn("square-arrow-out-up-right", "Open note", () => {
 		void plugin.app.workspace.getLeaf("tab").openFile(session.file);
 	});
 

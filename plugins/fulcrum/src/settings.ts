@@ -4,6 +4,7 @@ import type {FulcrumSettings} from "./fulcrum/settingsDefaults";
 import type FulcrumPlugin from "./main";
 import {displayTimerSettings} from "./timer/settingsTab";
 import {displayConduitSettings} from "./conduit/settingsTab";
+import {bumpSettingsRevision} from "./fulcrum/stores";
 
 export type {FulcrumSettings} from "./fulcrum/settingsDefaults";
 export {DEFAULT_SETTINGS} from "./fulcrum/settingsDefaults";
@@ -89,6 +90,11 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		this.textSetting("projectTypeValue", "Project type value");
 		this.textSetting("projectLinkField", "Project link field");
 		this.textSetting("areaLinkField", "Area link field");
+		this.textSetting(
+			"areaLifeModeField",
+			"Area life-mode field",
+			"Groups areas in the filter panel (e.g. Work, Personal, Professional, Freelance). Legacy work-related: true maps to Work when unset.",
+		);
 		this.textSetting("taskStatusField", "Task status field");
 		this.textSetting("taskPriorityField", "Task / project priority field");
 		this.textSetting("taskDueDateField", "Task due date field");
@@ -184,6 +190,43 @@ export class FulcrumSettingTab extends PluginSettingTab {
 			"Paths to scan for - [ ] tasks (one per line). Empty = entire vault. Prefix with ! to exclude a folder (e.g. !Templates/Checklists). Use !file:SKILL.md to skip files with that name (e.g. agent skill checklists).",
 		);
 		this.textSetting("inlineTaskRegex", "Inline task filter (regex, optional)");
+		this.textSetting(
+			"inlineTaskIncludeTag",
+			"Inline task include tag",
+			"When set, only checkbox lines containing this tag (e.g. #task) are indexed and styled as inline task pills.",
+		);
+		this.textSetting(
+			"taskTag",
+			"Task tag",
+			"YAML tag identifying task notes (without #). Default: task",
+		);
+		heading(containerEl, "Task note card metadata");
+		this.displayToggleSetting("taskNoteCardShowScheduled", "Show scheduled date");
+		this.displayToggleSetting("taskNoteCardShowDue", "Show due date");
+		this.displayToggleSetting("taskNoteCardShowProject", "Show project");
+		this.displayToggleSetting("taskNoteCardShowTags", "Show tags");
+		heading(containerEl, "Inline task metadata");
+		this.displayToggleSetting("inlineTaskShowScheduled", "Show scheduled date");
+		this.displayToggleSetting("inlineTaskShowDue", "Show due date");
+		this.displayToggleSetting("inlineTaskShowProject", "Show project");
+		this.displayToggleSetting("inlineTaskShowTags", "Show tags");
+		this.displayToggleSetting("taskSuppressDesignatedTagInDisplay", "Suppress designated task tag in display", "When on, hides the configured task tag from task card and inline pill metadata.");
+		this.displayToggleSetting("taskCardShowSubtaskCount", "Show subtask count badge");
+		this.displayToggleSetting("taskCardShowRecurrenceIndicator", "Show recurrence indicator");
+		this.toggleSetting("recurrenceMaintainDueOffset", "Maintain due offset on recurring tasks");
+		this.textSetting("taskNoteDefaultFolder", "Default folder for new task notes (optional)");
+		this.textSetting(
+			"taskNoteFilenamePattern",
+			"Task note filename pattern",
+			"Use {{title}} and {{date:YYYY-MM-DD}}.",
+		);
+		this.textSetting("taskNoteBodyTemplatePath", "Task note body template (vault path, optional)");
+		this.textSetting("taskRecurrenceField", "Recurrence field");
+		this.textSetting("taskRemindersField", "Reminders field");
+		this.textSetting("taskRecurrenceAnchorField", "Recurrence anchor field");
+		this.textSetting("taskCompleteInstancesField", "Complete instances field");
+		this.textSetting("taskSkippedInstancesField", "Skipped instances field");
+		this.textSetting("taskProjectsField", "Projects field (TaskNotes array)");
 		new Setting(containerEl)
 			.setName("Task index scope")
 			.setDesc(
@@ -262,7 +305,6 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		);
 
 		heading(containerEl, "Status & priority vocab");
-		this.textSetting("taskTag", "Task tag (YAML tags array)");
 		this.textSetting("taskStatuses", "Task statuses (comma-separated)");
 		this.textSetting("projectStatuses", "Project statuses (comma-separated)");
 		this.textSetting("priorities", "Priorities (comma-separated)");
@@ -280,6 +322,8 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		this.textSetting("projectBannerField", "Banner image field");
 		this.textSetting("projectColorField", "Project color field");
 		this.textSetting("projectRelatedPeopleField", "Related people field");
+		this.textSetting("projectRelatedProjectsField", "Related projects field");
+		this.textSetting("projectRelatedProductsField", "Related products field");
 		new Setting(containerEl)
 			.setName("People folder")
 			.setDesc(
@@ -724,6 +768,22 @@ export class FulcrumSettingTab extends PluginSettingTab {
 				(this.plugin.settings as unknown as Record<string, unknown>)[key as string] = value;
 				await this.plugin.saveSettings();
 				this.plugin.vaultIndex.scheduleRebuild();
+			}),
+		);
+	}
+
+	private displayToggleSetting<K extends keyof FulcrumSettings>(
+		key: K,
+		name: string,
+		desc?: string,
+	): void {
+		const row = new Setting(this.containerEl).setName(name);
+		if (desc) row.setDesc(desc);
+		row.addToggle((tg) =>
+			tg.setValue(Boolean(this.plugin.settings[key])).onChange(async (value) => {
+				(this.plugin.settings as unknown as Record<string, unknown>)[key as string] = value;
+				await this.plugin.saveSettings();
+				bumpSettingsRevision();
 			}),
 		);
 	}

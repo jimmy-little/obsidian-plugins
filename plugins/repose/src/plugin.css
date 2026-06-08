@@ -117,6 +117,34 @@
 	min-width: 0;
 }
 
+/* Mobile list: single full-width column (no squeezed 22rem + 1fr grid). */
+.repose-pm.repose-pm--mobile-list {
+	display: flex;
+	flex-direction: column;
+	grid-template-columns: minmax(0, 1fr);
+	height: 100%;
+	min-height: 0;
+	min-width: 0;
+}
+
+.repose-pm--mobile-list .repose-pm__split,
+.repose-pm--mobile-list .repose-pm__main {
+	display: none !important;
+}
+
+.repose-pm--mobile-list .repose-pm__sidebar {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+	width: 100%;
+}
+
+.repose-pm--mobile-list .repose-pm__left-scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+}
+
 .repose-pm--mobile-detail .repose-pm__sidebar,
 .repose-pm--mobile-detail .repose-pm__split {
 	display: none !important;
@@ -344,6 +372,12 @@
 	background: var(--background-modifier-hover);
 }
 
+.repose-pm__glyph-btn--active,
+.repose-pm__glyph-btn--active:hover:not(:disabled) {
+	color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
 .repose-pm__glyph-btn--icon {
 	display: inline-flex;
 	align-items: center;
@@ -378,6 +412,18 @@
 	scrollbar-gutter: stable;
 	/* Avoid `contain: paint` here — it interacted badly with Obsidian/Electron layout
 	   and could spam "ResizeObserver loop completed with undelivered notifications". */
+}
+
+.repose-pm__main:has(.repose-calendar) {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	padding: 0;
+}
+
+.repose-pm__main .repose-calendar {
+	flex: 1 1 auto;
+	min-height: 0;
 }
 
 /* Home dashboard — dark canvas; rows use simple horizontal scroll (no nested flex/overflow tricks) */
@@ -736,6 +782,7 @@
 	--repose-ml-accent: var(--background-modifier-border);
 	display: flex;
 	flex-direction: row;
+	flex-wrap: nowrap;
 	align-items: stretch;
 	width: 100%;
 	text-align: left;
@@ -748,33 +795,257 @@
 	background: transparent;
 	font: inherit;
 	color: var(--text-normal);
-	cursor: pointer;
 	box-sizing: border-box;
 	outline: none;
 }
 
-.repose-ml-row:focus-visible {
+.repose-ml-row__hit {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: stretch;
+	flex: 1 1 auto;
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+	font: inherit;
+	color: inherit;
+	text-align: inherit;
+	cursor: pointer;
+	outline: none;
+}
+
+.repose-ml-row__hit:focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: -2px;
 }
 
-.repose-ml-row:hover {
+.repose-ml-row:hover,
+.repose-ml-row:has(.repose-ml-row__hit:hover) {
 	background: var(--background-modifier-hover);
 }
 
-.repose-ml-row--active {
+.repose-ml-row--active,
+.repose-ml-row--active:has(.repose-ml-row__hit) {
 	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
 }
 
-.repose-ml-row--active:hover {
+.repose-ml-row--active:hover,
+.repose-ml-row--active:has(.repose-ml-row__hit:hover) {
 	background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary));
 }
 
 /* TV / podcast library row: show-wide vault watch progress as bottom edge */
 .repose-ml-row--serial {
-	flex-wrap: wrap;
-	align-content: flex-start;
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	grid-template-rows: auto auto;
+	align-items: stretch;
 	border-bottom: none;
+}
+
+.repose-ml-row--serial .repose-ml-row__hit {
+	grid-column: 1 / 3;
+	grid-row: 1;
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	min-width: 0;
+}
+
+.repose-ml-row--serial.repose-ml-row--with-tree .repose-ml-row__hit {
+	grid-column: 1 / 3;
+}
+
+.repose-ml-row--serial .repose-ml-row__thumb-wrap {
+	flex: 0 0 auto;
+	align-self: center;
+}
+
+.repose-ml-row--serial .repose-ml-row__inner {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.repose-ml-row--serial .repose-ml-row__progress-edge {
+	grid-column: 1 / -1;
+	grid-row: 2;
+	flex: unset;
+}
+
+.repose-ml-row--with-tree {
+	grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.repose-ml-row--with-tree .repose-ml-row__tree-toggle {
+	grid-column: 3;
+	grid-row: 1;
+	align-self: center;
+	justify-self: end;
+	margin-right: 0.2rem;
+}
+
+.repose-ml-row__tree-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.65rem;
+	height: 1.65rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-s, 4px);
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	flex-shrink: 0;
+	position: relative;
+	z-index: 1;
+}
+
+.repose-ml-row__tree-toggle:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.repose-ml-row__tree-toggle--open {
+	color: var(--interactive-accent);
+}
+
+.repose-ml-row__tree-toggle-icon svg {
+	width: 1rem;
+	height: 1rem;
+}
+
+.repose-ml-show-block {
+	list-style: none;
+}
+
+.repose-ml-show-tree,
+.repose-ml-ep-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.repose-ml-show-tree {
+	background: color-mix(in srgb, var(--background-secondary) 35%, var(--background-primary));
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+}
+
+.repose-ml-season-row {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	width: 100%;
+	margin: 0;
+	padding: 0.35rem 0.5rem 0.35rem 1.75rem;
+	border: none;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border-hover) 70%, transparent);
+	background: transparent;
+	color: var(--text-muted);
+	font: inherit;
+	font-size: var(--font-ui-smaller);
+	text-align: left;
+	cursor: pointer;
+	box-sizing: border-box;
+}
+
+.repose-ml-season-row:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.repose-ml-season-row__chev {
+	display: inline-flex;
+	flex-shrink: 0;
+	width: 0.85rem;
+	height: 0.85rem;
+	color: var(--text-faint);
+}
+
+.repose-ml-season-row__chev svg {
+	width: 0.85rem;
+	height: 0.85rem;
+}
+
+.repose-ml-season-row__label {
+	flex: 1 1 auto;
+	min-width: 0;
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.repose-ml-season-row__count {
+	flex-shrink: 0;
+	font-size: 0.72rem;
+	color: var(--text-faint);
+}
+
+.repose-ml-ep-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 0.4rem;
+	width: 100%;
+	margin: 0;
+	padding: 0.28rem 0.45rem 0.28rem 2.35rem;
+	border: none;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border-hover) 55%, transparent);
+	background: transparent;
+	font: inherit;
+	color: var(--text-normal);
+	cursor: grab;
+	box-sizing: border-box;
+	text-align: left;
+}
+
+.repose-ml-ep-row:active {
+	cursor: grabbing;
+}
+
+.repose-ml-ep-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.repose-ml-ep-row--active {
+	background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
+}
+
+.repose-ml-ep-row--dragging {
+	opacity: 0.45;
+}
+
+.repose-ml-ep-row__thumb {
+	flex: 0 0 auto;
+	width: 1.35rem;
+	height: 1.85rem;
+	border-radius: 2px;
+	object-fit: cover;
+	background: var(--background-secondary);
+}
+
+.repose-ml-ep-row__thumb--ph {
+	display: block;
+}
+
+.repose-ml-ep-row__title {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.25;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.repose-ml-ep-row__code {
+	flex: 0 0 auto;
+	font-size: 0.68rem;
+	font-weight: 600;
+	color: var(--text-muted);
+	letter-spacing: 0.02em;
 }
 
 .repose-ml-row__progress-edge {
@@ -1009,11 +1280,13 @@
 	align-items: stretch;
 	padding: 0.48rem 0.45rem 0.52rem 0.5rem;
 	box-sizing: border-box;
+	container-type: inline-size;
+	container-name: repose-ml-inner;
 }
 
 .repose-ml-row__head {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 0.25rem 0.65rem;
@@ -1021,7 +1294,7 @@
 }
 
 .repose-ml-row__name {
-	flex: 1 1 6rem;
+	flex: 1 1 auto;
 	min-width: 0;
 	font-size: var(--font-ui-small);
 	font-weight: 700;
@@ -1035,7 +1308,7 @@
 	flex-direction: column;
 	align-items: flex-end;
 	gap: 0.3rem;
-	flex: 0 1 auto;
+	flex: 0 0 auto;
 	max-width: 52%;
 	margin-left: auto;
 	min-width: 0;
@@ -1053,6 +1326,34 @@
 	word-break: break-word;
 }
 
+/* Serial sidebar rows: title then stacked season / episode lines beside poster height */
+.repose-ml-row--count-stack .repose-ml-row__head {
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.15rem;
+}
+
+.repose-ml-row--count-stack .repose-ml-row__name {
+	flex: none;
+	width: 100%;
+}
+
+.repose-ml-row--count-stack .repose-ml-row__meta-col {
+	align-items: flex-start;
+	align-self: stretch;
+	margin-left: 0;
+	max-width: none;
+	gap: 0.08rem;
+}
+
+.repose-ml-row--count-stack .repose-ml-row__meta-col .repose-ml-row__area {
+	text-align: left;
+}
+
+.repose-ml-row--count-stack .repose-ml-row__area--sub {
+	line-height: 1.25;
+}
+
 .repose-ml-row__area {
 	flex: 0 1 auto;
 	max-width: 52%;
@@ -1063,6 +1364,43 @@
 	line-height: 1.35;
 	color: var(--text-muted);
 	word-break: break-word;
+}
+
+/* Narrow sidebar: title stays beside poster; counts + status drop below, left-aligned */
+@container repose-ml-inner (max-width: 300px) {
+	.repose-ml-row__head {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.2rem;
+	}
+
+	.repose-ml-row__name {
+		flex: none;
+		width: 100%;
+	}
+
+	.repose-ml-row__meta-col {
+		align-items: flex-start;
+		align-self: stretch;
+		margin-left: 0;
+		max-width: none;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.repose-ml-row__meta-col .repose-ml-row__area,
+	.repose-ml-row__head > .repose-ml-row__area {
+		text-align: left;
+		margin-left: 0;
+		max-width: none;
+		flex: none;
+	}
+
+	.repose-ml-row__head--stack .repose-ml-row__area {
+		align-self: flex-start;
+		margin-left: 0;
+		text-align: left;
+	}
 }
 
 /* Detail */
@@ -2885,3 +3223,586 @@
 	display: flex;
 	flex-direction: column;
 }
+
+/* Edit properties modal (shared NotePropertiesModal from @obsidian-suite/core; matches Orbit / Fulcrum) */
+.orbit-person-props .orbit-person-props__scroll {
+	max-height: min(55vh, 28rem);
+	overflow-y: auto;
+	margin-bottom: 0.5rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 8px);
+	padding: 0.4rem;
+	background: var(--background-primary);
+}
+
+.orbit-person-props__row {
+	display: grid;
+	grid-template-columns: minmax(6.5rem, 22%) minmax(0, 1fr) 2rem;
+	gap: 0.35rem 0.45rem;
+	align-items: center;
+	margin-bottom: 0.4rem;
+}
+
+.orbit-person-props__key,
+.orbit-person-props__val {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	height: var(--input-height);
+	padding: 0.25rem 0.45rem;
+	font-size: var(--font-ui-small);
+	border-radius: var(--radius-s, 6px);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.orbit-person-props__remove {
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: var(--radius-s, 4px);
+	font-size: 1rem;
+	line-height: 1;
+	padding: 0.15rem;
+}
+
+.orbit-person-props__remove:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.orbit-person-props-suggest__label {
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+}
+
+.orbit-person-props-suggest__detail {
+	font-size: 0.72rem;
+	color: var(--text-muted);
+	line-height: 1.2;
+	margin-top: 2px;
+}
+
+.orbit-person-props__hr {
+	margin: 0.75rem 0 0.35rem;
+	border: none;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* —— Consumption calendar leaf —— */
+
+.workspace-leaf[data-type="repose-calendar-view"] .workspace-leaf-content,
+.workspace-leaf:has(.repose-calendar) .workspace-leaf-content {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.workspace-leaf-content .view-content:has(.repose-calendar) {
+	height: 100%;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.repose-calendar {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	background: var(--background-primary);
+}
+
+.repose-calendar__toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.4rem 0.55rem;
+	padding: 0.45rem 0.65rem 0.55rem;
+	flex-shrink: 0;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+}
+
+.repose-calendar__nav-btn {
+	font-size: 1.25rem;
+	line-height: 1;
+	padding: 0.15rem 0.45rem;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 90%, transparent);
+	border-radius: var(--radius-s, 4px);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.repose-calendar__nav-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.repose-calendar__title {
+	margin: 0;
+	font-size: var(--font-ui-medium);
+	font-weight: 600;
+	color: var(--text-normal);
+	line-height: 1.25;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.repose-calendar__today {
+	font-size: var(--font-ui-smaller);
+	padding: 0.28rem 0.7rem;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 92%, transparent);
+	border-radius: var(--pill-radius, 2rem);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	cursor: pointer;
+	font-weight: 500;
+}
+
+.repose-calendar__today:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.repose-calendar__view-mode {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	margin-left: auto;
+	font-size: var(--font-ui-smaller);
+}
+
+.repose-calendar__view-mode-label {
+	color: var(--text-muted);
+}
+
+.repose-calendar__scroll {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: auto;
+}
+
+.repose-calendar__month {
+	display: flex;
+	flex-direction: column;
+	padding: 0 0.5rem 0.75rem;
+}
+
+.repose-calendar__month-header {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	padding: 0.35rem 0 0.25rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.repose-calendar__month-cell--head {
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-muted);
+	text-align: center;
+	padding: 0.2rem 0;
+}
+
+.repose-calendar__month-body {
+	display: flex;
+	flex-direction: column;
+}
+
+.repose-calendar__month-row {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	align-items: stretch;
+	min-height: 4.5rem;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border-hover) 80%, transparent);
+}
+
+.repose-calendar__day-cell {
+	padding: 0.3rem 0.35rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	border-right: 1px solid color-mix(in srgb, var(--background-modifier-border-hover) 80%, transparent);
+	min-width: 0;
+	min-height: 4.5rem;
+	height: auto;
+	background: var(--background-primary);
+}
+
+.repose-calendar__day-cell:last-child {
+	border-right: none;
+}
+
+.repose-calendar__day-cell--other-month {
+	background: color-mix(in srgb, var(--background-secondary) 65%, var(--background-primary));
+}
+
+.repose-calendar__day-cell--other-month .repose-calendar__day-num {
+	color: var(--text-faint);
+}
+
+.repose-calendar__day-cell--today .repose-calendar__day-num {
+	color: var(--interactive-accent);
+	font-weight: 700;
+}
+
+.repose-calendar__day-num {
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.repose-calendar__day-events {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	flex: 1 1 auto;
+	width: 100%;
+}
+
+.repose-calendar__week-events {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	flex: 1 1 auto;
+	width: 100%;
+}
+
+.repose-cal-card {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 0.4rem;
+	width: 100%;
+	flex: 0 0 auto;
+	flex-shrink: 0;
+	margin: 0;
+	padding: 0.35rem 0.4rem;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	border-radius: var(--radius-s, 4px);
+	background: color-mix(in srgb, var(--background-secondary) 40%, var(--background-primary));
+	cursor: pointer;
+	text-align: left;
+	box-sizing: border-box;
+	overflow: hidden;
+	min-height: 3.5rem;
+}
+
+.repose-cal-card:hover {
+	background: var(--background-modifier-hover);
+}
+
+.repose-cal-card:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+.repose-cal-card--week {
+	padding: 0.45rem 0.5rem;
+	min-height: calc(3.5rem + 0.9rem);
+}
+
+.repose-cal-card__thumb {
+	flex: 0 0 auto;
+	width: 2rem;
+	height: 2.75rem;
+	border-radius: 3px;
+	overflow: hidden;
+	background: var(--background-secondary);
+	align-self: center;
+}
+
+.repose-cal-card--week .repose-cal-card__thumb {
+	width: 2.5rem;
+	height: 3.5rem;
+}
+
+.repose-cal-card__thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.repose-cal-card__ph {
+	display: block;
+	width: 100%;
+	height: 100%;
+	background: linear-gradient(
+		145deg,
+		hsl(var(--repose-hue, 216) 42% 28%),
+		hsl(calc(var(--repose-hue, 216) + 24) 38% 18%)
+	);
+}
+
+.repose-cal-card__body {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 0.12rem;
+	min-width: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+}
+
+.repose-cal-card__title {
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-normal);
+	line-height: 1.25;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.repose-cal-card__sub {
+	font-size: 0.72rem;
+	color: var(--text-muted);
+	line-height: 1.2;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.repose-cal-card--draggable {
+	cursor: grab;
+}
+
+.repose-cal-card--draggable:active {
+	cursor: grabbing;
+}
+
+.repose-cal-card--dragging {
+	opacity: 0.45;
+}
+
+.repose-calendar--episode-drag .repose-calendar__day-cell,
+.repose-calendar--episode-drag .repose-calendar__week-col {
+	transition: background-color 0.12s ease;
+}
+
+.repose-calendar__day-cell--drop-target,
+.repose-calendar__week-col--drop-target {
+	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+	outline: 2px dashed color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+	outline-offset: -2px;
+}
+
+.repose-calendar__week {
+	display: flex;
+	flex-direction: column;
+	min-height: 100%;
+	padding: 0 0.5rem 0.75rem;
+}
+
+.repose-calendar__week-header {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: color-mix(in srgb, var(--background-secondary) 35%, var(--background-primary));
+}
+
+.repose-calendar__week-head {
+	padding: 0.45rem 0.35rem;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	text-align: center;
+	color: var(--text-muted);
+	border-right: 1px solid color-mix(in srgb, var(--background-modifier-border-hover) 75%, transparent);
+}
+
+.repose-calendar__week-head:last-child {
+	border-right: none;
+}
+
+.repose-calendar__week-head--today {
+	color: var(--interactive-accent);
+}
+
+.repose-calendar__week-body {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	align-items: stretch;
+	flex: 1 1 auto;
+	min-height: 8rem;
+}
+
+.repose-calendar__week-col {
+	display: flex;
+	flex-direction: column;
+	padding: 0.35rem 0.3rem;
+	border-right: 1px solid color-mix(in srgb, var(--background-modifier-border-hover) 75%, transparent);
+	min-width: 0;
+	min-height: 8rem;
+	height: auto;
+}
+
+.repose-calendar__week-col:last-child {
+	border-right: none;
+}
+
+.repose-calendar__week-col--today {
+	background: color-mix(in srgb, var(--interactive-accent) 6%, var(--background-primary));
+}
+
+/* —— Dashboard consumption heatmap —— */
+
+.repose-dash__strip--heatmap {
+	overflow-x: auto;
+}
+
+.repose-heatmap-wrap {
+	--repose-heatmap-accent: var(--interactive-accent);
+	--repose-heatmap-empty: color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+	--repose-heatmap-out: color-mix(in srgb, var(--background-modifier-border) 25%, transparent);
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	padding: 0.25rem 0 0.5rem;
+}
+
+.repose-heatmap__top {
+	display: flex;
+	align-items: flex-end;
+	gap: 0.35rem;
+}
+
+.repose-heatmap__corner {
+	flex: 0 0 1.1rem;
+	width: 1.1rem;
+}
+
+.repose-heatmap__month-row {
+	position: relative;
+	height: 1rem;
+	flex: 0 0 auto;
+}
+
+.repose-heatmap__month-label {
+	position: absolute;
+	top: 0;
+	font-size: 0.68rem;
+	color: var(--repose-dash-muted, var(--text-muted));
+	white-space: nowrap;
+}
+
+.repose-heatmap__bottom {
+	display: flex;
+	gap: 0.35rem;
+	align-items: flex-start;
+}
+
+.repose-heatmap__dow-col {
+	display: flex;
+	flex-direction: column;
+	gap: var(--repose-heatmap-gap, 4px);
+	flex: 0 0 1.1rem;
+}
+
+.repose-heatmap__dow-label {
+	font-size: 0.62rem;
+	line-height: var(--repose-heatmap-cell, 28px);
+	height: var(--repose-heatmap-cell, 28px);
+	color: var(--repose-dash-muted, var(--text-muted));
+	text-align: center;
+}
+
+.repose-heatmap__grid {
+	display: flex;
+	flex-direction: row;
+	gap: var(--repose-heatmap-gap, 4px);
+}
+
+.repose-heatmap__week {
+	display: flex;
+	flex-direction: column;
+	gap: var(--repose-heatmap-gap, 4px);
+}
+
+.repose-heatmap__day {
+	position: relative;
+	width: var(--repose-heatmap-cell, 28px);
+	height: var(--repose-heatmap-cell, 28px);
+	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+	border-radius: 4px;
+	overflow: hidden;
+	background: var(--repose-heatmap-empty);
+	cursor: default;
+}
+
+.repose-heatmap__day--clickable:not(:disabled) {
+	cursor: pointer;
+}
+
+.repose-heatmap__day--clickable:not(:disabled):hover,
+.repose-heatmap__day--clickable:not(:disabled):focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+	z-index: 1;
+}
+
+.repose-heatmap__day--out {
+	background: var(--repose-heatmap-out);
+	opacity: 0.45;
+}
+
+.repose-heatmap__day--empty:not(.repose-heatmap__day--out) {
+	background: var(--repose-heatmap-empty);
+}
+
+.repose-heatmap__day .repose-image-grid {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+}
+
+/* —— Thumbnail image grid (Quill-style) —— */
+
+.repose-image-grid {
+	display: grid;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	border-radius: inherit;
+}
+
+.repose-image-grid-full {
+	grid-template-columns: 1fr;
+	grid-template-rows: 1fr;
+}
+
+.repose-image-grid-split2 {
+	grid-template-columns: 1fr;
+	grid-template-rows: 1fr 1fr;
+}
+
+.repose-image-grid-4 {
+	grid-template-columns: 1fr 1fr;
+	grid-template-rows: 1fr 1fr;
+}
+
+.repose-image-grid-cell {
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 0;
+	min-height: 0;
+	background: color-mix(in srgb, var(--background-modifier-border) 40%, var(--background-secondary));
+}
+
+.repose-image-grid-cell img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.repose-image-grid-cell--empty {
+	background: transparent;
+}
+

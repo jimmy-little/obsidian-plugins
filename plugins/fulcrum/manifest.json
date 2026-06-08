@@ -3,7 +3,7 @@
 	"name": "Fulcrum",
 	"version": "0.0.1",
 	"minAppVersion": "0.15.0",
-	"description": "Project manager with integrated time tracking, TaskNotes, and calendar.",
+	"description": "Project manager with integrated task management (TaskNotes-compatible), time tracking, and calendar.",
 	"author": "Jimmy Little",
 	"isDesktopOnly": false,
 	"styles": [

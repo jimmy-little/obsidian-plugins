@@ -2,12 +2,9 @@
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {ProjectActivityInput} from "../fulcrum/utils/projectActivity";
-	import {indexRevision, settingsRevision, workRelatedOnly} from "../fulcrum/stores";
-	import {parseList} from "../fulcrum/settingsDefaults";
-	import {
-		buildAreaWorkRelatedMap,
-		filterProjectsWorkRelated,
-	} from "../fulcrum/utils/workRelatedProjectFilter";
+	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
+	import {isDoneStatus, parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
+	import {buildAreaLifeModeMap, filterProjectsByAreaFocus} from "../fulcrum/utils/areaFocusFilter";
 	import {
 		buildWeeklyReviewActivityRows,
 		WEEKLY_REVIEW_FACET_ORDER,
@@ -83,14 +80,15 @@
 	}
 
 	$: sRev = $settingsRevision;
-	$: doneTask = new Set(parseList(plugin.settings.taskDoneStatuses));
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+	$: doneTask = parseDoneStatusSet(plugin.settings.taskDoneStatuses);
+	$: areaFilter = $areaFilterState;
+	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
 		typeField: plugin.settings.typeField,
 		areaTypeValue: plugin.settings.areaTypeValue,
+		settings: plugin.settings,
 	});
-	$: onlyWork = $workRelatedOnly;
 
 	let rows: WeeklyReviewRow[] = [];
 	let trackedStack: ReviewTrackedStack = {
@@ -112,13 +110,13 @@
 	$: {
 		void rev;
 		void sRev;
-		void onlyWork;
-		void areaWorkMap;
+		void areaFilter;
+		void lifeModeMap;
 		void reviewDays;
-		const active = filterProjectsWorkRelated(
+		const active = filterProjectsByAreaFocus(
 			plugin.vaultIndex.getActiveProjects(plugin.settings),
-			onlyWork,
-			areaWorkMap,
+			areaFilter,
+			lifeModeMap,
 		);
 		const load = async (): Promise<void> => {
 			const inputs = await Promise.all(
@@ -481,6 +479,7 @@
 						title={row.title}
 						chips={row.chips}
 						kind={row.kind}
+						task={row.task}
 						timelineEmoji={row.timelineEmoji}
 						whenClick={row.open}
 						{plugin}
@@ -507,6 +506,7 @@
 									title={row.title}
 									chips={row.chips}
 									kind={row.kind}
+									task={row.task}
 									timelineEmoji={row.timelineEmoji}
 									whenClick={row.open}
 									{plugin}
@@ -537,6 +537,7 @@
 										title={row.title}
 										chips={row.chips}
 										kind={row.kind}
+										task={row.task}
 										timelineEmoji={row.timelineEmoji}
 										whenClick={row.open}
 										{plugin}
@@ -567,6 +568,7 @@
 									title={row.title}
 									chips={row.chips}
 									kind={row.kind}
+									task={row.task}
 									timelineEmoji={row.timelineEmoji}
 									whenClick={row.open}
 									{plugin}

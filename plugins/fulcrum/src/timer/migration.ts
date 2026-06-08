@@ -45,10 +45,13 @@ async function readLegacyLapseData(app: App): Promise<LegacyLapseData | null> {
 	const base = adapters.getBasePath?.() ?? "";
 	if (!base) return null;
 	try {
-		const fs = await import("node:fs/promises");
-		const path = await import("node:path");
+		// Electron only — dynamic import("node:fs/promises") breaks Obsidian's web loader (GET node:fs/promises).
+		const req = (window as Window & {require?: NodeRequire}).require;
+		if (!req) return null;
+		const fs = req("fs") as {promises: {readFile: (p: string, enc: string) => Promise<string>}};
+		const path = req("path") as {join: (...parts: string[]) => string};
 		const legacyPath = path.join(base, ".obsidian", "plugins", "lapse-tracker", "data.json");
-		const raw = await fs.readFile(legacyPath, "utf8");
+		const raw = await fs.promises.readFile(legacyPath, "utf8");
 		return JSON.parse(raw) as LegacyLapseData;
 	} catch {
 		return null;

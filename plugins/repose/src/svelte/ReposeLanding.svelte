@@ -13,6 +13,7 @@
 		displayYearFromFrontmatter,
 		episodeAirTimeMsFromFrontmatter,
 		genresFromFrontmatter,
+		isEffectivelyWatchedFromFrontmatter,
 		readMediaItem,
 		releaseLabelFromFrontmatter,
 		releaseTimeFromFrontmatter,
@@ -23,8 +24,11 @@
 	import {
 		collectEpisodeNoteFiles,
 		findFirstUnwatchedEpisodeNote,
+		personalSerialWatchBadgeLabel,
 		readEpisodeRow,
+		showEpisodeWatchProgress,
 	} from "../media/showEpisodes";
+	import ReposeConsumptionHeatmap from "./ReposeConsumptionHeatmap.svelte";
 
 	export let plugin: ReposePlugin;
 	export let onSelectPath: (path: string) => void;
@@ -58,7 +62,18 @@
 		{ type: "book", icon: "book-open", label: "Books", blurb: "Reading list" },
 	];
 
-	const UPCOMING_EP_HORIZON_MS = 1000 * 60 * 60 * 24 * 120;
+	const UPCOMING_EP_HORIZON_MS = 1000 * 60 * 60 * 24 * 7;
+
+	function serialWatchBadge(e: Enriched): string {
+		const prog = showEpisodeWatchProgress(plugin.app, e.file, plugin.settings);
+		return personalSerialWatchBadgeLabel(prog.watched, prog.total, e.item.status);
+	}
+
+	function isWatchingWithUnwatchedEpisodes(e: Enriched): boolean {
+		const mt = e.item.mediaType;
+		if (mt !== "show" && mt !== "podcast") return false;
+		return serialWatchBadge(e) === "WATCHING";
+	}
 
 	function iconAction(node: HTMLElement, icon: string): { update: (next: string) => void } {
 		setIcon(node, icon);
@@ -123,14 +138,22 @@
 	$: all = files.map(enrich);
 
 	$: currentItems = all
-		.filter((e) => e.item.status === "watching" || e.item.status === "reading")
+		.filter((e) => {
+			if (e.item.mediaType === "show" || e.item.mediaType === "podcast") {
+				return isWatchingWithUnwatchedEpisodes(e);
+			}
+			if (e.item.status === "reading") return true;
+			if (
+				(e.item.mediaType === "movie" || e.item.mediaType === "game") &&
+				e.item.status === "watching"
+			) {
+				return true;
+			}
+			return false;
+		})
 		.sort((a, b) => a.item.title.localeCompare(b.item.title, undefined, { sensitivity: "base" }));
 
-	$: watchingSerials = all.filter(
-		(e) =>
-			(e.item.mediaType === "show" || e.item.mediaType === "podcast") &&
-			e.item.status === "watching",
-	);
+	$: watchingSerials = all.filter((e) => isWatchingWithUnwatchedEpisodes(e));
 
 	$: upcomingEpisodes = ((): EpisodeDashCard[] => {
 		const now = Date.now();
@@ -144,6 +167,7 @@
 					string,
 					unknown
 				>;
+				if (isEffectivelyWatchedFromFrontmatter(fm)) continue;
 				const airMs = episodeAirTimeMsFromFrontmatter(fm);
 				if (airMs == null || airMs <= now || airMs > end) continue;
 				const row = readEpisodeRow(app, epFile);
@@ -161,7 +185,7 @@
 			}
 		}
 		out.sort((a, b) => (a.airMs ?? 0) - (b.airMs ?? 0));
-		return out.slice(0, 36);
+		return out;
 	})();
 
 	$: continueEpisodes = ((): EpisodeDashCard[] => {
@@ -259,6 +283,10 @@
 		return "Current";
 	}
 
+	function openCalendarForDay(dateKey: string): void {
+		void plugin.openReposeCalendar({ focalDateIso: dateKey });
+	}
+
 	onMount(() => {
 		plugin.registerEvent(plugin.app.metadataCache.on("changed", () => listRev++));
 		plugin.registerEvent(plugin.app.vault.on("create", () => listRev++));
@@ -272,13 +300,15 @@
 	<div class="repose-dash__noise" aria-hidden="true"></div>
 
 	<div class="repose-dash__inner">
+		<ReposeConsumptionHeatmap {plugin} onDayClick={openCalendarForDay} />
+
 		{#if currentItems.length > 0}
 			<section class="repose-dash__strip" aria-labelledby="repose-dash-current-title">
 				<div class="repose-dash__section-head">
 					<span class="repose-dash__section-icon" use:iconAction={"bookmark"} aria-hidden="true"></span>
 					<div>
 						<h3 id="repose-dash-current-title" class="repose-dash__section-title">Current</h3>
-						<p class="repose-dash__section-sub">Watching, reading, and other active items</p>
+						<p class="repose-dash__section-sub">Shows you’re watching with episodes left to see</p>
 					</div>
 				</div>
 				<div class="repose-dash__grid repose-dash__grid--poster">
@@ -315,7 +345,7 @@
 					<span class="repose-dash__section-icon" use:iconAction={"calendar-clock"} aria-hidden="true"></span>
 					<div>
 						<h3 id="repose-dash-up-ep-title" class="repose-dash__section-title">Upcoming</h3>
-						<p class="repose-dash__section-sub">Episodes airing soon from shows you’re watching</p>
+						<p class="repose-dash__section-sub">Unwatched episodes airing in the next 7 days</p>
 					</div>
 				</div>
 				<div class="repose-dash__grid repose-dash__grid--episode">

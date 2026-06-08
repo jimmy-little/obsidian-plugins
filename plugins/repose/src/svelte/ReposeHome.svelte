@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { setIcon } from "obsidian";
+	import { setIcon, type WorkspaceLeaf } from "obsidian";
 	import type ReposePlugin from "../main";
 	import { reposeMobile } from "../platform";
 	import MediaListPanel from "./MediaListPanel.svelte";
 	import MediaDetail from "./MediaDetail.svelte";
 	import ReposeLanding from "./ReposeLanding.svelte";
+	import ReposeCalendarMain from "./ReposeCalendarMain.svelte";
 	import { SearchAddModal } from "../modals/SearchAddModal";
 
 	export let plugin: ReposePlugin;
@@ -13,15 +14,23 @@
 	/** Serial episode split: show only the detail column (no library sidebar or split handle). */
 	export let detailOnly = false;
 	export let selectedPath: string | null;
-	/** Main pane shows the landing placeholder instead of a media note. */
+	/** Main pane shows the landing dashboard. */
 	export let landing = false;
+	/** Main pane shows the consumption calendar. */
+	export let showCalendar = false;
+	export let calendarFocalDateIso: string | undefined = undefined;
+	/** Repose shell leaf — split anchor for calendar card opens. */
+	export let hostLeaf: WorkspaceLeaf | undefined = undefined;
 	export let onSelectPath: (path: string) => void;
 	export let onGoHome: () => void;
+	export let onShowCalendar: (focalDateIso?: string) => void = () => {};
 	export let onBackToList: () => void = () => {};
 
 	const mobile = reposeMobile();
 	/** Full-screen detail: hide library column, keep one Svelte tree (avoids mobile teardown glitches). */
-	$: mobileDetailMode = mobile && !!selectedPath && !landing;
+	$: mobileDetailMode = mobile && !!selectedPath && !landing && !showCalendar;
+	/** List-only column on mobile — avoid 3-column grid squeezing the sidebar to a sliver. */
+	$: mobileListMode = mobile && fullView && !mobileDetailMode;
 
 	const LEFT_WIDTH_LS = "repose-pm-left-col-px";
 	const LEFT_MIN = 220;
@@ -30,10 +39,11 @@
 
 	let leftCollapsed = false;
 	let pmEl: HTMLDivElement | null = null;
-	let leftWidthPx: number | null = readStoredLeftWidth();
+	let leftWidthPx: number | null = mobile ? null : readStoredLeftWidth();
 	let addToggleBtnEl: HTMLButtonElement | null = null;
 	let collapseBtnEl: HTMLButtonElement | null = null;
 	let homeBtnEl: HTMLButtonElement | null = null;
+	let calendarBtnEl: HTMLButtonElement | null = null;
 
 	$: if (addToggleBtnEl) {
 		setIcon(addToggleBtnEl, "plus");
@@ -45,6 +55,14 @@
 
 	$: if (homeBtnEl) {
 		setIcon(homeBtnEl, "home");
+	}
+
+	$: if (calendarBtnEl) {
+		setIcon(calendarBtnEl, "calendar");
+	}
+
+	function openCalendar(): void {
+		onShowCalendar();
 	}
 
 	function readStoredLeftWidth(): number | null {
@@ -141,29 +159,39 @@
 {#if detailOnly}
 	<div class="repose-pm repose-pm--detail-only">
 		<main class="repose-pm__main repose-view-root">
-			{#key landing}
-				{#if landing}
-					<ReposeLanding {plugin} onSelectPath={selectPath} />
-				{:else}
-					<MediaDetail
-						{plugin}
-						{selectedPath}
-						onSelectPath={selectPath}
-						onGoHome={() => onGoHome()}
-						onBackToList={mobile ? backToList : undefined}
-					/>
-				{/if}
-			{/key}
+			{#if showCalendar}
+				<ReposeCalendarMain
+					{plugin}
+					hoverParentLeaf={hostLeaf}
+					focalDateIso={calendarFocalDateIso}
+				/>
+			{/if}
+			{#if landing && !showCalendar}
+				<ReposeLanding {plugin} onSelectPath={selectPath} />
+			{/if}
+			{#if !landing && !showCalendar}
+				<MediaDetail
+					{plugin}
+					{selectedPath}
+					onSelectPath={selectPath}
+					onGoHome={() => onGoHome()}
+					onBackToList={mobile ? backToList : undefined}
+				/>
+			{/if}
 		</main>
 	</div>
-{:else}
+{/if}
+{#if !detailOnly}
 	<div
 		bind:this={pmEl}
 		class="repose-pm"
 		class:repose-pm-left-collapsed={leftCollapsed}
 		class:repose-pm--list-only={!fullView}
 		class:repose-pm--mobile-detail={mobileDetailMode}
-		style={fullView && !leftCollapsed && leftWidthPx != null ? `--repose-pm-left-w: ${leftWidthPx}px` : undefined}
+		class:repose-pm--mobile-list={mobileListMode}
+		style={fullView && !leftCollapsed && leftWidthPx != null && !mobile
+			? `--repose-pm-left-w: ${leftWidthPx}px`
+			: undefined}
 	>
 		<aside class="repose-pm__sidebar repose-pm__sidebar--left">
 			<div class="repose-pm__left-stack">
@@ -184,6 +212,16 @@
 						aria-label="Repose home"
 						title="Home"
 						on:click={() => onGoHome()}
+					></button>
+					<button
+						type="button"
+						class="repose-pm__glyph-btn clickable-icon"
+						class:repose-pm__glyph-btn--active={showCalendar}
+						bind:this={calendarBtnEl}
+						aria-label="Open consumption calendar"
+						aria-pressed={showCalendar}
+						title="Calendar"
+						on:click={openCalendar}
 					></button>
 					<button
 						type="button"
@@ -215,19 +253,25 @@
 
 		{#if fullView}
 			<main class="repose-pm__main repose-view-root">
-				{#key landing}
-					{#if landing}
-						<ReposeLanding {plugin} onSelectPath={selectPath} />
-					{:else}
-						<MediaDetail
-							{plugin}
-							{selectedPath}
-							onSelectPath={selectPath}
-							onGoHome={() => onGoHome()}
-							onBackToList={mobile ? backToList : undefined}
-						/>
-					{/if}
-				{/key}
+				{#if showCalendar}
+					<ReposeCalendarMain
+						{plugin}
+						hoverParentLeaf={hostLeaf}
+						focalDateIso={calendarFocalDateIso}
+					/>
+				{/if}
+				{#if landing && !showCalendar}
+					<ReposeLanding {plugin} onSelectPath={selectPath} />
+				{/if}
+				{#if !landing && !showCalendar}
+					<MediaDetail
+						{plugin}
+						{selectedPath}
+						onSelectPath={selectPath}
+						onGoHome={() => onGoHome()}
+						onBackToList={mobile ? backToList : undefined}
+					/>
+				{/if}
 			</main>
 		{/if}
 	</div>

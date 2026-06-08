@@ -9,6 +9,8 @@ export interface IndexedArea {
 	description?: string;
 	/** From area note frontmatter `work-related` / `workRelated`. */
 	workRelated?: boolean;
+	/** Life context from `life-mode` (or configured field); e.g. Work, Personal. */
+	lifeMode?: string;
 }
 
 export interface IndexedProject {
@@ -40,6 +42,28 @@ export interface IndexedProject {
 	rank?: number;
 }
 
+/** TaskNotes-compatible relative reminder (frontmatter `reminders` array item). */
+export interface TaskRelativeReminder {
+	type: "relative";
+	anchor: "due" | "scheduled";
+	offset: number;
+	unit: "minutes" | "hours" | "days";
+	direction: "before" | "after";
+	description?: string;
+}
+
+/** TaskNotes-compatible absolute reminder. */
+export interface TaskAbsoluteReminder {
+	type: "absolute";
+	date: string;
+	time?: string;
+	description?: string;
+}
+
+export type TaskReminderSpec = TaskRelativeReminder | TaskAbsoluteReminder;
+
+export type RecurrenceAnchorMode = "scheduled" | "done";
+
 export interface IndexedTask {
 	file: TFile;
 	title: string;
@@ -61,6 +85,22 @@ export interface IndexedTask {
 	/** 0-based line for inline checkbox tasks. */
 	line?: number;
 	trackedMinutes: number;
+	/** RFC 5545 RRULE string (TaskNotes `recurrence`). */
+	recurrence?: string;
+	recurrenceAnchor?: RecurrenceAnchorMode;
+	completeInstances?: string[];
+	skippedInstances?: string[];
+	reminders?: TaskReminderSpec[];
+	/** Parent task note path when `projects` links to another task note (subtask). */
+	parentTaskPath?: string | null;
+	subtaskCount?: number;
+	/** Parsed `#tag` tokens from inline checkbox lines. */
+	inlineTags?: string[];
+	/** Task note referenced as a project by other tasks. */
+	isProjectTask?: boolean;
+	/** Materialized occurrence note parent path. */
+	recurrenceParentPath?: string;
+	occurrenceDate?: string;
 }
 
 /** Planner time-block line under the daily-note heading (Day Planner format). */
@@ -113,6 +153,12 @@ export interface IndexedPerson {
 	bannerImageSrc: string | null;
 }
 
+/** Generic linked note from project frontmatter (e.g. related products). */
+export interface IndexedRelatedNote {
+	file: TFile;
+	name: string;
+}
+
 export interface ProjectPageMeta {
 	launchDate?: string;
 	lastReviewed?: string;
@@ -145,6 +191,10 @@ export interface ProjectRollup {
 	hasProjectColor: boolean;
 	/** Related people: from project frontmatter + related notes/tasks (when people folder set). */
 	relatedPeople: IndexedPerson[];
+	/** Related projects from project frontmatter wikilinks (indexed projects only). */
+	relatedProjects: IndexedProject[];
+	/** Related products (or other linked notes) from project frontmatter wikilinks. */
+	relatedProducts: IndexedRelatedNote[];
 }
 
 export interface IndexSnapshot {

@@ -6,7 +6,7 @@ import {
 	setInlineTaskChecked,
 	setInlineTaskDue,
 } from "../fulcrum/utils/inlineTasks";
-import {parseList} from "../fulcrum/settingsDefaults";
+import {isDoneStatus, normalizeStatusKey, parseDoneStatusSet, parseList, parseTaskStatusChoices} from "../fulcrum/settingsDefaults";
 import {applyTaskStatusChange, updateTaskNoteField} from "../fulcrum/kanban/taskFieldUpdate";
 
 const REMINDER_ID_COMMENT = /<!--\s*reminder-id:\s*(\d+)\s*-->/i;
@@ -91,11 +91,10 @@ export function isProjectDone(
 }
 
 export function taskIsDone(task: IndexedTask, settings: FulcrumSettings): boolean {
-	const st = task.status.trim().toLowerCase();
-	const doneSet = new Set(parseList(settings.taskDoneStatuses));
-	if (doneSet.has(st)) return true;
+	const doneSet = parseDoneStatusSet(settings.taskDoneStatuses);
+	if (isDoneStatus(task.status, doneSet)) return true;
 	const yamlDone = settings.taskNoteYamlStatusDone.trim().toLowerCase();
-	if (yamlDone && st === yamlDone) return true;
+	if (yamlDone && normalizeStatusKey(task.status) === yamlDone) return true;
 	if (task.completedDate?.trim()) return true;
 	return false;
 }
@@ -120,7 +119,7 @@ export function conduitOpenStatusForTask(
 		const yaml = settings.taskNoteYamlStatusOpen.trim();
 		if (yaml) return yaml;
 	}
-	return parseList(settings.taskStatuses)[0] ?? "todo";
+	return parseTaskStatusChoices(settings)[0] ?? "todo";
 }
 
 export function vaultRevisionForTask(task: IndexedTask): string {
@@ -133,8 +132,8 @@ export async function applyConduitTaskPatch(
 	settings: FulcrumSettings,
 	patch: {title?: string; status?: string; dueDate?: string | null},
 ): Promise<void> {
-	const doneSet = new Set(parseList(settings.taskDoneStatuses));
-	const openStatus = parseList(settings.taskStatuses)[0] ?? "todo";
+	const doneSet = parseDoneStatusSet(settings.taskDoneStatuses);
+	const openStatus = parseTaskStatusChoices(settings)[0] ?? "todo";
 	const doneStatus = parseList(settings.taskDoneStatuses)[0] ?? "done";
 
 	if (patch.status != null) {
@@ -142,8 +141,9 @@ export async function applyConduitTaskPatch(
 		if (task.source === "taskNote") {
 			await applyTaskStatusChange(app, task, settings, target);
 		} else {
-			if (doneSet.has(target)) await applyTaskStatusChange(app, task, settings, doneStatus);
-			else if (target === openStatus) await applyTaskStatusChange(app, task, settings, openStatus);
+			if (isDoneStatus(target, doneSet)) await applyTaskStatusChange(app, task, settings, doneStatus);
+			else if (normalizeStatusKey(target) === normalizeStatusKey(openStatus))
+				await applyTaskStatusChange(app, task, settings, openStatus);
 		}
 	}
 

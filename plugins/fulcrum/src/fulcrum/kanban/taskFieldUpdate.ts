@@ -1,7 +1,7 @@
 import type {App} from "obsidian";
 import {Notice, TFile} from "obsidian";
 import type {FulcrumSettings} from "../settingsDefaults";
-import {parseList} from "../settingsDefaults";
+import {isDoneStatus, normalizeStatusKey, parseDoneStatusSet, parseList} from "../settingsDefaults";
 import type {IndexedProject, IndexedTask} from "../types";
 import {parseWikiLink} from "../utils/wikilinks";
 import {
@@ -9,6 +9,8 @@ import {
 	setInlineTaskDue,
 	setInlineTaskProjectLink,
 	setInlineTaskScheduled,
+	setInlineTaskTags,
+	setInlineTaskTitle,
 } from "../utils/inlineTasks";
 import type {CalendarDropSlot} from "../calendar/calendarDropSlot";
 import {slotStartMinutes} from "../calendar/calendarDropSlot";
@@ -17,6 +19,9 @@ import type {KanbanDimension} from "../settingsDefaults";
 import type {DateBucketId} from "./dateBuckets";
 import {representativeDateForBucket} from "./dateBuckets";
 import {NO_PROJECT, UNASSIGNED_AREA} from "./buildBoard";
+import {handleRecurringTaskComplete, taskIsRecurring} from "../recurrence/recurrenceComplete";
+import type {TaskReminderSpec} from "../types";
+import {presetRecurrence} from "../recurrence/recurrenceEngine";
 
 export async function updateTaskNoteField(
 	app: App,
@@ -58,14 +63,16 @@ export async function applyTaskStatusChange(
 	settings: FulcrumSettings,
 	targetStatusId: string,
 ): Promise<void> {
-	const doneSet = new Set(parseList(settings.taskDoneStatuses));
-	const openStatus = parseList(settings.taskStatuses)[0] ?? "todo";
-	const doneStatus = parseList(settings.taskDoneStatuses)[0] ?? "done";
+	const doneSet = parseDoneStatusSet(settings.taskDoneStatuses);
 
 	if (task.source === "taskNote") {
-		const targetNorm = targetStatusId.trim().toLowerCase();
+		const targetNorm = normalizeStatusKey(targetStatusId);
 		const yamlDone = settings.taskNoteYamlStatusDone.trim().toLowerCase();
-		const isDone = doneSet.has(targetNorm) || (yamlDone.length > 0 && targetNorm === yamlDone);
+		const isDone = isDoneStatus(targetStatusId, doneSet) || (yamlDone.length > 0 && targetNorm === yamlDone);
+		if (isDone && taskIsRecurring(task)) {
+			await handleRecurringTaskComplete(app, task, settings);
+			return;
+		}
 		const patch: Record<string, unknown> = {
 			[settings.taskStatusField]: targetStatusId,
 		};
@@ -78,15 +85,104 @@ export async function applyTaskStatusChange(
 		return;
 	}
 
-	if (doneSet.has(targetStatusId)) {
+	const targetNorm = normalizeStatusKey(targetStatusId);
+	if (isDoneStatus(targetStatusId, doneSet)) {
 		await updateInlineLine(app, task, (line) => setInlineTaskChecked(line, true));
 		return;
 	}
-	if (targetStatusId === openStatus) {
-		await updateInlineLine(app, task, (line) => setInlineTaskChecked(line, false));
+	await updateInlineLine(app, task, (line) => setInlineTaskChecked(line, false));
+}
+
+export async function applyTaskPriorityChange(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	priority: string | null,
+): Promise<void> {
+	if (task.source === "taskNote") {
+		await updateTaskNoteField(app, task, settings, {
+			[settings.taskPriorityField]: priority,
+		});
 		return;
 	}
-	new Notice("Inline tasks only support open and done status columns.");
+	new Notice("Priority editing is supported for task notes only.");
+}
+
+export async function applyTaskDueChange(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	dueIso: string | null,
+): Promise<void> {
+	if (task.source === "taskNote") {
+		await updateTaskNoteField(app, task, settings, {
+			[settings.taskDueDateField]: dueIso,
+		});
+		return;
+	}
+	await updateInlineLine(app, task, (line) => setInlineTaskDue(line, dueIso));
+}
+
+export async function applyTaskScheduledOnlyChange(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	schedIso: string | null,
+): Promise<void> {
+	if (task.source === "taskNote") {
+		await updateTaskNoteField(app, task, settings, {
+			[settings.taskScheduledDateField]: schedIso,
+		});
+		return;
+	}
+	await updateInlineLine(app, task, (line) => setInlineTaskScheduled(line, schedIso));
+}
+
+export async function applyTaskRemindersChange(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	reminders: TaskReminderSpec[] | null,
+): Promise<void> {
+	if (task.source !== "taskNote") {
+		new Notice("Reminders are supported for task notes only.");
+		return;
+	}
+	const key = settings.taskRemindersField.trim() || "reminders";
+	await updateTaskNoteField(app, task, settings, {
+		[key]: reminders && reminders.length > 0 ? reminders : null,
+	});
+}
+
+export async function applyTaskRecurrenceChange(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	recurrence: string | null,
+	anchor?: "scheduled" | "done",
+): Promise<void> {
+	if (task.source !== "taskNote") {
+		new Notice("Recurrence is supported for task notes only.");
+		return;
+	}
+	const recKey = settings.taskRecurrenceField.trim() || "recurrence";
+	const anchorKey = settings.taskRecurrenceAnchorField.trim() || "recurrence_anchor";
+	const patch: Record<string, unknown> = {
+		[recKey]: recurrence,
+	};
+	if (anchor) patch[anchorKey] = anchor;
+	else if (!recurrence) patch[anchorKey] = null;
+	await updateTaskNoteField(app, task, settings, patch);
+}
+
+export async function applyTaskRecurrencePreset(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	preset: "daily" | "weekly" | "monthly",
+): Promise<void> {
+	const start = task.scheduledDate ?? task.dueDate ?? new Date().toISOString().slice(0, 10);
+	await applyTaskRecurrenceChange(app, task, settings, presetRecurrence(preset, start), "scheduled");
 }
 
 export async function applyTaskAreaChange(
@@ -139,6 +235,45 @@ export async function applyTaskProjectChange(
 	await updateInlineLine(app, task, (line) =>
 		setInlineTaskProjectLink(line, basename),
 	);
+}
+
+export async function applyTaskTitleChange(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	title: string,
+): Promise<void> {
+	const trimmed = title.trim();
+	if (!trimmed) throw new Error("Title is required.");
+	if (task.source === "taskNote") {
+		await updateTaskNoteField(app, task, settings, {
+			[settings.taskTitleField]: trimmed,
+		});
+		return;
+	}
+	const {setInlineTaskTitle} = await import("../utils/inlineTasks");
+	await updateInlineLine(app, task, (line) => setInlineTaskTitle(line, trimmed));
+}
+
+export async function applyTaskTagsChange(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	tags: string[],
+): Promise<void> {
+	const normalized = [...new Set(tags.map((t) => t.trim().replace(/^#/, "")).filter(Boolean))];
+	if (task.source === "taskNote") {
+		const designated = settings.taskTag.trim().replace(/^#/, "");
+		if (
+			designated &&
+			!normalized.some((t) => t.toLowerCase() === designated.toLowerCase())
+		) {
+			normalized.unshift(designated);
+		}
+		await updateTaskNoteField(app, task, settings, {tags: normalized});
+		return;
+	}
+	await updateInlineLine(app, task, (line) => setInlineTaskTags(line, normalized));
 }
 
 export async function applyTaskDateChange(

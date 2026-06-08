@@ -1,5 +1,5 @@
 import type {FulcrumSettings, KanbanDimension, KanbanView} from "../settingsDefaults";
-import {parseList} from "../settingsDefaults";
+import {isDoneStatus, parseDoneStatusSet, parseList, parseTaskStatusChoices} from "../settingsDefaults";
 import type {IndexedArea, IndexedProject, IndexedTask, IndexSnapshot} from "../types";
 import {getProjectStatusOptions} from "../projectStatusApply";
 import type {App} from "obsidian";
@@ -148,7 +148,7 @@ function columnDefsForDimension(
 					activeProjects,
 				);
 			}
-			return buildStatusColumnDefs(parseList(settings.taskStatuses), openTasks);
+			return buildStatusColumnDefs(parseTaskStatusChoices(settings), openTasks);
 		case "project":
 			return buildProjectColumnDefs(activeProjects);
 		case "date":
@@ -263,7 +263,7 @@ export function buildKanbanBoard(
 					kind: "task" as const,
 					id: kanbanTaskCardId(t),
 					task: t,
-					done: new Set(parseList(settings.taskDoneStatuses)).has(t.status),
+					done: isDoneStatus(t.status, parseDoneStatusSet(settings.taskDoneStatuses)),
 				}));
 
 	const cells = new Map<string, KanbanCard[]>();

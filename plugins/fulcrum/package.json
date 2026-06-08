@@ -20,7 +20,8 @@
 		"@obsidian-suite/core": "*",
 		"@obsidian-suite/note-preview": "*",
 		"monkey-around": "^3.0.0",
-		"obsidian-daily-notes-interface": "^0.9.5"
+		"obsidian-daily-notes-interface": "^0.9.5",
+		"rrule": "^2.8.1"
 	},
 	"devDependencies": {
 		"@codemirror/state": "^6.6.0",

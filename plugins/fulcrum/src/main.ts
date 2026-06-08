@@ -54,18 +54,35 @@ import {
 	openFloatingTimersPopout,
 } from "./fulcrum/openViews";
 import {openNotePropertiesModal, revealOrCreateView} from "@obsidian-suite/core";
-import {DEFAULT_SETTINGS, DASHBOARD_ACTIVITY_MAX_DAYS, type FulcrumSettings} from "./fulcrum/settingsDefaults";
+import {
+	buildPluginPersistedPayload,
+	pruneConduitSyncState,
+	pruneTimerEntryCache,
+} from "./fulcrum/pluginDataPrune";
+import {loadConduitSyncState} from "./conduit/syncState";
+import {DEFAULT_SETTINGS, DASHBOARD_ACTIVITY_MAX_DAYS, isDoneStatus, migrateTaskCardDisplaySettings, parseDoneStatusSet, parseList, parseTaskStatusChoices, type FulcrumSettings} from "./fulcrum/settingsDefaults";
 import {migrateKanbanSettings} from "./fulcrum/kanban/settingsKey";
 import {postTaskNotesToggleStatus} from "./fulcrum/taskNotesApi";
-import {toggleInlineTaskLine, toggleTaskNoteFrontmatter} from "./fulcrum/taskVaultToggle";
+import {CreateTaskNoteModal} from "./fulcrum/modals";
+import {applyTaskStatusChange} from "./fulcrum/kanban/taskFieldUpdate";
+import {deleteConduitReminderForTask} from "./conduit/deleteReminderForTask";
+import {toggleInlineTaskLine} from "./fulcrum/taskVaultToggle";
 import {bumpSettingsRevision, bumpTimerRevision} from "./fulcrum/stores";
 import {appendTimeBlockToDailyNote as appendTimeBlockLineToDailyNote} from "./fulcrum/utils/dailyPlannerEvents";
 import type {IndexedPlannerEvent, IndexedTask} from "./fulcrum/types";
 import {registerCompanionDocChrome} from "./fulcrum/companionDocChrome";
+import {registerTaskNoteChrome} from "./fulcrum/taskNoteChrome";
 import {
 	registerInlinePeoplePills,
 	registerLivePreviewPeoplePillScan,
 } from "./fulcrum/inlinePeoplePills";
+import {
+	registerInlineTaskPills,
+	registerLivePreviewInlineTaskScan,
+} from "./fulcrum/inlineTaskPills";
+import {registerInlineTaskEditorSuggest} from "./fulcrum/inlineTaskEditorSuggest";
+import {convertInlineTaskAtLine} from "./fulcrum/convertInlineTaskToNote";
+import {isCheckboxLine, isInlineTaskLineInScope} from "./fulcrum/utils/inlineTasks";
 import {openMarkdownBesideFulcrum, type FulcrumCompanionLeaf} from "./fulcrum/openBesideFulcrum";
 import {createNewNoteFromTemplateForProject as runCreateNewNoteFromTemplate} from "./fulcrum/projectNewNoteFromTemplate";
 import {VaultIndex} from "./fulcrum/VaultIndex";
@@ -84,7 +101,10 @@ import {DashboardView} from "./views/DashboardView";
 import {ProjectManagerView} from "./views/ProjectManagerView";
 import {ProjectView} from "./views/ProjectView";
 import {TimelineView} from "./views/TimelineView";
+import {registerConduitCommands, runConduitAction} from "./conduit/actions";
+import type {ConduitActionId} from "./conduit/actions";
 import {ConduitService} from "./conduit/conduitService";
+import type {ConduitSyncForce} from "./conduit/types";
 
 export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	settings: FulcrumSettings = DEFAULT_SETTINGS;
@@ -108,7 +128,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 				: {};
 		const migrated = await migrateTimerSettings(this.app, this.settings.timer, entryCache);
 		this.settings.timer = migrated.timer;
-		this.timer.entryCache = migrated.entryCache;
+		this.timer.entryCache = pruneTimerEntryCache(migrated.entryCache);
 
 		this.registerView(VIEW_PROJECT_MANAGER, (leaf) => new ProjectManagerView(leaf, this));
 		this.registerView(VIEW_DASHBOARD, (leaf) => new DashboardView(leaf, this));
@@ -193,8 +213,13 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			this.fulcrumCompanionLeaf,
 		);
 
+		registerTaskNoteChrome(this);
+
 		registerInlinePeoplePills(this, () => this.settings);
 		registerLivePreviewPeoplePillScan(this, () => this.settings);
+		registerInlineTaskPills(this, () => this.settings);
+		registerLivePreviewInlineTaskScan(this);
+		registerInlineTaskEditorSuggest(this, () => this.settings, () => this.vaultIndex);
 
 		this.addSettingTab(new FulcrumSettingTab(this.app, this));
 
@@ -285,12 +310,37 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			},
 		});
 		this.addCommand({
+			id: "repair-plugin-data",
+			name: "Repair plugin data (prune timer cache & Conduit state)",
+			callback: () => {
+				void this.repairPluginPersistedData();
+			},
+		});
+		this.addCommand({
 			id: "open-floating-timers",
 			name: "Open Floating Timers View",
 			callback: () => {
 				void this.openFloatingTimers();
 			},
 		});
+		this.addCommand({
+			id: "convert-inline-task-to-note",
+			name: "Convert inline task to note",
+			editorCheckCallback: (checking, editor, view) => {
+				const file = view.file;
+				if (!file) return false;
+				const lineNo = editor.getCursor().line;
+				const lineText = editor.getLine(lineNo);
+				if (!isCheckboxLine(lineText)) return false;
+				if (!isInlineTaskLineInScope(file.path, this.settings)) return false;
+				if (!checking) {
+					void convertInlineTaskAtLine(this, file, lineNo);
+				}
+				return true;
+			},
+		});
+
+		registerConduitCommands(this);
 
 		this.registerObsidianProtocolHandler(this.manifest.id, (params) => {
 			this.handleFulcrumOpenUri(params);
@@ -318,6 +368,31 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	async notifyConduitProjectCompleted(projectPath: string): Promise<void> {
 		await this.conduit?.onProjectCompleted(projectPath);
+	}
+
+	conduitCanSync(): boolean {
+		return ConduitService.canRun(this.settings);
+	}
+
+	async deleteConduitReminderForTask(task: IndexedTask): Promise<void> {
+		await deleteConduitReminderForTask(this.app, this.settings, task);
+	}
+
+	async conduitSyncNow(opts?: {
+		force?: ConduitSyncForce;
+		skipQuiet?: boolean;
+	}): Promise<void> {
+		const svc = this.conduit ?? new ConduitService(this);
+		await svc.syncNow(opts);
+	}
+
+	async conduitRunDoctor(): Promise<void> {
+		const svc = this.conduit ?? new ConduitService(this);
+		await svc.runDoctor();
+	}
+
+	conduitRunAction(id: ConduitActionId): void {
+		runConduitAction(this, id);
 	}
 
 	private handleFulcrumOpenUri(params: ObsidianProtocolData): void {
@@ -558,6 +633,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (!Array.isArray(merged.taskSidebarFilterUncheckedArea)) {
 			merged.taskSidebarFilterUncheckedArea = DEFAULT_SETTINGS.taskSidebarFilterUncheckedArea;
 		}
+		if (typeof merged.areaLifeModeField !== "string" || !merged.areaLifeModeField.trim()) {
+			merged.areaLifeModeField = DEFAULT_SETTINGS.areaLifeModeField;
+		}
 		if (!Array.isArray(merged.taskSidebarFilterUncheckedProject)) {
 			merged.taskSidebarFilterUncheckedProject =
 				DEFAULT_SETTINGS.taskSidebarFilterUncheckedProject;
@@ -576,6 +654,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 		if (typeof merged.conduitVaultQuietSeconds !== "number") {
 			merged.conduitVaultQuietSeconds = DEFAULT_SETTINGS.conduitVaultQuietSeconds;
+		}
+		if (typeof merged.conduitShowSyncProgress !== "boolean") {
+			merged.conduitShowSyncProgress = DEFAULT_SETTINGS.conduitShowSyncProgress;
 		}
 		if (
 			merged.calendarViewMode !== "month" &&
@@ -624,7 +705,21 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			merged.globalActivityDisplayDays = clamped;
 		}
 
+		migrateTaskCardDisplaySettings(merged as FulcrumSettings & Record<string, unknown>);
+
 		this.settings = merged as FulcrumSettings;
+
+		const cacheInSettings = (loaded as Record<string, unknown>).timerEntryCache ??
+			(loaded as Record<string, unknown>).entryCache;
+		if (cacheInSettings && typeof cacheInSettings === "object") {
+			const pruned = pruneTimerEntryCache(cacheInSettings as import("./timer/types").EntryCache);
+			if (Object.keys(pruned).length !== Object.keys(cacheInSettings as object).length) {
+				console.warn(
+					`Fulcrum: pruned timer entry cache (${Object.keys(cacheInSettings as object).length} → ${Object.keys(pruned).length} files).`,
+				);
+			}
+		}
+
 		this.settings.timer = mergeTimerDefaults(
 			typeof loaded.timer === "object" && loaded.timer
 				? (loaded.timer as Partial<typeof DEFAULT_SETTINGS.timer>)
@@ -643,14 +738,49 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 	}
 
+	/** Prune oversized timer cache / Conduit map and rewrite data.json (requires valid JSON on disk). */
+	async repairPluginPersistedData(): Promise<void> {
+		try {
+			const before = (await this.loadData()) as Record<string, unknown> | null;
+			if (!before) {
+				new Notice("Fulcrum: no plugin data file — nothing to repair.");
+				return;
+			}
+			const cacheRaw = before.timerEntryCache ?? before.entryCache;
+			if (cacheRaw && typeof cacheRaw === "object") {
+				this.timer.entryCache = pruneTimerEntryCache(cacheRaw as import("./timer/types").EntryCache);
+			}
+			await this.saveSettings();
+			new Notice("Fulcrum: plugin data pruned and saved.");
+		} catch (e) {
+			console.error(e);
+			new Notice(
+				"Fulcrum: could not repair data.json — quit Obsidian and fix or delete .obsidian/plugins/fulcrum/data.json (see console).",
+			);
+		}
+	}
+
 	async saveSettings(): Promise<void> {
 		if (this.settings.timer.totalTimeKey !== this.settings.taskTrackedMinutesField) {
 			this.settings.timer.totalTimeKey = this.settings.taskTrackedMinutesField;
 		}
-		await this.saveData({
-			...this.settings,
-			timerEntryCache: this.timer?.entryCache ?? {},
-		});
+		const conduitRaw = (await this.loadData()) as Record<string, unknown> | null;
+		let conduitSync = await loadConduitSyncState(() => Promise.resolve(conduitRaw));
+		conduitSync = pruneConduitSyncState(this.app, conduitSync);
+		const payload = buildPluginPersistedPayload(
+			{...this.settings} as Record<string, unknown>,
+			this.timer?.entryCache ?? {},
+			conduitSync,
+		);
+		try {
+			await this.saveData(payload);
+		} catch (e) {
+			console.error("Fulcrum: failed to save plugin data", e);
+			new Notice(
+				"Fulcrum could not save settings — plugin data may be too large or corrupt. See console.",
+			);
+			throw e;
+		}
 	}
 
 	async openTimeTracked(tab: TimeModeTab = this.settings.timeModeTab): Promise<void> {
@@ -694,6 +824,13 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		options?: {projectName?: string | null; noteTitle?: string | null},
 	): Promise<void> {
 		await this.timer.startTimerInNote(notePath, options);
+	}
+
+	async stopTimerInNote(notePath: string): Promise<void> {
+		const stopped = await this.timer.stopAllActiveEntriesInFile(notePath);
+		if (!stopped) return;
+		this.timer.refreshActivityPanel();
+		this.bumpTimerRevision();
 	}
 
 	async patchSettings(partial: Partial<FulcrumSettings>): Promise<void> {
@@ -795,7 +932,16 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			}
 			if (!apiOk) {
 				if (task.source === "taskNote") {
-					await toggleTaskNoteFrontmatter(this.app, task, this.settings);
+					const done = parseDoneStatusSet(this.settings.taskDoneStatuses);
+					const isDone = isDoneStatus(task.status, done);
+					const openStatus = parseTaskStatusChoices(this.settings)[0] ?? "todo";
+					const doneStatus = parseList(this.settings.taskDoneStatuses)[0] ?? "done";
+					await applyTaskStatusChange(
+						this.app,
+						task,
+						this.settings,
+						isDone ? openStatus : doneStatus,
+					);
 				} else {
 					await toggleInlineTaskLine(this.app, task);
 				}
@@ -1035,35 +1181,14 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	}
 
 	openTaskNoteCreateForProject(projectPath: string): void {
-		const projectFile = this.app.vault.getAbstractFileByPath(projectPath);
-		if (!(projectFile instanceof TFile)) {
-			new Notice("Project file not found.");
-			return;
-		}
-		const linktext =
-			this.app.metadataCache.fileToLinktext(projectFile, projectPath, false) ??
-			projectFile.basename.replace(/\.md$/i, "");
-		const projectWiki = `[[${linktext}]]`;
-		const taskTag = this.settings.taskTag.trim() || "task";
+		this.openCreateTaskNoteForProject(projectPath);
+	}
 
-		type TaskNotesPlugin = {openTaskCreationModal?: (v?: Record<string, unknown>) => void};
-		const raw = (
-			this.app as unknown as {plugins?: {plugins?: Record<string, unknown>}}
-		).plugins?.plugins?.["tasknotes"] as TaskNotesPlugin | undefined;
+	openCreateTaskNoteForProject(projectPath: string): void {
+		new CreateTaskNoteModal(this.app, this, {projectPath}).open();
+	}
 
-		if (raw?.openTaskCreationModal) {
-			raw.openTaskCreationModal({
-				projects: [projectWiki],
-				tags: [taskTag],
-			});
-			return;
-		}
-
-		const cmd = (
-			this.app as unknown as {commands?: {executeCommandById(id: string): boolean}}
-		).commands;
-		if (!cmd?.executeCommandById("tasknotes:create-new-task")) {
-			new Notice("Enable the TaskNotes plugin to create task notes from here.");
-		}
+	openCreateSubtaskForTask(parent: IndexedTask): void {
+		new CreateTaskNoteModal(this.app, this, {parentTask: parent}).open();
 	}
 }

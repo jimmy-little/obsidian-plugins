@@ -1,18 +1,27 @@
-import {existsSync} from "fs";
-import {homedir} from "os";
-import {join} from "path";
+/** Node builtins — lazy-loaded so Conduit does not break Fulcrum on mobile. */
+function fsModule(): typeof import("fs") {
+	return require("fs") as typeof import("fs");
+}
+
+function osModule(): typeof import("os") {
+	return require("os") as typeof import("os");
+}
+
+function pathModule(): typeof import("path") {
+	return require("path") as typeof import("path");
+}
 
 /** Expand leading `~/` for settings entered by hand. */
 export function expandHomePath(p: string): string {
 	const t = p.trim();
-	if (t.startsWith("~/")) return join(homedir(), t.slice(2));
+	if (t.startsWith("~/")) return pathModule().join(osModule().homedir(), t.slice(2));
 	return t;
 }
 
 const CANDIDATE_BINS = (): string[] => {
-	const home = homedir();
+	const home = osModule().homedir();
 	return [
-		join(home, ".local/bin/remctl"),
+		pathModule().join(home, ".local/bin/remctl"),
 		"/opt/homebrew/bin/remctl",
 		"/usr/local/bin/remctl",
 	];
@@ -23,6 +32,7 @@ const CANDIDATE_BINS = (): string[] => {
  * Uses configured path when it exists; otherwise scans common install locations.
  */
 export function resolveRemctlBinary(configured: string): string {
+	const {existsSync} = fsModule();
 	const expanded = expandHomePath(configured);
 	if (expanded && expanded !== "remctl" && existsSync(expanded)) {
 		return expanded;
@@ -34,6 +44,7 @@ export function resolveRemctlBinary(configured: string): string {
 }
 
 export function findRemctlBinary(): string | null {
+	const {existsSync} = fsModule();
 	for (const candidate of CANDIDATE_BINS()) {
 		if (existsSync(candidate)) return candidate;
 	}

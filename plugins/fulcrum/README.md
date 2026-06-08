@@ -2,6 +2,15 @@
 
 Project management views for Obsidian (Project Manager shell, timeline, tasks, reviews).
 
+## Tasks (Fulcrum-native)
+
+Fulcrum indexes **task notes** (YAML frontmatter compatible with [TaskNotes](https://tasknotes.dev/)) and **inline checkbox** tasks tagged in your vault (e.g. `#Tasks`).
+
+- **Create task notes** from project pages without the TaskNotes plugin — Fulcrum writes TaskNotes-compatible frontmatter.
+- **Right-click any task card** for status, priority, due/scheduled, reminders, recurrence, project, note actions, and subtasks.
+- **Recurring tasks** use RFC 5545 RRULE in frontmatter (`recurrence`, `complete_instances`, `recurrence_anchor`).
+- **Inline tasks** with your configured include tag appear in Fulcrum with distinct card styling.
+
 ## Conduit (Apple Reminders sync, macOS)
 
 Conduit syncs Fulcrum tasks (TaskNotes and inline checkboxes) with **Apple Reminders** using [remctl](https://github.com/viticci/remctl). Enable it under **Settings → Fulcrum → Conduit**.
@@ -15,8 +24,10 @@ Conduit syncs Fulcrum tasks (TaskNotes and inline checkboxes) with **Apple Remin
 
 ### Behavior
 
-- **One Reminders list per active project**; unassigned tasks use the configured Inbox list.
-- Syncs **title**, **status**, and **due date** only. Notes in Reminders contain an `obsidian://open?…` link to the task note (works on iOS when the vault name matches).
+- **One Reminders list per active project**; TaskNotes without a project use the configured Inbox list.
+- **Sync scope:** project-linked **inline** checkbox tasks and **TaskNotes** (`type: task` or task tag in TaskNotes folders) only. Unlinked checklists elsewhere in the vault are not synced to Reminders.
+- Syncs **title**, **status**, and **due date** (falls back to scheduled when due is empty). Notes in Reminders contain an `obsidian://open?…` link to the task note (works on iOS when the vault name matches).
+- **Delete linked Reminder** when deleting a task (optional setting).
 - **Vault quiet period** defers auto-sync so Obsidian Sync can catch up after phone edits — use **Pull from Reminders** if you just changed tasks on mobile.
 - Completing a project in Fulcrum **archives** its Reminders list (unpin + rename) when the list has no open tasks.
 

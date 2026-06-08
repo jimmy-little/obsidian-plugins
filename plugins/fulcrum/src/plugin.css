@@ -267,7 +267,7 @@ If your plugin does not need CSS, delete this file.
 	letter-spacing: 0.06em;
 	line-height: 1.2;
 	padding: 0.22rem 0.55rem;
-	border-radius: 3px;
+	border-radius: 2em;
 	border: 1px solid transparent;
 }
 
@@ -364,6 +364,322 @@ If your plugin does not need CSS, delete this file.
 .fulcrum-project-banner__inner--on-dark .fulcrum-banner-btn:not(.clickable-icon):disabled {
 	opacity: 0.45;
 	cursor: not-allowed;
+}
+
+/* —— Tabbed project page —— */
+.fulcrum-project--tabbed {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-height: 0;
+	min-width: 0;
+}
+
+.fulcrum-project--tabbed > .fulcrum-project-header {
+	flex-shrink: 0;
+}
+
+.fulcrum-project-header {
+	display: flex;
+	flex-direction: column;
+	flex-shrink: 0;
+	margin-bottom: 0;
+}
+
+.fulcrum-project-banner--compact {
+	min-height: 0;
+	margin-bottom: 0;
+	border-radius: var(--radius-l);
+}
+
+.fulcrum-project-banner__inner--compact {
+	padding: 0.85rem 1rem 0.55rem;
+	min-height: 0 !important;
+}
+
+.fulcrum-project-banner__head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem 1.5rem;
+}
+
+.fulcrum-project-banner__identity {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.fulcrum-project-banner__title-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.45rem;
+	min-width: 0;
+}
+
+.fulcrum-project-banner__title-row .fulcrum-project-banner__shell-back {
+	flex-shrink: 0;
+	margin-top: 0.06rem;
+}
+
+.fulcrum-project-banner__title-row .fulcrum-project-banner__title {
+	margin: 0;
+}
+
+.fulcrum-project-banner__head-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	gap: 0.35rem 0.5rem;
+	flex: 0 0 auto;
+}
+
+.fulcrum-project-banner__menu-btn.fulcrum-banner-btn--icon-only {
+	min-width: 1.75rem;
+	min-height: 1.75rem;
+	padding: 0.22rem !important;
+}
+
+.fulcrum-project-tabs {
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	gap: 0.2rem;
+	margin: 0;
+	padding: 0 0.75rem;
+	overflow-x: auto;
+	overflow-y: visible;
+	flex: 0 0 auto;
+	min-height: 0;
+	width: 100%;
+	box-sizing: border-box;
+	-webkit-overflow-scrolling: touch;
+	border-bottom: none;
+	background: none;
+}
+
+.fulcrum-project-tabs__btn {
+	appearance: none;
+	-webkit-appearance: none;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 90%, transparent);
+	border-top: none;
+	background: color-mix(in srgb, var(--background-modifier-border) 22%, var(--background-primary)) !important;
+	padding: 0.18rem 0.85rem 0.28rem;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	line-height: 1.2;
+	color: var(--text-muted) !important;
+	margin: 0;
+	cursor: pointer;
+	white-space: nowrap;
+	flex-shrink: 0;
+	border-radius: 0 0 var(--radius-s) var(--radius-s);
+	box-sizing: border-box;
+	box-shadow: none !important;
+	position: relative;
+	z-index: 1;
+	align-self: flex-start;
+}
+
+.fulcrum-project-tabs__btn:hover {
+	color: var(--text-normal) !important;
+	background: color-mix(in srgb, var(--background-modifier-hover) 65%, var(--background-primary)) !important;
+}
+
+.workspace-leaf-content .fulcrum-project-tabs__btn--active,
+.fulcrum-project-tabs__btn--active {
+	color: var(--fulcrum-tab-fg, var(--fulcrum-cta-fg, var(--text-on-accent))) !important;
+	background: var(--fulcrum-tab-accent, var(--fulcrum-accent, var(--interactive-accent))) !important;
+	border-color: var(--fulcrum-tab-accent, var(--fulcrum-accent, var(--interactive-accent))) !important;
+	border-top: none;
+	padding: calc(0.28rem + 1px) 0.85rem 0.58rem;
+	margin-top: -1px;
+	z-index: 2;
+}
+
+.workspace-leaf-content .fulcrum-project-tabs__btn--active:hover,
+.fulcrum-project-tabs__btn--active:hover {
+	color: var(--fulcrum-tab-fg, var(--fulcrum-cta-fg, var(--text-on-accent))) !important;
+	background: var(--fulcrum-tab-accent, var(--fulcrum-accent, var(--interactive-accent))) !important;
+}
+
+.fulcrum-project-tab-panel {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 0.65rem 1rem 0;
+}
+
+.fulcrum-project-page-sections {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.fulcrum-project-page-section > h2 {
+	margin: 0 0 0.35rem;
+	font-size: var(--font-ui-large);
+}
+
+.fulcrum-project-page-section__body {
+	font-size: var(--font-ui-small);
+}
+
+.fulcrum-project-tab-panel--fill {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.fulcrum-project-tab-panel--scroll {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow-x: hidden;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+	padding-bottom: 1.25rem;
+}
+
+.fulcrum-project-tab-panel--fill > :global(.fulcrum-task-list-panel),
+.fulcrum-project-tab-panel--fill > :global(.fulcrum-kanban),
+.fulcrum-project-tab-panel--fill > :global(.fulcrum-calendar) {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.fulcrum-project-tab-placeholder {
+	padding-top: 0.25rem;
+}
+
+.fulcrum-related-projects-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+	gap: 0.65rem;
+	align-items: stretch;
+}
+
+.fulcrum-related-notes-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+	gap: 0.65rem;
+	align-items: stretch;
+}
+
+.fulcrum-related-note-card {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: center;
+	min-height: 3.25rem;
+	margin: 0;
+	padding: 0.55rem 0.65rem;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 92%, transparent);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+	cursor: pointer;
+	font: inherit;
+	color: var(--text-normal);
+	text-align: left;
+	box-sizing: border-box;
+}
+
+.fulcrum-related-note-card:hover {
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-related-note-card:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+.fulcrum-related-note-card__name {
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	line-height: 1.35;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	overflow: hidden;
+}
+
+.fulcrum-project-files {
+	padding: 0.25rem 0 1rem;
+}
+
+.fulcrum-project-files__hint {
+	margin: 0 0 0.65rem;
+}
+
+.fulcrum-project-files__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.fulcrum-project-files__row {
+	display: flex;
+	align-items: center;
+	gap: 0.55rem;
+	width: 100%;
+	padding: 0.45rem 0.55rem;
+	border: 1px solid transparent;
+	border-radius: var(--radius-s, 4px);
+	background: transparent;
+	color: var(--text-normal);
+	cursor: pointer;
+	text-align: left;
+	box-sizing: border-box;
+}
+
+.fulcrum-project-files__row:hover {
+	background: var(--background-modifier-hover);
+	border-color: color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+}
+
+.fulcrum-project-files__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 1rem;
+	height: 1rem;
+	color: var(--text-muted);
+}
+
+.fulcrum-project-files__main {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.05rem;
+}
+
+.fulcrum-project-files__name {
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-project-files__path {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-project-files__mtime {
+	flex: 0 0 auto;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
 }
 
 .fulcrum-project-meta-strip {
@@ -476,7 +792,7 @@ If your plugin does not need CSS, delete this file.
 }
 
 .fulcrum-project .fulcrum-task-agenda-list > li {
-	border-bottom-color: color-mix(in srgb, var(--fulcrum-accent) 28%, var(--background-modifier-border));
+	border-bottom: none;
 }
 
 .fulcrum-project .fulcrum-person-card:not(.fulcrum-companion-time-card) {
@@ -487,24 +803,17 @@ If your plugin does not need CSS, delete this file.
 	outline-color: var(--fulcrum-accent);
 }
 
-.fulcrum-project .fulcrum-task-card {
-	--fulcrum-task-border: var(--fulcrum-accent);
+.fulcrum-task-card__recur-icon,
+.fulcrum-task-card__subtask-badge {
+	margin-left: 0.35rem;
+	font-size: 0.78em;
+	opacity: 0.75;
 }
 
-.fulcrum-project .fulcrum-task-card--overdue {
-	--fulcrum-task-border: #e74c3c;
-}
-
-.fulcrum-project .fulcrum-task-card--due-today {
-	--fulcrum-task-border: #f39c12;
-}
-
-.fulcrum-project .fulcrum-task-card--priority-high {
-	--fulcrum-task-border: #e74c3c;
-}
-
-.fulcrum-project .fulcrum-task-card--priority-low {
-	--fulcrum-task-border: #5dade2;
+.fulcrum-task-card__subtask-badge {
+	background: var(--background-modifier-border);
+	border-radius: 999px;
+	padding: 0 0.35rem;
 }
 
 .fulcrum-project .fulcrum-activity-row:focus-visible {
@@ -654,18 +963,6 @@ If your plugin does not need CSS, delete this file.
 
 .fulcrum-next-up-list > li:last-child {
 	border-bottom: none;
-}
-
-/* Next up: no priority/due left stripe on tasks (keeps row grid aligned with note rows). */
-.fulcrum-next-up-list .fulcrum-task-card {
-	--fulcrum-task-border: transparent;
-	border-left: none;
-	padding-left: 0;
-}
-
-.fulcrum-next-up-list .fulcrum-task-card--with-timeline-icon {
-	padding-left: 0.1rem;
-	padding-right: 0.35rem;
 }
 
 .fulcrum-next-up-list--with-meetings-above {
@@ -1058,6 +1355,99 @@ If your plugin does not need CSS, delete this file.
 	gap: 0.15rem 0.5rem;
 }
 
+/* Conduit: icon-only Reminders sync toolbar */
+.fulcrum-conduit-toolbar {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.05rem;
+	flex-shrink: 0;
+	margin-left: auto;
+}
+
+.fulcrum-conduit-toolbar__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.65rem;
+	height: 1.65rem;
+	padding: 0.2rem;
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	color: var(--text-muted);
+}
+
+.fulcrum-conduit-toolbar__btn:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-conduit-toolbar__btn svg {
+	width: 0.95rem;
+	height: 0.95rem;
+}
+
+.fulcrum-kanban__toolbar .fulcrum-conduit-toolbar,
+.fulcrum-calendar__toolbar .fulcrum-conduit-toolbar {
+	margin-left: auto;
+}
+
+.fulcrum-conduit-sync-setting {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.35rem;
+}
+
+.fulcrum-conduit-sync-setting .clickable-icon {
+	padding: 0.35rem;
+}
+
+.fulcrum-conduit-status {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	max-width: 42vw;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-conduit-toolbar--busy .fulcrum-conduit-toolbar__btn--active svg {
+	animation: fulcrum-conduit-spin 0.9s linear infinite;
+}
+
+@keyframes fulcrum-conduit-spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.fulcrum-conduit-toolbar__badge {
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-muted);
+	line-height: 1;
+	padding: 0 0.15rem;
+	min-width: 2.5rem;
+	text-align: right;
+	white-space: nowrap;
+}
+
+.fulcrum-conduit-toolbar__btn:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.fulcrum-conduit-toolbar--busy .fulcrum-conduit-toolbar__btn--active:disabled {
+	opacity: 1;
+	color: var(--text-accent);
+}
+
 .fulcrum-text-action {
 	margin: 0;
 	padding: 0.12rem 0.4rem;
@@ -1290,7 +1680,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	flex: 1 1 0%;
 	min-width: 0;
 	min-height: 0;
-	overflow: auto;
+	overflow: hidden;
 	width: 100%;
 	max-width: none;
 	box-sizing: border-box;
@@ -1300,6 +1690,11 @@ button.fulcrum-task-card__note-type:focus-visible {
 	width: 100%;
 	max-width: none;
 	box-sizing: border-box;
+}
+
+.workspace-leaf[data-type="fulcrum-project"] .view-content .fulcrum-project--tabbed {
+	height: 100%;
+	min-height: 0;
 }
 
 .workspace-leaf-content .view-content:has(.fulcrum-pm) {
@@ -1554,7 +1949,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	padding: 0.75rem 1rem 1.25rem;
 }
 
-/* Kanban: fill main pane; horizontal scroll on board, vertical scroll inside each column */
+/* Kanban: fill main pane; board scrolls inside viewport (sticky headers) */
 .fulcrum-pm__main--kanban-fill {
 	display: flex;
 	flex-direction: column;
@@ -1563,6 +1958,17 @@ button.fulcrum-task-card__note-type:focus-visible {
 
 .fulcrum-pm__main--kanban-fill > .fulcrum-pm__main-head {
 	flex-shrink: 0;
+}
+
+.fulcrum-pm__main--project-fill {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.fulcrum-pm__main--project-fill > .fulcrum-project--tabbed {
+	flex: 1 1 0;
+	min-height: 0;
 }
 
 .fulcrum-pm__main-head {
@@ -1583,6 +1989,181 @@ button.fulcrum-task-card__note-type:focus-visible {
 	margin: 0;
 	font-size: var(--font-ui-smaller);
 	line-height: 1.45;
+}
+
+/* Global area / life-mode filter (AreaFilterPanel.svelte) */
+.fulcrum-area-filter {
+	width: 100%;
+	box-sizing: border-box;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
+	margin-bottom: 0.5rem;
+}
+
+.fulcrum-area-filter__toggle {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0.4rem 0.5rem;
+	font-size: var(--font-ui-smaller);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+	background: color-mix(in srgb, var(--background-secondary) 65%, var(--background-primary));
+	border: none;
+	cursor: pointer;
+	text-align: left;
+}
+
+.fulcrum-area-filter__toggle:hover {
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-area-filter__chevron {
+	flex: 0 0 auto;
+	font-size: var(--font-ui-small);
+	transition: transform 0.12s ease;
+}
+
+.fulcrum-area-filter__chevron--collapsed {
+	transform: rotate(-90deg);
+}
+
+.fulcrum-area-filter__body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+	padding: 0 0.5rem 0.55rem;
+}
+
+.fulcrum-area-filter__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.fulcrum-area-filter__section-btn {
+	flex: 0 0 auto;
+	margin: 0;
+	padding: 0.2rem 0.55rem;
+	font-size: var(--font-ui-smaller);
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+.fulcrum-area-filter__section-btn:hover {
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-area-filter__section-btn--off {
+	opacity: 0.45;
+}
+
+.fulcrum-area-filter__area-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	max-width: 100%;
+	margin: 0;
+	padding: 0.22rem 0.5rem;
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+	line-height: 1.25;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+.fulcrum-area-filter__area-btn:hover {
+	filter: brightness(1.05);
+}
+
+.fulcrum-area-filter__area-btn--off {
+	opacity: 0.4;
+	filter: grayscale(0.45);
+}
+
+.fulcrum-area-filter__area-icon {
+	flex: 0 0 auto;
+}
+
+.fulcrum-area-filter__area-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-area-dashboard__block {
+	margin-bottom: 1.75rem;
+	padding-bottom: 1.25rem;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
+}
+
+.fulcrum-area-dashboard__block:last-child {
+	margin-bottom: 0;
+	padding-bottom: 0;
+	border-bottom: none;
+}
+
+.fulcrum-area-dashboard__subsection {
+	margin-top: 0.75rem;
+}
+
+.fulcrum-area-dashboard__subsection h3 {
+	margin: 0 0 0.5rem;
+	font-size: var(--font-ui-medium);
+}
+
+.fulcrum-area-dashboard__title {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.fulcrum-area-dashboard__tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+	margin-bottom: 0.75rem;
+}
+
+.fulcrum-area-dashboard__tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	margin: 0;
+	padding: 0.28rem 0.55rem;
+	font-size: var(--font-ui-small);
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+.fulcrum-area-dashboard__tab--active {
+	border-color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-secondary));
+	font-weight: 600;
+}
+
+.fulcrum-leaf-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.35rem;
 }
 
 .fulcrum-project-list-panel {
@@ -1742,6 +2323,14 @@ button.fulcrum-task-card__note-type:focus-visible {
 	padding: 0.12rem 0;
 }
 
+.fulcrum-project-list-panel__group {
+	margin-top: 0.65rem;
+}
+
+.fulcrum-project-list-panel__group:first-child {
+	margin-top: 0;
+}
+
 .fulcrum-project-list-panel__group-header--toggle {
 	display: flex;
 	align-items: center;
@@ -1749,26 +2338,32 @@ button.fulcrum-task-card__note-type:focus-visible {
 	box-sizing: border-box;
 	cursor: pointer;
 	user-select: none;
+	margin: 0;
+	padding: 0.45rem 0.5rem;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	border-radius: var(--radius-s);
+	background: color-mix(in srgb, var(--background-secondary) 88%, var(--background-modifier-border));
+	color: var(--text-muted);
+	transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.fulcrum-project-list-panel__group-header--toggle:hover {
+	background: var(--background-modifier-hover);
+	border-color: color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+}
+
+.fulcrum-project-list-panel__group-header--toggle:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+.fulcrum-project-list-panel__group-header--toggle[aria-expanded="false"] {
+	opacity: 0.88;
 }
 
 .fulcrum-project-list-panel__group-header-main {
 	flex: 1 1 auto;
 	min-width: 0;
-}
-
-.fulcrum-project-list-panel__group-chevron {
-	flex: 0 0 auto;
-	display: flex;
-	align-items: center;
-	padding-right: 0.35rem;
-	font-size: var(--font-ui-small);
-	color: var(--text-muted);
-	line-height: 1;
-	transition: transform 0.12s ease;
-}
-
-.fulcrum-project-list-panel__group-chevron--collapsed {
-	transform: rotate(-90deg);
 }
 
 .fulcrum-project-list-panel__sort-dir {
@@ -1870,15 +2465,14 @@ button.fulcrum-task-card__note-type:focus-visible {
 /* Sidebar project list — full-width table-style rows */
 .fulcrum-project-list-panel__group .fulcrum-dashboard__area-group-title {
 	margin: 0;
-	padding: 0.4rem 0.45rem 0.35rem;
+	padding: 0;
 	font-size: var(--font-ui-smaller);
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
-	color: var(--text-muted);
+	color: inherit;
 	border: none;
-	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
-	background: color-mix(in srgb, var(--background-secondary) 65%, var(--background-primary));
+	background: transparent;
 }
 
 .fulcrum-project-list-panel__group .fulcrum-dashboard__area-group-title .fulcrum-linklike {
@@ -2214,12 +2808,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	cursor: pointer;
 	font: inherit;
 	color: var(--text-normal);
-	background: var(--background-primary);
-	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
-	border-left: 4px solid var(--fulcrum-cal-event-accent, var(--interactive-accent));
-	/* Square left edge so the project accent reads full-height; round the trailing corners only */
-	border-radius: 0 var(--radius-s) var(--radius-s) 0;
-	box-shadow: 0 1px 3px color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
+	border-left-color: var(--fulcrum-cal-event-accent, var(--interactive-accent));
 	white-space: normal;
 	overflow: visible;
 	word-break: break-word;
@@ -2233,6 +2822,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	background: var(--background-modifier-hover);
 	border-color: color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
 	border-left-color: var(--fulcrum-cal-event-accent, var(--interactive-accent));
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
 }
 
 .fulcrum-dashboard-meetings__event:focus-visible {
@@ -2298,11 +2888,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 .fulcrum-pl-row--tile {
-	border-radius: var(--radius-m);
 	border-bottom: none;
-	border-left-width: 6px;
-	background: color-mix(in srgb, var(--background-secondary) 55%, var(--background-primary));
-	box-shadow: 0 1px 3px color-mix(in srgb, var(--background-modifier-border) 65%, transparent);
 }
 
 .fulcrum-pl-row--tile:hover {
@@ -2403,51 +2989,48 @@ button.fulcrum-task-card__note-type:focus-visible {
 	color: var(--text-muted);
 }
 
-/* —— Task agenda cards —— */
-.fulcrum-task-agenda-list > li {
-	list-style: none;
-	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
-	margin: 0;
-	padding: 0.5rem 0;
+/* —— Shared left-accent card shell (project tile pattern) —— */
+.fulcrum-accent-left-card,
+.fulcrum-task-card,
+.fulcrum-pl-row--tile,
+.fulcrum-dashboard-meetings__event,
+.fulcrum-calendar__event,
+.fulcrum-calendar__timed-event,
+.fulcrum-calendar__allday-cell .fulcrum-calendar__event {
+	box-sizing: border-box;
+	border-radius: var(--radius-m);
+	/* Top/right/bottom only — `border` shorthand would reset per-component border-left-color */
+	border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	border-right: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	border-left-width: 6px;
+	border-left-style: solid;
+	background: color-mix(in srgb, var(--background-secondary) 55%, var(--background-primary));
+	box-shadow: 0 1px 3px color-mix(in srgb, var(--background-modifier-border) 65%, transparent);
 }
 
-.fulcrum-task-agenda-list > li:last-child {
+.fulcrum-pl-row--tile {
+	border-left-color: var(--fulcrum-pl-accent);
+}
+
+/* —— Task agenda cards —— */
+.fulcrum-task-agenda-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+}
+
+.fulcrum-task-agenda-list > li {
+	list-style: none;
+	margin: 0;
+	padding: 0;
 	border-bottom: none;
 }
 
 .fulcrum-task-card {
-	--fulcrum-task-border: transparent;
-	border-left: 4px solid var(--fulcrum-task-border);
-	padding-left: 0.35rem;
+	border-left-color: var(--fulcrum-task-border, var(--interactive-accent));
+	padding: 0.45rem 0.55rem 0.5rem 0.6rem;
 	margin: 0;
-}
-
-/* Next up (and area dashboard): timeline column left-aligned like Activity, not stacked above row */
-.fulcrum-task-card--with-timeline-icon {
-	display: grid;
-	grid-template-columns: 2.65rem minmax(0, 1fr);
-	gap: 0 0.55rem;
-	align-items: stretch;
-	box-sizing: border-box;
-	padding-left: 0.1rem;
-	padding-right: 0.35rem;
-	border-left: none;
-}
-
-.fulcrum-task-card--overdue {
-	--fulcrum-task-border: #e74c3c;
-}
-
-.fulcrum-task-card--due-today {
-	--fulcrum-task-border: #f39c12;
-}
-
-.fulcrum-task-card--priority-high {
-	--fulcrum-task-border: #e74c3c;
-}
-
-.fulcrum-task-card--priority-low {
-	--fulcrum-task-border: #5dade2;
 }
 
 .fulcrum-task-card__main-row {
@@ -2509,6 +3092,60 @@ button.fulcrum-task-card__note-type:focus-visible {
 	gap: 0.2rem;
 }
 
+.fulcrum-task-card__timer {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	margin-left: auto;
+	margin-top: 0.1rem;
+	align-self: flex-start;
+}
+
+.fulcrum-task-card__timer-elapsed {
+	font-variant-numeric: tabular-nums;
+	font-size: 0.78rem;
+	line-height: 1.2;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.fulcrum-task-card__timer-stop {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.35rem;
+	height: 1.35rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.fulcrum-task-card__timer-stop:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-task-card__timer-stop-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 0.85rem;
+	height: 0.85rem;
+}
+
+.fulcrum-task-card__timer-stop-icon svg {
+	width: 0.75rem;
+	height: 0.75rem;
+}
+
+.fulcrum-task-inline-pill .fulcrum-task-card__timer {
+	margin-left: auto;
+}
+
 .fulcrum-task-card__title {
 	text-align: left;
 	width: 100%;
@@ -2553,48 +3190,448 @@ button.fulcrum-task-card__note-type:focus-visible {
 	gap: 0.35rem;
 }
 
-.fulcrum-task-card__due {
+.fulcrum-task-card__source-kind {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	color: var(--text-faint);
+	opacity: 0.55;
+	line-height: 1;
+}
+
+.fulcrum-task-card__source-kind-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 0.9em;
+	height: 0.9em;
+}
+
+.fulcrum-task-card__source-kind-icon svg {
+	width: 0.85em;
+	height: 0.85em;
+}
+
+.fulcrum-task-card__meta-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2rem;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	font: inherit;
 	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	color: inherit;
+	cursor: pointer;
+	line-height: 1.3;
+	outline: none;
+	-webkit-appearance: none;
+	appearance: none;
 }
 
-.fulcrum-task-card__due--overdue {
-	color: #e74c3c;
-	font-weight: 600;
+.fulcrum-task-card__meta-chip:hover {
+	background: transparent;
+	opacity: 0.85;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
 }
 
-.fulcrum-task-card__due--today {
-	color: #f39c12;
-	font-weight: 600;
+.fulcrum-task-card__meta-chip:focus-visible {
+	background: transparent;
+	outline: none;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-thickness: 2px;
+}
+
+.fulcrum-task-card__meta-icon {
+	width: 0.85em;
+	height: 0.85em;
+	flex-shrink: 0;
+	opacity: 0.75;
+}
+
+.fulcrum-task-card__due {
+	color: #e67e22;
 }
 
 .fulcrum-task-card__scheduled {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-}
-
-.fulcrum-task-card__scheduled--past {
-	color: #5dade2;
-}
-
-.fulcrum-task-card__scheduled--today {
-	color: #f39c12;
+	color: #9b59b6;
 }
 
 .fulcrum-task-card__project {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-accent);
+	color: #3498db;
 	font-weight: 500;
 }
 
-.fulcrum-task-card__tracked {
-	font-size: var(--font-ui-smaller);
+.fulcrum-task-card__tag {
 	color: var(--text-muted);
 }
 
-.fulcrum-task-card__created-age {
-	font-size: var(--font-ui-smaller);
+.fulcrum-task-card__tag--empty {
+	font-style: italic;
+	opacity: 0.75;
+}
+
+.fulcrum-task-card__open-note {
+	display: inline-flex;
+	align-items: center;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	font: inherit;
+	font-size: 1em;
 	color: var(--text-faint);
+	cursor: pointer;
+	line-height: 1;
+	outline: none;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.fulcrum-task-card__open-note:hover {
+	background: transparent;
+	color: var(--text-muted);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.fulcrum-task-card__open-note:focus-visible {
+	background: transparent;
+	outline: none;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-thickness: 2px;
+}
+
+.fulcrum-task-card__open-note-icon {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	opacity: 0.8;
+}
+
+.fulcrum-task-card__open-note-icon svg {
+	width: 1em;
+	height: 1em;
+}
+
+/* Inline task pill (Orbit people pill pattern) */
+.fulcrum-task-inline-pill {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem;
+	width: fit-content;
+	max-width: 100%;
+	min-height: 1.35em;
+	margin: 0.15rem 0;
+	padding: 0.12rem 0.45rem 0.12rem 0.35rem;
+	border: 1px solid color-mix(in srgb, var(--fulcrum-task-pill-accent, var(--background-modifier-border)) 35%, var(--background-modifier-border));
+	border-left: 3px solid var(--fulcrum-task-pill-accent, var(--interactive-accent));
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--background-secondary) 80%, var(--background-primary));
+	color: var(--text-normal);
+	font-size: inherit;
+	line-height: 1.35;
+	box-sizing: border-box;
+}
+
+.fulcrum-task-inline-pill--completed {
+	opacity: 0.72;
+}
+
+/* Inline tasks in Fulcrum lists (project List, Kanban, etc.): match task-note row cards */
+.fulcrum-task-inline-pill--row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	align-content: flex-start;
+	width: 100%;
+	max-width: none;
+	margin: 0;
+	padding: 0.45rem 0.55rem 0.5rem 0.6rem;
+	border-radius: var(--radius-s);
+	box-sizing: border-box;
+}
+
+.fulcrum-task-inline-pill--row .fulcrum-task-inline-pill__status {
+	flex: 0 0 18px;
+	width: 18px;
+	height: 18px;
+	min-width: 18px;
+	min-height: 18px;
+	margin-top: 0.15rem;
+}
+
+.fulcrum-task-inline-pill--row .fulcrum-task-inline-pill__title {
+	flex: 1 1 0;
+	min-width: 0;
+	max-width: none;
+	margin: 0;
+	white-space: normal;
+	overflow: visible;
+	text-overflow: unset;
+}
+
+.fulcrum-task-inline-pill--row .fulcrum-task-inline-pill__meta,
+.fulcrum-task-inline-pill--row .fulcrum-task-inline-pill__open-note {
+	flex: 0 0 auto;
+}
+
+.fulcrum-task-list-panel__card-wrap .fulcrum-task-inline-pill--row {
+	width: 100%;
+}
+
+.fulcrum-task-inline-pill__status {
+	flex: 0 0 1em;
+	width: 1em;
+	height: 1em;
+	min-width: 1em;
+	min-height: 1em;
+	margin: 0;
+	padding: 0;
+	border: 2px solid var(--text-muted);
+	border-radius: 50%;
+	background: transparent;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.65em;
+	line-height: 1;
+	color: white;
+}
+
+.fulcrum-task-inline-pill__status--done {
+	background: #27ae60;
+	border-color: #27ae60;
+}
+
+.fulcrum-task-inline-pill__status--readonly {
+	opacity: 0.65;
+	cursor: not-allowed;
+}
+
+.fulcrum-task-inline-pill__title {
+	margin: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+	font: inherit;
+	font-weight: 600;
+	color: var(--text-normal);
+	cursor: pointer;
+	text-align: left;
+	max-width: 24rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-task-inline-pill__title:hover {
+	color: var(--text-accent);
+}
+
+.fulcrum-task-inline-pill__meta {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.15rem;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	font: inherit;
+	font-size: 0.92em;
+	color: var(--text-muted);
+	cursor: pointer;
+	white-space: nowrap;
+	outline: none;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.fulcrum-task-inline-pill__meta:hover {
+	background: transparent;
+	opacity: 0.85;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.fulcrum-task-inline-pill__meta:focus-visible {
+	background: transparent;
+	outline: none;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-thickness: 2px;
+}
+
+.fulcrum-task-inline-pill__due {
+	color: #e67e22;
+}
+
+.fulcrum-task-inline-pill__scheduled {
+	color: #9b59b6;
+}
+
+.fulcrum-task-inline-pill__project {
+	color: #3498db;
+	font-weight: 500;
+}
+
+.fulcrum-task-inline-pill__tag {
+	color: var(--text-muted);
+}
+
+.fulcrum-task-inline-pill__icon {
+	width: 0.85em;
+	height: 0.85em;
+	flex-shrink: 0;
+	opacity: 0.75;
+}
+
+.fulcrum-task-inline-pill__open-note {
+	display: inline-flex;
+	align-items: center;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	font: inherit;
+	font-size: 1em;
+	color: var(--text-faint);
+	cursor: pointer;
+	line-height: 1;
+	outline: none;
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.fulcrum-task-inline-pill__open-note:hover {
+	background: transparent;
+	color: var(--text-muted);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.fulcrum-task-inline-pill__open-note:focus-visible {
+	background: transparent;
+	outline: none;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-thickness: 2px;
+}
+
+.fulcrum-task-inline-pill__open-note-icon {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	opacity: 0.8;
+}
+
+.fulcrum-task-inline-pill__open-note-icon svg {
+	width: 1em;
+	height: 1em;
+}
+
+/* Reading mode: full task card replaces checkbox line */
+li.task-list-item[data-fulcrum-inline-task-pill="reading"] {
+	list-style: none;
+	margin: 0.35rem 0;
+	padding: 0;
+}
+
+li.task-list-item[data-fulcrum-inline-task-pill="reading"] > div {
+	width: 100%;
+}
+
+/* Live Preview: native checkbox line styled as pill (editable) */
+li.task-list-item.fulcrum-task-inline-pill--live {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem;
+	width: fit-content;
+	max-width: 100%;
+	list-style: none;
+	margin: 0.2rem 0;
+	padding: 0.12rem 0.55rem 0.12rem 0.35rem;
+	border: 1px solid color-mix(in srgb, var(--fulcrum-task-pill-accent, var(--background-modifier-border)) 35%, var(--background-modifier-border));
+	border-left: 3px solid var(--fulcrum-task-pill-accent, var(--interactive-accent));
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--background-secondary) 80%, var(--background-primary));
+}
+
+li.task-list-item.fulcrum-task-inline-pill--live.fulcrum-task-inline-pill--completed {
+	opacity: 0.72;
+}
+
+li.task-list-item.fulcrum-task-inline-pill--live input[type="checkbox"] {
+	margin: 0 0.15rem 0 0;
+}
+
+li.task-list-item.fulcrum-task-inline-pill--live .tag,
+li.task-list-item.fulcrum-task-inline-pill--live a.tag {
+	font-size: 0.92em;
+}
+
+/* Drag row: grip + task card (calendar sidebar, kanban) */
+.fulcrum-task-drag-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.35rem;
+	min-width: 0;
+}
+
+.fulcrum-task-drag-row__grip {
+	flex: 0 0 auto;
+	cursor: grab;
+	user-select: none;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.6;
+	padding: 0.1rem 0.15rem 0 0;
+}
+
+.fulcrum-task-drag-row__grip:active {
+	cursor: grabbing;
+}
+
+.fulcrum-task-drag-row__card {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.fulcrum-task-drag-row--dragging {
+	opacity: 0.55;
+}
+
+/* Task note chrome at top of markdown views */
+.fulcrum-task-note-chrome {
+	margin: 0 0 1rem;
+	padding: 0.65rem 0.75rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	background: var(--background-secondary);
+}
+
+.fulcrum-task-note-doc .fulcrum-task-note-chrome + .markdown-source-view,
+.fulcrum-task-note-doc .fulcrum-task-note-chrome + .markdown-reading-view {
+	margin-top: 0;
 }
 
 /* Note rows (project summary) */
@@ -2662,51 +3699,68 @@ button.fulcrum-task-card__note-type:focus-visible {
 	font-size: var(--font-ui-smaller);
 }
 
-.fulcrum-kanban__board {
-	display: flex;
-	flex-direction: row;
-	flex-wrap: nowrap;
-	align-items: stretch;
-	align-content: flex-start;
-	gap: 0.75rem;
-	overflow-x: auto;
-	overflow-y: hidden;
+.fulcrum-kanban__viewport {
 	flex: 1 1 0;
 	min-height: 0;
-	padding: 0 0 0.25rem;
-	box-sizing: border-box;
+	overflow: auto;
 	-webkit-overflow-scrolling: touch;
 }
 
-.fulcrum-kanban__column {
-	flex: 0 0 16rem;
-	width: 16rem;
-	min-width: 14rem;
-	max-width: 20rem;
-	display: flex;
-	flex-direction: column;
-	min-height: 0;
-	max-height: 100%;
-	border-radius: var(--radius-m, 8px);
-	background: color-mix(in srgb, var(--background-secondary) 60%, var(--background-primary));
-	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+.fulcrum-kanban__grid {
+	--kanban-col-width: 16rem;
+	display: grid;
+	grid-template-columns: repeat(var(--kanban-col-count, 1), var(--kanban-col-width));
+	column-gap: 0.75rem;
+	row-gap: 0;
+	min-width: max-content;
+	padding: 0 0 1rem;
 	box-sizing: border-box;
 }
 
-.fulcrum-kanban__column--dragging {
+.fulcrum-kanban__grid--with-add {
+	grid-template-columns: repeat(var(--kanban-col-count, 1), var(--kanban-col-width)) 2.5rem;
+}
+
+.fulcrum-kanban__col-headers,
+.fulcrum-kanban__lane-row {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: repeat(var(--kanban-col-count, 1), var(--kanban-col-width));
+	column-gap: 0.75rem;
+}
+
+.fulcrum-kanban__grid--with-add .fulcrum-kanban__col-headers,
+.fulcrum-kanban__grid--with-add .fulcrum-kanban__lane-row {
+	grid-template-columns: repeat(var(--kanban-col-count, 1), var(--kanban-col-width)) 2.5rem;
+}
+
+.fulcrum-kanban__col-headers {
+	position: sticky;
+	top: 0;
+	z-index: 20;
+	background: var(--background-primary);
+	padding: 0 0 0.5rem;
+	margin-bottom: 0.35rem;
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+}
+
+.fulcrum-kanban__column-head--dragging {
 	opacity: 0.85;
 }
 
 .fulcrum-kanban__column-head {
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: space-between;
 	gap: 0.35rem;
 	padding: 0.5rem 0.65rem;
-	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+	border-radius: var(--radius-m, 8px);
+	background: color-mix(in srgb, var(--background-secondary-alt, var(--background-secondary)) 80%, var(--background-primary));
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
 	flex: 0 0 auto;
 	cursor: grab;
 	min-width: 0;
+	box-sizing: border-box;
 }
 
 .fulcrum-kanban__column-head:active {
@@ -2733,10 +3787,11 @@ button.fulcrum-task-card__note-type:focus-visible {
 	min-width: 0;
 }
 
-.fulcrum-kanban__swimlane-title {
-	font-size: var(--font-ui-smaller);
+.fulcrum-kanban__swimlane-title,
+.fulcrum-kanban__lane-title {
+	font-size: var(--font-ui-small);
 	font-weight: 700;
-	color: var(--text-muted);
+	color: var(--text-normal);
 	line-height: 1.25;
 }
 
@@ -2782,6 +3837,95 @@ button.fulcrum-task-card__note-type:focus-visible {
 	height: 16px;
 }
 
+.fulcrum-kanban__cell {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+	min-height: 2.5rem;
+	padding: 0.4rem 0.45rem;
+	border-radius: var(--radius-m, 8px);
+	background: color-mix(in srgb, var(--background-secondary) 60%, var(--background-primary));
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+	box-sizing: border-box;
+	align-self: stretch;
+}
+
+.fulcrum-kanban__cell-count {
+	align-self: flex-end;
+	font-size: calc(var(--font-ui-smaller) - 1px);
+	font-weight: 600;
+	min-width: 1.4em;
+	text-align: center;
+	padding: 0.05rem 0.35rem;
+	border-radius: var(--pill-radius, 2rem);
+	background: color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+	color: var(--text-muted);
+}
+
+.fulcrum-kanban__lane-header {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.45rem 0.55rem;
+	margin-top: 0.35rem;
+	position: sticky;
+	top: var(--kanban-sticky-head, 2.75rem);
+	z-index: 15;
+	background: color-mix(in srgb, var(--background-secondary-alt, var(--background-secondary)) 92%, var(--background-primary));
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+	border-radius: var(--radius-s, 4px);
+	box-shadow: 0 1px 0 color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
+}
+
+.fulcrum-kanban__lane-header-main {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.fulcrum-kanban__lane-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 1.5rem;
+	height: 1.5rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-s, 4px);
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.fulcrum-kanban__lane-toggle:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-kanban__lane-chevron {
+	width: 1rem;
+	height: 1rem;
+	transition: transform 120ms ease;
+}
+
+.fulcrum-kanban__lane-chevron--collapsed {
+	transform: rotate(-90deg);
+}
+
+.fulcrum-kanban__lane-count {
+	flex: 0 0 auto;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.fulcrum-kanban__lane-row {
+	padding-bottom: 0.65rem;
+	align-items: start;
+}
+
 .fulcrum-kanban__column-cards {
 	flex: 1 1 0;
 	min-height: 0;
@@ -2810,7 +3954,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-kanban__add-col-wrap {
 	position: relative;
 	flex: 0 0 auto;
-	align-self: stretch;
+	align-self: flex-start;
 	min-width: 2.5rem;
 }
 
@@ -2909,63 +4053,6 @@ button.fulcrum-task-card__note-type:focus-visible {
 	box-shadow: 0 1px 3px color-mix(in srgb, var(--interactive-accent) 35%, transparent);
 }
 
-.fulcrum-kanban__board--swimlanes {
-	flex-direction: column;
-	overflow-x: hidden;
-	overflow-y: auto;
-	align-items: stretch;
-}
-
-.fulcrum-kanban__board--swimlanes .fulcrum-kanban__swimlane {
-	align-items: flex-start;
-}
-
-.fulcrum-kanban__board--swimlanes .fulcrum-kanban__column {
-	max-height: none;
-	height: auto;
-	align-self: auto;
-}
-
-.fulcrum-kanban__board--swimlanes .fulcrum-kanban__column-cards {
-	flex: 0 1 auto;
-	min-height: 2.5rem;
-	max-height: min(50vh, 28rem);
-	overflow-y: auto;
-}
-
-.fulcrum-kanban__swimlane {
-	display: flex;
-	flex-direction: row;
-	align-items: stretch;
-	gap: 0.5rem;
-	min-height: 0;
-	flex: 0 0 auto;
-	margin-bottom: 0.65rem;
-}
-
-.fulcrum-kanban__swimlane-label {
-	flex: 0 0 7rem;
-	min-width: 5rem;
-	max-width: 9rem;
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
-	padding: 0.5rem 0.35rem 0 0;
-	color: var(--text-muted);
-	position: sticky;
-	left: 0;
-	align-self: flex-start;
-}
-
-.fulcrum-kanban__swimlane-columns {
-	display: flex;
-	flex-direction: row;
-	flex: 1 1 auto;
-	gap: 0.75rem;
-	overflow-x: auto;
-	min-width: 0;
-	padding-bottom: 0.25rem;
-}
-
 .fulcrum-kanban__column-head--compact {
 	cursor: default;
 	justify-content: space-between;
@@ -2979,40 +4066,8 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 .fulcrum-kanban__card-wrap {
-	display: flex;
-	flex-direction: row;
 	align-items: stretch;
-	gap: 0.15rem;
 	min-width: 0;
-}
-
-.fulcrum-kanban__card-handle {
-	flex: 0 0 auto;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 1.1rem;
-	padding: 0 0.05rem 0 0;
-	border: none;
-	background: transparent;
-	color: var(--text-faint);
-	cursor: grab;
-	align-self: stretch;
-	border-radius: var(--radius-s, 4px);
-	opacity: 0.55;
-}
-
-.fulcrum-kanban__card-wrap:hover .fulcrum-kanban__card-handle {
-	opacity: 0.9;
-}
-
-.fulcrum-kanban__card-handle:active {
-	cursor: grabbing;
-}
-
-.fulcrum-kanban__card-handle svg {
-	width: 12px;
-	height: 12px;
 }
 
 .fulcrum-kanban__card-wrap .fulcrum-kanban__card-cell {
@@ -3502,15 +4557,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	width: 100%;
 	margin: 0;
 	padding: 0.4rem 0.55rem 0.4rem 0.5rem;
-	border-radius: 0 var(--radius-m) var(--radius-m) 0;
-	background: var(--background-primary);
-	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
-	border-left-width: 5px;
-	border-left-style: solid;
 	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
-	box-shadow:
-		0 1px 2px color-mix(in srgb, var(--background-modifier-border) 32%, transparent),
-		0 1px 6px color-mix(in srgb, var(--background-modifier-border) 18%, transparent);
 	font-size: var(--font-ui-smaller);
 	line-height: 1.35;
 	white-space: normal;
@@ -3521,6 +4568,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event:hover {
 	filter: brightness(0.98);
 	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
 }
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event--task {
@@ -3617,10 +4665,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	right: 3px;
 	min-height: 1.35rem;
 	padding: 3px 6px 3px 5px;
-	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
-	border-left-width: 5px;
-	border-left-style: solid;
-	border-radius: 0 var(--radius-s) var(--radius-s) 0;
+	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
 	cursor: pointer;
 	overflow: hidden;
 	display: flex;
@@ -3628,12 +4673,10 @@ button.fulcrum-task-card__note-type:focus-visible {
 	align-items: flex-start;
 	gap: 4px;
 	text-align: left;
-	box-sizing: border-box;
 	font-size: 11px;
 	line-height: 1.25;
 	pointer-events: auto;
 	z-index: 1;
-	box-shadow: 0 1px 2px color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
 }
 
 .fulcrum-calendar__timed-event--task {
@@ -3681,6 +4724,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-calendar__timed-event:hover {
 	filter: brightness(0.97);
 	z-index: 2;
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
 }
 
 .fulcrum-calendar__timed-event-icon {
@@ -4008,18 +5052,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	width: 100%;
 	margin: 0;
 	padding: 0.28rem 0.4rem 0.28rem 0.35rem;
-	box-sizing: border-box;
-	border-radius: 0 var(--radius-s) var(--radius-s) 0;
-	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
-	border-left-width: 5px;
-	border-left-style: solid;
 	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
-	background: color-mix(
-		in srgb,
-		var(--fulcrum-event-accent, var(--background-modifier-border)) 12%,
-		var(--background-primary)
-	);
-	box-shadow: 0 1px 2px color-mix(in srgb, var(--background-modifier-border) 28%, transparent);
 	cursor: pointer;
 	text-align: left;
 	font-size: 11px;
@@ -4032,6 +5065,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-calendar__event:hover {
 	background: var(--background-modifier-hover);
 	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
 }
 
 .fulcrum-calendar__event--task {
@@ -5371,5 +6405,11 @@ button.fulcrum-task-card__note-type:focus-visible {
 
 .fulcrum-weekly-review__cap-hint {
 	margin: 0.75rem 0 0;
+	font-size: var(--font-ui-smaller);
+}
+
+.fulcrum-inline-suggest-detail {
+	margin-left: 0.5em;
+	opacity: 0.65;
 	font-size: var(--font-ui-smaller);
 }

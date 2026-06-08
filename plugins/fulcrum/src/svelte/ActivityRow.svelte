@@ -1,11 +1,15 @@
 <script lang="ts">
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
+	import type {IndexedTask} from "../fulcrum/types";
+	import {showFulcrumTaskContextMenu} from "../fulcrum/taskContextMenu";
 	import type {ActivityChip} from "../fulcrum/utils/projectActivity";
 
 	export let title: string;
 	export let chips: ActivityChip[] = [];
 	export let kind: "note" | "task" | "log" | "meeting";
+	/** When set on task rows, enables the Fulcrum task context menu. */
+	export let task: IndexedTask | undefined = undefined;
 	export let whenClick: () => void;
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -67,6 +71,11 @@
 		whenClick();
 	}
 
+	function onContextMenu(ev: MouseEvent): void {
+		if (kind !== "task" || !task) return;
+		showFulcrumTaskContextMenu(ev, plugin, task, hoverParentLeaf);
+	}
+
 	$: if (previewHost && bodyPreview && hoverPath) {
 		const host = previewHost;
 		const path = hoverPath;
@@ -88,6 +97,7 @@
 	data-fulcrum-activity-kind={kind}
 	on:click={onRowClick}
 	on:keydown={onRowKeydown}
+	on:contextmenu={onContextMenu}
 	on:mouseenter={onHover}
 	on:mouseleave={onHoverCancel}
 >

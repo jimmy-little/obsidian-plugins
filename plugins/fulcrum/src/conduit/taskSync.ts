@@ -25,10 +25,11 @@ import {
 import {taskVaultKey} from "./vaultKeys";
 
 export function snapshotFromTask(task: IndexedTask, settings: FulcrumSettings): ConduitTaskSnapshot {
+	const due = task.dueDate ?? task.scheduledDate ?? null;
 	return {
 		title: task.title.trim(),
 		status: task.status.toLowerCase(),
-		dueDate: task.dueDate ?? null,
+		dueDate: due,
 		done: taskIsDone(task, settings),
 	};
 }
@@ -87,11 +88,15 @@ export async function pullTasksFromReminders(
 	reminderRows: RemctlReminderRow[],
 	state: ConduitSyncState,
 	force: boolean,
+	onProgress?: (current: number, total: number) => void,
 ): Promise<number> {
 	let count = 0;
 	const rowsByList = groupRowsByList(reminderRows);
+	const total = tasks.length;
 
-	for (const task of tasks) {
+	for (let i = 0; i < tasks.length; i++) {
+		const task = tasks[i]!;
+		onProgress?.(i + 1, total);
 		const vaultKey = taskVaultKey(task);
 		let id = await readTaskReminderIdAsync(app, task, settings);
 		const project = task.projectFile
@@ -189,11 +194,15 @@ export async function pushTasksToReminders(
 	listIndex: ProjectListMap,
 	state: ConduitSyncState,
 	force: boolean,
+	onProgress?: (current: number, total: number) => void,
 ): Promise<PushTasksResult> {
 	let pushed = 0;
 	let failed = 0;
+	const total = tasks.length;
 
-	for (const task of tasks) {
+	for (let i = 0; i < tasks.length; i++) {
+		const task = tasks[i]!;
+		onProgress?.(i + 1, total);
 		try {
 			const didPush = await pushOneTask(
 				app,

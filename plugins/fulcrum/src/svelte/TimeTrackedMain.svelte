@@ -2,8 +2,8 @@
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {ProjectRollup} from "../fulcrum/types";
-	import {indexRevision, workRelatedOnly} from "../fulcrum/stores";
-	import {buildAreaWorkRelatedMap, filterProjectsWorkRelated} from "../fulcrum/utils/workRelatedProjectFilter";
+	import {areaFilterState, indexRevision} from "../fulcrum/stores";
+	import {buildAreaLifeModeMap, filterProjectsByAreaFocus} from "../fulcrum/utils/areaFocusFilter";
 	import {
 		buildTimeTrackedModel,
 		fmtHours,
@@ -36,19 +36,20 @@
 	let loadId = 0;
 
 	$: rev = $indexRevision;
-	$: wrOnly = $workRelatedOnly;
+	$: areaFilter = $areaFilterState;
 
 	$: snapshot = plugin.vaultIndex.getSnapshot();
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
 		typeField: plugin.settings.typeField,
 		areaTypeValue: plugin.settings.areaTypeValue,
+		settings: plugin.settings,
 	});
-	$: activeProjects = filterProjectsWorkRelated(
+	$: activeProjects = filterProjectsByAreaFocus(
 		plugin.vaultIndex.getActiveProjects(plugin.settings),
-		wrOnly,
-		areaWorkMap,
+		areaFilter,
+		lifeModeMap,
 	);
 	$: hasNoAreaProjects = activeProjects.some((p) => !p.areaFile);
 	/** Areas from index + any area linked on active projects (vaults often skip typed “area” notes). */
@@ -97,15 +98,15 @@
 		void rev;
 		void horizon;
 		void excludedAreaPaths;
-		void wrOnly;
-		void areaWorkMap;
+		void areaFilter;
+		void lifeModeMap;
 		const id = ++loadId;
 		loading = true;
 		loadError = null;
-		const active = filterProjectsWorkRelated(
+		const active = filterProjectsByAreaFocus(
 			plugin.vaultIndex.getActiveProjects(plugin.settings),
-			wrOnly,
-			areaWorkMap,
+			areaFilter,
+			lifeModeMap,
 		);
 		void (async (): Promise<void> => {
 			try {

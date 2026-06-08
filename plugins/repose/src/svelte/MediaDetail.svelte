@@ -10,6 +10,7 @@
 	import {
 		descriptionFromFrontmatter,
 		genresFromFrontmatter,
+		isEffectivelyWatchedFromFrontmatter,
 		readMediaItem,
 		releaseLabelFromFrontmatter,
 		watchedPlayDatesCommaDetail,
@@ -134,6 +135,26 @@
 			movieRefreshBusy = false;
 		}
 	}
+
+	function openMovieProperties(): void {
+		if (!file) return;
+		plugin.openMediaNoteProperties(file, () => {
+			detailRev += 1;
+		});
+	}
+
+	function handleMovieWatchAgain(): void {
+		void (async () => {
+			if (!selectedPath) return;
+			await plugin.logWatchAgain(selectedPath);
+			detailRev += 1;
+		})();
+	}
+
+	$: movieHeaderMenuExtras =
+		item?.mediaType === "movie" && isEffectivelyWatchedFromFrontmatter(movieFm)
+			? [{ title: "Watch again", icon: "repeat", onClick: handleMovieWatchAgain }]
+			: [];
 </script>
 
 <div
@@ -152,7 +173,8 @@
 					title="Back to series"
 					on:click={() => onSelectPath(hostForEpisode.path)}
 				></button>
-			{:else if onBackToList}
+			{/if}
+			{#if !hostForEpisode && onBackToList}
 				<button
 					type="button"
 					bind:this={backBtnEl}
@@ -176,7 +198,8 @@
 	{/if}
 	{#if !item || !file}
 		<p class="repose-muted">Pick an item from the list.</p>
-	{:else if item.mediaType === "show" || item.mediaType === "podcast" || item.mediaType === "book"}
+	{/if}
+	{#if item && file && (item.mediaType === "show" || item.mediaType === "podcast" || item.mediaType === "book")}
 		<ShowDetail
 			{plugin}
 			showFile={file}
@@ -185,9 +208,11 @@
 			onGoHome={item.mediaType === "podcast" || item.mediaType === "book" ? onGoHome : undefined}
 			suppressReposeBookMirror={bookChromeEmbedded}
 		/>
-	{:else if item.mediaType === "game"}
+	{/if}
+	{#if item && file && item.mediaType === "game"}
 		<ShowDetail {plugin} showFile={file} serialKind="game" {onSelectPath} onPalette={onMediaPalette} />
-	{:else if item.mediaType === "episode"}
+	{/if}
+	{#if item && file && item.mediaType === "episode"}
 		<EpisodeDetail
 			{plugin}
 			episodeFile={file}
@@ -196,7 +221,8 @@
 			onPalette={onMediaPalette}
 			suppressDetail={episodeCompanionSuppress}
 		/>
-	{:else if item.mediaType === "movie"}
+	{/if}
+	{#if item && file && item.mediaType === "movie"}
 		<div class="repose-show-detail">
 			<MediaHero
 				backdropSrc={movieBackdropSrc}
@@ -211,6 +237,8 @@
 				refreshTitle="Refresh metadata and images (Trakt / TMDB)"
 				onPalette={onMediaPalette}
 				onOpenNote={openNote}
+				onEditProperties={openMovieProperties}
+				headerMenuExtras={movieHeaderMenuExtras}
 				onToggleWatched={() => void toggleWatched()}
 				onRefresh={() => void refreshMovieData()}
 				detailMetaRows={movieDetailMetaRows}
@@ -219,7 +247,8 @@
 				Type: Movie{item.status ? ` · ${item.status}` : ""}
 			</p>
 		</div>
-	{:else}
+	{/if}
+	{#if item && file && item.mediaType !== "show" && item.mediaType !== "podcast" && item.mediaType !== "book" && item.mediaType !== "game" && item.mediaType !== "episode" && item.mediaType !== "movie"}
 		<header class="repose-media-detail__header">
 			<h2 class="repose-media-detail__title">{item.title}</h2>
 			<div class="repose-media-detail__actions">

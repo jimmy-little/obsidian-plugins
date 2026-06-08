@@ -2,13 +2,14 @@
 	import {onMount} from "svelte";
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
-	import {indexRevision, settingsRevision, timerRevision, workRelatedOnly} from "../fulcrum/stores";
+	import AreaFilterPanel from "./AreaFilterPanel.svelte";
+	import {areaFilterState, indexRevision, settingsRevision, timerRevision} from "../fulcrum/stores";
 	import {
-		buildAreaWorkRelatedMap,
-		meetingPassesWorkFilter,
-		taskPassesWorkFilter,
-	} from "../fulcrum/utils/workRelatedProjectFilter";
-	import {parseList} from "../fulcrum/settingsDefaults";
+		buildAreaLifeModeMap,
+		meetingPassesAreaFilter,
+		taskPassesAreaFilter,
+	} from "../fulcrum/utils/areaFocusFilter";
+	import {isDoneStatus, parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
 	import {addDaysIso, todayLocalISODate} from "../fulcrum/utils/dates";
 	import {
 		formatDayNum,
@@ -23,6 +24,7 @@
 		type CalendarEvent,
 	} from "../fulcrum/utils/calendarEvents";
 	import {buildTimerCalendarOverlay} from "../fulcrum/utils/timerCalendarOverlay";
+	import {showFulcrumTaskContextMenu} from "../fulcrum/taskContextMenu";
 	import TimelineActiveTimerBlock from "./TimelineActiveTimerBlock.svelte";
 
 	export let plugin: FulcrumHost;
@@ -48,14 +50,15 @@
 		snapshot = plugin.vaultIndex.getSnapshot();
 	}
 
-	$: doneTask = (void $settingsRevision, new Set(parseList(plugin.settings.taskDoneStatuses)));
-	$: areaWorkMap = buildAreaWorkRelatedMap(snapshot.areas, {
+	$: doneTask = (void $settingsRevision, parseDoneStatusSet(plugin.settings.taskDoneStatuses));
+	$: areaFilter = $areaFilterState;
+	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
 		typeField: plugin.settings.typeField,
 		areaTypeValue: plugin.settings.areaTypeValue,
+		settings: plugin.settings,
 	});
-	$: onlyWork = $workRelatedOnly;
 
 	/** Single day shown; used to keep completed tasks that still “belong” on this day. */
 	$: iso = focalDateIso.slice(0, 10);
@@ -66,7 +69,7 @@
 	 */
 	$: datedTasks = snapshot.tasks.filter((t) => {
 		if (
-			!taskPassesWorkFilter(t, snapshot, onlyWork, areaWorkMap, {
+			!taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, {
 				includeUnlinked: true,
 			})
 		) {
@@ -78,7 +81,7 @@
 		const hasActualBlock = !!(t.startTime?.trim() && t.endTime?.trim());
 		if (!hasSchedOrDue && !hasActualBlock) return false;
 
-		if (!doneTask.has(t.status)) {
+		if (!isDoneStatus(t.status, doneTask)) {
 			return hasSchedOrDue;
 		}
 		const ev = taskToCalendarEvent(t, () => {}, new Map<string, string>());
@@ -155,7 +158,7 @@
 			}
 		}
 		for (const m of snapshot.meetings) {
-			if (!meetingPassesWorkFilter(m, snapshot, onlyWork, areaWorkMap)) continue;
+			if (!meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap)) continue;
 			const e = meetingToCalendarEvent(
 				m,
 				() => plugin.openLinkedNoteFromFulcrum(m.file.path, hoverParentLeaf),
@@ -211,6 +214,11 @@
 		return `${e.meeting?.file.path ?? e.kind}:${e.startMinutes}`;
 	}
 
+	function onTaskEventContextMenu(ev: MouseEvent, e: CalendarEvent): void {
+		if (e.kind !== "task" || !e.task) return;
+		showFulcrumTaskContextMenu(ev, plugin, e.task, hoverParentLeaf);
+	}
+
 	function goToday(): void {
 		onFocalIsoChange(todayLocalISODate());
 	}
@@ -230,6 +238,7 @@
 </script>
 
 <div class="fulcrum-timeline" data-fulcrum-timeline-root>
+	<AreaFilterPanel {plugin} />
 	<div class="fulcrum-timeline__toolbar fulcrum-calendar__toolbar">
 		<button type="button" class="fulcrum-calendar__nav-btn" aria-label="Previous day" on:click={goPrev}>
 			‹
@@ -286,7 +295,7 @@
 						class="fulcrum-calendar__event fulcrum-calendar__event--{e.kind}"
 						class:fulcrum-calendar__event--completed={(e.kind === "task" &&
 							e.task &&
-							doneTask.has(e.task.status)) ||
+							isDoneStatus(e.task.status, doneTask)) ||
 							(e.kind === "planner" && e.planner?.status === "done")}
 						style={e.accentCss ? `--fulcrum-event-accent: ${e.accentCss}` : undefined}
 						data-fulcrum-calendar-event
@@ -294,6 +303,7 @@
 							ev.preventDefault();
 							e.open();
 						}}
+						on:contextmenu={(ev) => onTaskEventContextMenu(ev, e)}
 					>
 						<span class="fulcrum-calendar__event-icon" aria-hidden="true">
 							{#if e.kind === "task"}
@@ -333,7 +343,7 @@
 							class="fulcrum-calendar__timed-event fulcrum-calendar__timed-event--{e.kind}"
 							class:fulcrum-calendar__timed-event--completed={(e.kind === "task" &&
 								e.task &&
-								doneTask.has(e.task.status)) ||
+								isDoneStatus(e.task.status, doneTask)) ||
 								(e.kind === "planner" && e.planner?.status === "done")}
 							style="top: {topPct}%; height: {heightPct}%;{e.accentCss ? ` --fulcrum-event-accent: ${e.accentCss};` : ""}"
 							data-fulcrum-calendar-event
@@ -341,6 +351,7 @@
 								ev.preventDefault();
 								e.open();
 							}}
+							on:contextmenu={(ev) => onTaskEventContextMenu(ev, e)}
 						>
 							<span class="fulcrum-calendar__timed-event-icon" aria-hidden="true">
 								{#if e.kind === "task"}

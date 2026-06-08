@@ -1,4 +1,4 @@
-import { MarkdownView, Platform, type App, TFile, type WorkspaceLeaf } from "obsidian";
+import { MarkdownView, type App, TFile, type WorkspaceLeaf } from "obsidian";
 import type ReposePlugin from "./main";
 import { pathUnderMediaRoot, reposeMobile } from "./platform";
 import { resolveMediaTypeForFile } from "./media/mediaDetect";
@@ -144,32 +144,36 @@ function anchorLeafForNewEpisodeSplit(app: App, anchorLeaf: WorkspaceLeaf): Work
 	return app.workspace.getLeaf("tab");
 }
 
-export async function ensureReposeCompanionMarkdownPane(
+export async function openMediaNoteSplitFromAnchor(
 	plugin: ReposePlugin,
 	anchorLeaf: WorkspaceLeaf,
 	file: TFile,
+	options?: { splitFromAnchor?: boolean },
 ): Promise<void> {
 	const app = plugin.app;
 	plugin.reposeCompanionMarkdownPath = file.path;
 
-	const existing = resolveEpisodeCompanionLeaf(plugin, app);
-
-	if (Platform.isMobile) {
-		// Mobile tabs are not "owned split panes"; detaching them can close the active tab unexpectedly.
+	if (reposeMobile()) {
 		plugin.reposeCompanionMarkdownOwnedSplit = false;
-		const leaf = existing ?? app.workspace.getLeaf("tab");
+		const leaf = app.workspace.getLeaf("tab");
 		await leaf.openFile(file, { active: true });
 		plugin.reposeCompanionMarkdownLeaf = leaf;
 		scheduleSyncAllMarkdownChrome(plugin);
 		return;
 	}
+
 	plugin.reposeCompanionMarkdownOwnedSplit = true;
 
-	if (existing) {
-		await app.workspace.revealLeaf(existing);
-		await existing.openFile(file, { active: true });
-		scheduleSyncAllMarkdownChrome(plugin);
-		return;
+	if (!options?.splitFromAnchor) {
+		const existing = resolveEpisodeCompanionLeaf(plugin, app);
+
+		if (existing) {
+			plugin.reposeCompanionMarkdownLeaf = existing;
+			await app.workspace.revealLeaf(existing);
+			await existing.openFile(file, { active: true });
+			scheduleSyncAllMarkdownChrome(plugin);
+			return;
+		}
 	}
 
 	const anchor = anchorLeafForNewEpisodeSplit(app, anchorLeaf);
@@ -178,6 +182,14 @@ export async function ensureReposeCompanionMarkdownPane(
 	plugin.reposeCompanionMarkdownLeaf = splitLeaf;
 	await app.workspace.revealLeaf(splitLeaf);
 	scheduleSyncAllMarkdownChrome(plugin);
+}
+
+export async function ensureReposeCompanionMarkdownPane(
+	plugin: ReposePlugin,
+	anchorLeaf: WorkspaceLeaf,
+	file: TFile,
+): Promise<void> {
+	await openMediaNoteSplitFromAnchor(plugin, anchorLeaf, file);
 }
 
 export function clearReposeCompanionMarkdownPane(plugin: ReposePlugin): void {

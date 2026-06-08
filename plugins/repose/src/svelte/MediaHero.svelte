@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Platform, setIcon } from "obsidian";
+	import { Menu, Platform, setIcon } from "obsidian";
 	import { sampleMediaHeroPalette, type MediaHeroPalette } from "../media/bannerSample";
 
 	/** Backdrop (banner / wide art) for full-bleed background */
@@ -45,6 +45,13 @@
 	export let onOpenNote: () => void | Promise<void>;
 	/** Markdown companion: bundle note is already the open file — hide “Open note”. */
 	export let hideOpenNoteButton = false;
+	/** Fulcrum-style YAML editor (header menu → Edit properties). */
+	export let onEditProperties: (() => void) | undefined = undefined;
+	export let headerMenuExtras: {
+		title: string;
+		icon: string;
+		onClick: () => void | Promise<void>;
+	}[] = [];
 	export let onToggleWatched: (ev?: MouseEvent) => void | Promise<void>;
 	export let onRefresh: () => void | Promise<void>;
 	/** When set (e.g. podcast / book bundle), home appears in the collapsed toolbar row with other actions. */
@@ -100,6 +107,38 @@
 		episodeProgress && episodeProgress.total > 0
 			? Math.min(100, Math.round((episodeProgress.watched / episodeProgress.total) * 100))
 			: 0;
+
+	function openHeaderMenu(ev: MouseEvent): void {
+		const menu = new Menu();
+		if (!hideOpenNoteButton) {
+			menu.addItem((item) => {
+				item.setTitle("Open note");
+				item.setIcon("square-arrow-out-up-right");
+				item.onClick(() => void onOpenNote());
+			});
+		}
+		if (onEditProperties) {
+			menu.addItem((item) => {
+				item.setTitle("Edit properties");
+				item.setIcon("file-json");
+				item.onClick(() => onEditProperties!());
+			});
+		}
+		for (const extra of headerMenuExtras) {
+			menu.addItem((item) => {
+				item.setTitle(extra.title);
+				item.setIcon(extra.icon);
+				item.onClick(() => void extra.onClick());
+			});
+		}
+		menu.addItem((item) => {
+			item.setTitle(refreshTitle);
+			item.setIcon("refresh-ccw");
+			item.setDisabled(refreshBusy);
+			item.onClick(() => void onRefresh());
+		});
+		menu.showAtMouseEvent(ev);
+	}
 </script>
 
 <div class="repose-show-detail__hero-bleed">
@@ -123,17 +162,6 @@
 							</button>
 						{/if}
 						<div class="repose-show-banner__toolbar-actions">
-							{#if !hideOpenNoteButton}
-								<button
-									type="button"
-									class="repose-banner-btn repose-banner-btn--icon-only"
-									aria-label="Open note"
-									title="Open note"
-									on:click={() => void onOpenNote()}
-								>
-									<span class="repose-banner-btn__icon" use:reposeBannerIcon={"file-input"} aria-hidden="true"></span>
-								</button>
-							{/if}
 							{#if !hideBannerWatch}
 								<button
 									type="button"
@@ -160,12 +188,11 @@
 							<button
 								type="button"
 								class="repose-banner-btn repose-banner-btn--icon-only"
-								aria-label="Refresh metadata and images"
-								title={refreshTitle}
-								disabled={refreshBusy}
-								on:click={() => void onRefresh()}
+								aria-label="Media actions"
+								title="Media actions"
+								on:click={openHeaderMenu}
 							>
-								<span class="repose-banner-btn__icon" use:reposeBannerIcon={"refresh-ccw"} aria-hidden="true"></span>
+								<span class="repose-banner-btn__icon" use:reposeBannerIcon={"circle-ellipsis"} aria-hidden="true"></span>
 							</button>
 						</div>
 					</div>
@@ -188,17 +215,6 @@
 
 			<div class="repose-show-banner__actions-stack">
 				<div class="repose-show-banner__top-actions">
-					{#if !hideOpenNoteButton}
-						<button
-							type="button"
-							class="repose-banner-btn repose-banner-btn--icon-only"
-							aria-label="Open note"
-							title="Open note"
-							on:click={() => void onOpenNote()}
-						>
-							<span class="repose-banner-btn__icon" use:reposeBannerIcon={"file-input"} aria-hidden="true"></span>
-						</button>
-					{/if}
 					{#if !hideBannerWatch}
 						<button
 							type="button"
@@ -225,12 +241,11 @@
 					<button
 						type="button"
 						class="repose-banner-btn repose-banner-btn--icon-only"
-						aria-label="Refresh metadata and images"
-						title={refreshTitle}
-						disabled={refreshBusy}
-						on:click={() => void onRefresh()}
+						aria-label="Media actions"
+						title="Media actions"
+						on:click={openHeaderMenu}
 					>
-						<span class="repose-banner-btn__icon" use:reposeBannerIcon={"refresh-ccw"} aria-hidden="true"></span>
+						<span class="repose-banner-btn__icon" use:reposeBannerIcon={"circle-ellipsis"} aria-hidden="true"></span>
 					</button>
 				</div>
 				{#if bannerStatus}
