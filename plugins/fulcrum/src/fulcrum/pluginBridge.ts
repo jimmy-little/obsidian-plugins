@@ -34,6 +34,10 @@ export interface FulcrumHost {
 		projectPath: string,
 		onComplete?: () => void | Promise<void>,
 	): void;
+	openAddMilestoneModal(
+		projectPath: string,
+		onComplete?: () => void | Promise<void>,
+	): void;
 	/** Modal: text → same log append as the project page quick note (does not open the project). */
 	openQuickProjectNoteModal(projectPath: string): void;
 	/** Confirm, optional note → done status, log line, move to completed folder, return to dashboard. */

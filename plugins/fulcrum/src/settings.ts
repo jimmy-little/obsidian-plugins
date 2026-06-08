@@ -313,7 +313,7 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		this.textSetting("projectDoneStatuses", "Project done / inactive statuses (comma-separated)");
 
 		heading(containerEl, "Project page");
-		this.textSetting("projectLaunchDateField", "Launch / target date field");
+		this.textSetting("projectEndDateField", "Project end date field");
 		this.textSetting("projectLastReviewedField", "Last reviewed field");
 		this.textSetting("projectReviewFrequencyField", "Review frequency field (days)");
 		this.textSetting("projectNextReviewField", "Next review field");
@@ -382,6 +382,11 @@ export class FulcrumSettingTab extends PluginSettingTab {
 				}),
 			);
 		this.textSetting("projectLogSectionHeading", "Project log section heading");
+		this.textSetting(
+			"projectMilestonesSectionHeading",
+			"Milestones section heading",
+			"Gantt reads `YYYY-MM-DD: Title` lines under this `##` heading in project notes.",
+		);
 		new Setting(containerEl)
 			.setName("Project log preview lines")
 			.setDesc(
@@ -587,12 +592,12 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Project list: sort by")
 			.setDesc(
-				"Order within each group or the flat list (launch and next review use your project page date fields; name is alphabetical).",
+				"Order within each group or the flat list (end date and next review use your project page date fields; name is alphabetical).",
 			)
 			.addDropdown((d) =>
 				d
 					.addOptions({
-						launch: "Launch date",
+						end: "End date",
 						nextReview: "Next review",
 						rank: "Rank",
 						name: "Name",

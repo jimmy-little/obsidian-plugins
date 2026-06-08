@@ -34,10 +34,10 @@ export interface IndexedProject {
 	description?: string;
 	/** Next review date (ISO), from configured frontmatter field. */
 	nextReview?: string;
-	/** Project deadline from configured frontmatter field. */
+	/** Project deadline from configured frontmatter field (Kanban date axis). */
 	deadline?: string;
-	/** YYYY-MM-DD (or raw prefix) from launch / target date field; sidebar sort. */
-	launchDate?: string;
+	/** Project end date from configured frontmatter field (timeline, sidebar). */
+	endDate?: string;
 	/** From configurable frontmatter key; higher = more important. */
 	rank?: number;
 }
@@ -77,6 +77,10 @@ export interface IndexedTask {
 	endTime?: string;
 	/** Planned length in minutes from frontmatter `duration` (calendar block height). */
 	durationMinutes?: number;
+	/** Primary date for gantt (YYYY-MM-DD): frontmatter `date`, else scheduled/due. */
+	ganttDate?: string;
+	/** Inclusive span from merged `timeEntries` when logged work exists. */
+	ganttTimeEntrySpan?: {startIso: string; endIso: string};
 	projectFile: TFile | null;
 	areaFile: TFile | null;
 	tags: string[];
@@ -160,7 +164,7 @@ export interface IndexedRelatedNote {
 }
 
 export interface ProjectPageMeta {
-	launchDate?: string;
+	endDate?: string;
 	lastReviewed?: string;
 	nextReview?: string;
 	reviewFrequencyDays: number;

@@ -36,6 +36,7 @@
 	import TaskListPanel from "./TaskListPanel.svelte";
 	import KanbanMain from "./KanbanMain.svelte";
 	import CalendarMain from "./CalendarMain.svelte";
+	import GanttMain from "./GanttMain.svelte";
 	import ProjectFilesTab from "./ProjectFilesTab.svelte";
 	import ProjectListRow from "./ProjectListRow.svelte";
 	import ProjectPageSections from "./ProjectPageSections.svelte";
@@ -310,6 +311,11 @@
 			item.onClick(() => markReviewed());
 		});
 		menu.addItem((item) => {
+			item.setTitle("Add milestone");
+			item.setIcon("gem");
+			item.onClick(() => plugin.openAddMilestoneModal(projectPath));
+		});
+		menu.addItem((item) => {
 			item.setTitle("Mark project complete");
 			item.setIcon("folder-check");
 			item.onClick(() => markProjectComplete());
@@ -456,10 +462,10 @@
 			class="fulcrum-project-tab-panel"
 			class:fulcrum-project-tab-panel--fill={activeTab === "list" ||
 				activeTab === "board" ||
-				activeTab === "calendar"}
-			class:fulcrum-project-tab-panel--scroll={activeTab === "overview" ||
-				activeTab === "files" ||
+				activeTab === "calendar" ||
 				activeTab === "timeline"}
+			class:fulcrum-project-tab-panel--scroll={activeTab === "overview" ||
+				activeTab === "files"}
 		>
 		{#if activeTab === "overview"}
 		<div class="fulcrum-project-meta-strip">
@@ -578,7 +584,7 @@
 			{/if}
 		</section>
 
-		<ProjectPageSections {plugin} {projectPath} accentColorCss={rollup.accentColorCss} />
+		<ProjectPageSections {plugin} {projectPath} />
 
 		<section class="fulcrum-section">
 			<h2>Activity</h2>
@@ -696,10 +702,13 @@
 		{:else if activeTab === "board"}
 			<KanbanMain {plugin} {hoverParentLeaf} filterProjectPath={projectPath} embedded={true} />
 		{:else if activeTab === "timeline"}
-			<section class="fulcrum-section fulcrum-project-tab-placeholder">
-				<h2>Timeline</h2>
-				<p class="fulcrum-muted">Gantt timeline view is coming soon.</p>
-			</section>
+			<GanttMain
+				{plugin}
+				{hoverParentLeaf}
+				filterProjectPath={projectPath}
+				variant="compact"
+				embedded={true}
+			/>
 		{:else if activeTab === "calendar"}
 			<CalendarMain
 				{plugin}

@@ -11,7 +11,7 @@ function parseDayMs(iso: string | undefined): number | null {
 function compareDates(
 	a: IndexedProject,
 	b: IndexedProject,
-	field: "launchDate" | "nextReview",
+	field: "endDate" | "nextReview",
 	dir: "asc" | "desc",
 ): number {
 	const ta = parseDayMs(a[field]);
@@ -48,8 +48,8 @@ export function sortIndexedProjects(
 	const out = [...projects];
 	out.sort((a, b) => {
 		let c = 0;
-		if (sortBy === "launch") {
-			c = compareDates(a, b, "launchDate", dir);
+		if (sortBy === "end") {
+			c = compareDates(a, b, "endDate", dir);
 		} else if (sortBy === "nextReview") {
 			c = compareDates(a, b, "nextReview", dir);
 		} else if (sortBy === "name") {

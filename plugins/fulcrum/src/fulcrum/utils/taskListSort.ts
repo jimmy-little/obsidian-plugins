@@ -1,8 +1,17 @@
-import type {TaskSidebarSortBy, ProjectSidebarSortDir} from "../settingsDefaults";
+import type {
+	ProjectTaskListSortBy,
+	ProjectSidebarSortDir,
+	TaskSidebarSortBy,
+} from "../settingsDefaults";
 import type {IndexedTask} from "../types";
 
 function taskDueSortKey(t: IndexedTask): string {
 	const d = t.dueDate?.slice(0, 10) ?? t.scheduledDate?.slice(0, 10);
+	return d ?? "9999-99-99";
+}
+
+function taskScheduledSortKey(t: IndexedTask): string {
+	const d = t.scheduledDate?.slice(0, 10) ?? t.dueDate?.slice(0, 10);
 	return d ?? "9999-99-99";
 }
 
@@ -37,6 +46,24 @@ export function sortIndexedTasks(
 				break;
 		}
 		return c * dir;
+	});
+	return out;
+}
+
+export function sortProjectListTasks(
+	tasks: IndexedTask[],
+	sortBy: ProjectTaskListSortBy,
+	sortDir: ProjectSidebarSortDir = "asc",
+): IndexedTask[] {
+	const out = [...tasks];
+	const dir = sortDir === "asc" ? 1 : -1;
+	out.sort((a, b) => {
+		const primary =
+			sortBy === "scheduled"
+				? taskScheduledSortKey(a).localeCompare(taskScheduledSortKey(b))
+				: taskDueSortKey(a).localeCompare(taskDueSortKey(b));
+		if (primary !== 0) return primary * dir;
+		return a.title.localeCompare(b.title, undefined, {sensitivity: "base"}) * dir;
 	});
 	return out;
 }

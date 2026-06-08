@@ -4,7 +4,6 @@
 	export let plugin: FulcrumHost;
 	export let sourcePath: string;
 	export let markdown: string;
-	export let accentColorCss: string | undefined = undefined;
 
 	let host: HTMLElement | undefined;
 	let renderChain: Promise<void> = Promise.resolve();
@@ -25,6 +24,5 @@
 
 <div
 	bind:this={host}
-	class="fulcrum-activity-row__preview markdown-preview-view fulcrum-project-page-section__body"
-	style={accentColorCss ? `--fulcrum-preview-accent: ${accentColorCss}` : undefined}
+	class="markdown-preview-view fulcrum-project-page-section__body"
 ></div>

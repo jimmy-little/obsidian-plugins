@@ -42,6 +42,7 @@
 	import ActivityRow from "./ActivityRow.svelte";
 	import ProjectListRow from "./ProjectListRow.svelte";
 	import TaskSectionHead from "./TaskSectionHead.svelte";
+	import GanttMain from "./GanttMain.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -377,6 +378,20 @@
 			{/each}
 			</div>
 		</div>
+	</div>
+</section>
+
+<section class="fulcrum-section fulcrum-section--gantt">
+	<h2>Project timeline</h2>
+	<div class="fulcrum-dashboard-gantt">
+		<GanttMain
+			{plugin}
+			{hoverParentLeaf}
+			variant="compact"
+			embedded={true}
+			includeTasks={false}
+			onlyDatedItems={true}
+		/>
 	</div>
 </section>
 

@@ -22,6 +22,7 @@ import {
 	resolveProjectFileFromFm,
 } from "./utils/projectLink";
 import {readTrackedMinutesFromFm} from "./utils/trackedMinutes";
+import {resolveTaskTimelineFields} from "./utils/taskTimeline";
 import {meetingEffectiveMinutes, meetingHasPositiveTrackedMinutes} from "./utils/meetingEffectiveMinutes";
 import {readLifeModeFromFrontmatter} from "./utils/areaFocusFilter";
 import {resolveBannerImageSrc, resolveProjectAccentCss} from "./utils/projectVisual";
@@ -356,9 +357,12 @@ export class VaultIndex {
 					s.projectStatusIndication === "subfolder"
 						? projectStatusFromSubfolderLayout(path, projectsRoot)
 						: (fmString(fm, statusKey) ?? "active").toLowerCase();
-				const launchRaw = fmString(fm, s.projectLaunchDateField)?.trim();
-				const launchDate =
-					launchRaw && launchRaw.length >= 10 ? launchRaw.slice(0, 10) : launchRaw || undefined;
+				const endRaw =
+					fmString(fm, "endDate") ??
+					fmString(fm, s.projectEndDateField) ??
+					fmString(fm, "launchDate");
+				const endDate =
+					endRaw && endRaw.length >= 10 ? endRaw.slice(0, 10) : endRaw || undefined;
 				const rankKey = s.projectRankField.trim() || "rank";
 				projects.push({
 					file,
@@ -375,7 +379,7 @@ export class VaultIndex {
 					description: fmString(fm, "description"),
 					nextReview: fmString(fm, s.projectNextReviewField),
 					deadline: fmString(fm, s.projectDeadlineField),
-					launchDate,
+					endDate,
 					rank: fmNumber(fm, rankKey),
 				});
 				continue;
@@ -491,6 +495,7 @@ export class VaultIndex {
 				const endTimeRaw = fmString(fm, endKey)?.trim();
 				const durN = fmNumber(fm, durKey);
 				const recFields = readTaskRecurrenceFields(fm, s);
+				const timeline = resolveTaskTimelineFields(fm, s.timer, file.path, sched, due);
 				taskNotePaths.add(file.path);
 				tasks.push({
 					file,
@@ -504,6 +509,8 @@ export class VaultIndex {
 					endTime: endTimeRaw || undefined,
 					durationMinutes:
 						durN != null && Number.isFinite(durN) && durN > 0 ? Math.round(durN) : undefined,
+					ganttDate: timeline.ganttDate,
+					ganttTimeEntrySpan: timeline.ganttTimeEntrySpan,
 					projectFile,
 					areaFile,
 					tags: parseTagsFromFm(fm),
@@ -591,6 +598,13 @@ export class VaultIndex {
 					const durN = fmNumber(fm, durKey);
 					const inlineTags = parseInlineTags(titleBare);
 					const inlinePri = parseInlinePriority(titleBare);
+					const timeline = resolveTaskTimelineFields(
+						fm,
+						s.timer,
+						file.path,
+						enriched.scheduledDate,
+						enriched.dueDate,
+					);
 					tasks.push({
 						file,
 						title: enriched.title,
@@ -604,6 +618,8 @@ export class VaultIndex {
 						durationMinutes:
 							enriched.durationMinutes ??
 							(durN != null && Number.isFinite(durN) && durN > 0 ? Math.round(durN) : undefined),
+						ganttDate: timeline.ganttDate,
+						ganttTimeEntrySpan: timeline.ganttTimeEntrySpan,
 						projectFile: proj,
 						areaFile,
 						tags: [],

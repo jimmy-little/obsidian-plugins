@@ -1,9 +1,15 @@
 <script lang="ts">
+	import {Notice} from "obsidian";
 	import {onMount} from "svelte";
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
-	import type {FulcrumSettings, TaskSidebarGroupBy} from "../fulcrum/settingsDefaults";
-	import type {CalendarTaskScheduleField} from "../fulcrum/settingsDefaults";
+	import type {
+		FulcrumSettings,
+		ProjectTaskListGroupBy,
+		ProjectTaskListSortBy,
+		TaskSidebarGroupBy,
+		CalendarTaskScheduleField,
+	} from "../fulcrum/settingsDefaults";
 	import {
 		indexRevision,
 		setCalendarTaskDragActive,
@@ -13,14 +19,30 @@
 	import {isDoneStatus, parseDoneStatusSet, parseList, parseTaskStatusChoices} from "../fulcrum/settingsDefaults";
 	import {buildAreaLifeModeMap, taskPassesAreaFilter} from "../fulcrum/utils/areaFocusFilter";
 	import type {IndexedArea, IndexedTask, IndexSnapshot} from "../fulcrum/types";
-	import {sortIndexedTasks} from "../fulcrum/utils/taskListSort";
+	import {sortIndexedTasks, sortProjectListTasks} from "../fulcrum/utils/taskListSort";
+	import {
+		DATE_BUCKET_IDS,
+		DATE_BUCKET_LABELS,
+		dateBucketFor,
+		type DateBucketId,
+		representativeDateForBucket,
+	} from "../fulcrum/kanban/dateBuckets";
+	import {
+		applyTaskDueChange,
+		applyTaskScheduledOnlyChange,
+		applyTaskStatusChange,
+		applyTaskTagsChange,
+	} from "../fulcrum/kanban/taskFieldUpdate";
 	import {
 		FULCRUM_CALENDAR_TASK_MIME,
 		calendarTaskDragKey,
+		findTaskByDragKey,
 	} from "../fulcrum/calendar/calendarTaskSchedule";
 	import TaskCard from "./TaskCard.svelte";
 
 	const NONE_KEY = "__none__";
+	const NO_TAG_KEY = "__no_tag__";
+	const UNSCHEDULED_KEY = "unscheduled";
 	const FACETS_COLLAPSED_KEY = "fulcrum-task-sidebar-facets-collapsed";
 
 	export let plugin: FulcrumHost;
@@ -33,7 +55,10 @@
 	let filterAnchorEl: HTMLDivElement | null = null;
 	let searchQuery = "";
 	let collapsedGroups = new Set<string>();
+	$: collapsedSet = collapsedGroups;
 	let draggedTaskKey: string | null = null;
+	let draggedFromGroupKeyId: string | null = null;
+	let dragOverGroupKeyId: string | null = null;
 
 	onMount(() => {
 		try {
@@ -63,6 +88,10 @@
 	$: sRev = $settingsRevision;
 	$: doneTask = (void sRev, parseDoneStatusSet(plugin.settings.taskDoneStatuses));
 	$: areaFilter = $areaFilterState;
+	$: isProjectList = embedded && !!filterProjectPath;
+	$: projectListGroupBy = (void sRev, plugin.settings.projectTaskListGroupBy);
+	$: projectListSortBy = (void sRev, plugin.settings.projectTaskListSortBy);
+	$: weekStartDay = (void sRev, plugin.settings.calendarFirstDayOfWeek);
 	$: scheduleDateMode = (void sRev, plugin.settings.calendarTaskScheduleField);
 
 	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
@@ -139,15 +168,13 @@
 		return false;
 	}
 
-	$: unscheduledTasks = sortIndexedTasks(
+	$: unscheduledTasks = sortTasks(
 		openTasksRaw.filter(
 			(t) =>
 				isUnscheduled(t) &&
 				taskPassesSidebarFilters(t) &&
 				taskMatchesSearchQuery(t, searchQuery.trim().toLowerCase(), snapshot),
 		),
-		"name",
-		"asc",
 	);
 
 	$: statusOptions = ((): {key: string; label: string}[] => {
@@ -196,31 +223,91 @@
 	})();
 
 	$: groupBy = (void sRev, plugin.settings.taskSidebarGroupBy);
-	$: effectiveGroupBy =
-		filterProjectPath && groupBy === "project" ? "status" : groupBy;
+	$: effectiveGroupBy = isProjectList
+		? projectListGroupBy
+		: filterProjectPath && groupBy === "project"
+			? "status"
+			: groupBy;
 	$: sortBy = (void sRev, plugin.settings.taskSidebarSortBy);
 	$: sortDir = (void sRev, plugin.settings.taskSidebarSortDir);
 	$: statusOrder = (void sRev, parseTaskStatusChoices(plugin.settings));
 
-	$: flatTasks = sortIndexedTasks(searchFiltered, sortBy, sortDir);
+	$: flatTasks = sortTasks(searchFiltered);
 
-	type TaskGroup = {label: string; tasks: IndexedTask[]; area?: IndexedArea};
+	type TaskGroup = {label: string; groupKeyId: string; tasks: IndexedTask[]; area?: IndexedArea};
+
+	function sortTasks(tasks: IndexedTask[]): IndexedTask[] {
+		if (isProjectList) return sortProjectListTasks(tasks, projectListSortBy, "asc");
+		return sortIndexedTasks(tasks, sortBy, sortDir);
+	}
+
+	function taskTagsForGrouping(task: IndexedTask): string[] {
+		const raw =
+			task.source === "inline" && task.inlineTags?.length ? task.inlineTags : task.tags;
+		return [
+			...new Set(raw.map((t) => t.trim().replace(/^#/, "")).filter(Boolean)),
+		];
+	}
+
+	function taskDateIsoForGrouping(task: IndexedTask): string | undefined {
+		if (projectListSortBy === "scheduled") {
+			return task.scheduledDate?.slice(0, 10) ?? task.dueDate?.slice(0, 10);
+		}
+		return task.dueDate?.slice(0, 10) ?? task.scheduledDate?.slice(0, 10);
+	}
+
+	function groupLabelForKey(key: string): string {
+		if (effectiveGroupBy === "status") {
+			return key === NONE_KEY ? "None" : key.replace(/\b\w/g, (c) => c.toUpperCase());
+		}
+		if (effectiveGroupBy === "date") {
+			return DATE_BUCKET_LABELS[key as DateBucketId] ?? key;
+		}
+		if (effectiveGroupBy === "tag") {
+			return key === NO_TAG_KEY ? "No tag" : `#${key}`;
+		}
+		if (effectiveGroupBy === "project") return taskProjectLabel(key, snapshot);
+		return taskAreaLabel(key, snapshot);
+	}
 
 	$: taskGroups = ((): TaskGroup[] => {
 		const list = searchFiltered;
 		if (effectiveGroupBy === "none") {
-			return [{label: "", tasks: sortIndexedTasks(list, sortBy, sortDir)}];
+			return [{label: "", groupKeyId: "", tasks: sortTasks(list)}];
 		}
+
 		const map = new Map<string, IndexedTask[]>();
-		for (const t of list) {
-			let key = "";
-			if (effectiveGroupBy === "status") key = t.status?.trim() || NONE_KEY;
-			else if (effectiveGroupBy === "project") key = taskProjectKey(t);
-			else key = taskAreaKey(t, snapshot);
-			const cur = map.get(key) ?? [];
-			cur.push(t);
-			map.set(key, cur);
+
+		if (effectiveGroupBy === "tag") {
+			for (const t of list) {
+				const tags = taskTagsForGrouping(t);
+				if (!tags.length) {
+					const cur = map.get(NO_TAG_KEY) ?? [];
+					cur.push(t);
+					map.set(NO_TAG_KEY, cur);
+					continue;
+				}
+				for (const tag of tags) {
+					const cur = map.get(tag) ?? [];
+					cur.push(t);
+					map.set(tag, cur);
+				}
+			}
+		} else {
+			for (const t of list) {
+				let key = "";
+				if (effectiveGroupBy === "status") key = t.status?.trim() || NONE_KEY;
+				else if (effectiveGroupBy === "project") key = taskProjectKey(t);
+				else if (effectiveGroupBy === "area") key = taskAreaKey(t, snapshot);
+				else if (effectiveGroupBy === "date") {
+					key = dateBucketFor(taskDateIsoForGrouping(t), weekStartDay);
+				}
+				const cur = map.get(key) ?? [];
+				cur.push(t);
+				map.set(key, cur);
+			}
 		}
+
 		const keys = [...map.keys()];
 		if (effectiveGroupBy === "status") {
 			keys.sort((a, b) => {
@@ -231,37 +318,46 @@
 				if (ib === -1) return -1;
 				return ia - ib;
 			});
+		} else if (effectiveGroupBy === "date") {
+			keys.sort(
+				(a, b) =>
+					DATE_BUCKET_IDS.indexOf(a as DateBucketId) -
+					DATE_BUCKET_IDS.indexOf(b as DateBucketId),
+			);
+		} else if (effectiveGroupBy === "tag") {
+			keys.sort((a, b) => {
+				if (a === NO_TAG_KEY) return 1;
+				if (b === NO_TAG_KEY) return -1;
+				return a.localeCompare(b, undefined, {sensitivity: "base"});
+			});
 		} else {
 			keys.sort((a, b) => {
 				if (a === NONE_KEY) return 1;
 				if (b === NONE_KEY) return -1;
-				const la =
-					effectiveGroupBy === "project"
-						? taskProjectLabel(a, snapshot)
-						: taskAreaLabel(a, snapshot);
-				const lb =
-					effectiveGroupBy === "project"
-						? taskProjectLabel(b, snapshot)
-						: taskAreaLabel(b, snapshot);
-				return la.localeCompare(lb);
+				return groupLabelForKey(a).localeCompare(groupLabelForKey(b));
 			});
 		}
+
 		return keys.map((k) => ({
-			label:
-				effectiveGroupBy === "status"
-					? k === NONE_KEY
-						? "None"
-						: k.replace(/\b\w/g, (c) => c.toUpperCase())
-					: effectiveGroupBy === "project"
-						? taskProjectLabel(k, snapshot)
-						: taskAreaLabel(k, snapshot),
-			tasks: sortIndexedTasks(map.get(k) ?? [], sortBy, sortDir),
+			label: groupLabelForKey(k),
+			groupKeyId: k,
+			tasks: sortTasks(map.get(k) ?? []),
 			area:
 				effectiveGroupBy === "area" && k !== NONE_KEY
 					? snapshot.areas.find((a) => a.file.path === k)
 					: undefined,
 		}));
 	})();
+
+	async function onProjectListGroupByChange(ev: Event): Promise<void> {
+		const v = (ev.currentTarget as HTMLSelectElement).value as ProjectTaskListGroupBy;
+		await plugin.patchSettings({projectTaskListGroupBy: v});
+	}
+
+	async function onProjectListSortByChange(ev: Event): Promise<void> {
+		const v = (ev.currentTarget as HTMLSelectElement).value as ProjectTaskListSortBy;
+		await plugin.patchSettings({projectTaskListSortBy: v});
+	}
 
 	async function onGroupByChange(ev: Event): Promise<void> {
 		const v = (ev.currentTarget as HTMLSelectElement).value as TaskSidebarGroupBy;
@@ -333,7 +429,7 @@
 	}
 
 	function isGroupCollapsed(label: string): boolean {
-		return collapsedGroups.has(groupKey(label));
+		return collapsedSet.has(groupKey(label));
 	}
 
 	function toggleGroup(label: string): void {
@@ -356,17 +452,91 @@
 		toggleGroup(label);
 	}
 
-	function onTaskDragStart(ev: DragEvent, task: IndexedTask): void {
+	function onTaskDragStart(ev: DragEvent, task: IndexedTask, fromGroupKeyId: string | null = null): void {
 		const key = calendarTaskDragKey(task);
 		draggedTaskKey = key;
-		setCalendarTaskDragActive(true);
+		draggedFromGroupKeyId = fromGroupKeyId;
 		ev.dataTransfer?.setData(FULCRUM_CALENDAR_TASK_MIME, key);
 		if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+		if (!isProjectList) setCalendarTaskDragActive(true);
 	}
 
 	function onTaskDragEnd(): void {
 		draggedTaskKey = null;
-		setCalendarTaskDragActive(false);
+		draggedFromGroupKeyId = null;
+		dragOverGroupKeyId = null;
+		if (!isProjectList) setCalendarTaskDragActive(false);
+	}
+
+	function onGroupDragOver(ev: DragEvent, groupKeyId: string): void {
+		if (!isProjectList || !draggedTaskKey) return;
+		if (groupKeyId === UNSCHEDULED_KEY && effectiveGroupBy !== "date") return;
+		ev.preventDefault();
+		if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+		dragOverGroupKeyId = groupKeyId;
+	}
+
+	function onGroupDragLeave(groupKeyId: string): void {
+		if (dragOverGroupKeyId === groupKeyId) dragOverGroupKeyId = null;
+	}
+
+	async function onGroupDrop(ev: DragEvent, toGroupKeyId: string): Promise<void> {
+		ev.preventDefault();
+		dragOverGroupKeyId = null;
+		if (!isProjectList) return;
+		if (toGroupKeyId === UNSCHEDULED_KEY && effectiveGroupBy !== "date") return;
+		const raw = ev.dataTransfer?.getData(FULCRUM_CALENDAR_TASK_MIME);
+		if (!raw) return;
+		const task = findTaskByDragKey(openTasksRaw, raw);
+		if (!task) return;
+		if (draggedFromGroupKeyId === toGroupKeyId) return;
+		await applyListGroupDrop(task, toGroupKeyId);
+	}
+
+	async function applyListGroupDrop(task: IndexedTask, toGroupKeyId: string): Promise<void> {
+		try {
+			switch (effectiveGroupBy) {
+				case "status": {
+					const statusId = toGroupKeyId === NONE_KEY ? "" : toGroupKeyId;
+					await applyTaskStatusChange(plugin.app, task, plugin.settings, statusId);
+					break;
+				}
+				case "date": {
+					const iso =
+						toGroupKeyId === UNSCHEDULED_KEY
+							? null
+							: representativeDateForBucket(
+									toGroupKeyId as DateBucketId,
+									weekStartDay,
+								);
+					if (projectListSortBy === "scheduled") {
+						await applyTaskScheduledOnlyChange(plugin.app, task, plugin.settings, iso);
+					} else {
+						await applyTaskDueChange(plugin.app, task, plugin.settings, iso);
+					}
+					break;
+				}
+				case "tag": {
+					if (toGroupKeyId === NO_TAG_KEY) return;
+					const existing = taskTagsForGrouping(task);
+					if (
+						existing.some((t) => t.toLowerCase() === toGroupKeyId.toLowerCase())
+					) {
+						return;
+					}
+					await applyTaskTagsChange(plugin.app, task, plugin.settings, [
+						...existing,
+						toGroupKeyId,
+					]);
+					break;
+				}
+			}
+			await plugin.vaultIndex.rebuild();
+		} catch (e) {
+			console.error(e);
+			const msg = e instanceof Error ? e.message : String(e);
+			new Notice(msg.length < 120 ? msg : "Could not update task.");
+		}
 	}
 
 	function openAreaFile(path: string): void {
@@ -516,27 +686,73 @@
 	</div>
 	{/if}
 
+	{#if isProjectList}
+		<div class="fulcrum-task-list-panel__embedded-toolbar">
+			<div class="fulcrum-project-list-panel__facet-row">
+				<span class="fulcrum-project-list-panel__facet-label">Group</span>
+				<div class="fulcrum-project-list-panel__facet-controls">
+					<select
+						class="dropdown fulcrum-project-list-panel__facet-select"
+						aria-label="Group tasks by"
+						value={projectListGroupBy}
+						on:change={(e) => void onProjectListGroupByChange(e)}
+					>
+						<option value="status">Status</option>
+						<option value="date">Date</option>
+						<option value="tag">Tag</option>
+					</select>
+				</div>
+			</div>
+			<div class="fulcrum-project-list-panel__facet-row">
+				<span class="fulcrum-project-list-panel__facet-label">Sort</span>
+				<div class="fulcrum-project-list-panel__facet-controls">
+					<select
+						class="dropdown fulcrum-project-list-panel__facet-select"
+						aria-label="Sort tasks by"
+						value={projectListSortBy}
+						on:change={(e) => void onProjectListSortByChange(e)}
+					>
+						<option value="due">Due date</option>
+						<option value="scheduled">Scheduled date</option>
+					</select>
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	<section class="fulcrum-task-list-panel__unscheduled" aria-label="Unscheduled tasks">
 		<div class="fulcrum-task-list-panel__unscheduled-head">
 			<h3 class="fulcrum-task-list-panel__unscheduled-title">Unscheduled</h3>
-			<label class="fulcrum-calendar__schedule-mode">
-				<span class="fulcrum-calendar__schedule-mode-label">Set date as</span>
-				<select
-					class="dropdown fulcrum-calendar__schedule-mode-select"
-					aria-label="Date field when scheduling tasks"
-					value={scheduleDateMode}
-					on:change={(e) => void onScheduleModeChange(e)}
-				>
-					<option value="due">Due</option>
-					<option value="scheduled">Scheduled</option>
-					<option value="ask">Ask each time</option>
-				</select>
-			</label>
+			{#if !isProjectList}
+				<label class="fulcrum-calendar__schedule-mode">
+					<span class="fulcrum-calendar__schedule-mode-label">Set date as</span>
+					<select
+						class="dropdown fulcrum-calendar__schedule-mode-select"
+						aria-label="Date field when scheduling tasks"
+						value={scheduleDateMode}
+						on:change={(e) => void onScheduleModeChange(e)}
+					>
+						<option value="due">Due</option>
+						<option value="scheduled">Scheduled</option>
+						<option value="ask">Ask each time</option>
+					</select>
+				</label>
+			{/if}
 		</div>
 		{#if unscheduledTasks.length === 0}
 			<p class="fulcrum-muted fulcrum-task-list-panel__unscheduled-empty">No unscheduled tasks.</p>
 		{:else}
-			<ul class="fulcrum-task-list-panel__unscheduled-list" role="list">
+			<ul
+				class="fulcrum-task-list-panel__unscheduled-list"
+				class:fulcrum-task-list-panel__list--drag-over={isProjectList &&
+					effectiveGroupBy === "date" &&
+					dragOverGroupKeyId === UNSCHEDULED_KEY}
+				role="list"
+				on:dragover={(e) =>
+					isProjectList && effectiveGroupBy === "date" && onGroupDragOver(e, UNSCHEDULED_KEY)}
+				on:dragleave={() => onGroupDragLeave(UNSCHEDULED_KEY)}
+				on:drop={(e) => void onGroupDrop(e, UNSCHEDULED_KEY)}
+			>
 				{#each unscheduledTasks as task (calendarTaskDragKey(task))}
 					<li
 						class="fulcrum-task-drag-row fulcrum-task-list-panel__drag-row"
@@ -548,8 +764,8 @@
 							draggable="true"
 							role="button"
 							tabindex="0"
-							aria-label="Drag to calendar"
-							on:dragstart={(e) => onTaskDragStart(e, task)}
+							aria-label={isProjectList ? "Drag to move between groups" : "Drag to calendar"}
+							on:dragstart={(e) => onTaskDragStart(e, task, UNSCHEDULED_KEY)}
 							on:dragend={onTaskDragEnd}
 						>⋮⋮</span>
 						<div class="fulcrum-task-drag-row__card fulcrum-task-list-panel__card-wrap">
@@ -584,8 +800,8 @@
 						draggable="true"
 						role="button"
 						tabindex="0"
-						aria-label="Drag task"
-						on:dragstart={(e) => onTaskDragStart(e, task)}
+						aria-label={isProjectList ? "Drag to move between groups" : "Drag task"}
+						on:dragstart={(e) => onTaskDragStart(e, task, null)}
 						on:dragend={onTaskDragEnd}
 					>⋮⋮</span>
 					<div class="fulcrum-task-drag-row__card fulcrum-task-list-panel__card-wrap">
@@ -596,7 +812,7 @@
 		</ul>
 		{/if}
 	{:else}
-		{#each taskGroups as group (group.label)}
+		{#each taskGroups as group (group.groupKeyId || group.label)}
 			{#if group.tasks.length > 0}
 				<section class="fulcrum-project-list-panel__group">
 					{#if group.label}
@@ -635,7 +851,14 @@
 						</div>
 					{/if}
 					{#if !group.label || !isGroupCollapsed(group.label)}
-						<ul class="fulcrum-task-list-panel__list">
+						<ul
+							class="fulcrum-task-list-panel__list"
+							class:fulcrum-task-list-panel__list--drag-over={isProjectList &&
+								dragOverGroupKeyId === group.groupKeyId}
+							on:dragover={(e) => isProjectList && onGroupDragOver(e, group.groupKeyId)}
+							on:dragleave={() => onGroupDragLeave(group.groupKeyId)}
+							on:drop={(e) => void onGroupDrop(e, group.groupKeyId)}
+						>
 							{#each group.tasks as task (calendarTaskDragKey(task))}
 								<li
 									class="fulcrum-task-drag-row fulcrum-task-list-panel__drag-row"
@@ -647,8 +870,9 @@
 										draggable="true"
 										role="button"
 										tabindex="0"
-										aria-label="Drag task"
-										on:dragstart={(e) => onTaskDragStart(e, task)}
+										aria-label={isProjectList ? "Drag to move between groups" : "Drag task"}
+										on:dragstart={(e) =>
+											onTaskDragStart(e, task, group.groupKeyId)}
 										on:dragend={onTaskDragEnd}
 									>⋮⋮</span>
 									<div class="fulcrum-task-drag-row__card fulcrum-task-list-panel__card-wrap">

@@ -48,10 +48,10 @@
 
 	$: overdue = reviewIsOverdue(p);
 	$: accent = resolveProjectAccentCss(p.color);
-	$: launchDisp = p.launchDate?.trim() ? formatShortMonthDay(p.launchDate) : "";
+	$: endDisp = p.endDate?.trim() ? formatShortMonthDay(p.endDate) : "";
 	$: reviewDisp = p.nextReview?.trim() ? formatShortMonthDay(p.nextReview) : "";
 	$: hasNotifs = overdue || openTaskCount > 0 || upcomingMeetingCount > 0;
-	$: hasMeta = Boolean(launchDisp || reviewDisp || hasNotifs);
+	$: hasMeta = Boolean(endDisp || reviewDisp || hasNotifs);
 	$: desc = p.description?.trim() ?? "";
 
 	function activateRow(): void {
@@ -99,10 +99,10 @@
 		{/if}
 		{#if hasMeta}
 			<div class="fulcrum-pl-row__meta">
-				{#if launchDisp}
-					<span class="fulcrum-pl-row__meta-part">Launch {launchDisp}</span>
+				{#if endDisp}
+					<span class="fulcrum-pl-row__meta-part">End {endDisp}</span>
 				{/if}
-				{#if launchDisp && reviewDisp}
+				{#if endDisp && reviewDisp}
 					<span class="fulcrum-pl-row__meta-sep" aria-hidden="true"> · </span>
 				{/if}
 				{#if reviewDisp}
@@ -111,7 +111,7 @@
 					</span>
 				{/if}
 				{#if hasNotifs}
-					{#if launchDisp || reviewDisp}
+					{#if endDisp || reviewDisp}
 						<span class="fulcrum-pl-row__meta-sep" aria-hidden="true"> · </span>
 					{/if}
 					<span class="fulcrum-pl-row__notifs" aria-label="Notifications">

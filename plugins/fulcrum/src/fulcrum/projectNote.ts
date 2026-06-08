@@ -11,6 +11,15 @@ function fmString(fm: Record<string, unknown> | undefined, key: string): string 
 }
 
 function insertLogEntry(body: string, headingLine: string, entryLine: string): string {
+	return appendLineUnderSectionHeading(body, headingLine, entryLine);
+}
+
+/** Append a line before the next `##` section, or create the section at EOF. */
+export function appendLineUnderSectionHeading(
+	body: string,
+	headingLine: string,
+	entryLine: string,
+): string {
 	const heading = headingLine.trim();
 	const entry = entryLine.endsWith("\n") ? entryLine : entryLine + "\n";
 	const idx = body.indexOf(heading);
@@ -95,7 +104,7 @@ export function readProjectPageMeta(
 	projectFile: TFile,
 	s: FulcrumSettings,
 ): {
-	launchDate?: string;
+	endDate?: string;
 	lastReviewed?: string;
 	nextReview?: string;
 	reviewFrequencyDays: number;
@@ -105,7 +114,10 @@ export function readProjectPageMeta(
 	const fm = app.metadataCache.getFileCache(projectFile)?.frontmatter as
 		| Record<string, unknown>
 		| undefined;
-	const launch = fmString(fm, s.projectLaunchDateField);
+	const end =
+		fmString(fm, "endDate") ??
+		fmString(fm, s.projectEndDateField) ??
+		fmString(fm, "launchDate");
 	const lastReviewed = fmString(fm, s.projectLastReviewedField);
 	const nextReview = fmString(fm, s.projectNextReviewField);
 	const freqRaw = fm?.[s.projectReviewFrequencyField];
@@ -116,7 +128,7 @@ export function readProjectPageMeta(
 		reviewFrequencyDays = Number.parseInt(freqRaw, 10);
 	}
 	return {
-		launchDate: launch,
+		endDate: end,
 		lastReviewed,
 		nextReview,
 		reviewFrequencyDays,

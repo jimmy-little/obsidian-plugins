@@ -31,6 +31,7 @@ import {
 	VIEW_TIMELINE,
 } from "./fulcrum/constants";
 import {
+	AddMilestoneModal,
 	ChangeProjectStatusModal,
 	LinkMeetingModal,
 	MarkProjectCompleteModal,
@@ -549,13 +550,25 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			merged.dashboardActiveProjectsGroupBy = DEFAULT_SETTINGS.dashboardActiveProjectsGroupBy;
 		}
 		if (
-			merged.projectSidebarSortBy !== "launch" &&
+			merged.projectSidebarSortBy !== "end" &&
 			merged.projectSidebarSortBy !== "nextReview" &&
 			merged.projectSidebarSortBy !== "rank" &&
 			merged.projectSidebarSortBy !== "name"
 		) {
 			merged.projectSidebarSortBy = DEFAULT_SETTINGS.projectSidebarSortBy;
 		}
+		const mergedRec = merged as Record<string, unknown>;
+		if (mergedRec.projectSidebarSortBy === "launch") {
+			merged.projectSidebarSortBy = "end";
+		}
+		if (typeof merged.projectEndDateField !== "string") {
+			const legacyLaunch = mergedRec.projectLaunchDateField;
+			merged.projectEndDateField =
+				typeof legacyLaunch === "string" && legacyLaunch.trim()
+					? legacyLaunch
+					: DEFAULT_SETTINGS.projectEndDateField;
+		}
+		delete mergedRec.projectLaunchDateField;
 		if (merged.projectSidebarSortDir !== "asc" && merged.projectSidebarSortDir !== "desc") {
 			merged.projectSidebarSortDir = DEFAULT_SETTINGS.projectSidebarSortDir;
 		}
@@ -1042,6 +1055,13 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		onComplete?: () => void | Promise<void>,
 	): void {
 		new MarkReviewedModal(this.app, this, projectPath, onComplete).open();
+	}
+
+	openAddMilestoneModal(
+		projectPath: string,
+		onComplete?: () => void | Promise<void>,
+	): void {
+		new AddMilestoneModal(this.app, this, projectPath, onComplete).open();
 	}
 
 	openQuickProjectNoteModal(projectPath: string): void {

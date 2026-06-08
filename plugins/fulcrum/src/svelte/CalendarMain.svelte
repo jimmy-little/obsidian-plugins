@@ -55,12 +55,16 @@
 		waitForNextFileResolved,
 	} from "../fulcrum/calendar/calendarTaskSchedule";
 	import ConduitSyncToolbar from "./ConduitSyncToolbar.svelte";
+	import GanttMain from "./GanttMain.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 	export let filterProjectPath: string | undefined = undefined;
 	export let projectAtomicNotes: import("../fulcrum/types").AtomicNoteRow[] = [];
 	export let embedded = false;
+
+	/** Main calendar shell only: schedule grid vs project/task gantt. */
+	let calendarPane: "schedule" | "gantt" = "schedule";
 
 	/** Bumps on an interval so the “now” line position stays current. */
 	let nowLineTick = 0;
@@ -505,8 +509,37 @@
 	class="fulcrum-calendar"
 	class:fulcrum-calendar--task-drag-active={scheduleDragActive}
 	class:fulcrum-calendar--sidebar-task-drag={taskDragActive}
+	class:fulcrum-calendar--gantt-pane={calendarPane === "gantt" && !embedded}
 	data-fulcrum-calendar-root
 >
+	{#if !embedded}
+		<div class="fulcrum-calendar__pane-bar" role="tablist" aria-label="Calendar mode">
+			<button
+				type="button"
+				class="fulcrum-calendar__pane-btn"
+				class:fulcrum-calendar__pane-btn--active={calendarPane === "schedule"}
+				role="tab"
+				aria-selected={calendarPane === "schedule"}
+				on:click={() => (calendarPane = "schedule")}
+			>
+				Schedule
+			</button>
+			<button
+				type="button"
+				class="fulcrum-calendar__pane-btn"
+				class:fulcrum-calendar__pane-btn--active={calendarPane === "gantt"}
+				role="tab"
+				aria-selected={calendarPane === "gantt"}
+				on:click={() => (calendarPane = "gantt")}
+			>
+				Gantt
+			</button>
+		</div>
+	{/if}
+
+	{#if calendarPane === "gantt" && !embedded}
+		<GanttMain {plugin} {hoverParentLeaf} variant="full" embedded={true} />
+	{:else}
 	<div class="fulcrum-calendar__toolbar">
 		<button type="button" class="fulcrum-calendar__nav-btn" aria-label="Previous" on:click={goPrev}>
 			‹
@@ -763,4 +796,5 @@
 	{/if}
 	{/key}
 	</div>
+	{/if}
 </div>

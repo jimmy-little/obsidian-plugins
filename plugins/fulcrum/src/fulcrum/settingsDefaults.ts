@@ -7,10 +7,12 @@ export type TaskSourceMode = "taskNotes" | "obsidianTasks" | "both";
 /** Inline / vault tasks indexed without a [[project]] link. */
 export type TaskIndexScope = "projectLinked" | "all";
 export type ProjectStatusIndication = "frontmatter" | "subfolder";
-export type ProjectSidebarSortBy = "launch" | "nextReview" | "rank" | "name";
+export type ProjectSidebarSortBy = "end" | "nextReview" | "rank" | "name";
 export type ProjectSidebarSortDir = "asc" | "desc";
 export type TaskSidebarGroupBy = "area" | "status" | "project" | "none";
 export type TaskSidebarSortBy = "due" | "name" | "project";
+export type ProjectTaskListGroupBy = "status" | "date" | "tag";
+export type ProjectTaskListSortBy = "due" | "scheduled";
 
 export type KanbanView = "projects" | "tasks";
 export type KanbanDimension = "area" | "project" | "status" | "date";
@@ -175,12 +177,16 @@ export interface FulcrumSettings {
 	taskSidebarFilterUncheckedArea: string[];
 	/** Task sidebar filter: unchecked project file paths. Use __none__ for no project. */
 	taskSidebarFilterUncheckedProject: string[];
+	/** Project page → List tab: group tasks by status, date bucket, or tag. */
+	projectTaskListGroupBy: ProjectTaskListGroupBy;
+	/** Project page → List tab: sort grouped tasks by due or scheduled date. */
+	projectTaskListSortBy: ProjectTaskListSortBy;
 
 	projectStatusIndication: ProjectStatusIndication;
 	projectStatusField: string;
 
-	/** Frontmatter keys on the project note (review / launch). */
-	projectLaunchDateField: string;
+	/** Frontmatter key for project end date (timeline / sidebar). */
+	projectEndDateField: string;
 	/** Frontmatter key for numeric rank (higher = more important). */
 	projectRankField: string;
 	projectLastReviewedField: string;
@@ -196,6 +202,8 @@ export interface FulcrumSettings {
 	atomicNoteEntryField: string;
 	/** Markdown heading Fulcrum creates/uses when appending log lines to the project file. */
 	projectLogSectionHeading: string;
+	/** `##` section in project notes listing `YYYY-MM-DD: label` milestones for the gantt. */
+	projectMilestonesSectionHeading: string;
 	projectLogPreviewMaxLines: number;
 
 	/** Vault path to a markdown note used as the body template for “New note” on project pages. Empty hides the button. */
@@ -378,7 +386,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	dateDisplayFormat: "YYYY-MM-DD",
 	completionThresholdPercent: 100,
 	dashboardActiveProjectsGroupBy: "area",
-	projectSidebarSortBy: "launch",
+	projectSidebarSortBy: "end",
 	projectSidebarSortDir: "asc",
 	projectSidebarFilterUncheckedStatus: [],
 	projectSidebarFilterUncheckedArea: [],
@@ -388,11 +396,13 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	taskSidebarFilterUncheckedStatus: [],
 	taskSidebarFilterUncheckedArea: [],
 	taskSidebarFilterUncheckedProject: [],
+	projectTaskListGroupBy: "status",
+	projectTaskListSortBy: "due",
 
 	projectStatusIndication: "frontmatter",
 	projectStatusField: "status",
 
-	projectLaunchDateField: "launchDate",
+	projectEndDateField: "endDate",
 	projectRankField: "rank",
 	projectLastReviewedField: "lastReviewed",
 	projectReviewFrequencyField: "reviewFrequency",
@@ -404,6 +414,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 		"60 Logs\n70 Journal/Atomic\n30 Work/Meetings\n30 Work/Notes",
 	atomicNoteEntryField: "entry",
 	projectLogSectionHeading: "## Fulcrum log",
+	projectMilestonesSectionHeading: "## Milestones",
 	projectLogPreviewMaxLines: 12,
 
 	projectNewNoteTemplatePath: "",

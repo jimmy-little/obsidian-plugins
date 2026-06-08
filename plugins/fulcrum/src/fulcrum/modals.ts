@@ -16,6 +16,7 @@ import {
 	formatProjectReviewLogMessage,
 	markProjectReviewDates,
 } from "./projectNote";
+import {appendProjectMilestone} from "./utils/projectMilestones";
 import type {FulcrumHost} from "./pluginBridge";
 import {parseList, parseTaskStatusChoices, resolveProjectsRoot} from "./settingsDefaults";
 import type {IndexedProject, IndexedTask} from "./types";
@@ -315,6 +316,91 @@ export class MarkReviewedModal extends Modal {
 		} catch (e) {
 			console.error(e);
 			new Notice("Could not mark reviewed or write the log.");
+		}
+	}
+}
+
+export class AddMilestoneModal extends Modal {
+	private dateIso: string;
+	private title = "";
+
+	constructor(
+		app: App,
+		private readonly host: FulcrumHost,
+		private readonly projectPath: string,
+		private readonly onComplete?: () => void | Promise<void>,
+	) {
+		super(app);
+		this.dateIso = todayLocalISODate();
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {text: "Add milestone"});
+		contentEl.createEl("p", {
+			cls: "fulcrum-muted",
+			text: `Appends a line under ${this.host.settings.projectMilestonesSectionHeading.trim() || "## Milestones"} in the project note.`,
+		});
+
+		new Setting(contentEl)
+			.setName("Date")
+			.addText((t) => {
+				t.inputEl.type = "date";
+				t.setValue(this.dateIso).onChange((v) => {
+					this.dateIso = v.trim();
+				});
+			});
+
+		new Setting(contentEl)
+			.setName("Title")
+			.setDesc("Shown on the gantt timeline as a diamond marker.")
+			.addText((t) => {
+				t.setPlaceholder("e.g. UAT begins");
+				t.onChange((v) => {
+					this.title = v;
+				});
+				window.setTimeout(() => t.inputEl.focus(), 0);
+			});
+
+		new Setting(contentEl).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+
+		new Setting(contentEl).addButton((b) =>
+			b
+				.setButtonText("Add milestone")
+				.setCta()
+				.onClick(() => {
+					void this.submit();
+				}),
+		);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+
+	private async submit(): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(this.projectPath);
+		if (!(f instanceof TFile)) {
+			new Notice("Project file not found.");
+			return;
+		}
+		try {
+			await appendProjectMilestone(
+				this.app,
+				f,
+				this.host.settings.projectMilestonesSectionHeading,
+				this.dateIso,
+				this.title,
+			);
+			await this.host.vaultIndex.rebuild();
+			new Notice("Milestone added.");
+			this.close();
+			await this.onComplete?.();
+		} catch (e) {
+			console.error(e);
+			const msg = e instanceof Error ? e.message : String(e);
+			new Notice(msg.length < 120 ? msg : "Could not add milestone.");
 		}
 	}
 }

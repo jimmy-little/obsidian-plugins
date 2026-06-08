@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {onMount} from "svelte";
+	import {setIcon} from "obsidian";
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {FulcrumSettings} from "../fulcrum/settingsDefaults";
@@ -21,6 +22,7 @@
 
 	/** Set of group keys that are collapsed. Key = `groupBy:label` */
 	let collapsedGroups = new Set<string>();
+	$: collapsedSet = collapsedGroups;
 	export let selectedPath: string | null = null;
 	export let onSelectProject: (path: string) => void;
 	/** When true, project rows can be dragged onto the Kanban board. */
@@ -124,6 +126,19 @@
 	$: sortBy = (void sRev, plugin.settings.projectSidebarSortBy);
 	$: sortDir = (void sRev, plugin.settings.projectSidebarSortDir);
 	$: statusOrder = (void sRev, parseList(plugin.settings.projectStatuses));
+
+	/** Reset collapsed groups when any sidebar filter changes. */
+	let sidebarFilterKey = "";
+	$: nextSidebarFilterKey = [
+		groupBy,
+		searchQuery.trim(),
+		[...uncheckedStatus].sort().join("\0"),
+		JSON.stringify(areaFilter),
+	].join("\u001e");
+	$: if (sidebarFilterKey && nextSidebarFilterKey !== sidebarFilterKey) {
+		collapsedGroups = new Set();
+	}
+	$: sidebarFilterKey = nextSidebarFilterKey;
 
 	type AreaGroup = {
 		kind: "area" | "unassigned" | "orphan";
@@ -290,13 +305,7 @@
 	}
 
 	function isGroupCollapsed(label: string): boolean {
-		return collapsedGroups.has(groupKey(label));
-	}
-
-	function onGroupHeaderClick(ev: MouseEvent, label: string): void {
-		const t = ev.target as HTMLElement | null;
-		if (t?.closest(".fulcrum-project-list-panel__open-area-note")) return;
-		toggleGroup(label);
+		return collapsedSet.has(groupKey(label));
 	}
 
 	function toggleGroup(label: string): void {
@@ -311,6 +320,11 @@
 		if (ev.key !== "Enter" && ev.key !== " ") return;
 		ev.preventDefault();
 		toggleGroup(label);
+	}
+
+	function openAreaNoteIcon(node: HTMLElement): { destroy(): void } {
+		setIcon(node, "square-arrow-out-up-right");
+		return { destroy() {} };
 	}
 </script>
 
@@ -362,7 +376,7 @@
 							value={sortBy}
 							on:change={(e) => void onSortByChange(e)}
 						>
-							<option value="launch">Launch date</option>
+							<option value="end">End date</option>
 							<option value="nextReview">Next review</option>
 							<option value="rank">Rank</option>
 							<option value="name">Name</option>
@@ -469,33 +483,37 @@
 	{:else if groupBy === "area"}
 		{#each areaGroups as g}
 			<div class="fulcrum-dashboard__area-group fulcrum-project-list-panel__group">
-				<div
-					class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle"
-					role="button"
-					tabindex="0"
-					aria-expanded={!isGroupCollapsed(g.label)}
-					on:click={(e) => onGroupHeaderClick(e, g.label)}
-					on:keydown={(e) => onGroupHeaderKeydown(e, g.label)}
-				>
-					<div class="fulcrum-project-list-panel__group-header-main">
-						{#if g.kind === "area" && g.area}
-							<h3 class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-row">
+				<div class="fulcrum-project-list-panel__group-header">
+					<div
+						class="fulcrum-project-list-panel__group-header-main fulcrum-project-list-panel__group-header-main--toggle"
+						role="button"
+						tabindex="0"
+						aria-expanded={!isGroupCollapsed(g.label)}
+						on:click={() => toggleGroup(g.label)}
+						on:keydown={(e) => onGroupHeaderKeydown(e, g.label)}
+					>
+						<h3 class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-row">
+							{#if g.kind === "area" && g.area}
 								<span class="fulcrum-area-icon">{g.area?.icon ?? "▸"}</span>
-								<span class="fulcrum-project-list-panel__group-title-text">{g.label}</span>
-								<button
-									type="button"
-									class="fulcrum-project-list-panel__open-area-note"
-									title="Open area note"
-									aria-label="Open area note"
-									on:click|stopPropagation={() => openAreaFile(g.area?.file.path ?? "")}
-								>
-									↗
-								</button>
-							</h3>
-						{:else}
-							<h3 class="fulcrum-dashboard__area-group-title">{g.label}</h3>
-						{/if}
+							{/if}
+							<span class="fulcrum-project-list-panel__group-title-text">{g.label}</span>
+						</h3>
 					</div>
+					{#if g.kind === "area" && g.area}
+						<button
+							type="button"
+							class="fulcrum-project-list-panel__open-area-note"
+							title="Open area note"
+							aria-label="Open area note"
+							on:click={() => openAreaFile(g.area?.file.path ?? "")}
+						>
+							<span
+								class="fulcrum-project-list-panel__open-area-note-icon"
+								use:openAreaNoteIcon
+								aria-hidden="true"
+							></span>
+						</button>
+					{/if}
 				</div>
 				{#if !isGroupCollapsed(g.label)}
 					<ul class="fulcrum-sidebar-project-list">
@@ -520,15 +538,15 @@
 	{:else if groupBy === "reviewDue"}
 		{#each reviewDueGroups as rg}
 			<div class="fulcrum-dashboard__area-group fulcrum-project-list-panel__group">
-				<div
-					class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle"
-					role="button"
-					tabindex="0"
-					aria-expanded={!isGroupCollapsed(rg.label)}
-					on:click={(e) => onGroupHeaderClick(e, rg.label)}
-					on:keydown={(e) => onGroupHeaderKeydown(e, rg.label)}
-				>
-					<div class="fulcrum-project-list-panel__group-header-main">
+				<div class="fulcrum-project-list-panel__group-header">
+					<div
+						class="fulcrum-project-list-panel__group-header-main fulcrum-project-list-panel__group-header-main--toggle"
+						role="button"
+						tabindex="0"
+						aria-expanded={!isGroupCollapsed(rg.label)}
+						on:click={() => toggleGroup(rg.label)}
+						on:keydown={(e) => onGroupHeaderKeydown(e, rg.label)}
+					>
 						<h3 class="fulcrum-dashboard__area-group-title">{rg.label}</h3>
 					</div>
 				</div>
@@ -555,15 +573,15 @@
 	{:else if groupBy === "status"}
 		{#each statusGroups as sg}
 			<div class="fulcrum-dashboard__area-group fulcrum-project-list-panel__group">
-				<div
-					class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle"
-					role="button"
-					tabindex="0"
-					aria-expanded={!isGroupCollapsed(sg.label)}
-					on:click={(e) => onGroupHeaderClick(e, sg.label)}
-					on:keydown={(e) => onGroupHeaderKeydown(e, sg.label)}
-				>
-					<div class="fulcrum-project-list-panel__group-header-main">
+				<div class="fulcrum-project-list-panel__group-header">
+					<div
+						class="fulcrum-project-list-panel__group-header-main fulcrum-project-list-panel__group-header-main--toggle"
+						role="button"
+						tabindex="0"
+						aria-expanded={!isGroupCollapsed(sg.label)}
+						on:click={() => toggleGroup(sg.label)}
+						on:keydown={(e) => onGroupHeaderKeydown(e, sg.label)}
+					>
 						<h3 class="fulcrum-dashboard__area-group-title">{sg.label}</h3>
 					</div>
 				</div>
