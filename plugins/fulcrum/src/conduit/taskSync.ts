@@ -126,7 +126,12 @@ export async function pullTasksFromReminders(
 		if (id == null) continue;
 
 		const row = reminderRows.find((r) => r.numericId === id) ?? (await remctl.info(id));
-		if (!row) continue;
+		if (!row) {
+			// Reminder was deleted — clear stale ID so push can re-create it.
+			await writeTaskReminderId(app, task, settings, null);
+			delete state.entities[vaultKey];
+			continue;
+		}
 
 		const entity = state.entities[vaultKey];
 		const vaultSnap = snapshotFromTask(task, settings);
@@ -294,8 +299,30 @@ async function pushOneTask(
 
 	const row = await remctl.info(id);
 	if (!row) {
+		// Reminder was deleted externally — clear the stale ID and re-create.
 		await writeTaskReminderId(app, task, settings, null);
-		return false;
+		id = await remctl.add({
+			title: vaultSnap.title || "Task",
+			...listRef,
+			due: due ?? null,
+			notes,
+			tags: tags.length > 0 ? tags : undefined,
+		});
+		if (vaultSnap.done) {
+			await remctl.setDone(id, true);
+		}
+		await writeTaskReminderId(app, task, settings, id);
+		const freshRow = await remctl.info(id);
+		state.entities[vaultKey] = entityState(
+			vaultKey,
+			id,
+			project?.file.path,
+			vaultSnap,
+			vaultRev,
+			freshRow,
+			"vault",
+		);
+		return true;
 	}
 
 	const remSnap = snapshotFromReminder(row, settings);

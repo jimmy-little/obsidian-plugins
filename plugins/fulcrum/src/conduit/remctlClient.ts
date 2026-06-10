@@ -91,9 +91,16 @@ export class RemctlClient {
 	}
 
 	async info(numericId: number): Promise<RemctlReminderRow | null> {
-		const raw = await this.runJson<unknown>(["info", String(numericId)]);
-		const rows = normalizeReminders(raw);
-		return rows[0] ?? null;
+		try {
+			const raw = await this.runJson<unknown>(["info", String(numericId)]);
+			const rows = normalizeReminders(raw);
+			return rows[0] ?? null;
+		} catch (e) {
+			// Reminder was deleted — treat "not found" as null rather than a fatal error.
+			const msg = e instanceof Error ? e.message : String(e);
+			if (/not found/i.test(msg)) return null;
+			throw e;
+		}
 	}
 
 	async add(opts: {
@@ -141,15 +148,33 @@ export class RemctlClient {
 			args.push("-t", patch.tags.join(","));
 			args.push("--private");
 		}
-		await this.run(args);
+		try {
+			await this.run(args);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (/not found/i.test(msg)) return;
+			throw e;
+		}
 	}
 
 	async setDone(numericId: number, done: boolean): Promise<void> {
-		await this.run([done ? "done" : "undone", String(numericId)]);
+		try {
+			await this.run([done ? "done" : "undone", String(numericId)]);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (/not found/i.test(msg)) return;
+			throw e;
+		}
 	}
 
 	async deleteReminder(numericId: number): Promise<void> {
-		await this.run(["delete", String(numericId)]);
+		try {
+			await this.run(["delete", String(numericId)]);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (/not found/i.test(msg)) return;
+			throw e;
+		}
 	}
 
 	async listCreate(

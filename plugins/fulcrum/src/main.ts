@@ -1305,15 +1305,46 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	private async appendInlineTaskToProjectNote(projectFile: TFile, title: string): Promise<void> {
 		const tag = this.settings.taskTag.trim() || "task";
-		const linktext =
-			this.app.metadataCache.fileToLinktext(projectFile, projectFile.path, false) ??
-			projectFile.basename.replace(/\.md$/i, "");
+		const linktext = projectFile.basename.replace(/\.md$/i, "");
 		const line = `- [ ] ${title} #${tag} [[${linktext}]]`;
 		try {
 			const body = await this.app.vault.read(projectFile);
-			const trimmed = body.replace(/\s*$/, "");
-			const addition = `${trimmed.length > 0 ? "\n\n" : ""}${line}\n`;
-			await this.app.vault.modify(projectFile, trimmed + addition);
+			const lines = body.split("\n");
+			const headingLc = "## project tasks";
+			const headingIdx = lines.findIndex((l) => l.trim().toLowerCase() === headingLc);
+
+			if (headingIdx !== -1) {
+				// Find the end of the task block under the heading
+				let end = headingIdx + 1;
+				for (let i = headingIdx + 1; i < lines.length; i++) {
+					const trimmed = lines[i]!.trim();
+					if (trimmed === "" || /^[-*+]\s*\[/.test(trimmed)) {
+						end = i + 1;
+					} else {
+						break;
+					}
+				}
+				lines.splice(end, 0, line);
+			} else {
+				// No heading — look for snapshot end marker
+				const snapshotFooter = "<!-- Fulcrum snapshot end -->";
+				const snapshotEndIdx = lines.findIndex((l) => l.trim() === snapshotFooter);
+				if (snapshotEndIdx !== -1) {
+					let insertAt = snapshotEndIdx + 1;
+					if (insertAt < lines.length && lines[insertAt]!.trim() === "") insertAt++;
+					lines.splice(insertAt, 0, "", "## Project Tasks", "", line);
+				} else {
+					// Append at end
+					const trimmed = body.replace(/\s*$/, "");
+					const newBody = `${trimmed}\n\n## Project Tasks\n\n${line}\n`;
+					await this.app.vault.modify(projectFile, newBody);
+					this.vaultIndex.scheduleRebuild();
+					new Notice("Task added to project note.");
+					return;
+				}
+			}
+
+			await this.app.vault.modify(projectFile, lines.join("\n"));
 			this.vaultIndex.scheduleRebuild();
 			new Notice("Task added to project note.");
 		} catch (e) {

@@ -65,7 +65,7 @@
 		snapshot.projects.filter((p) => !isProjectDone(p, plugin.settings)),
 		areaFilter,
 		lifeModeMap,
-	));
+	)).filter((p) => !filterProjectPath || p.file.path === filterProjectPath);
 	$: openTasks = snapshot.tasks
 		.filter(
 			(t) =>
@@ -84,11 +84,17 @@
 
 	$: kanbanView = (void sRev, plugin.settings.kanbanView);
 	$: effectiveKanbanView = filterProjectPath ? "tasks" : kanbanView;
+	$: columnBy = (void sRev,
+		filterProjectPath && plugin.settings.kanbanColumnBy === "project"
+			? "status"
+			: plugin.settings.kanbanColumnBy);
+	$: swimlaneBy = (void sRev,
+		filterProjectPath && plugin.settings.kanbanSwimlaneBy === "project"
+			? "none"
+			: plugin.settings.kanbanSwimlaneBy);
 	$: kanbanBuildSettings = (void sRev, filterProjectPath
-		? {...plugin.settings, kanbanView: "tasks" as const}
+		? {...plugin.settings, kanbanView: "tasks" as const, kanbanColumnBy: columnBy, kanbanSwimlaneBy: swimlaneBy}
 		: plugin.settings);
-	$: columnBy = (void sRev, plugin.settings.kanbanColumnBy);
-	$: swimlaneBy = (void sRev, plugin.settings.kanbanSwimlaneBy);
 	$: projectDateSource = (void sRev, plugin.settings.kanbanProjectDateSource);
 
 	$: board = buildKanbanBoard(

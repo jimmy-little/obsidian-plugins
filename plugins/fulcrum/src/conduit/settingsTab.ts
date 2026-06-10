@@ -4,6 +4,7 @@ import {FulcrumSettingTab} from "../settings";
 import {addConduitSyncSettingsRow} from "./actions";
 import {findRemctlBinary} from "./remctlPath";
 import {RemctlClient} from "./remctlClient";
+import {resetConduitSyncDatabase} from "./syncState";
 
 function heading(containerEl: HTMLElement, text: string): void {
 	containerEl.createEl("h3", {text, cls: "fulcrum-settings-heading"});
@@ -153,6 +154,32 @@ export function displayConduitSettings(containerEl: HTMLElement, plugin: Fulcrum
 		);
 
 	addConduitSyncSettingsRow(containerEl, plugin);
+
+	heading(containerEl, "Danger zone");
+
+	new Setting(containerEl)
+		.setName("Reset sync database")
+		.setDesc(
+			"Wipe all stored reminder IDs and sync state. Removes appleReminderId from task notes and appleReminderListId / conduitSync from projects. Next sync will re-link by title or create fresh reminders.",
+		)
+		.addButton((btn) =>
+			btn
+				.setButtonText("Reset…")
+				.setWarning()
+				.onClick(async () => {
+					if (
+						!window.confirm(
+							"This will remove all Conduit sync mappings from plugin data and vault frontmatter. Reminders lists themselves are untouched. Continue?",
+						)
+					) {
+						return;
+					}
+					const count = await resetConduitSyncDatabase(plugin);
+					new Notice(
+						`Conduit reset: cleared sync state and ${count} frontmatter field(s).`,
+					);
+				}),
+		);
 }
 
 function textSetting(

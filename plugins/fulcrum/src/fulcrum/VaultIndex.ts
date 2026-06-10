@@ -531,6 +531,7 @@ export class VaultIndex {
 		if (useInline) {
 			for (const file of this.app.vault.getMarkdownFiles()) {
 				if (
+					!projectPaths.has(file.path) &&
 					!fileMatchesFolderScopeWithExcludes(
 						file.path,
 						inlineScope.include,
@@ -663,6 +664,11 @@ export class VaultIndex {
 		const projectTasks = this.snapshot.tasks.filter(
 			(t) => t.projectFile?.path === projectPath,
 		);
+		// Exclude inline tasks that live directly on the project note from overview/rollup
+		// (they're already visible as raw markdown on the same page).
+		const rollupTasks = projectTasks.filter(
+			(t) => !(t.source === "inline" && t.file.path === projectPath),
+		);
 		const meetings = this.snapshot.meetings.filter(
 			(m) => m.projectFile?.path === projectPath,
 		);
@@ -740,17 +746,17 @@ export class VaultIndex {
 
 		let doneTasks = 0;
 		let overdueTasks = 0;
-		for (const t of projectTasks) {
+		for (const t of rollupTasks) {
 			const isDone = isDoneStatus(t.status, done);
 			if (isDone) doneTasks++;
 			if (isOverdue(t.dueDate, isDone)) overdueTasks++;
 		}
-		const totalTasks = projectTasks.length;
+		const totalTasks = rollupTasks.length;
 		const openTasks = totalTasks - doneTasks;
 		const completionRatio =
 			totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
 
-		const openTaskList = projectTasks.filter((t) => !isDoneStatus(t.status, done));
+		const openTaskList = rollupTasks.filter((t) => !isDoneStatus(t.status, done));
 		const priorityRank: Record<string, number> = {high: 3, medium: 2, low: 1};
 		const nextTasks = [...openTaskList].sort((a, b) => {
 			const ad = a.dueDate ?? "\uffff";
@@ -771,7 +777,7 @@ export class VaultIndex {
 		);
 
 		let taskTracked = 0;
-		for (const t of projectTasks) {
+		for (const t of rollupTasks) {
 			const tfm = this.app.metadataCache.getFileCache(t.file)?.frontmatter as
 				| Record<string, unknown>
 				| undefined;
@@ -834,7 +840,7 @@ export class VaultIndex {
 
 		return {
 			project,
-			tasks: projectTasks,
+			tasks: rollupTasks,
 			meetings,
 			atomicNotes: atomicRows,
 			totalTasks,
