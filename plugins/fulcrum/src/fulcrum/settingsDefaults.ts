@@ -1,6 +1,8 @@
 import type {TimerSettings} from "../timer/settings";
 import {DEFAULT_TIMER_SETTINGS} from "../timer/settings";
 import type {TimeModeTab} from "../timer/types";
+import type {IndexedProject} from "./types";
+import {isUnderFolder} from "./utils/paths";
 
 export type TaskSourceMode = "taskNotes" | "obsidianTasks" | "both";
 
@@ -11,6 +13,8 @@ export type ProjectSidebarSortBy = "launch" | "nextReview" | "rank" | "name";
 export type ProjectSidebarSortDir = "asc" | "desc";
 export type TaskSidebarGroupBy = "area" | "status" | "project" | "none";
 export type TaskSidebarSortBy = "due" | "name" | "project";
+export type ProjectTaskListGroupBy = "status" | "date" | "tag";
+export type ProjectTaskListSortBy = "due" | "scheduled";
 
 export type KanbanView = "projects" | "tasks";
 export type KanbanDimension = "area" | "project" | "status" | "date";
@@ -175,12 +179,16 @@ export interface FulcrumSettings {
 	taskSidebarFilterUncheckedArea: string[];
 	/** Task sidebar filter: unchecked project file paths. Use __none__ for no project. */
 	taskSidebarFilterUncheckedProject: string[];
+	/** Project page → List tab: group tasks by status, date bucket, or tag. */
+	projectTaskListGroupBy: ProjectTaskListGroupBy;
+	/** Project page → List tab: sort grouped tasks by due or scheduled date. */
+	projectTaskListSortBy: ProjectTaskListSortBy;
 
 	projectStatusIndication: ProjectStatusIndication;
 	projectStatusField: string;
 
-	/** Frontmatter keys on the project note (review / launch). */
-	projectLaunchDateField: string;
+	/** Frontmatter key for project end date (timeline / sidebar). */
+	projectEndDateField: string;
 	/** Frontmatter key for numeric rank (higher = more important). */
 	projectRankField: string;
 	projectLastReviewedField: string;
@@ -196,6 +204,8 @@ export interface FulcrumSettings {
 	atomicNoteEntryField: string;
 	/** Markdown heading Fulcrum creates/uses when appending log lines to the project file. */
 	projectLogSectionHeading: string;
+	/** `##` section in project notes listing `YYYY-MM-DD: label` milestones for the gantt. */
+	projectMilestonesSectionHeading: string;
 	projectLogPreviewMaxLines: number;
 
 	/** Vault path to a markdown note used as the body template for “New note” on project pages. Empty hides the button. */
@@ -217,6 +227,8 @@ export interface FulcrumSettings {
 	projectRelatedProductsField: string;
 	/** People directory: when set, collect people from related notes/tasks; when empty, only project frontmatter. */
 	peopleFolder: string;
+	/** Products directory: notes under this path become product inline pills when linked. */
+	productsFolder: string;
 	/** Frontmatter field on people notes for avatar image (when people directory is set). */
 	peopleAvatarField: string;
 
@@ -263,7 +275,8 @@ export interface FulcrumSettings {
 	conduitReminderListIdField: string;
 	conduitListArchivedField: string;
 	conduitArchivedListPrefix: string;
-	conduitImportUnmapped: boolean;
+	/** Project frontmatter key: true = this project syncs with its linked Reminders list. */
+	conduitSyncField: string;
 	conduitDeleteReminderWhenTaskDeleted: boolean;
 	/** Apply project frontmatter color to the matching Reminders list. */
 	conduitSyncListColors: boolean;
@@ -388,11 +401,13 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	taskSidebarFilterUncheckedStatus: [],
 	taskSidebarFilterUncheckedArea: [],
 	taskSidebarFilterUncheckedProject: [],
+	projectTaskListGroupBy: "status",
+	projectTaskListSortBy: "due",
 
 	projectStatusIndication: "frontmatter",
 	projectStatusField: "status",
 
-	projectLaunchDateField: "launchDate",
+	projectEndDateField: "endDate",
 	projectRankField: "rank",
 	projectLastReviewedField: "lastReviewed",
 	projectReviewFrequencyField: "reviewFrequency",
@@ -404,6 +419,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 		"60 Logs\n70 Journal/Atomic\n30 Work/Meetings\n30 Work/Notes",
 	atomicNoteEntryField: "entry",
 	projectLogSectionHeading: "## Fulcrum log",
+	projectMilestonesSectionHeading: "## Milestones",
 	projectLogPreviewMaxLines: 12,
 
 	projectNewNoteTemplatePath: "",
@@ -418,6 +434,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	projectRelatedProjectsField: "relatedProjects",
 	projectRelatedProductsField: "relatedProducts",
 	peopleFolder: "",
+	productsFolder: "",
 	peopleAvatarField: "avatar",
 
 	hoverPreviewDelayMs: 1500,
@@ -453,7 +470,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	conduitReminderListIdField: "appleReminderListId",
 	conduitListArchivedField: "conduitListArchived",
 	conduitArchivedListPrefix: "✓ ",
-	conduitImportUnmapped: false,
+	conduitSyncField: "conduitSync",
 	conduitDeleteReminderWhenTaskDeleted: false,
 	conduitSyncListColors: true,
 	conduitSyncAreaTags: true,
@@ -478,6 +495,20 @@ export function parseDoneStatusSet(statusesCsv: string): Set<string> {
 
 export function isDoneStatus(status: string, doneSet: Set<string>): boolean {
 	return doneSet.has(normalizeStatusKey(status));
+}
+
+/** Case-insensitive done/inactive project statuses from settings CSV. */
+export function parseDoneProjectStatusSet(statusesCsv: string): Set<string> {
+	return parseDoneStatusSet(statusesCsv);
+}
+
+/** True when project status is done or the note lives under `completedProjectsFolder`. */
+export function isProjectDone(project: IndexedProject, settings: FulcrumSettings): boolean {
+	const doneSet = parseDoneProjectStatusSet(settings.projectDoneStatuses);
+	if (isDoneStatus(project.status ?? "", doneSet)) return true;
+	const completedRoot = settings.completedProjectsFolder.trim();
+	if (completedRoot && isUnderFolder(project.file.path, completedRoot)) return true;
+	return false;
 }
 
 export const DEFAULT_TASK_STATUSES = "todo, in-progress, done, cancelled";

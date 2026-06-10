@@ -48,6 +48,35 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		);
 		this.textSetting("meetingsFolder", "Meetings folder root");
 		this.textSetting("completedProjectsFolder", "Completed projects folder");
+		new Setting(containerEl)
+			.setName("People folder")
+			.setDesc(
+				"When set, wikilinks to notes under this path render as people inline pills. Related people are also collected from linked notes and tasks.",
+			)
+			.addText((t) =>
+				t
+					.setPlaceholder("e.g. 10 People")
+					.setValue(this.plugin.settings.peopleFolder)
+					.onChange(async (v) => {
+						this.plugin.settings.peopleFolder = v;
+						await this.plugin.saveSettings();
+						this.plugin.vaultIndex.scheduleRebuild();
+					}),
+			);
+		new Setting(containerEl)
+			.setName("Products folder")
+			.setDesc(
+				"When set, wikilinks to notes under this path render as product inline pills in markdown and activity previews.",
+			)
+			.addText((t) =>
+				t
+					.setPlaceholder("e.g. 20 Products")
+					.setValue(this.plugin.settings.productsFolder)
+					.onChange(async (v) => {
+						this.plugin.settings.productsFolder = v;
+						await this.plugin.saveSettings();
+					}),
+			);
 		this.toggleSetting(
 			"inferProjectsInAreasFolder",
 			"Infer projects without type field",
@@ -313,7 +342,7 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		this.textSetting("projectDoneStatuses", "Project done / inactive statuses (comma-separated)");
 
 		heading(containerEl, "Project page");
-		this.textSetting("projectLaunchDateField", "Launch / target date field");
+		this.textSetting("projectEndDateField", "Project end date field");
 		this.textSetting("projectLastReviewedField", "Last reviewed field");
 		this.textSetting("projectReviewFrequencyField", "Review frequency field (days)");
 		this.textSetting("projectNextReviewField", "Next review field");
@@ -324,21 +353,6 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		this.textSetting("projectRelatedPeopleField", "Related people field");
 		this.textSetting("projectRelatedProjectsField", "Related projects field");
 		this.textSetting("projectRelatedProductsField", "Related products field");
-		new Setting(containerEl)
-			.setName("People folder")
-			.setDesc(
-				"When set, people linked from related notes and tasks are included. Leave empty to only show people from project frontmatter.",
-			)
-			.addText((t) =>
-				t
-					.setPlaceholder("e.g. 10 People")
-					.setValue(this.plugin.settings.peopleFolder)
-					.onChange(async (v) => {
-						this.plugin.settings.peopleFolder = v;
-						await this.plugin.saveSettings();
-						this.plugin.vaultIndex.scheduleRebuild();
-					}),
-			);
 		new Setting(containerEl)
 			.setName("People avatar field")
 			.setDesc("Frontmatter key on people notes for avatar image. Used when people folder is set.")
@@ -382,6 +396,11 @@ export class FulcrumSettingTab extends PluginSettingTab {
 				}),
 			);
 		this.textSetting("projectLogSectionHeading", "Project log section heading");
+		this.textSetting(
+			"projectMilestonesSectionHeading",
+			"Milestones section heading",
+			"Gantt reads `YYYY-MM-DD: Title` lines under this `##` heading in project notes.",
+		);
 		new Setting(containerEl)
 			.setName("Project log preview lines")
 			.setDesc(
@@ -587,12 +606,12 @@ export class FulcrumSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Project list: sort by")
 			.setDesc(
-				"Order within each group or the flat list (launch and next review use your project page date fields; name is alphabetical).",
+				"Order within each group or the flat list (end date and next review use your project page date fields; name is alphabetical).",
 			)
 			.addDropdown((d) =>
 				d
 					.addOptions({
-						launch: "Launch date",
+						end: "End date",
 						nextReview: "Next review",
 						rank: "Rank",
 						name: "Name",

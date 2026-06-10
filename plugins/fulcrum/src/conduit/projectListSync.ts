@@ -29,7 +29,7 @@ function rememberProjectList(
 	lists.byName.set(name.toLowerCase(), row);
 }
 
-async function applyListColorAndNotes(
+export async function applyListColorForProject(
 	remctl: RemctlClient,
 	project: IndexedProject,
 	listId: string,
@@ -84,9 +84,11 @@ export async function ensureProjectLists(
 		if (fm?.[archivedKey] === true) continue;
 
 		let listId = readProjectListId(app, project, settings);
+		if (!listId) continue;
+
 		const listName = project.name.trim() || project.file.basename.replace(/\.md$/i, "");
 
-		if (listId && lists.byId.has(listId)) {
+		if (lists.byId.has(listId)) {
 			const existing = lists.byId.get(listId)!;
 			if (existing.name !== listName) {
 				try {
@@ -99,28 +101,7 @@ export async function ensureProjectLists(
 			}
 			rememberProjectList(lists, project.file.path, listId, listName);
 			await writeProjectListId(app, project, settings, listId);
-			await applyListColorAndNotes(remctl, project, listId, settings);
-			continue;
-		}
-
-		const byName = lists.byName.get(listName.toLowerCase());
-		if (byName) {
-			listId = byName.id;
-			await writeProjectListId(app, project, settings, listId);
-			rememberProjectList(lists, project.file.path, listId, listName);
-			await applyListColorAndNotes(remctl, project, listId, settings);
-			continue;
-		}
-
-		try {
-			const color = settings.conduitSyncListColors
-				? remctlListColorArgs(project.color)
-				: null;
-			listId = await remctl.listCreate(listName, color ?? undefined);
-			await writeProjectListId(app, project, settings, listId);
-			rememberProjectList(lists, project.file.path, listId, listName);
-		} catch (e) {
-			console.error("Conduit list-create failed", project.file.path, e);
+			await applyListColorForProject(remctl, project, listId, settings);
 		}
 	}
 	return lists;
@@ -138,10 +119,7 @@ export function resolveListForTask(
 
 		const id = readProjectListId(app, project, settings);
 		if (id && listIndex.byId.has(id)) return {listId: id};
-		const name = project.name.trim() || project.file.basename.replace(/\.md$/i, "");
-		const byName = listIndex.byName.get(name.toLowerCase());
-		if (byName) return {listId: byName.id};
-		return {listName: name};
+		return {};
 	}
 	const inbox = settings.conduitInboxListName.trim() || "Fulcrum Inbox";
 	const inboxKey = `__inbox__:${inbox}`;

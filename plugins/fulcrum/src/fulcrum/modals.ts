@@ -16,6 +16,7 @@ import {
 	formatProjectReviewLogMessage,
 	markProjectReviewDates,
 } from "./projectNote";
+import {appendProjectMilestone} from "./utils/projectMilestones";
 import type {FulcrumHost} from "./pluginBridge";
 import {parseList, parseTaskStatusChoices, resolveProjectsRoot} from "./settingsDefaults";
 import type {IndexedProject, IndexedTask} from "./types";
@@ -315,6 +316,91 @@ export class MarkReviewedModal extends Modal {
 		} catch (e) {
 			console.error(e);
 			new Notice("Could not mark reviewed or write the log.");
+		}
+	}
+}
+
+export class AddMilestoneModal extends Modal {
+	private dateIso: string;
+	private title = "";
+
+	constructor(
+		app: App,
+		private readonly host: FulcrumHost,
+		private readonly projectPath: string,
+		private readonly onComplete?: () => void | Promise<void>,
+	) {
+		super(app);
+		this.dateIso = todayLocalISODate();
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {text: "Add milestone"});
+		contentEl.createEl("p", {
+			cls: "fulcrum-muted",
+			text: `Appends a line under ${this.host.settings.projectMilestonesSectionHeading.trim() || "## Milestones"} in the project note.`,
+		});
+
+		new Setting(contentEl)
+			.setName("Date")
+			.addText((t) => {
+				t.inputEl.type = "date";
+				t.setValue(this.dateIso).onChange((v) => {
+					this.dateIso = v.trim();
+				});
+			});
+
+		new Setting(contentEl)
+			.setName("Title")
+			.setDesc("Shown on the gantt timeline as a diamond marker.")
+			.addText((t) => {
+				t.setPlaceholder("e.g. UAT begins");
+				t.onChange((v) => {
+					this.title = v;
+				});
+				window.setTimeout(() => t.inputEl.focus(), 0);
+			});
+
+		new Setting(contentEl).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+
+		new Setting(contentEl).addButton((b) =>
+			b
+				.setButtonText("Add milestone")
+				.setCta()
+				.onClick(() => {
+					void this.submit();
+				}),
+		);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+
+	private async submit(): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(this.projectPath);
+		if (!(f instanceof TFile)) {
+			new Notice("Project file not found.");
+			return;
+		}
+		try {
+			await appendProjectMilestone(
+				this.app,
+				f,
+				this.host.settings.projectMilestonesSectionHeading,
+				this.dateIso,
+				this.title,
+			);
+			await this.host.vaultIndex.rebuild();
+			new Notice("Milestone added.");
+			this.close();
+			await this.onComplete?.();
+		} catch (e) {
+			console.error(e);
+			const msg = e instanceof Error ? e.message : String(e);
+			new Notice(msg.length < 120 ? msg : "Could not add milestone.");
 		}
 	}
 }
@@ -919,31 +1005,39 @@ export class TaskFieldDateModal extends Modal {
 	onOpen(): void {
 		const {contentEl} = this;
 		contentEl.empty();
-		contentEl.createEl("h2", {text: this.label});
-		addNativeDateSetting(contentEl, "Date", this.dateValue, (v) => {
-			this.dateValue = v;
+		contentEl.addClass("fulcrum-task-field-date-modal");
+		this.titleEl.setText(this.label);
+
+		const fields = contentEl.createDiv({cls: "fulcrum-task-field-date-modal__fields"});
+		const dateField = fields.createDiv({cls: "fulcrum-task-field-date-modal__field"});
+		dateField.createEl("span", {text: "Date", cls: "fulcrum-task-field-date-modal__label"});
+		const dateInput = dateField.createEl("input", {type: "date", cls: "fulcrum-task-field-date-modal__input"});
+		if (/^\d{4}-\d{2}-\d{2}$/.test(this.dateValue)) dateInput.value = this.dateValue;
+		dateInput.addEventListener("change", () => {
+			this.dateValue = dateInput.value;
 		});
-		addNativeTimeSetting(
-			contentEl,
-			"Time (optional)",
-			this.timeValue,
-			(v) => {
-				this.timeValue = v;
-			},
-			"Leave empty for all-day.",
-		);
-		new Setting(contentEl).addButton((b) =>
-			b.setButtonText("Clear").onClick(() => {
-				void this.onSubmit(null);
-				this.close();
-			}),
-		);
-		new Setting(contentEl).addButton((b) =>
-			b
-				.setButtonText("Save")
-				.setCta()
-				.onClick(() => void this.save()),
-		);
+
+		const timeField = fields.createDiv({cls: "fulcrum-task-field-date-modal__field"});
+		timeField.createEl("span", {text: "Time", cls: "fulcrum-task-field-date-modal__label"});
+		const timeInput = timeField.createEl("input", {type: "time", cls: "fulcrum-task-field-date-modal__input"});
+		if (/^\d{2}:\d{2}$/.test(this.timeValue)) timeInput.value = this.timeValue;
+		timeInput.addEventListener("change", () => {
+			this.timeValue = timeInput.value;
+		});
+
+		contentEl.createEl("p", {
+			text: "Leave time empty for all-day.",
+			cls: "fulcrum-modal-hint fulcrum-task-field-date-modal__hint",
+		});
+
+		const row = contentEl.createDiv({cls: "fulcrum-modal-button-row"});
+		const clearBtn = row.createEl("button", {text: "Clear"});
+		const saveBtn = row.createEl("button", {text: "Save", cls: "mod-cta"});
+		clearBtn.onclick = () => {
+			void this.onSubmit(null);
+			this.close();
+		};
+		saveBtn.onclick = () => void this.save();
 	}
 
 	onClose(): void {

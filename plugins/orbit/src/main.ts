@@ -18,6 +18,8 @@ import {
 	gatherPersonSnapshotData,
 	insertOrReplacePersonSnapshot,
 } from "./orbit/personSnapshot";
+import {createPersonNoteFile} from "./orbit/createPersonNote";
+import {transformInlinePeoplePillsInRoot} from "./orbit/inlinePeoplePills";
 import {isFileInPeopleDirs} from "./orbit/pathUtils";
 import {formatQuickNoteLine} from "./orbit/quickNoteFormat";
 import {DEFAULT_SETTINGS, normalizeSettings, type OrbitSettings} from "./orbit/settings";
@@ -71,6 +73,24 @@ export default class OrbitPlugin extends Plugin implements OrbitHost {
 	async renderActivityPreview(el: HTMLElement, sourcePath: string, markdown: string): Promise<void> {
 		el.empty();
 		await MarkdownRenderer.render(this.app, markdown, el, sourcePath, this);
+		transformInlinePeoplePillsInRoot(this.app, el, sourcePath, this.settings, {
+			openPersonPath: async (path) => {
+				const leaf = this.app.workspace.getLeaf("split", "vertical");
+				await leaf.setViewState({
+					type: VIEW_ORBIT_PERSON,
+					active: true,
+					state: {path: normalizePath(path)},
+				});
+				await this.app.workspace.revealLeaf(leaf);
+			},
+			createPersonNote: async (linkText, displayName) => {
+				await this.createPersonNote(linkText, displayName);
+			},
+		});
+	}
+
+	async createPersonNote(linkText: string, displayName: string): Promise<void> {
+		await createPersonNoteFile(this.app, this.settings, {linkText, displayName});
 	}
 
 	async openOrgChartForAnchor(anchorPath: string): Promise<void> {

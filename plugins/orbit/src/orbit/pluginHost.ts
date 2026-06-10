@@ -19,4 +19,6 @@ export type OrbitHost = {
 	capturePersonSnapshot: (personFile: import("obsidian").TFile) => Promise<void>;
 	/** Edit YAML properties in a modal (links / tags / vault value hints) without leaving Orbit. */
 	openPersonProperties: (personFile: import("obsidian").TFile) => void;
+	/** Create a person note from a ghost wikilink and open the Orbit profile. */
+	createPersonNote: (linkText: string, displayName: string) => Promise<void>;
 };

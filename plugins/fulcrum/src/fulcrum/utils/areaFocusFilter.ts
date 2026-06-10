@@ -231,6 +231,50 @@ export function meetingPassesAreaFilter(
 	return proj != null && projectPassesAreaFilter(proj, state, lifeModeMap);
 }
 
+export type QuickStartAreaFilterInput = {
+	projectSourcePath?: string | null;
+	area?: string | null;
+};
+
+/** Match a display label (template frontmatter or resolved area name) to an indexed area path. */
+export function resolveAreaPathFromDisplayLabel(
+	label: string,
+	snapshot: IndexSnapshot,
+): string | null {
+	const key = stripWikiMarkupForDisplay(label).toLowerCase();
+	if (!key) return null;
+	for (const a of snapshot.areas) {
+		const nameKey = a.name.toLowerCase();
+		const baseKey = a.file.basename.replace(/\.md$/i, "").toLowerCase();
+		if (nameKey === key || baseKey === key) return a.file.path;
+	}
+	return null;
+}
+
+export function quickStartPassesAreaFilter(
+	item: QuickStartAreaFilterInput,
+	snapshot: IndexSnapshot,
+	state: AreaFilterState,
+	lifeModeMap: Map<string, string>,
+): boolean {
+	if (isAreaFilterWideOpen(state)) return true;
+
+	if (item.projectSourcePath) {
+		const proj = snapshot.projects.find((p) => p.file.path === item.projectSourcePath);
+		if (proj) return projectPassesAreaFilter(proj, state, lifeModeMap);
+	}
+
+	if (item.area?.trim()) {
+		const areaPath = resolveAreaPathFromDisplayLabel(item.area, snapshot);
+		if (areaPath) {
+			const lm = lifeModeMap.get(areaPath) ?? "Other";
+			return areaPathEnabled(areaPath, lm, state);
+		}
+	}
+
+	return false;
+}
+
 export function buildAreaFilterPanelGroups(
 	areas: IndexedArea[],
 	state: AreaFilterState,

@@ -9,7 +9,7 @@
 	import {showFulcrumTaskContextMenu} from "../fulcrum/taskContextMenu";
 	import {
 		handleTaskStatusClick,
-		handleTaskCardBlankDoubleClick,
+		handleTaskCardBlankClick,
 		openEditTaskDue,
 		openEditTaskProject,
 		openEditTaskScheduled,
@@ -20,10 +20,6 @@
 	import {inlineTaskDisplayTitle} from "../fulcrum/utils/inlineTasks";
 	import {settingsRevision} from "../fulcrum/stores";
 	import TaskCardTimerSlot from "./TaskCardTimerSlot.svelte";
-
-	function openSourceNoteIcon(el: HTMLElement): void {
-		setIcon(el, "square-arrow-out-up-right");
-	}
 
 	function bindSourceKindIcon(node: HTMLElement, source: IndexedTask["source"]) {
 		setIcon(node, source === "inline" ? "list-todo" : "file-check");
@@ -106,17 +102,8 @@
 		action();
 	}
 
-	function openSourceNote(ev: MouseEvent): void {
-		stopChipClick(ev);
-		plugin.openIndexedTask(task, anchorLeaf);
-	}
-
-	function onOpenNoteKeydown(ev: KeyboardEvent): void {
-		onMetaKeydown(ev, () => plugin.openIndexedTask(task, anchorLeaf));
-	}
-
-	function onCardBlankDoubleClick(ev: MouseEvent): void {
-		handleTaskCardBlankDoubleClick(ev, plugin, task, anchorLeaf);
+	function onCardBlankClick(ev: MouseEvent): void {
+		handleTaskCardBlankClick(ev, plugin, task, anchorLeaf);
 	}
 </script>
 
@@ -127,7 +114,7 @@
 	data-source={task.source}
 	style={`--fulcrum-task-border: ${accentCss};`}
 	on:contextmenu={onContextMenu}
-	on:dblclick={onCardBlankDoubleClick}
+	on:click={onCardBlankClick}
 >
 	<div class="fulcrum-task-card__main-row">
 		<div
@@ -175,12 +162,14 @@
 							aria-hidden="true"
 						></span>
 					</span>
-					{#if showDue && due.text}
+					{#if showDue}
 							<span
 								role="button"
 								tabindex="0"
 								class="fulcrum-task-card__meta-chip fulcrum-task-card__due"
-								title="Edit due date"
+								class:fulcrum-task-card__meta-chip--empty={!due.text}
+								title={due.text ? "Edit due date" : "Set due date"}
+								aria-label={due.text ? `Due: ${due.text}` : "Set due date"}
 								on:click|stopPropagation={(e) => {
 									stopChipClick(e);
 									openEditTaskDue(plugin, task);
@@ -192,15 +181,19 @@
 									<rect x="3" y="4" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
 									<path d="M16 2v4M8 2v4M3 10h18" fill="none" stroke="currentColor" stroke-width="2" />
 								</svg>
-								<span>{due.text}</span>
+								{#if due.text}
+									<span>{due.text}</span>
+								{/if}
 							</span>
 						{/if}
-						{#if showScheduled && sched.text}
+						{#if showScheduled}
 							<span
 								role="button"
 								tabindex="0"
 								class="fulcrum-task-card__meta-chip fulcrum-task-card__scheduled"
-								title="Edit scheduled date"
+								class:fulcrum-task-card__meta-chip--empty={!sched.text}
+								title={sched.text ? "Edit scheduled date" : "Set scheduled date"}
+								aria-label={sched.text ? `Scheduled: ${sched.text}` : "Set scheduled date"}
 								on:click|stopPropagation={(e) => {
 									stopChipClick(e);
 									openEditTaskScheduled(plugin, task);
@@ -214,7 +207,9 @@
 									<circle cx="12" cy="15" r="2.5" fill="none" stroke="currentColor" stroke-width="2" />
 									<path d="M12 12v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
 								</svg>
-								<span>{sched.text}</span>
+								{#if sched.text}
+									<span>{sched.text}</span>
+								{/if}
 							</span>
 						{/if}
 						{#if showProject}
@@ -267,17 +262,6 @@
 								</span>
 							{/if}
 						{/if}
-					<span
-						role="button"
-						tabindex="0"
-						class="fulcrum-task-card__open-note"
-						title="Open source note"
-						aria-label="Open source note"
-						on:click|stopPropagation={openSourceNote}
-						on:keydown|stopPropagation={onOpenNoteKeydown}
-					>
-						<span class="fulcrum-task-card__open-note-icon" use:openSourceNoteIcon aria-hidden="true"></span>
-					</span>
 				</div>
 			</div>
 		</div>

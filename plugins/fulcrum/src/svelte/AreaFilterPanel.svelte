@@ -16,6 +16,7 @@
 	} from "../fulcrum/utils/areaFocusFilter";
 
 	export let plugin: FulcrumHost;
+	export let variant: "default" | "sidebar-footer" = "default";
 
 	let collapsed = readAreaFilterPanelCollapsed();
 
@@ -81,16 +82,25 @@
 		if (!enabled) {
 			return "opacity: 0.4; filter: grayscale(0.5);";
 		}
-		return `--fulcrum-area-filter-accent: ${colorCss}; background: color-mix(in srgb, ${colorCss} 22%, var(--background-secondary)); border-color: color-mix(in srgb, ${colorCss} 55%, var(--background-modifier-border)); color: var(--text-normal);`;
+		return `--fulcrum-area-filter-accent: ${colorCss}; background: color-mix(in srgb, ${colorCss} 16%, var(--background-secondary)); border-color: color-mix(in srgb, ${colorCss} 42%, var(--background-modifier-border)); color: var(--text-normal);`;
 	}
 
 	function areaIsOn(group: (typeof groups)[0], area: (typeof groups)[0]["areas"][0]): boolean {
 		return group.sectionEnabled && area.enabled;
 	}
+
+	$: hiddenAreaCount = groups.reduce(
+		(n, g) => n + g.areas.filter((a) => !areaIsOn(g, a)).length,
+		0,
+	);
 </script>
 
 {#if groups.length > 0}
-	<div class="fulcrum-area-filter" class:fulcrum-area-filter--collapsed={collapsed}>
+	<div
+		class="fulcrum-area-filter"
+		class:fulcrum-area-filter--collapsed={collapsed}
+		class:fulcrum-area-filter--sidebar-footer={variant === "sidebar-footer"}
+	>
 		<button
 			type="button"
 			class="fulcrum-area-filter__toggle"
@@ -98,7 +108,14 @@
 			aria-controls="fulcrum-area-filter-panel"
 			on:click={toggleCollapsed}
 		>
-			<span class="fulcrum-area-filter__toggle-label">Areas</span>
+			<span class="fulcrum-area-filter__toggle-label">
+				Areas
+				{#if collapsed && hiddenAreaCount > 0}
+					<span class="fulcrum-area-filter__badge" aria-label="{hiddenAreaCount} areas hidden"
+						>{hiddenAreaCount}</span
+					>
+				{/if}
+			</span>
 			<span
 				class="fulcrum-area-filter__chevron"
 				class:fulcrum-area-filter__chevron--collapsed={collapsed}
@@ -107,7 +124,10 @@
 		</button>
 		{#if !collapsed}
 			<div id="fulcrum-area-filter-panel" class="fulcrum-area-filter__body">
-				{#each groups as group (group.lifeModeKey)}
+				{#each groups as group, groupIndex (group.lifeModeKey)}
+					{#if groupIndex > 0}
+						<hr class="fulcrum-area-filter__group-divider" />
+					{/if}
 					<div class="fulcrum-area-filter__row" role="group" aria-label="{group.label}">
 						<button
 							type="button"

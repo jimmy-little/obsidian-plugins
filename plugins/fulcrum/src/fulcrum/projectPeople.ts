@@ -2,7 +2,7 @@ import {normalizePath, TFile, type App} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
 import type {AtomicNoteRow, IndexedMeeting, IndexedPerson, IndexedTask} from "./types";
 import {isUnderFolder} from "./utils/paths";
-import {parseWikiLink} from "./utils/wikilinks";
+import {parseWikiLink, parseWikiLinkEntry, type WikiLinkEntry} from "./utils/wikilinks";
 import {resolveBannerImageSrc} from "./utils/projectVisual";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
@@ -71,6 +71,63 @@ export function buildPeopleFolderMatchIndex(app: App, peopleFolder: string): Map
 	return index;
 }
 
+export type ResolvedPersonLink =
+	| {kind: "known"; file: TFile; linkText: string; displayName: string}
+	| {kind: "ghost"; linkText: string; displayName: string};
+
+function displayNameFromFile(app: App, file: TFile): string {
+	const fm = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+	if (typeof fm?.name === "string" && fm.name.trim()) return fm.name.trim();
+	return file.basename.replace(/\.md$/i, "");
+}
+
+/**
+ * Resolve a wikilink to a people-folder note or a ghost reference.
+ * Ghost: unresolved link, or resolved note outside the configured people folder.
+ */
+export function resolvePersonLink(
+	app: App,
+	linkText: string,
+	displayNameHint: string,
+	sourcePath: string,
+	peopleFolder: string,
+	matchIndex: Map<string, TFile>,
+): ResolvedPersonLink {
+	const trimmed = linkText.trim();
+	const displayHint = displayNameHint.trim() || trimmed;
+	const folder = normalizePath(peopleFolder.trim());
+
+	if (!folder) {
+		return {kind: "ghost", linkText: trimmed, displayName: displayHint};
+	}
+
+	const dest = app.metadataCache.getFirstLinkpathDest(trimmed, sourcePath);
+	if (dest instanceof TFile && isUnderFolder(dest.path, folder)) {
+		return {
+			kind: "known",
+			file: dest,
+			linkText: trimmed,
+			displayName: displayNameFromFile(app, dest),
+		};
+	}
+
+	const aliasHit = lookupPeopleFileByAlias(matchIndex, trimmed);
+	if (aliasHit) {
+		return {
+			kind: "known",
+			file: aliasHit,
+			linkText: trimmed,
+			displayName: displayNameFromFile(app, aliasHit),
+		};
+	}
+
+	if (dest instanceof TFile) {
+		return {kind: "ghost", linkText: trimmed, displayName: displayHint};
+	}
+
+	return {kind: "ghost", linkText: trimmed, displayName: displayHint};
+}
+
 /** Resolve link text via `name` / `aliases` / `alias` index only (normalized match). */
 export function lookupPeopleFileByAlias(matchIndex: Map<string, TFile>, linkTextRaw: string): TFile | null {
 	const trimmed = linkTextRaw.trim();
@@ -106,37 +163,123 @@ export function resolvePeopleFolderNote(
 	return lookupPeopleFileByAlias(matchIndex, stripped);
 }
 
-function parsePeopleFromFrontmatter(
+function extractWikiLinkEntriesFromFmValue(raw: unknown): WikiLinkEntry[] {
+	const out: WikiLinkEntry[] = [];
+	if (typeof raw === "string") {
+		const entry = parseWikiLinkEntry(raw);
+		if (entry) out.push(entry);
+	} else if (Array.isArray(raw)) {
+		for (const item of raw) {
+			const entry = parseWikiLinkEntry(item);
+			if (entry) out.push(entry);
+		}
+	}
+	return out;
+}
+
+function personRefKey(person: IndexedPerson): string {
+	if (person.file) return person.file.path;
+	return `ghost:${normalizePersonMatchKey(person.linkText)}`;
+}
+
+function indexedPersonFromResolved(
+	app: App,
+	resolved: ResolvedPersonLink,
+	avatarField: string,
+	bannerField: string,
+): IndexedPerson {
+	if (resolved.kind === "known") {
+		const {name, avatarSrc, bannerImageSrc} = getPersonNameAndAvatar(
+			app,
+			resolved.file,
+			avatarField,
+			bannerField,
+		);
+		return {
+			file: resolved.file,
+			linkText: resolved.linkText,
+			name,
+			avatarSrc,
+			bannerImageSrc,
+			isGhost: false,
+		};
+	}
+	return {
+		file: null,
+		linkText: resolved.linkText,
+		name: resolved.displayName,
+		avatarSrc: null,
+		bannerImageSrc: null,
+		isGhost: true,
+	};
+}
+
+function addPersonRef(byKey: Map<string, IndexedPerson>, person: IndexedPerson): void {
+	const key = personRefKey(person);
+	if (byKey.has(key)) return;
+	byKey.set(key, person);
+}
+
+type CollectPeopleRefsOptions = {
+	/** When scanning broad frontmatter, skip wikilinks that resolve to notes outside `peopleFolder`. */
+	skipResolvedOutsidePeopleFolder?: boolean;
+};
+
+/** Resolve wikilink entries to known or ghost person refs (deduped, preserves order). */
+export function collectPeopleRefsFromLinkEntries(
+	app: App,
+	entries: WikiLinkEntry[],
+	sourcePath: string,
+	s: FulcrumSettings,
+	matchIndex?: Map<string, TFile>,
+	opts?: CollectPeopleRefsOptions,
+): IndexedPerson[] {
+	const folder = normalizePath(s.peopleFolder.trim());
+	const index =
+		matchIndex ?? (folder ? buildPeopleFolderMatchIndex(app, folder) : new Map<string, TFile>());
+	const avatarField = s.peopleAvatarField.trim() || "avatar";
+	const bannerField = s.projectBannerField.trim() || "banner";
+	const byKey = new Map<string, IndexedPerson>();
+
+	for (const entry of entries) {
+		const resolved = resolvePersonLink(
+			app,
+			entry.linkText,
+			entry.displayName,
+			sourcePath,
+			folder,
+			index,
+		);
+		if (
+			opts?.skipResolvedOutsidePeopleFolder &&
+			resolved.kind === "ghost" &&
+			folder
+		) {
+			const dest = app.metadataCache.getFirstLinkpathDest(
+				entry.linkText.trim(),
+				sourcePath,
+			);
+			if (dest instanceof TFile && !isUnderFolder(dest.path, folder)) {
+				continue;
+			}
+		}
+		addPersonRef(byKey, indexedPersonFromResolved(app, resolved, avatarField, bannerField));
+	}
+
+	return [...byKey.values()];
+}
+
+function parsePeopleRefsFromFrontmatter(
 	app: App,
 	sourcePath: string,
 	fm: Record<string, unknown> | undefined,
 	field: string,
-	peopleFolder: string,
+	s: FulcrumSettings,
 	matchIndex: Map<string, TFile>,
-): TFile[] {
+): IndexedPerson[] {
 	if (!fm) return [];
-	const raw = fm[field];
-	const links: string[] = [];
-	if (typeof raw === "string") {
-		const p = parseWikiLink(raw);
-		if (p) links.push(p);
-	} else if (Array.isArray(raw)) {
-		for (const item of raw) {
-			const p = parseWikiLink(item);
-			if (p) links.push(p);
-		}
-	}
-	const files: TFile[] = [];
-	const folderNorm = normalizePath(peopleFolder.trim());
-	for (const link of links) {
-		const abstract = app.metadataCache.getFirstLinkpathDest(link, sourcePath);
-		let dest: TFile | null = abstract instanceof TFile ? abstract : null;
-		if (!dest && folderNorm) {
-			dest = lookupPeopleFileByAlias(matchIndex, link);
-		}
-		if (dest instanceof TFile) files.push(dest);
-	}
-	return files;
+	const entries = extractWikiLinkEntriesFromFmValue(fm[field]);
+	return collectPeopleRefsFromLinkEntries(app, entries, sourcePath, s, matchIndex);
 }
 
 /** Display name and avatar for a people note (frontmatter `name`, else basename). */
@@ -161,7 +304,16 @@ export function getPersonNameAndAvatar(
 
 function personFromFile(app: App, file: TFile, avatarField: string, bannerField: string): IndexedPerson {
 	const {name, avatarSrc, bannerImageSrc} = getPersonNameAndAvatar(app, file, avatarField, bannerField);
-	return {file, name, avatarSrc, bannerImageSrc};
+	const linkText =
+		app.metadataCache.fileToLinktext(file, "", true) ?? file.basename.replace(/\.md$/i, "");
+	return {
+		file,
+		linkText,
+		name,
+		avatarSrc,
+		bannerImageSrc,
+		isGhost: false,
+	};
 }
 
 /**
@@ -197,15 +349,15 @@ export async function collectRelatedPeople(
 
 	const projectCache = app.metadataCache.getFileCache(projectFile);
 	const projectFm = projectCache?.frontmatter as Record<string, unknown> | undefined;
-	for (const f of parsePeopleFromFrontmatter(
+	for (const person of parsePeopleRefsFromFrontmatter(
 		app,
 		projectPath,
 		projectFm,
 		peopleField,
-		peopleFolder,
+		s,
 		matchIndex,
 	)) {
-		addPerson(f);
+		byPath.set(personRefKey(person), person);
 	}
 
 	if (peopleFolder) {
@@ -235,4 +387,72 @@ export async function collectRelatedPeople(
 	const people = [...byPath.values()];
 	people.sort((a, b) => a.name.localeCompare(b.name, undefined, {sensitivity: "base"}));
 	return people;
+}
+
+const PEOPLE_FRONTMATTER_FIELDS = ["attendees"] as const;
+
+function fmValueForKey(fm: Record<string, unknown>, fieldName: string): unknown {
+	const target = fieldName.trim().toLowerCase();
+	for (const [k, v] of Object.entries(fm)) {
+		if (k.trim().toLowerCase() === target) return v;
+	}
+	return undefined;
+}
+
+function pushPeopleEntriesFromFmValue(raw: unknown, pushEntry: (entry: WikiLinkEntry) => void): void {
+	if (raw == null) return;
+	if (typeof raw === "string") {
+		for (const entry of extractWikiLinkEntriesFromFmValue(raw)) {
+			pushEntry(entry);
+		}
+		for (const link of extractWikilinksFromText(raw)) {
+			pushEntry({linkText: link, displayName: link});
+		}
+		return;
+	}
+	if (Array.isArray(raw)) {
+		for (const item of raw) {
+			pushPeopleEntriesFromFmValue(item, pushEntry);
+		}
+	}
+}
+
+/**
+ * People wikilinks from people-related frontmatter only (`organizer`, `attendees`, `relatedPeople`).
+ * Includes ghost refs when the note file does not exist under `peopleFolder`.
+ */
+export function collectPeopleRefsFromNoteFrontmatter(
+	app: App,
+	sourcePath: string,
+	fm: Record<string, unknown>,
+	s: FulcrumSettings,
+): IndexedPerson[] {
+	const folder = normalizePath(s.peopleFolder.trim());
+	const matchIndex = folder ? buildPeopleFolderMatchIndex(app, folder) : new Map<string, TFile>();
+
+	const organizerKey = (s.meetingOrganizerField ?? "organizer").trim();
+	const relatedKey = s.projectRelatedPeopleField.trim() || "relatedPeople";
+	const fieldNames = [
+		...(organizerKey ? [organizerKey] : []),
+		...PEOPLE_FRONTMATTER_FIELDS,
+		relatedKey,
+	];
+
+	const orderedEntries: WikiLinkEntry[] = [];
+	const seenLinkKeys = new Set<string>();
+
+	function pushEntry(entry: WikiLinkEntry): void {
+		const k = normalizePersonMatchKey(entry.linkText);
+		if (!k || seenLinkKeys.has(k)) return;
+		seenLinkKeys.add(k);
+		orderedEntries.push(entry);
+	}
+
+	for (const fieldName of fieldNames) {
+		pushPeopleEntriesFromFmValue(fmValueForKey(fm, fieldName), pushEntry);
+	}
+
+	return collectPeopleRefsFromLinkEntries(app, orderedEntries, sourcePath, s, matchIndex, {
+		skipResolvedOutsidePeopleFolder: true,
+	});
 }

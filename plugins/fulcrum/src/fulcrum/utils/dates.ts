@@ -1,3 +1,16 @@
+/** Parse frontmatter `date` / `startTime` / `startDate` to epoch ms; null when missing or unparseable. */
+export function parseFrontmatterDateToMs(raw: string | undefined | null): number | null {
+	if (!raw?.trim()) return null;
+	const s = raw.trim();
+	const t = Date.parse(s);
+	if (!Number.isNaN(t)) return t;
+	if (s.length >= 10) {
+		const day = Date.parse(s.slice(0, 10) + "T12:00:00");
+		if (!Number.isNaN(day)) return day;
+	}
+	return null;
+}
+
 export function todayLocalISODate(): string {
 	const d = new Date();
 	const y = d.getFullYear();

@@ -12,6 +12,7 @@
 		type TimeHorizonId,
 		type TimeTrackedModel,
 	} from "../fulcrum/utils/timeTrackedAnalytics";
+	import FulcrumSegmentGroup from "./shared/FulcrumSegmentGroup.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -80,6 +81,10 @@
 	function setHorizon(id: TimeHorizonId): void {
 		horizon = id;
 		void plugin.patchSettings({timeTrackerHorizon: id});
+	}
+
+	function onHorizonSelect(id: string): void {
+		if (id === "7d" || id === "30d" || id === "90d" || id === "all") setHorizon(id);
 	}
 
 	function toggleArea(path: string): void {
@@ -178,23 +183,19 @@
 		</div>
 	{/if}
 
-	<div class="fulcrum-time-dashboard__toolbar">
-		<span class="fulcrum-time-dashboard__toolbar-label">Range</span>
-		<div class="fulcrum-time-dashboard__segments" role="tablist" aria-label="Time range">
-			{#each horizonOptions as opt}
-				<button
-					type="button"
-					role="tab"
-					class="fulcrum-time-dashboard__seg"
-					class:fulcrum-time-dashboard__seg--active={horizon === opt.id}
-					aria-selected={horizon === opt.id}
-					on:click={() => setHorizon(opt.id)}
-				>
-					{opt.label}
-				</button>
-			{/each}
+		<div class="fulcrum-time-dashboard__toolbar">
+			<span class="fulcrum-time-dashboard__toolbar-label">Range</span>
+			<FulcrumSegmentGroup
+				ariaLabel="Time range"
+				role="tablist"
+				options={horizonOptions}
+				value={horizon}
+				buttonClass="fulcrum-time-dashboard__seg"
+				activeModifier="active"
+				wrapperClass="fulcrum-time-dashboard__segments"
+				onSelect={onHorizonSelect}
+			/>
 		</div>
-	</div>
 
 	{#if loading}
 		<p class="fulcrum-muted">Loading project rollups…</p>

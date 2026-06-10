@@ -34,10 +34,10 @@ export interface IndexedProject {
 	description?: string;
 	/** Next review date (ISO), from configured frontmatter field. */
 	nextReview?: string;
-	/** Project deadline from configured frontmatter field. */
+	/** Project deadline from configured frontmatter field (Kanban date axis). */
 	deadline?: string;
-	/** YYYY-MM-DD (or raw prefix) from launch / target date field; sidebar sort. */
-	launchDate?: string;
+	/** Project end date from configured frontmatter field (timeline, sidebar). */
+	endDate?: string;
 	/** From configurable frontmatter key; higher = more important. */
 	rank?: number;
 }
@@ -77,6 +77,10 @@ export interface IndexedTask {
 	endTime?: string;
 	/** Planned length in minutes from frontmatter `duration` (calendar block height). */
 	durationMinutes?: number;
+	/** Primary date for gantt (YYYY-MM-DD): frontmatter `date`, else scheduled/due. */
+	ganttDate?: string;
+	/** Inclusive span from merged `timeEntries` when logged work exists. */
+	ganttTimeEntrySpan?: {startIso: string; endIso: string};
 	projectFile: TFile | null;
 	areaFile: TFile | null;
 	tags: string[];
@@ -139,18 +143,25 @@ export interface AtomicNoteRow {
 	bodyPreview?: string;
 	tags: string[];
 	priority?: string;
-	/** Vault file mtime for activity ordering (newest-first feeds). */
+	/** Explicit frontmatter date/startTime/startDate for activity ordering; unchanged when the file is touched. */
+	anchorDateMs?: number;
+	/** Vault file mtime — activity sort fallback when no anchor date. */
 	modifiedMs: number;
 	/** When set, time tracking is closed for this note — exclude from Next up. */
 	endTime?: string;
 }
 
 export interface IndexedPerson {
-	file: TFile;
+	/** Null when the wikilink has no note under the configured people folder. */
+	file: TFile | null;
+	/** Wikilink path used in frontmatter (for ghost create + dedupe). */
+	linkText: string;
 	name: string;
 	avatarSrc: string | null;
 	/** Resolved `banner` (or configured project banner field) for the people note; card top only. */
 	bannerImageSrc: string | null;
+	/** Wikilink present but no matching people-folder note (or resolved outside people folder). */
+	isGhost: boolean;
 }
 
 /** Generic linked note from project frontmatter (e.g. related products). */
@@ -160,12 +171,13 @@ export interface IndexedRelatedNote {
 }
 
 export interface ProjectPageMeta {
-	launchDate?: string;
+	endDate?: string;
 	lastReviewed?: string;
 	nextReview?: string;
 	reviewFrequencyDays: number;
 	jira?: string;
 	description?: string;
+	agentSummary?: string;
 }
 
 export interface ProjectRollup {

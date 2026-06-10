@@ -1,10 +1,10 @@
 <script lang="ts">
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
-	import AreaFilterPanel from "./AreaFilterPanel.svelte";
 	import DashboardMain from "./DashboardMain.svelte";
 	import ProjectListPanel from "./ProjectListPanel.svelte";
 	import FulcrumLeafToolbar from "./FulcrumLeafToolbar.svelte";
+	import FulcrumGlobalFilterStrip from "./shared/FulcrumGlobalFilterStrip.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -14,18 +14,20 @@
 	}
 </script>
 
-<div class="fulcrum-dashboard">
-	<header class="fulcrum-dashboard__header">
-		<h1>Fulcrum</h1>
-		<div class="fulcrum-dashboard__actions">
-			<FulcrumLeafToolbar {plugin} />
-		</div>
-	</header>
+<div class="fulcrum-dashboard fulcrum-standalone-with-filter">
+	<div class="fulcrum-standalone-with-filter__main">
+		<header class="fulcrum-dashboard__header">
+			<h1>Fulcrum</h1>
+			<div class="fulcrum-dashboard__actions">
+				<FulcrumLeafToolbar {plugin} />
+			</div>
+		</header>
 
-	<AreaFilterPanel {plugin} />
-	<DashboardMain {plugin} {hoverParentLeaf} />
+		<DashboardMain {plugin} {hoverParentLeaf} />
 
-	<section class="fulcrum-section">
-		<ProjectListPanel {plugin} {hoverParentLeaf} selectedPath={null} onSelectProject={openProjectSummary} />
-	</section>
+		<section class="fulcrum-section">
+			<ProjectListPanel {plugin} {hoverParentLeaf} selectedPath={null} onSelectProject={openProjectSummary} />
+		</section>
+	</div>
+	<FulcrumGlobalFilterStrip {plugin} />
 </div>

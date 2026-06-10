@@ -847,7 +847,8 @@
  * intended for Orbit, Fulcrum, and other plugins: reuse the same class names + markup shape.
  *
  * Markup (card): .fulcrum-person-card > .fulcrum-person-card__top > .fulcrum-person-card__avatar (+ img|svg) + .fulcrum-person-card__name
- * Markup (inline pill): .fulcrum-person-inline-pill (a or span) > .fulcrum-person-inline-pill__avatar + .fulcrum-person-inline-pill__name
+ * Markup (inline pill): .fulcrum-{person|project|product}-inline-pill (a or span) > __avatar + __name
+ * Icon: frontmatter `cover` image when set; else user / folder / app-window.
  *
  * Optional: set --suite-person-card-accent on an ancestor (e.g. Fulcrum .fulcrum-project, companion surface, Orbit profile)
  * for a thin accent border on the card and avatar ring.
@@ -902,6 +903,30 @@
 .fulcrum-person-card:not(.fulcrum-companion-time-card):focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: 2px;
+}
+
+/* Ghost person cards: wikilink present but no note under configured people folder */
+.fulcrum-person-card--ghost {
+	opacity: 0.82;
+	border-style: dashed;
+	background: color-mix(in srgb, var(--background-secondary) 55%, var(--background-primary));
+}
+
+.fulcrum-person-card--ghost:hover {
+	opacity: 0.95;
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-person-card--ghost .fulcrum-person-card__name {
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.fulcrum-person-card--ghost .fulcrum-person-card__avatar svg {
+	width: 40%;
+	height: 40%;
+	opacity: 0.75;
+	color: var(--text-faint);
 }
 
 /*
@@ -1034,81 +1059,98 @@
 	letter-spacing: 0.03em;
 }
 
-/* Inline people chips: reading, Live Preview, and source (CodeMirror span.cm-hmd-internal-link) */
-.fulcrum-person-inline-pill {
+/* Inline entity pills: reading, Live Preview, activity previews, CodeMirror source spans */
+.fulcrum-person-inline-pill,
+.fulcrum-project-inline-pill,
+.fulcrum-product-inline-pill {
 	display: inline-flex;
 	align-items: center;
 	justify-content: flex-start;
-	vertical-align: baseline;
+	/* Middle of line box — baseline + fixed height made pills float above surrounding text. */
+	vertical-align: middle;
 	width: fit-content;
 	width: -moz-fit-content;
 	max-width: 100%;
 	min-width: 0;
-	min-height: 1.25em;
-	height: 1.35em;
-	margin: 0 0.1em;
+	height: 1.15em;
+	max-height: 1.15em;
+	margin: 0 0.12em;
 	padding: 0;
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
 	border-radius: 999px;
 	background: color-mix(in srgb, var(--background-secondary) 80%, var(--background-primary));
 	color: var(--text-normal);
 	font-size: inherit;
-	line-height: 1.2;
+	line-height: 1;
 	overflow: hidden;
 	box-sizing: border-box;
 	cursor: pointer;
 	flex: 0 0 auto;
-	/* Let the flex parent control cross-axis alignment (e.g. center in a row). Baseline
-	   alignment here made image vs SVG avatar pills sit at different heights. */
-	align-self: auto;
+	position: relative;
+	top: 0.02em;
 }
 
-a.fulcrum-person-inline-pill {
+a.fulcrum-person-inline-pill,
+a.fulcrum-project-inline-pill,
+a.fulcrum-product-inline-pill {
 	text-decoration: none !important;
 }
 
-.fulcrum-person-inline-pill:hover {
+.fulcrum-person-inline-pill:hover,
+.fulcrum-project-inline-pill:hover,
+.fulcrum-product-inline-pill:hover {
 	background: var(--background-modifier-hover);
 	border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
 	color: var(--text-normal);
 }
 
-.fulcrum-person-inline-pill:focus-visible {
+.fulcrum-person-inline-pill:focus-visible,
+.fulcrum-project-inline-pill:focus-visible,
+.fulcrum-product-inline-pill:focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: 1px;
 }
 
 a.internal-link.fulcrum-person-inline-pill,
-span.cm-hmd-internal-link.fulcrum-person-inline-pill {
+a.internal-link.fulcrum-project-inline-pill,
+a.internal-link.fulcrum-product-inline-pill,
+span.cm-hmd-internal-link.fulcrum-person-inline-pill,
+span.cm-hmd-internal-link.fulcrum-project-inline-pill,
+span.cm-hmd-internal-link.fulcrum-product-inline-pill {
 	display: inline-flex !important;
 	width: fit-content !important;
 	max-width: 100% !important;
 }
 
-.fulcrum-person-inline-pill__avatar {
+.fulcrum-person-inline-pill__avatar,
+.fulcrum-project-inline-pill__avatar,
+.fulcrum-product-inline-pill__avatar {
 	flex: 0 0 auto;
-	width: 1.35em;
-	height: 1.35em;
+	width: 1.15em;
+	height: 1.15em;
 	margin: 0;
 	padding: 0;
 	border: none;
 	border-radius: 50%;
 	overflow: hidden;
-	align-self: center;
 	background: color-mix(in srgb, var(--background-modifier-border) 40%, var(--background-primary));
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 
-.fulcrum-person-inline-pill__avatar img {
+.fulcrum-person-inline-pill__avatar img,
+.fulcrum-project-inline-pill__avatar img,
+.fulcrum-product-inline-pill__avatar img {
 	display: block;
 	width: 100%;
 	height: 100%;
 	object-fit: cover;
 }
 
-.fulcrum-person-inline-pill__avatar svg {
+.fulcrum-person-inline-pill__avatar svg,
+.fulcrum-project-inline-pill__avatar svg,
+.fulcrum-product-inline-pill__avatar svg {
 	display: block;
 	width: 62%;
 	height: 62%;
@@ -1117,19 +1159,48 @@ span.cm-hmd-internal-link.fulcrum-person-inline-pill {
 	color: var(--text-muted);
 }
 
-.fulcrum-person-inline-pill__name {
+.fulcrum-person-inline-pill__name,
+.fulcrum-project-inline-pill__name,
+.fulcrum-product-inline-pill__name {
 	flex: 0 1 auto;
 	min-width: 0;
 	max-width: 18rem;
-	padding: 0 0.4em 0 0.28em;
-	display: inline-flex;
-	align-items: center;
+	padding: 0 0.38em 0 0.22em;
 	font-size: 0.92em;
 	font-weight: 600;
-	line-height: 1.2;
+	line-height: 1;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+/* Project / product tint from note `color` frontmatter (see inlineLinkPills.ts) */
+.fulcrum-project-inline-pill.fulcrum-inline-pill--accent,
+.fulcrum-product-inline-pill.fulcrum-inline-pill--accent {
+	background: color-mix(
+		in srgb,
+		var(--fulcrum-inline-pill-accent) 16%,
+		var(--background-secondary)
+	);
+	border-color: color-mix(
+		in srgb,
+		var(--fulcrum-inline-pill-accent) 42%,
+		var(--background-modifier-border)
+	);
+}
+
+.fulcrum-project-inline-pill.fulcrum-inline-pill--accent:hover,
+.fulcrum-product-inline-pill.fulcrum-inline-pill--accent:hover {
+	background: color-mix(
+		in srgb,
+		var(--fulcrum-inline-pill-accent) 22%,
+		var(--background-secondary)
+	);
+	border-color: color-mix(
+		in srgb,
+		var(--fulcrum-inline-pill-accent) 55%,
+		var(--background-modifier-border)
+	);
 }
 
 /*

@@ -18,6 +18,7 @@
 	import {preferLightForegroundOnAccentCss, resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
 	import {loadActivityFeedPreviews} from "../fulcrum/loadActivityFeedPreviews";
 	import ActivityRow from "./ActivityRow.svelte";
+	import FulcrumSegmentGroup from "./shared/FulcrumSegmentGroup.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -272,6 +273,16 @@
 		persistGroup(next);
 	}
 
+	function onGroupSelect(id: string): void {
+		if (id === "timeline" || id === "project" || id === "facet" || id === "day") {
+			onGroupMode(id);
+		}
+	}
+
+	function onDaysSelect(id: string): void {
+		onDaysPreset(Number.parseInt(id, 10) || 7);
+	}
+
 	let previewMap: Record<string, string> = {};
 
 	$: reviewFeedKey =
@@ -309,68 +320,38 @@
 					persistDays(reviewDays);
 				}}
 			/>
-			<div class="fulcrum-weekly-review__presets" role="group" aria-label="Quick range">
-				<button
-					type="button"
-					class="fulcrum-weekly-review__preset"
-					class:fulcrum-weekly-review__preset--on={reviewDays === 7}
-					on:click={() => onDaysPreset(7)}
-				>
-					7d
-				</button>
-				<button
-					type="button"
-					class="fulcrum-weekly-review__preset"
-					class:fulcrum-weekly-review__preset--on={reviewDays === 14}
-					on:click={() => onDaysPreset(14)}
-				>
-					14d
-				</button>
-				<button
-					type="button"
-					class="fulcrum-weekly-review__preset"
-					class:fulcrum-weekly-review__preset--on={reviewDays === 30}
-					on:click={() => onDaysPreset(30)}
-				>
-					30d
-				</button>
+			<div class="fulcrum-weekly-review__presets">
+				<FulcrumSegmentGroup
+					ariaLabel="Quick range"
+					options={[
+						{id: "7", label: "7d"},
+						{id: "14", label: "14d"},
+						{id: "30", label: "30d"},
+					]}
+					value={String(reviewDays)}
+					buttonClass="fulcrum-weekly-review__preset"
+					activeModifier="on"
+					onSelect={onDaysSelect}
+				/>
 			</div>
 		</div>
 
 		<div class="fulcrum-weekly-review__group-toolbar" role="toolbar" aria-label="Group by">
 			<span class="fulcrum-weekly-review__group-label">Group</span>
-			<button
-				type="button"
-				class="fulcrum-weekly-review__group-btn"
-				class:fulcrum-weekly-review__group-btn--active={groupMode === "timeline"}
-				on:click={() => onGroupMode("timeline")}
-			>
-				Timeline
-			</button>
-			<button
-				type="button"
-				class="fulcrum-weekly-review__group-btn"
-				class:fulcrum-weekly-review__group-btn--active={groupMode === "project"}
-				on:click={() => onGroupMode("project")}
-			>
-				Project
-			</button>
-			<button
-				type="button"
-				class="fulcrum-weekly-review__group-btn"
-				class:fulcrum-weekly-review__group-btn--active={groupMode === "facet"}
-				on:click={() => onGroupMode("facet")}
-			>
-				Type
-			</button>
-			<button
-				type="button"
-				class="fulcrum-weekly-review__group-btn"
-				class:fulcrum-weekly-review__group-btn--active={groupMode === "day"}
-				on:click={() => onGroupMode("day")}
-			>
-				Day
-			</button>
+			<FulcrumSegmentGroup
+				ariaLabel="Group by"
+				role="tablist"
+				options={[
+					{id: "timeline", label: "Timeline"},
+					{id: "project", label: "Project"},
+					{id: "facet", label: "Type"},
+					{id: "day", label: "Day"},
+				]}
+				value={groupMode}
+				buttonClass="fulcrum-weekly-review__group-btn"
+				activeModifier="active"
+				onSelect={onGroupSelect}
+			/>
 		</div>
 	</div>
 

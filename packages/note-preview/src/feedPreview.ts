@@ -5,13 +5,31 @@ import {
 } from "./strip";
 
 export type FeedPreviewOptions = {
-	/** Max content lines after cleanup (default 10). */
+	/** Max non-image content lines after cleanup (default 10). Image lines use a separate budget. */
 	maxLines?: number;
+	/** Max image/embed lines included in the preview (default 3). */
+	maxImages?: number;
 	/** Obsidian inline `Key:: value` — drops entry/type and this key (e.g. atomic `entry` field). */
 	entryFieldKey?: string;
 	/** When the first heading matches this (case-insensitive), it is removed as duplicate of the title. */
 	displayTitle?: string;
 };
+
+/** Markdown image line: `![alt](url)` or list item with same. */
+function isMarkdownImageLine(line: string): boolean {
+	const t = line.trim();
+	return /!\[[^\]]*\]\([^)]+\)/.test(t);
+}
+
+/** Obsidian embed: `![[note or image]]` (including list bullets). */
+function isObsidianEmbedLine(line: string): boolean {
+	const t = line.trim();
+	return /!\[\[[^\]]+\]\]/.test(t);
+}
+
+function isImageOrEmbedLine(line: string): boolean {
+	return isMarkdownImageLine(line) || isObsidianEmbedLine(line);
+}
 
 /**
  * Readable multi-line preview for timeline/feed cards: skips frontmatter, fenced blocks,
@@ -22,6 +40,7 @@ export function buildMultilineFeedPreview(
 	options: FeedPreviewOptions,
 ): string | undefined {
 	const maxLines = Math.max(1, options.maxLines ?? 10);
+	const maxImages = Math.max(0, options.maxImages ?? 3);
 
 	let t = stripYamlFrontmatter(markdown);
 	t = stripFencedCodeBlocks(t);
@@ -63,12 +82,47 @@ export function buildMultilineFeedPreview(
 
 	if (sliced.length === 0) return undefined;
 
-	const out = sliced.slice(0, maxLines);
-	const hadMore = sliced.length > maxLines;
-	if (hadMore) {
-		const last = out[out.length - 1]!;
-		out[out.length - 1] = `${last.replace(/\s+$/, "")}…`;
+	const out: string[] = [];
+	let textLines = 0;
+	let imageLines = 0;
+	let truncated = false;
+
+	for (const line of sliced) {
+		const blank = !line.trim();
+		if (blank) {
+			if (out.length > 0 && out[out.length - 1]?.trim()) out.push(line);
+			continue;
+		}
+
+		if (isImageOrEmbedLine(line)) {
+			if (imageLines >= maxImages) {
+				truncated = true;
+				continue;
+			}
+			imageLines++;
+			out.push(line);
+			continue;
+		}
+
+		if (textLines >= maxLines) {
+			truncated = true;
+			break;
+		}
+		textLines++;
+		out.push(line);
 	}
+
+	if (truncated || textLines + imageLines < sliced.filter((l) => l.trim()).length) {
+		const lastIdx = out.length - 1;
+		if (lastIdx >= 0) {
+			const last = out[lastIdx]!;
+			if (!last.trimEnd().endsWith("…")) {
+				out[lastIdx] = `${last.replace(/\s+$/, "")}…`;
+			}
+		}
+	}
+
+	while (out.length && !out[out.length - 1]?.trim()) out.pop();
 
 	const result = out.join("\n").trim();
 	if (!result) return undefined;

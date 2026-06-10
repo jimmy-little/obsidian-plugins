@@ -11,6 +11,15 @@ function fmString(fm: Record<string, unknown> | undefined, key: string): string 
 }
 
 function insertLogEntry(body: string, headingLine: string, entryLine: string): string {
+	return appendLineUnderSectionHeading(body, headingLine, entryLine);
+}
+
+/** Append a line before the next `##` section, or create the section at EOF. */
+export function appendLineUnderSectionHeading(
+	body: string,
+	headingLine: string,
+	entryLine: string,
+): string {
 	const heading = headingLine.trim();
 	const entry = entryLine.endsWith("\n") ? entryLine : entryLine + "\n";
 	const idx = body.indexOf(heading);
@@ -95,17 +104,21 @@ export function readProjectPageMeta(
 	projectFile: TFile,
 	s: FulcrumSettings,
 ): {
-	launchDate?: string;
+	endDate?: string;
 	lastReviewed?: string;
 	nextReview?: string;
 	reviewFrequencyDays: number;
 	jira?: string;
 	description?: string;
+	agentSummary?: string;
 } {
 	const fm = app.metadataCache.getFileCache(projectFile)?.frontmatter as
 		| Record<string, unknown>
 		| undefined;
-	const launch = fmString(fm, s.projectLaunchDateField);
+	const end =
+		fmString(fm, "endDate") ??
+		fmString(fm, s.projectEndDateField) ??
+		fmString(fm, "launchDate");
 	const lastReviewed = fmString(fm, s.projectLastReviewedField);
 	const nextReview = fmString(fm, s.projectNextReviewField);
 	const freqRaw = fm?.[s.projectReviewFrequencyField];
@@ -116,12 +129,13 @@ export function readProjectPageMeta(
 		reviewFrequencyDays = Number.parseInt(freqRaw, 10);
 	}
 	return {
-		launchDate: launch,
+		endDate: end,
 		lastReviewed,
 		nextReview,
 		reviewFrequencyDays,
 		jira: fmString(fm, s.projectJiraField),
 		description: fmString(fm, "description"),
+		agentSummary: fmString(fm, "agentSummary"),
 	};
 }
 
@@ -160,9 +174,14 @@ function stripLeadingH2(markdown: string): string {
 	return markdown.trim();
 }
 
+/** Whether a section heading is the Fulcrum-generated project snapshot block. */
+export function isProjectSnapshotSectionHeading(heading: string): boolean {
+	return normalizeSectionHeading(heading).startsWith("project snapshot");
+}
+
 /**
  * Parse `##` sections from a project note body for the Overview tab.
- * Omits the project log section (configured heading and common aliases).
+ * Omits the project log section (configured heading and common aliases) and Fulcrum snapshots.
  */
 export function parseProjectPageSections(
 	body: string,
@@ -183,6 +202,7 @@ export function parseProjectPageSections(
 	for (let i = 0; i < matches.length; i++) {
 		const match = matches[i]!;
 		if (isProjectLogSectionHeading(match.title, logSectionHeading)) continue;
+		if (isProjectSnapshotSectionHeading(match.title)) continue;
 		const start = match.index;
 		const end = i + 1 < matches.length ? matches[i + 1]!.index : trimmed.length;
 		const raw = trimmed.slice(start, end).trimEnd();

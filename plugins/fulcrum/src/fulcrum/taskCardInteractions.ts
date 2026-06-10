@@ -148,10 +148,10 @@ export function stopChipClick(ev: MouseEvent): void {
 }
 
 const TASK_CARD_INTERACTIVE =
-	"button,a,[role=button],.fulcrum-task-card__status-dot,.fulcrum-task-card__title,.fulcrum-task-card__meta-chip,.fulcrum-task-card__open-note,.fulcrum-task-card__timer,.fulcrum-task-inline-pill__status,.fulcrum-task-inline-pill__title,.fulcrum-task-inline-pill__meta,.fulcrum-task-inline-pill__open-note";
+	"button,a,[role=button],.fulcrum-task-card__status-dot,.fulcrum-task-card__title,.fulcrum-task-card__meta-chip,.fulcrum-task-card__timer,.fulcrum-task-inline-pill__status,.fulcrum-task-inline-pill__title,.fulcrum-task-inline-pill__meta,.fulcrum-task-inline-pill__open-note";
 
-/** Double-click on non-interactive card chrome opens the task note beside Fulcrum. */
-export function handleTaskCardBlankDoubleClick(
+/** Click on non-interactive card chrome opens the task note beside Fulcrum. */
+export function handleTaskCardBlankClick(
 	ev: MouseEvent,
 	host: FulcrumHost,
 	task: IndexedTask,

@@ -11,8 +11,11 @@ import {
 	indexLists,
 } from "./projectListSync";
 import {conduitSyncTasks} from "./conduitTasks";
+import {importUnlinkedProjectReminders} from "./importProjectListReminders";
 import {pullTasksFromReminders, pushTasksToReminders} from "./taskSync";
-import {parseList} from "../fulcrum/settingsDefaults";
+import {filterProjectsForConduitSync, resolveProjectReminderConnection} from "./mappingRegistry";
+import {readProjectListId} from "./mapping";
+import {isProjectDone} from "../fulcrum/settingsDefaults";
 import {
 	forceToActiveAction,
 	phaseToActiveAction,
@@ -60,7 +63,7 @@ export class SyncCoordinator {
 
 	async requestSync(
 		reason: string,
-		opts?: {force?: ConduitSyncForce; skipQuiet?: boolean},
+		opts?: {force?: ConduitSyncForce; skipQuiet?: boolean; projectPath?: string},
 	): Promise<ConduitSyncResult> {
 		if (this.running) {
 			return {ok: false, deferred: true, deferReason: "sync already running"};
@@ -99,8 +102,29 @@ export class SyncCoordinator {
 			const remctl = new RemctlClient(this.plugin.settings.conduitRemctlPath);
 			const snap = this.plugin.vaultIndex.getSnapshot();
 			const projects = snap.projects;
-			const doneSet = new Set(parseList(this.plugin.settings.projectDoneStatuses));
-			const tasks = conduitSyncTasks(snap.tasks, this.plugin.settings);
+			const projectPath = opts?.projectPath?.trim() || undefined;
+			let lists = indexLists(await remctl.lists());
+			let activeProjects = filterProjectsForConduitSync(
+				this.plugin.app,
+				this.plugin.settings,
+				projects.filter((p) => !isProjectDone(p, this.plugin.settings)),
+				lists,
+			);
+			if (projectPath) {
+				activeProjects = activeProjects.filter((p) => p.file.path === projectPath);
+				if (activeProjects.length === 0) {
+					return {
+						ok: false,
+						message: projectPath
+							? "Conduit: this project is not connected or sync is disabled."
+							: "Conduit: no projects selected for sync.",
+					};
+				}
+			}
+			let tasks = conduitSyncTasks(snap.tasks, this.plugin.settings);
+			if (projectPath) {
+				tasks = tasks.filter((t) => t.projectFile?.path === projectPath);
+			}
 
 			const vaultFp = vaultFingerprint(projects, tasks, this.plugin.settings);
 			const state = await loadConduitSyncState(() => this.plugin.loadData());
@@ -122,15 +146,14 @@ export class SyncCoordinator {
 
 			reportConduitProgress({
 				phase: "lists",
-				label: "Syncing project lists…",
+				label: projectPath ? "Syncing project list…" : "Syncing project lists…",
 				activeAction,
 				force,
 			});
-			let lists = indexLists(await remctl.lists());
 			lists = await ensureProjectLists(
 				this.plugin.app,
 				remctl,
-				projects.filter((p) => !doneSet.has(p.status.toLowerCase())),
+				activeProjects,
 				this.plugin.settings,
 				lists,
 			);
@@ -138,7 +161,32 @@ export class SyncCoordinator {
 
 			const allRows: import("./types").RemctlReminderRow[] = [];
 			const seenLists = new Set<string>();
-			const listEntries = [...lists.byId.values()];
+			const listEntries =
+				projectPath && activeProjects.length === 1
+					? (() => {
+							const p = activeProjects[0]!;
+							const fromPass = lists.projectPathToListId.get(p.file.path);
+							if (fromPass && lists.byId.has(fromPass)) return [lists.byId.get(fromPass)!];
+							const id = readProjectListId(this.plugin.app, p, this.plugin.settings);
+							if (id && lists.byId.has(id)) return [lists.byId.get(id)!];
+							const conn = resolveProjectReminderConnection(
+								this.plugin.app,
+								p,
+								this.plugin.settings,
+								lists,
+							);
+							return conn && lists.byId.has(conn.listId) ? [lists.byId.get(conn.listId)!] : [];
+						})()
+					: activeProjects.flatMap((p) => {
+							const conn = resolveProjectReminderConnection(
+								this.plugin.app,
+								p,
+								this.plugin.settings,
+								lists,
+							);
+							if (!conn || !lists.byId.has(conn.listId)) return [];
+							return [lists.byId.get(conn.listId)!];
+						});
 			let listIndex = 0;
 			for (const list of listEntries) {
 				if (seenLists.has(list.id)) continue;
@@ -161,7 +209,7 @@ export class SyncCoordinator {
 			}
 
 			const inbox = this.plugin.settings.conduitInboxListName.trim();
-			if (inbox) {
+			if (inbox && !projectPath) {
 				try {
 					const inboxRows = await remctl.showList({listName: inbox});
 					allRows.push(...inboxRows);
@@ -171,11 +219,55 @@ export class SyncCoordinator {
 			}
 
 			const remFp = remindersFingerprint(allRows);
+			let imported = 0;
 			let pulled = 0;
 			let pushed = 0;
 			let pushFailed = 0;
 
 			if (force === "pull" || force === "both") {
+				if (projectPath && activeProjects.length === 1) {
+					const project = activeProjects[0]!;
+					const conn = resolveProjectReminderConnection(
+						this.plugin.app,
+						project,
+						this.plugin.settings,
+						lists,
+					);
+					if (conn) {
+						const allTasksForLinkScan = conduitSyncTasks(
+							this.plugin.vaultIndex.getSnapshot().tasks,
+							this.plugin.settings,
+						);
+						imported = await importUnlinkedProjectReminders(
+							this.plugin.app,
+							remctl,
+							this.plugin.settings,
+							project,
+							conn.listId,
+							allTasksForLinkScan,
+							allRows,
+							state,
+							(cur, tot) => {
+								reportConduitProgress({
+									phase: "importing",
+									label: "Importing from Reminders…",
+									current: cur,
+									total: tot,
+									activeAction: phaseToActiveAction("importing", activeAction),
+									force,
+								});
+							},
+						);
+						if (imported > 0) {
+							await this.plugin.vaultIndex.rebuild();
+							const snapAfterImport = this.plugin.vaultIndex.getSnapshot();
+							tasks = conduitSyncTasks(snapAfterImport.tasks, this.plugin.settings).filter(
+								(t) => t.projectFile?.path === projectPath,
+							);
+						}
+					}
+				}
+
 				pulled = await pullTasksFromReminders(
 					this.plugin.app,
 					remctl,
@@ -202,12 +294,17 @@ export class SyncCoordinator {
 			if (force === "push" || force === "both") {
 				await this.plugin.vaultIndex.rebuild();
 				const snap2 = this.plugin.vaultIndex.getSnapshot();
-				const tasks2 = conduitSyncTasks(snap2.tasks, this.plugin.settings);
+				let tasks2 = conduitSyncTasks(snap2.tasks, this.plugin.settings);
+				if (projectPath) {
+					tasks2 = tasks2.filter((t) => t.projectFile?.path === projectPath);
+				}
 				const pushResult = await pushTasksToReminders(
 					this.plugin.app,
 					remctl,
 					tasks2,
-					snap2.projects,
+					projectPath
+						? snap2.projects.filter((p) => p.file.path === projectPath)
+						: snap2.projects,
 					this.plugin.settings,
 					lists,
 					state,
@@ -249,11 +346,14 @@ export class SyncCoordinator {
 			await this.plugin.vaultIndex.rebuild();
 
 			const failNote = pushFailed > 0 ? `, ${pushFailed} failed` : "";
+			const importNote = imported > 0 ? `, imported ${imported}` : "";
+			const scopeNote = projectPath ? " (project)" : "";
 			return {
 				ok: true,
-				message: `Conduit sync (${reason}): ${tasks.length} task(s), pulled ${pulled}, pushed ${pushed}${failNote}.`,
+				message: `Conduit sync${scopeNote} (${reason}): ${tasks.length} task(s), pulled ${pulled}, pushed ${pushed}${importNote}${failNote}.`,
 				pulled,
 				pushed,
+				imported,
 			};
 		} catch (e) {
 			console.error("Conduit sync failed", e);

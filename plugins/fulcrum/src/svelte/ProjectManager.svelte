@@ -242,7 +242,12 @@
 			{#if !leftCollapsed}
 				<div class="fulcrum-pm__left-scroll">
 					{#if sidebarShowsTasks}
-						<TaskListPanel {plugin} {hoverParentLeaf} />
+						<TaskListPanel
+							{plugin}
+							{hoverParentLeaf}
+							scheduleDragContext={mainMode === "calendar" ||
+								(mainMode === "kanban" && kanbanView === "tasks")}
+						/>
 					{:else}
 						<ProjectListPanel
 							{plugin}
@@ -252,6 +257,9 @@
 							sidebarDraggable={sidebarProjectDraggable}
 						/>
 					{/if}
+				</div>
+				<div class="fulcrum-pm__left-footer">
+					<AreaFilterPanel {plugin} variant="sidebar-footer" />
 				</div>
 			{/if}
 		</div>
@@ -276,21 +284,18 @@
 				<h1 class="fulcrum-pm__main-title">Dashboard</h1>
 				<FulcrumLeafToolbar {plugin} />
 			</header>
-			<AreaFilterPanel {plugin} />
 			<DashboardMain {plugin} hoverParentLeaf={hoverParentLeaf} />
 		{:else if mainMode === "review"}
 			<header class="fulcrum-pm__main-head">
 				<h1 class="fulcrum-pm__main-title">Review</h1>
 				<FulcrumLeafToolbar {plugin} />
 			</header>
-			<AreaFilterPanel {plugin} />
 			<WeeklyReviewMain {plugin} hoverParentLeaf={hoverParentLeaf} />
 		{:else if mainMode === "areas"}
 			<header class="fulcrum-pm__main-head">
 				<h1 class="fulcrum-pm__main-title">Areas</h1>
 				<FulcrumLeafToolbar {plugin} />
 			</header>
-			<AreaFilterPanel {plugin} />
 			<AreasMain
 				{plugin}
 				hoverParentLeaf={hoverParentLeaf}
@@ -301,21 +306,18 @@
 				<h1 class="fulcrum-pm__main-title">Kanban</h1>
 				<FulcrumLeafToolbar {plugin} />
 			</header>
-			<AreaFilterPanel {plugin} />
 			<KanbanMain {plugin} {hoverParentLeaf} />
 		{:else if mainMode === "calendar"}
 			<header class="fulcrum-pm__main-head">
 				<h1 class="fulcrum-pm__main-title">Calendar</h1>
 				<FulcrumLeafToolbar {plugin} />
 			</header>
-			<AreaFilterPanel {plugin} />
 			<CalendarMain {plugin} {hoverParentLeaf} />
 		{:else if mainMode === "time"}
 			<header class="fulcrum-pm__main-head">
 				<h1 class="fulcrum-pm__main-title">Time</h1>
 				<FulcrumLeafToolbar {plugin} />
 			</header>
-			<AreaFilterPanel {plugin} />
 			<TimeMain {plugin} {hoverParentLeaf} activeTab={plugin.settings.timeModeTab} />
 		{:else if projectPath}
 			{#key projectPath}

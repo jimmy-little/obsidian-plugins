@@ -9,3 +9,6 @@ export const VIEW_FLOATING_TIMERS = "fulcrum-floating-timers";
 
 /** `registerHoverLinkSource` id — must match `hover-link` trigger `source`. */
 export const FULCRUM_HOVER_SOURCE = "fulcrum";
+
+/** Ribbon and tab icon for Fulcrum views (distinct from in-app dashboard affordances). */
+export const FULCRUM_PLUGIN_ICON = "pyramid";

@@ -63,6 +63,15 @@ export function replaceInlineTaskWithWikilink(
 	return `${m[1]}[${mark}] [[${safeName}]]`;
 }
 
+/** True when checkbox body is only wikilink(s) — TaskNotes embed `- [ ] [[Task note]]`. */
+export function isTaskNoteEmbedBareTitle(bare: string): boolean {
+	if (!/\[\[[^\]]+\]\]/u.test(bare)) return false;
+	const withoutLinks = bare.replace(/\[\[[^\]]+\]\]/gu, " ").replace(/\s+/g, " ").trim();
+	if (!withoutLinks) return true;
+	const parsed = parseObsidianTasksEmojiDates(withoutLinks);
+	return stripInlineTagsForTitle(parsed.title).trim() === "";
+}
+
 /** Extract `#tag` tokens from task line text. */
 export function parseInlineTags(text: string): string[] {
 	const tags: string[] = [];

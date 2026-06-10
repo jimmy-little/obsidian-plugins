@@ -113,6 +113,16 @@ export async function pullTasksFromReminders(
 		if (id == null) {
 			id = await adoptReminderByDeepLink(app, settings, task, listRows);
 		}
+		if (id == null && listRows.length > 0) {
+			const titleKey = task.title.trim().toLowerCase();
+			const byTitle = listRows.find(
+				(r) => !r.completed && r.title.trim().toLowerCase() === titleKey,
+			);
+			if (byTitle) {
+				await writeTaskReminderId(app, task, settings, byTitle.numericId);
+				id = byTitle.numericId;
+			}
+		}
 		if (id == null) continue;
 
 		const row = reminderRows.find((r) => r.numericId === id) ?? (await remctl.info(id));

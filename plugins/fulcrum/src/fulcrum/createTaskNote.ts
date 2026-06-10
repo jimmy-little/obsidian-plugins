@@ -16,6 +16,8 @@ export interface CreateTaskNoteOptions {
 	parentTaskLink?: string | null;
 	tags?: string[];
 	areaLink?: string | null;
+	/** Apple Reminders numeric id (Conduit import). */
+	reminderId?: number;
 }
 
 function sanitizeTitleForFilename(title: string): string {
@@ -103,6 +105,10 @@ export async function createTaskNoteFile(
 	if (opts.dueDate) fm[settings.taskDueDateField] = opts.dueDate;
 	if (opts.scheduledDate) fm[settings.taskScheduledDateField] = opts.scheduledDate;
 	if (opts.areaLink) fm[settings.areaLinkField] = opts.areaLink;
+	if (opts.reminderId != null) {
+		const key = settings.conduitReminderIdField.trim() || "appleReminderId";
+		fm[key] = opts.reminderId;
+	}
 
 	const projectLinks: string[] = [];
 	if (opts.parentTaskLink?.trim()) projectLinks.push(opts.parentTaskLink.trim());

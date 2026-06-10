@@ -34,6 +34,10 @@ export interface FulcrumHost {
 		projectPath: string,
 		onComplete?: () => void | Promise<void>,
 	): void;
+	openAddMilestoneModal(
+		projectPath: string,
+		onComplete?: () => void | Promise<void>,
+	): void;
 	/** Modal: text → same log append as the project page quick note (does not open the project). */
 	openQuickProjectNoteModal(projectPath: string): void;
 	/** Confirm, optional note → done status, log line, move to completed folder, return to dashboard. */
@@ -53,10 +57,14 @@ export interface FulcrumHost {
 	archiveProjectSnapshot(projectPath: string): Promise<void>;
 	/** Append `- [ ] title #tag [[project]]` to the project note (Obsidian Tasks / inline source). */
 	openNewInlineTaskForProject(projectPath: string): void;
+	/** Pick a project, then append an inline checkbox task to its note. */
+	promptNewInlineTaskForProject(): void;
 	/** TaskNotes “Create new task” with project pre-filled when the plugin exposes it. */
 	openTaskNoteCreateForProject(projectPath: string): void;
 	/** Create a TaskNotes-compatible task note (Fulcrum-native). */
 	openCreateTaskNoteForProject(projectPath: string): void;
+	/** Pick a project, then open the create task note modal. */
+	promptCreateTaskNoteForProject(): void;
 	/** Create subtask linked to parent task note. */
 	openCreateSubtaskForTask(parent: IndexedTask): void;
 	/** Create a note from the configured template; opens beside the project view when possible. */
@@ -89,13 +97,24 @@ export interface FulcrumHost {
 	conduitSyncNow(opts?: {
 		force?: import("../conduit/types").ConduitSyncForce;
 		skipQuiet?: boolean;
+		projectPath?: string;
 	}): Promise<void>;
 	conduitRunDoctor(): Promise<void>;
 	conduitRunAction(id: import("../conduit/actions").ConduitActionId): void;
+	conduitRunProjectAction(projectPath: string, id: "sync" | "pull" | "push"): void;
+	conduitIsProjectConnected(projectPath: string): boolean;
+	conduitIsProjectSyncEnabled(projectPath: string): boolean;
+	conduitConnectProject(projectPath: string): Promise<void>;
+	conduitStartRemindersSync(projectPath: string): Promise<void>;
+	conduitStopRemindersSync(projectPath: string): Promise<void>;
 	/** Tabled: native widget bridge — see timer/WidgetBridge.ts */
 	// scheduleWidgetBridgeSync?(): void;
 	/** Renders markdown into a host element (e.g. activity note preview). */
 	renderActivityBodyPreview(el: HTMLElement, sourcePath: string, markdown: string): Promise<void>;
+	/** Renders a single-line title with wikilinks as inline pills (no markdown block layout). */
+	renderActivityTitleInline(el: HTMLElement, sourcePath: string, title: string): void;
+	/** Create a people-folder note from a ghost wikilink and open it. */
+	createPersonNote(linkText: string, displayName: string): Promise<void>;
 	/** Edit project note YAML in the suite properties modal (same UI as Orbit). */
 	openProjectNoteProperties(projectPath: string): void;
 	/** Notify Svelte views that timer entries changed (start/stop/adjust). */

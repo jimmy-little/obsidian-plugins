@@ -55,4 +55,5 @@ export interface ConduitSyncResult {
 	message?: string;
 	pulled?: number;
 	pushed?: number;
+	imported?: number;
 }

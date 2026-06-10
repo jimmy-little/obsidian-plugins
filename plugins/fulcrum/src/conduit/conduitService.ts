@@ -1,16 +1,23 @@
 import {Notice, Platform, TFile} from "obsidian";
 import type FulcrumPlugin from "../main";
-import type {ConduitSyncForce, ConduitSyncResult} from "./types";
+import type {ConduitSyncForce, ConduitSyncResult, RemctlListRow} from "./types";
 import {SyncCoordinator} from "./syncCoordinator";
 import {RemctlClient} from "./remctlClient";
 import {findRemctlBinary} from "./remctlPath";
 import {ConduitSyncIndicator} from "./syncIndicator";
+import {
+	isProjectConduitConnected,
+	isProjectConduitSyncEnabled,
+	findProjectByPath,
+} from "./mappingRegistry";
+import {indexLists} from "./projectListSync";
 
 export class ConduitService {
 	readonly coordinator: SyncCoordinator;
 	private vaultHooked = false;
 	private indicator: ConduitSyncIndicator | null = null;
 	private intervalTimer: number | undefined;
+	private cachedLists: RemctlListRow[] = [];
 
 	constructor(private readonly plugin: FulcrumPlugin) {
 		this.coordinator = new SyncCoordinator(plugin);
@@ -27,6 +34,31 @@ export class ConduitService {
 		this.hookVaultEvents();
 		this.coordinator.stopInterval();
 		this.startInterval();
+		void this.refreshRemindersListCache().catch(() => undefined);
+	}
+
+	async refreshRemindersListCache(): Promise<RemctlListRow[]> {
+		const client = new RemctlClient(this.plugin.settings.conduitRemctlPath);
+		this.cachedLists = await client.lists();
+		return this.cachedLists;
+	}
+
+	getCachedRemindersLists(): RemctlListRow[] {
+		return this.cachedLists;
+	}
+
+	isProjectConnected(projectPath: string): boolean {
+		const project = findProjectByPath(this.plugin.vaultIndex.getSnapshot().projects, projectPath);
+		if (!project) return false;
+		const listIndex = indexLists(this.cachedLists);
+		return isProjectConduitConnected(this.plugin.app, project, this.plugin.settings, listIndex);
+	}
+
+	isProjectSyncEnabled(projectPath: string): boolean {
+		const project = findProjectByPath(this.plugin.vaultIndex.getSnapshot().projects, projectPath);
+		if (!project) return false;
+		const listIndex = indexLists(this.cachedLists);
+		return isProjectConduitSyncEnabled(this.plugin.app, project, this.plugin.settings, listIndex);
 	}
 
 	/** Obsidian GUI apps often lack ~/.local/bin on PATH — persist a discovered full path once. */
@@ -111,14 +143,24 @@ export class ConduitService {
 	/** Runs a full sync with status bar / toolbar progress (used by retry timer too). */
 	async runSync(
 		reason: string,
-		opts?: {force?: ConduitSyncForce; skipQuiet?: boolean; notify?: boolean},
+		opts?: {
+			force?: ConduitSyncForce;
+			skipQuiet?: boolean;
+			notify?: boolean;
+			projectPath?: string;
+		},
 	): Promise<ConduitSyncResult> {
 		return this.executeSync(reason, opts);
 	}
 
 	private async executeSync(
 		reason: string,
-		opts?: {force?: ConduitSyncForce; skipQuiet?: boolean; notify?: boolean},
+		opts?: {
+			force?: ConduitSyncForce;
+			skipQuiet?: boolean;
+			notify?: boolean;
+			projectPath?: string;
+		},
 	): Promise<ConduitSyncResult> {
 		const force = opts?.force ?? "both";
 		let result: ConduitSyncResult = {ok: false, message: "Sync did not run"};
@@ -126,7 +168,9 @@ export class ConduitService {
 			result = await this.coordinator.requestSync(reason, {
 				force,
 				skipQuiet: opts?.skipQuiet,
+				projectPath: opts?.projectPath,
 			});
+			void this.refreshRemindersListCache().catch(() => undefined);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			result = {ok: false, message: msg};
@@ -151,7 +195,11 @@ export class ConduitService {
 		return result;
 	}
 
-	async syncNow(opts?: {force?: ConduitSyncForce; skipQuiet?: boolean}): Promise<void> {
+	async syncNow(opts?: {
+		force?: ConduitSyncForce;
+		skipQuiet?: boolean;
+		projectPath?: string;
+	}): Promise<void> {
 		if (!ConduitService.canRun(this.plugin.settings)) {
 			new Notice("Enable Conduit in Fulcrum settings (macOS only).");
 			return;

@@ -54,13 +54,19 @@
 		resolveTaskScheduleFieldSetting,
 		waitForNextFileResolved,
 	} from "../fulcrum/calendar/calendarTaskSchedule";
-	import ConduitSyncToolbar from "./ConduitSyncToolbar.svelte";
+	import TaskToolbarActions from "./TaskToolbarActions.svelte";
+	import GanttMain from "./GanttMain.svelte";
+	import FulcrumDateNavToolbar from "./shared/FulcrumDateNavToolbar.svelte";
+	import FulcrumViewToolbar from "./shared/FulcrumViewToolbar.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 	export let filterProjectPath: string | undefined = undefined;
 	export let projectAtomicNotes: import("../fulcrum/types").AtomicNoteRow[] = [];
 	export let embedded = false;
+
+	/** Main calendar shell only: schedule grid vs project/task gantt. */
+	let calendarPane: "schedule" | "gantt" = "schedule";
 
 	/** Bumps on an interval so the “now” line position stays current. */
 	let nowLineTick = 0;
@@ -505,39 +511,68 @@
 	class="fulcrum-calendar"
 	class:fulcrum-calendar--task-drag-active={scheduleDragActive}
 	class:fulcrum-calendar--sidebar-task-drag={taskDragActive}
+	class:fulcrum-calendar--gantt-pane={calendarPane === "gantt" && !embedded}
 	data-fulcrum-calendar-root
 >
-	<div class="fulcrum-calendar__toolbar">
-		<button type="button" class="fulcrum-calendar__nav-btn" aria-label="Previous" on:click={goPrev}>
-			‹
-		</button>
-		<button type="button" class="fulcrum-calendar__nav-btn" aria-label="Next" on:click={goNext}>
-			›
-		</button>
-		<h2 class="fulcrum-calendar__title">{titleText}</h2>
-		<button type="button" class="fulcrum-calendar__today" on:click={goToday}>
-			Today
-		</button>
-		<label class="fulcrum-calendar__view-mode">
-			<span class="fulcrum-calendar__view-mode-label">View</span>
-			<select
-				class="dropdown fulcrum-calendar__view-select"
-				aria-label="Calendar view mode"
-				value={viewMode}
-				on:change={(e) => void onViewModeChange(e)}
+	{#if !embedded}
+		<div class="fulcrum-calendar__pane-bar" role="tablist" aria-label="Calendar mode">
+			<button
+				type="button"
+				class="fulcrum-calendar__pane-btn"
+				class:fulcrum-calendar__pane-btn--active={calendarPane === "schedule"}
+				role="tab"
+				aria-selected={calendarPane === "schedule"}
+				on:click={() => (calendarPane = "schedule")}
 			>
-				<option value="month">Month</option>
-				<option value="workWeek">Work week</option>
-				<option value="week">Week</option>
-				<option value="threeDay">3 days</option>
-				<option value="day">Day</option>
-			</select>
-		</label>
+				Schedule
+			</button>
+			<button
+				type="button"
+				class="fulcrum-calendar__pane-btn"
+				class:fulcrum-calendar__pane-btn--active={calendarPane === "gantt"}
+				role="tab"
+				aria-selected={calendarPane === "gantt"}
+				on:click={() => (calendarPane = "gantt")}
+			>
+				Gantt
+			</button>
+		</div>
+	{/if}
 
-		{#if !embedded}
-		<ConduitSyncToolbar {plugin} />
-		{/if}
-	</div>
+	{#if calendarPane === "gantt" && !embedded}
+		<GanttMain {plugin} {hoverParentLeaf} variant="full" embedded={true} />
+	{:else}
+	<FulcrumViewToolbar ariaLabel="Calendar navigation">
+		<svelte:fragment slot="primary">
+			<FulcrumDateNavToolbar
+				title={titleText}
+				onPrev={goPrev}
+				onNext={goNext}
+				onToday={goToday}
+			>
+				<label slot="trailing" class="fulcrum-calendar__view-mode">
+					<span class="fulcrum-calendar__view-mode-label">View</span>
+					<select
+						class="dropdown fulcrum-calendar__view-select"
+						aria-label="Calendar view mode"
+						value={viewMode}
+						on:change={(e) => void onViewModeChange(e)}
+					>
+						<option value="month">Month</option>
+						<option value="workWeek">Work week</option>
+						<option value="week">Week</option>
+						<option value="threeDay">3 days</option>
+						<option value="day">Day</option>
+					</select>
+				</label>
+			</FulcrumDateNavToolbar>
+		</svelte:fragment>
+		<svelte:fragment slot="actions">
+			{#if !embedded}
+				<TaskToolbarActions {plugin} />
+			{/if}
+		</svelte:fragment>
+	</FulcrumViewToolbar>
 
 	<div class="fulcrum-calendar__layers" role="group" aria-label="Calendar layers">
 		<button
@@ -763,4 +798,5 @@
 	{/if}
 	{/key}
 	</div>
+	{/if}
 </div>

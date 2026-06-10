@@ -17,7 +17,6 @@ import {
 	ProjectPickerModal,
 	TaskFieldDateModal,
 	TaskRecurrenceModal,
-	TaskReminderPresetModal,
 } from "./modals";
 import {deleteIndexedTask} from "./deleteIndexedTask";
 import {convertInlineTaskToNote} from "./convertInlineTaskToNote";
@@ -252,23 +251,38 @@ function addRecurrenceSubmenu(menu: Menu, host: FulcrumHost, task: IndexedTask):
 	});
 }
 
+const REMINDER_PRESETS: {title: string; spec: TaskReminderSpec}[] = [
+	{
+		title: "At scheduled time",
+		spec: {type: "relative", anchor: "scheduled", offset: 0, unit: "minutes", direction: "before"},
+	},
+	{
+		title: "1 day before due",
+		spec: {type: "relative", anchor: "due", offset: 1, unit: "days", direction: "before"},
+	},
+	{
+		title: "1 hour before scheduled",
+		spec: {type: "relative", anchor: "scheduled", offset: 1, unit: "hours", direction: "before"},
+	},
+];
+
 function addReminderSubmenu(menu: Menu, host: FulcrumHost, task: IndexedTask): void {
 	if (task.source !== "taskNote") return;
 	menu.addItem((item) => {
 		item.setTitle("Alert / Reminder");
 		item.setIcon("bell");
 		const sub = createSubmenu(item);
-		sub.addItem((row) => {
-			row.setTitle("Add preset…");
-			row.onClick(() => {
-				new TaskReminderPresetModal(host.app, (spec) => {
-					const existing = [...(task.reminders ?? []), spec];
-					return withFileResolved(host, task, () =>
+		for (const preset of REMINDER_PRESETS) {
+			sub.addItem((row) => {
+				row.setTitle(preset.title);
+				row.onClick(() => {
+					const existing = [...(task.reminders ?? []), preset.spec];
+					void withFileResolved(host, task, () =>
 						applyTaskRemindersChange(host.app, task, host.settings, existing),
-					);
-				}).open();
+					).catch(handleMenuError);
+				});
 			});
-		});
+		}
 		sub.addItem((row) => {
 			row.setTitle("Clear all reminders");
 			row.onClick(() => {

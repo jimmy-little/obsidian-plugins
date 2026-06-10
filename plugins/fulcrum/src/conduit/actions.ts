@@ -67,7 +67,11 @@ export function conduitActionEnabled(plugin: FulcrumPlugin): boolean {
 	return Platform.isMacOS && plugin.settings.conduitEnabled;
 }
 
-export function runConduitAction(plugin: FulcrumPlugin, id: ConduitActionId): void {
+export function runConduitAction(
+	plugin: FulcrumPlugin,
+	id: ConduitActionId,
+	projectPath?: string,
+): void {
 	if (!Platform.isMacOS) return;
 	const def = CONDUIT_SYNC_ACTIONS.find((a) => a.id === id);
 	if (def?.confirm && !window.confirm(def.confirm)) return;
@@ -77,7 +81,15 @@ export function runConduitAction(plugin: FulcrumPlugin, id: ConduitActionId): vo
 		void plugin.conduitRunDoctor();
 		return;
 	}
-	void plugin.conduitSyncNow(opts);
+	void plugin.conduitSyncNow({...opts, projectPath});
+}
+
+export function runConduitProjectAction(
+	plugin: FulcrumPlugin,
+	projectPath: string,
+	id: "sync" | "pull" | "push",
+): void {
+	runConduitAction(plugin, id, projectPath);
 }
 
 function actionSyncOpts(id: ConduitActionId): {

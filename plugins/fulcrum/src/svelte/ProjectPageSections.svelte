@@ -8,7 +8,6 @@
 
 	export let plugin: FulcrumHost;
 	export let projectPath: string;
-	export let accentColorCss: string | undefined = undefined;
 
 	let sections: ProjectPageSection[] = [];
 	let loadId = 0;
@@ -59,7 +58,6 @@
 					{plugin}
 					sourcePath={projectPath}
 					markdown={section.markdown}
-					{accentColorCss}
 				/>
 			</section>
 		{/each}

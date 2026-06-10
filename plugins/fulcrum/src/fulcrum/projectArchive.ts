@@ -7,6 +7,7 @@ import {formatTrackedMinutesShort} from "./utils/dates";
 import {parseDoneStatusSet, parseList} from "./settingsDefaults";
 import {
 	incompleteProjectTasks,
+	sortMsForAtomicNote,
 	sortMsForMeeting,
 	taskIsComplete,
 } from "./utils/projectActivity";
@@ -83,9 +84,10 @@ export function buildSnapshotMarkdown(
 	if (rollup.relatedPeople?.length > 0) {
 		lines.push("### Related people");
 		for (const p of rollup.relatedPeople) {
-			const linkText =
-				app.metadataCache.fileToLinktext(p.file, projectPath, true) ??
-				p.file.basename.replace(/\.md$/i, "");
+			const linkText = p.file
+				? (app.metadataCache.fileToLinktext(p.file, projectPath, true) ??
+					p.file.basename.replace(/\.md$/i, ""))
+				: p.linkText;
 			const display = stripWikilinkForDisplay(p.name);
 			lines.push(`- [[${linkText}|${display}]]`);
 		}
@@ -109,7 +111,7 @@ export function buildSnapshotMarkdown(
 		if (n.trackedMinutes > 0)
 			chips.push(formatTrackedMinutesShort(n.trackedMinutes));
 		actItems.push({
-			sortMs: n.modifiedMs,
+			sortMs: sortMsForAtomicNote(n),
 			title,
 			stampLabel: "",
 			hoverPath: n.file.path,

@@ -6,7 +6,14 @@ import {
 	setInlineTaskChecked,
 	setInlineTaskDue,
 } from "../fulcrum/utils/inlineTasks";
-import {isDoneStatus, normalizeStatusKey, parseDoneStatusSet, parseList, parseTaskStatusChoices} from "../fulcrum/settingsDefaults";
+import {
+	isDoneStatus,
+	isProjectDone as isIndexedProjectDone,
+	normalizeStatusKey,
+	parseDoneStatusSet,
+	parseList,
+	parseTaskStatusChoices,
+} from "../fulcrum/settingsDefaults";
 import {applyTaskStatusChange, updateTaskNoteField} from "../fulcrum/kanban/taskFieldUpdate";
 
 const REMINDER_ID_COMMENT = /<!--\s*reminder-id:\s*(\d+)\s*-->/i;
@@ -78,16 +85,37 @@ export async function writeProjectListId(
 	});
 }
 
+export function readProjectConduitSync(
+	app: App,
+	project: IndexedProject,
+	settings: FulcrumSettings,
+): boolean {
+	const cache = app.metadataCache.getFileCache(project.file);
+	const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+	const key = settings.conduitSyncField.trim() || "conduitSync";
+	return fm?.[key] === true;
+}
+
+export async function writeProjectConduitSync(
+	app: App,
+	project: IndexedProject,
+	settings: FulcrumSettings,
+	enabled: boolean,
+): Promise<void> {
+	const key = settings.conduitSyncField.trim() || "conduitSync";
+	await app.fileManager.processFrontMatter(project.file, (fm) => {
+		if (enabled) fm[key] = true;
+		else delete fm[key];
+	});
+}
+
+/** Third argument ignored; uses `project.file.path`. */
 export function isProjectDone(
 	project: IndexedProject,
 	settings: FulcrumSettings,
-	projectPath: string,
+	_projectPath?: string,
 ): boolean {
-	const done = new Set(parseList(settings.projectDoneStatuses));
-	if (done.has(project.status.toLowerCase())) return true;
-	const completedRoot = settings.completedProjectsFolder.trim();
-	if (completedRoot && projectPath.startsWith(completedRoot)) return true;
-	return false;
+	return isIndexedProjectDone(project, settings);
 }
 
 export function taskIsDone(task: IndexedTask, settings: FulcrumSettings): boolean {

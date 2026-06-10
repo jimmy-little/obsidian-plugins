@@ -5,12 +5,15 @@
 	import type {FulcrumSettings} from "../fulcrum/settingsDefaults";
 	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
 	import {buildAreaLifeModeMap, filterProjectsByAreaFocus} from "../fulcrum/utils/areaFocusFilter";
-	import {parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
+	import {parseDoneStatusSet, isProjectDone, parseList} from "../fulcrum/settingsDefaults";
 	import type {IndexedArea, IndexedProject} from "../fulcrum/types";
 	import {buildProjectSidebarCounts} from "../fulcrum/utils/projectSidebarCounts";
 	import {sortIndexedProjects} from "../fulcrum/utils/projectListSort";
 	import {daysUntilCalendar} from "../fulcrum/utils/dates";
 	import ProjectListRow from "./ProjectListRow.svelte";
+	import FulcrumFacetPanel from "./shared/FulcrumFacetPanel.svelte";
+	import FulcrumFacetRow from "./shared/FulcrumFacetRow.svelte";
+	import FulcrumFilterPopover from "./shared/FulcrumFilterPopover.svelte";
 
 	const NONE_KEY = "__none__";
 	const FACETS_COLLAPSED_KEY = "fulcrum-sidebar-facets-collapsed";
@@ -20,7 +23,7 @@
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 
 	/** Set of group keys that are collapsed. Key = `groupBy:label` */
-	let collapsedGroups = new Set<string>();
+	let collapsedGroupKeys: string[] = [];
 	export let selectedPath: string | null = null;
 	export let onSelectProject: (path: string) => void;
 	/** When true, project rows can be dragged onto the Kanban board. */
@@ -57,7 +60,6 @@
 	}
 
 	$: sRev = $settingsRevision;
-	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
 	$: doneTask = (void sRev, parseDoneStatusSet(plugin.settings.taskDoneStatuses));
 
 	$: areaFilter = $areaFilterState;
@@ -71,11 +73,11 @@
 
 	/** Per-project counts for sidebar notifications. */
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
-	$: activeProjectRaw = filterProjectsByAreaFocus(
-		snapshot.projects.filter((p) => !doneProject.has((p.status ?? "").trim().toLowerCase())),
+	$: activeProjectRaw = (void sRev, filterProjectsByAreaFocus(
+		snapshot.projects.filter((p) => !isProjectDone(p, plugin.settings)),
 		areaFilter,
 		lifeModeMap,
-	);
+	));
 	/** Applied filter (from settings) - used for displayed list. Re-read when settings change. */
 	$: uncheckedStatus = (void sRev, new Set(plugin.settings.projectSidebarFilterUncheckedStatus ?? []));
 
@@ -290,159 +292,111 @@
 	}
 
 	function isGroupCollapsed(label: string): boolean {
-		return collapsedGroups.has(groupKey(label));
+		return collapsedGroupKeys.includes(groupKey(label));
 	}
 
-	function onGroupHeaderClick(ev: MouseEvent, label: string): void {
-		const t = ev.target as HTMLElement | null;
-		if (t?.closest(".fulcrum-project-list-panel__open-area-note")) return;
-		toggleGroup(label);
-	}
+	$: projectFilterSections = [
+		{
+			title: "Status",
+			options: statusOptions,
+			isChecked: isStatusChecked,
+			onToggle: toggleStatusFilter,
+		},
+	];
 
 	function toggleGroup(label: string): void {
 		const key = groupKey(label);
-		const next = new Set(collapsedGroups);
-		if (next.has(key)) next.delete(key);
-		else next.add(key);
-		collapsedGroups = next;
-	}
-
-	function onGroupHeaderKeydown(ev: KeyboardEvent, label: string): void {
-		if (ev.key !== "Enter" && ev.key !== " ") return;
-		ev.preventDefault();
-		toggleGroup(label);
+		if (collapsedGroupKeys.includes(key)) {
+			collapsedGroupKeys = collapsedGroupKeys.filter((k) => k !== key);
+		} else {
+			collapsedGroupKeys = [...collapsedGroupKeys, key];
+		}
 	}
 </script>
 
 <svelte:window on:click={handleFilterClickOutside} />
 
 <div class="fulcrum-project-list-panel">
-	<div class="fulcrum-project-list-panel__facets-shell">
-		<button
-			type="button"
-			class="fulcrum-project-list-panel__facets-toggle"
-			aria-expanded={!facetsCollapsed}
-			aria-controls="fulcrum-project-list-panel-facets"
-			on:click={() => toggleFacetsCollapsed()}
-		>
-			<span class="fulcrum-project-list-panel__facets-toggle-label">Filters</span>
-			<span
-				class="fulcrum-project-list-panel__facets-toggle-chevron"
-				class:fulcrum-project-list-panel__facets-toggle-chevron--collapsed={facetsCollapsed}
-				aria-hidden="true"
-			>▾</span>
-		</button>
-		{#if !facetsCollapsed}
-			<div
-				id="fulcrum-project-list-panel-facets"
-				class="fulcrum-project-list-panel__facets"
+	<FulcrumFacetPanel
+		collapsed={facetsCollapsed}
+		panelId="fulcrum-project-list-panel-facets"
+		onToggle={() => toggleFacetsCollapsed()}
+	>
+		<FulcrumFacetRow label="Group">
+			<select
+				class="dropdown fulcrum-project-list-panel__facet-select"
+				aria-label="Group projects by"
+				value={groupBy}
+				on:change={(e) => void onGroupByChange(e)}
 			>
-				<div class="fulcrum-project-list-panel__facet-row">
-					<span class="fulcrum-project-list-panel__facet-label">Group</span>
-					<div class="fulcrum-project-list-panel__facet-controls">
-						<select
-							class="dropdown fulcrum-project-list-panel__facet-select"
-							aria-label="Group projects by"
-							value={groupBy}
-							on:change={(e) => void onGroupByChange(e)}
-						>
-							<option value="area">Area</option>
-							<option value="status">Status</option>
-							<option value="reviewDue">Review due</option>
-							<option value="none">None</option>
-						</select>
-					</div>
-				</div>
-				<div class="fulcrum-project-list-panel__facet-row">
-					<span class="fulcrum-project-list-panel__facet-label">Sort</span>
-					<div class="fulcrum-project-list-panel__facet-controls">
-						<select
-							class="dropdown fulcrum-project-list-panel__facet-select"
-							aria-label="Sort projects by"
-							value={sortBy}
-							on:change={(e) => void onSortByChange(e)}
-						>
-							<option value="launch">Launch date</option>
-							<option value="nextReview">Next review</option>
-							<option value="rank">Rank</option>
-							<option value="name">Name</option>
-						</select>
-						<button
-							type="button"
-							class="fulcrum-project-list-panel__sort-dir"
-							title={sortDir === "asc" ? "Ascending (click for descending)" : "Descending (click for ascending)"}
-							aria-label={sortDir === "asc" ? "Sort ascending, switch to descending" : "Sort descending, switch to ascending"}
-							on:click={() => void toggleSortDir()}
-						>
-							{sortDir === "asc" ? "↑" : "↓"}
-						</button>
-					</div>
-				</div>
-				<div
-					class="fulcrum-project-list-panel__facet-row fulcrum-project-list-panel__facet-row--filter"
-					bind:this={filterAnchorEl}
-				>
-					<span class="fulcrum-project-list-panel__facet-label">Filter</span>
-					<div class="fulcrum-project-list-panel__facet-controls fulcrum-project-list-panel__facet-controls--filter">
-						<div class="fulcrum-project-list-panel__filter-wrap">
-							<button
-								type="button"
-								class="dropdown fulcrum-project-list-panel__facet-select fulcrum-project-list-panel__filter-trigger"
-								aria-label="Filter projects by status"
-								aria-expanded={filterOpen}
-								aria-haspopup="true"
-								on:click|stopPropagation={() => openFilterPanel()}
-							>
-								{uncheckedStatus.size > 0 ? "Filtered" : "All"}
-							</button>
-							<button
-								type="button"
-								class="fulcrum-project-list-panel__sort-dir fulcrum-project-list-panel__filter-apply"
-								title="Apply filters and refresh list"
-								aria-label="Apply filters and refresh list"
-								on:click={() => void applyFilters()}
-							>
-								<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
-							</button>
-							{#if filterOpen}
-								<div
-									class="fulcrum-project-list-panel__filter-panel"
-									role="menu"
-									aria-label="Filter options"
-								>
-									<div class="fulcrum-project-list-panel__filter-section">
-										<div class="fulcrum-project-list-panel__filter-section-title">Status</div>
-										{#each statusOptions as opt}
-											<label class="fulcrum-project-list-panel__filter-check">
-												<input
-													type="checkbox"
-													checked={isStatusChecked(opt.key)}
-													on:change={() => void toggleStatusFilter(opt.key)}
-												/>
-												<span>{opt.label}</span>
-											</label>
-										{/each}
-									</div>
-								</div>
-							{/if}
-						</div>
-					</div>
-				</div>
-				<div class="fulcrum-project-list-panel__facet-row">
-					<span class="fulcrum-project-list-panel__facet-label">Search</span>
-					<div class="fulcrum-project-list-panel__facet-controls">
-						<input
-							type="text"
-							class="fulcrum-project-list-panel__facet-input"
-							placeholder="Filter by project title…"
-							aria-label="Filter projects by title"
-							bind:value={searchQuery}
-						/>
-					</div>
+				<option value="area">Area</option>
+				<option value="status">Status</option>
+				<option value="reviewDue">Review due</option>
+				<option value="none">None</option>
+			</select>
+		</FulcrumFacetRow>
+		<FulcrumFacetRow label="Sort">
+			<select
+				class="dropdown fulcrum-project-list-panel__facet-select"
+				aria-label="Sort projects by"
+				value={sortBy}
+				on:change={(e) => void onSortByChange(e)}
+			>
+				<option value="launch">Launch date</option>
+				<option value="nextReview">Next review</option>
+				<option value="rank">Rank</option>
+				<option value="name">Name</option>
+			</select>
+			<button
+				type="button"
+				class="fulcrum-project-list-panel__sort-dir"
+				title={sortDir === "asc" ? "Ascending (click for descending)" : "Descending (click for ascending)"}
+				aria-label={sortDir === "asc" ? "Sort ascending, switch to descending" : "Sort descending, switch to ascending"}
+				on:click={() => void toggleSortDir()}
+			>
+				{sortDir === "asc" ? "↑" : "↓"}
+			</button>
+		</FulcrumFacetRow>
+		<div
+			class="fulcrum-project-list-panel__facet-row fulcrum-project-list-panel__facet-row--filter"
+			bind:this={filterAnchorEl}
+		>
+			<span class="fulcrum-project-list-panel__facet-label">Filter</span>
+			<div class="fulcrum-project-list-panel__facet-controls fulcrum-project-list-panel__facet-controls--filter">
+				<div class="fulcrum-project-list-panel__filter-wrap">
+					<button
+						type="button"
+						class="dropdown fulcrum-project-list-panel__facet-select fulcrum-project-list-panel__filter-trigger"
+						aria-label="Filter projects by status"
+						aria-expanded={filterOpen}
+						aria-haspopup="true"
+						on:click|stopPropagation={() => openFilterPanel()}
+					>
+						{uncheckedStatus.size > 0 ? "Filtered" : "All"}
+					</button>
+					<button
+						type="button"
+						class="fulcrum-project-list-panel__sort-dir fulcrum-project-list-panel__filter-apply"
+						title="Apply filters and refresh list"
+						aria-label="Apply filters and refresh list"
+						on:click={() => void applyFilters()}
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+					</button>
+					<FulcrumFilterPopover open={filterOpen} sections={projectFilterSections} />
 				</div>
 			</div>
-		{/if}
-	</div>
+		</div>
+		<FulcrumFacetRow label="Search">
+			<input
+				type="text"
+				class="fulcrum-project-list-panel__facet-input"
+				placeholder="Filter by project title…"
+				aria-label="Filter projects by title"
+				bind:value={searchQuery}
+			/>
+		</FulcrumFacetRow>
+	</FulcrumFacetPanel>
 	{#if activeProjectFiltered.length === 0}
 		<p class="fulcrum-muted fulcrum-project-list-panel__empty">
 			{searchQuery.trim()
@@ -469,33 +423,34 @@
 	{:else if groupBy === "area"}
 		{#each areaGroups as g}
 			<div class="fulcrum-dashboard__area-group fulcrum-project-list-panel__group">
-				<div
-					class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle"
-					role="button"
-					tabindex="0"
-					aria-expanded={!isGroupCollapsed(g.label)}
-					on:click={(e) => onGroupHeaderClick(e, g.label)}
-					on:keydown={(e) => onGroupHeaderKeydown(e, g.label)}
-				>
-					<div class="fulcrum-project-list-panel__group-header-main">
-						{#if g.kind === "area" && g.area}
-							<h3 class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-row">
-								<span class="fulcrum-area-icon">{g.area?.icon ?? "▸"}</span>
-								<span class="fulcrum-project-list-panel__group-title-text">{g.label}</span>
-								<button
-									type="button"
-									class="fulcrum-project-list-panel__open-area-note"
-									title="Open area note"
-									aria-label="Open area note"
-									on:click|stopPropagation={() => openAreaFile(g.area?.file.path ?? "")}
-								>
-									↗
-								</button>
-							</h3>
-						{:else}
-							<h3 class="fulcrum-dashboard__area-group-title">{g.label}</h3>
+				<div class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle">
+					<button
+						type="button"
+						class="fulcrum-project-list-panel__group-toggle"
+						aria-expanded={!isGroupCollapsed(g.label)}
+						on:click={() => toggleGroup(g.label)}
+					>
+						<span
+							class="fulcrum-project-list-panel__group-chevron"
+							class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(g.label)}
+							aria-hidden="true"
+						>▾</span>
+						{#if g.kind === "area" && g.area?.icon?.trim()}
+							<span class="fulcrum-area-icon">{g.area.icon}</span>
 						{/if}
-					</div>
+						<span class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-text">{g.label}</span>
+					</button>
+					{#if g.kind === "area" && g.area}
+						<button
+							type="button"
+							class="fulcrum-project-list-panel__open-area-note"
+							title="Open area note"
+							aria-label="Open area note"
+							on:click={() => openAreaFile(g.area?.file.path ?? "")}
+						>
+							↗
+						</button>
+					{/if}
 				</div>
 				{#if !isGroupCollapsed(g.label)}
 					<ul class="fulcrum-sidebar-project-list">
@@ -520,17 +475,20 @@
 	{:else if groupBy === "reviewDue"}
 		{#each reviewDueGroups as rg}
 			<div class="fulcrum-dashboard__area-group fulcrum-project-list-panel__group">
-				<div
-					class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle"
-					role="button"
-					tabindex="0"
-					aria-expanded={!isGroupCollapsed(rg.label)}
-					on:click={(e) => onGroupHeaderClick(e, rg.label)}
-					on:keydown={(e) => onGroupHeaderKeydown(e, rg.label)}
-				>
-					<div class="fulcrum-project-list-panel__group-header-main">
-						<h3 class="fulcrum-dashboard__area-group-title">{rg.label}</h3>
-					</div>
+				<div class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle">
+					<button
+						type="button"
+						class="fulcrum-project-list-panel__group-toggle"
+						aria-expanded={!isGroupCollapsed(rg.label)}
+						on:click={() => toggleGroup(rg.label)}
+					>
+						<span
+							class="fulcrum-project-list-panel__group-chevron"
+							class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(rg.label)}
+							aria-hidden="true"
+						>▾</span>
+						<span class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-text">{rg.label}</span>
+					</button>
 				</div>
 				{#if !isGroupCollapsed(rg.label)}
 					<ul class="fulcrum-sidebar-project-list">
@@ -555,17 +513,20 @@
 	{:else if groupBy === "status"}
 		{#each statusGroups as sg}
 			<div class="fulcrum-dashboard__area-group fulcrum-project-list-panel__group">
-				<div
-					class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle"
-					role="button"
-					tabindex="0"
-					aria-expanded={!isGroupCollapsed(sg.label)}
-					on:click={(e) => onGroupHeaderClick(e, sg.label)}
-					on:keydown={(e) => onGroupHeaderKeydown(e, sg.label)}
-				>
-					<div class="fulcrum-project-list-panel__group-header-main">
-						<h3 class="fulcrum-dashboard__area-group-title">{sg.label}</h3>
-					</div>
+				<div class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle">
+					<button
+						type="button"
+						class="fulcrum-project-list-panel__group-toggle"
+						aria-expanded={!isGroupCollapsed(sg.label)}
+						on:click={() => toggleGroup(sg.label)}
+					>
+						<span
+							class="fulcrum-project-list-panel__group-chevron"
+							class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(sg.label)}
+							aria-hidden="true"
+						>▾</span>
+						<span class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-text">{sg.label}</span>
+					</button>
 				</div>
 				{#if !isGroupCollapsed(sg.label)}
 					<ul class="fulcrum-sidebar-project-list">

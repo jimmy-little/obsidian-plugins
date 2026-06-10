@@ -79,6 +79,13 @@ export function showFulcrumProjectCardContextMenu(
 
 	if (statuses.length > 0) {
 		menu.addSeparator();
+		menu.addItem((item) => {
+			item.setTitle("Change status (advanced)…");
+			item.setIcon("settings");
+			item.onClick(() => {
+				host.openChangeProjectStatusModal(projectPath, p.status ?? "");
+			});
+		});
 		for (const st of statuses) {
 			const label = st.replace(/\b\w/g, (c) => c.toUpperCase());
 			const isCurrent = st.trim().toLowerCase() === current;

@@ -21,7 +21,7 @@ export function displayConduitSettings(containerEl: HTMLElement, plugin: Fulcrum
 	}
 
 	containerEl.createEl("p", {
-		text: "Bidirectional sync for task title, status, and due date (uses scheduled when due is empty). One Reminders list per active project; task notes without a project use the Inbox list. Optional: delete linked Reminder when deleting a vault task.",
+		text: "Bidirectional sync for linked tasks (title, status, due date). Enable sync per project from the project header menu and choose a Reminders list manually. Tasks without a project use the Inbox list.",
 		cls: "fulcrum-settings-lead",
 	});
 
@@ -83,6 +83,7 @@ export function displayConduitSettings(containerEl: HTMLElement, plugin: Fulcrum
 	textSetting(plugin, containerEl, "conduitInboxListName", "Inbox list name", "Reminders list for tasks without a project.");
 	textSetting(plugin, containerEl, "conduitReminderIdField", "Task reminder id field");
 	textSetting(plugin, containerEl, "conduitReminderListIdField", "Project list id field");
+	textSetting(plugin, containerEl, "conduitSyncField", "Project sync enabled field", "Frontmatter boolean set when a project syncs with Reminders.");
 	textSetting(plugin, containerEl, "conduitArchivedListPrefix", "Archived list name prefix");
 
 	new Setting(containerEl)

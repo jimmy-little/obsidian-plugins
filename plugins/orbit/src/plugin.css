@@ -64,7 +64,9 @@
 	color: color-mix(in srgb, var(--orbit-accent) 45%, var(--text-muted));
 }
 
-.orbit-profile.orbit-profile--accent .fulcrum-person-inline-pill {
+.orbit-profile.orbit-profile--accent .fulcrum-person-inline-pill,
+.orbit-profile.orbit-profile--accent .fulcrum-project-inline-pill,
+.orbit-profile.orbit-profile--accent .fulcrum-product-inline-pill {
 	border-color: color-mix(in srgb, var(--orbit-accent) 48%, var(--background-modifier-border));
 }
 
@@ -72,7 +74,9 @@
 	--suite-person-card-accent: var(--orbit-accent);
 }
 
-.orbit-profile.orbit-profile--accent .fulcrum-person-inline-pill:hover {
+.orbit-profile.orbit-profile--accent .fulcrum-person-inline-pill:hover,
+.orbit-profile.orbit-profile--accent .fulcrum-project-inline-pill:hover,
+.orbit-profile.orbit-profile--accent .fulcrum-product-inline-pill:hover {
 	border-color: color-mix(in srgb, var(--orbit-accent) 62%, var(--background-modifier-border));
 }
 
@@ -526,4 +530,26 @@ button.orbit-heatmap-day-modal__link:hover {
 	margin: 0.75rem 0 0.35rem;
 	border: none;
 	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Ghost person pills: wikilink present but no note under configured peopleDirs */
+.fulcrum-person-inline-pill--ghost {
+	opacity: 0.72;
+	border-style: dashed;
+	background: color-mix(in srgb, var(--background-secondary) 55%, var(--background-primary));
+}
+
+.fulcrum-person-inline-pill--ghost:hover {
+	opacity: 0.92;
+	border-color: color-mix(in srgb, var(--interactive-accent) 28%, var(--background-modifier-border));
+}
+
+.fulcrum-person-inline-pill--ghost .fulcrum-person-inline-pill__name {
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.fulcrum-person-inline-pill--ghost .fulcrum-person-inline-pill__avatar svg {
+	opacity: 0.75;
+	color: var(--text-faint);
 }

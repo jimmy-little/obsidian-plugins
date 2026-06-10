@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type {WorkspaceLeaf} from "obsidian";
+	import {setIcon} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {IndexedArea, IndexedMeeting, IndexedProject} from "../fulcrum/types";
 	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
@@ -9,22 +10,18 @@
 		filterProjectsByAreaFocus,
 		resolveIndexedAreaLifeMode,
 	} from "../fulcrum/utils/areaFocusFilter";
-	import {isDoneStatus, parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
+	import {isDoneStatus, isProjectDone, parseDoneStatusSet} from "../fulcrum/settingsDefaults";
 	import {buildProjectSidebarCounts} from "../fulcrum/utils/projectSidebarCounts";
 	import {sortIndexedProjects} from "../fulcrum/utils/projectListSort";
 	import {
 		buildAreaNextUpSegments,
 		incompleteProjectTasks,
-		sortMsForMeeting,
 	} from "../fulcrum/utils/projectActivity";
-	import {
-		formatTrackedMinutesShort,
-		isISODateTodayOrFuture,
-	} from "../fulcrum/utils/dates";
+	import {formatTrackedMinutesShort} from "../fulcrum/utils/dates";
 	import ProjectListRow from "./ProjectListRow.svelte";
 	import NextUpMeetingCard from "./NextUpMeetingCard.svelte";
 	import TaskCard from "./TaskCard.svelte";
-	import TaskSectionHead from "./TaskSectionHead.svelte";
+	import GanttMain from "./GanttMain.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -47,7 +44,6 @@
 
 	$: sRev = $settingsRevision;
 	$: doneTask = (void sRev, parseDoneStatusSet(plugin.settings.taskDoneStatuses));
-	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
 
 	$: areaFilter = $areaFilterState;
 	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
@@ -57,11 +53,11 @@
 		areaTypeValue: plugin.settings.areaTypeValue,
 		settings: plugin.settings,
 	});
-	$: activeProjects = filterProjectsByAreaFocus(
-		snapshot.projects.filter((p) => !doneProject.has((p.status ?? "").trim().toLowerCase())),
+	$: activeProjects = (void sRev, filterProjectsByAreaFocus(
+		snapshot.projects.filter((p) => !isProjectDone(p, plugin.settings)),
 		areaFilter,
 		lifeModeMap,
-	);
+	));
 
 	$: areaSections = ((): AreaSection[] => {
 		const out: AreaSection[] = [];
@@ -152,6 +148,11 @@
 	function openPath(path: string): void {
 		plugin.openLinkedNoteFromFulcrum(path, hoverParentLeaf);
 	}
+
+	function openNoteIcon(el: HTMLElement): { destroy(): void } {
+		setIcon(el, "square-arrow-out-up-right");
+		return { destroy() {} };
+	}
 </script>
 
 <div class="fulcrum-area-dashboard">
@@ -172,32 +173,33 @@
 			{@const openAreaTasks = openTasksSorted(tasksForRollup)}
 			{@const nextUp = buildAreaNextUpSegments(tasksForRollup, meetingsAll, doneTask, 14)}
 			{@const kpi = kpiForProjects(section.projects)}
-			{@const upcomingMeetingsSorted = [...meetingsAll]
-				.filter((m) => m.date && isISODateTodayOrFuture(m.date))
-				.sort((a, b) => sortMsForMeeting(a) - sortMsForMeeting(b))}
 
 			<section class="fulcrum-area-dashboard__block">
 				<div class="fulcrum-area-dashboard__intro">
 					<div class="fulcrum-area-dashboard__intro-text">
-						<h2 class="fulcrum-area-dashboard__title">
-							{#if section.icon}
-								<span class="fulcrum-area-dashboard__tab-icon" aria-hidden="true"
-									>{section.icon}</span
-								>
-							{/if}
-							{section.label}
-						</h2>
+						<div class="fulcrum-area-dashboard__title-row">
+							<h2 class="fulcrum-area-dashboard__title">
+								{#if section.icon}
+									<span class="fulcrum-area-dashboard__tab-icon" aria-hidden="true"
+										>{section.icon}</span
+									>
+								{/if}
+								{section.label}
+							</h2>
+							<button
+								type="button"
+								class="fulcrum-area-dashboard__open-note"
+								title="Open area note"
+								aria-label="Open area note"
+								on:click={() => openPath(section.indexed.file.path)}
+							>
+								<span class="fulcrum-area-dashboard__open-note-icon" use:openNoteIcon aria-hidden="true"></span>
+							</button>
+						</div>
 						{#if section.indexed.description?.trim()}
 							<p class="fulcrum-area-dashboard__desc">{section.indexed.description}</p>
 						{/if}
 					</div>
-					<button
-						type="button"
-						class="mod-cta"
-						on:click={() => openPath(section.indexed.file.path)}
-					>
-						Open area note
-					</button>
 				</div>
 
 				<div class="fulcrum-hero-row fulcrum-hero-row--quad fulcrum-area-dashboard__kpis">
@@ -221,31 +223,9 @@
 					</div>
 				</div>
 
-				<div class="fulcrum-section fulcrum-area-dashboard__subsection">
-					<h3>Projects</h3>
-					{#if section.projects.length === 0}
-						<p class="fulcrum-muted">No active projects in this area.</p>
-					{:else}
-						<div class="fulcrum-area-dashboard__project-grid">
-							{#each section.projects as p (p.file.path)}
-								<ProjectListRow
-									{plugin}
-									{hoverParentLeaf}
-									{p}
-									selectedPath={null}
-									onSelectProject={onSelectProject}
-									openTaskCount={projectCounts.get(p.file.path)?.openTasks ?? 0}
-									upcomingMeetingCount={projectCounts.get(p.file.path)?.upcomingMeetings ?? 0}
-									tile={true}
-								/>
-							{/each}
-						</div>
-					{/if}
-				</div>
-
 				{#if nextUp.meetings.length > 0 || nextUp.items.length > 0}
 					<div class="fulcrum-section fulcrum-area-dashboard__subsection">
-						<h3>Next up</h3>
+						<h2 class="fulcrum-area-dashboard__section-title">Next up</h2>
 						{#if nextUp.meetings.length > 0}
 							<div class="fulcrum-next-up-meetings-row" role="list" aria-label="Upcoming meetings">
 								{#each nextUp.meetings as m (m.file.path)}
@@ -278,9 +258,49 @@
 					</div>
 				{/if}
 
+				<div class="fulcrum-section fulcrum-area-dashboard__subsection fulcrum-section--gantt">
+					<h2 class="fulcrum-area-dashboard__section-title">Timeline</h2>
+					<div class="fulcrum-dashboard-gantt fulcrum-area-dashboard__gantt">
+						<GanttMain
+							{plugin}
+							{hoverParentLeaf}
+							filterAreaPath={section.path}
+							{onSelectProject}
+							variant="compact"
+							embedded={true}
+							includeTasks={false}
+							onlyDatedItems={true}
+						/>
+					</div>
+				</div>
+
+				<div class="fulcrum-section fulcrum-area-dashboard__subsection">
+					<h2 class="fulcrum-area-dashboard__section-title">Projects</h2>
+					{#if section.projects.length === 0}
+						<p class="fulcrum-muted">No active projects in this area.</p>
+					{:else}
+						<div class="fulcrum-area-dashboard__project-grid">
+							{#each section.projects as p (p.file.path)}
+								<div class="fulcrum-area-dashboard__project-cell">
+									<ProjectListRow
+										{plugin}
+										{hoverParentLeaf}
+										{p}
+										selectedPath={null}
+										onSelectProject={onSelectProject}
+										openTaskCount={projectCounts.get(p.file.path)?.openTasks ?? 0}
+										upcomingMeetingCount={projectCounts.get(p.file.path)?.upcomingMeetings ?? 0}
+										tile={true}
+									/>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</div>
+
 				{#if openAreaTasks.length > 0}
 					<div class="fulcrum-section fulcrum-area-dashboard__subsection">
-						<TaskSectionHead title="Open tasks" {plugin} />
+						<h2 class="fulcrum-area-dashboard__section-title">Open tasks</h2>
 						<ul class="fulcrum-activity-list">
 							{#each openAreaTasks as t (t.file.path + ":" + (t.line ?? 0) + ":" + t.title)}
 								<li>
@@ -296,32 +316,23 @@
 						</ul>
 					</div>
 				{/if}
-
-				{#if upcomingMeetingsSorted.length > 0}
-					<div class="fulcrum-section fulcrum-area-dashboard__subsection">
-						<h3>Upcoming meetings</h3>
-						<div class="fulcrum-next-up-meetings-row" role="list" aria-label="Area meetings">
-							{#each upcomingMeetingsSorted as m (m.file.path)}
-								<div class="fulcrum-next-up-meetings-row__cell" role="listitem">
-									<NextUpMeetingCard meeting={m} onOpen={openPath} />
-								</div>
-							{/each}
-						</div>
-					</div>
-				{/if}
 			</section>
 		{/each}
 
 		{#if unassignedProjects.length > 0}
 			{@const unassignedPaths = new Set(unassignedProjects.map((p) => p.file.path))}
 			{@const unassignedMeetings = areaMeetings(unassignedPaths)}
+			{@const unassignedTasksRollup = snapshot.tasks.filter(
+				(t) => t.projectFile && unassignedPaths.has(t.projectFile.path),
+			)}
 			{@const unassignedTasks = openTasksSorted(
-				incompleteProjectTasks(
-					snapshot.tasks.filter(
-						(t) => t.projectFile && unassignedPaths.has(t.projectFile.path),
-					),
-					doneTask,
-				),
+				incompleteProjectTasks(unassignedTasksRollup, doneTask),
+			)}
+			{@const unassignedNextUp = buildAreaNextUpSegments(
+				unassignedTasksRollup,
+				unassignedMeetings,
+				doneTask,
+				14,
 			)}
 			{@const unassignedKpi = kpiForProjects(unassignedProjects)}
 
@@ -356,27 +367,80 @@
 					</div>
 				</div>
 
+				{#if unassignedNextUp.meetings.length > 0 || unassignedNextUp.items.length > 0}
+					<div class="fulcrum-section fulcrum-area-dashboard__subsection">
+						<h2 class="fulcrum-area-dashboard__section-title">Next up</h2>
+						{#if unassignedNextUp.meetings.length > 0}
+							<div class="fulcrum-next-up-meetings-row" role="list" aria-label="Upcoming meetings">
+								{#each unassignedNextUp.meetings as m (m.file.path)}
+									<div class="fulcrum-next-up-meetings-row__cell" role="listitem">
+										<NextUpMeetingCard meeting={m} onOpen={openPath} />
+									</div>
+								{/each}
+							</div>
+						{/if}
+						{#if unassignedNextUp.items.length > 0}
+							<ul
+								class="fulcrum-activity-list fulcrum-activity-list--timeline fulcrum-next-up-list"
+								class:fulcrum-next-up-list--with-meetings-above={unassignedNextUp.meetings.length > 0}
+							>
+								{#each unassignedNextUp.items as item}
+									<li>
+										{#if item.kind === "task" && item.task}
+											<TaskCard
+												{plugin}
+												task={item.task}
+												done={false}
+												anchorLeaf={hoverParentLeaf}
+												showInlineTimer={true}
+											/>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
+				{/if}
+
+				<div class="fulcrum-section fulcrum-area-dashboard__subsection fulcrum-section--gantt">
+					<h2 class="fulcrum-area-dashboard__section-title">Timeline</h2>
+					<div class="fulcrum-dashboard-gantt fulcrum-area-dashboard__gantt">
+						<GanttMain
+							{plugin}
+							{hoverParentLeaf}
+							filterUnassignedProjects={true}
+							{onSelectProject}
+							variant="compact"
+							embedded={true}
+							includeTasks={false}
+							onlyDatedItems={true}
+						/>
+					</div>
+				</div>
+
 				<div class="fulcrum-section fulcrum-area-dashboard__subsection">
-					<h3>Projects</h3>
+					<h2 class="fulcrum-area-dashboard__section-title">Projects</h2>
 					<div class="fulcrum-area-dashboard__project-grid">
 						{#each unassignedProjects as p (p.file.path)}
-							<ProjectListRow
-								{plugin}
-								{hoverParentLeaf}
-								{p}
-								selectedPath={null}
-								onSelectProject={onSelectProject}
-								openTaskCount={projectCounts.get(p.file.path)?.openTasks ?? 0}
-								upcomingMeetingCount={projectCounts.get(p.file.path)?.upcomingMeetings ?? 0}
-								tile={true}
-							/>
+							<div class="fulcrum-area-dashboard__project-cell">
+								<ProjectListRow
+									{plugin}
+									{hoverParentLeaf}
+									{p}
+									selectedPath={null}
+									onSelectProject={onSelectProject}
+									openTaskCount={projectCounts.get(p.file.path)?.openTasks ?? 0}
+									upcomingMeetingCount={projectCounts.get(p.file.path)?.upcomingMeetings ?? 0}
+									tile={true}
+								/>
+							</div>
 						{/each}
 					</div>
 				</div>
 
 				{#if unassignedTasks.length > 0}
 					<div class="fulcrum-section fulcrum-area-dashboard__subsection">
-						<TaskSectionHead title="Open tasks" {plugin} />
+						<h2 class="fulcrum-area-dashboard__section-title">Open tasks</h2>
 						<ul class="fulcrum-activity-list">
 							{#each unassignedTasks as t (t.file.path + ":" + (t.line ?? 0) + ":" + t.title)}
 								<li>
@@ -390,19 +454,6 @@
 								</li>
 							{/each}
 						</ul>
-					</div>
-				{/if}
-
-				{#if unassignedMeetings.filter((m) => m.date && isISODateTodayOrFuture(m.date)).length > 0}
-					<div class="fulcrum-section fulcrum-area-dashboard__subsection">
-						<h3>Upcoming meetings</h3>
-						<div class="fulcrum-next-up-meetings-row" role="list">
-							{#each unassignedMeetings.filter((m) => m.date && isISODateTodayOrFuture(m.date)) as m (m.file.path)}
-								<div class="fulcrum-next-up-meetings-row__cell" role="listitem">
-									<NextUpMeetingCard meeting={m} onOpen={openPath} />
-								</div>
-							{/each}
-						</div>
 					</div>
 				{/if}
 			</section>

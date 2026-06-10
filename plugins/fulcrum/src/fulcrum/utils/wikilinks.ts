@@ -1,3 +1,22 @@
+export type WikiLinkEntry = {linkText: string; displayName: string};
+
+/** `[[path]]` or `[[path|alias]]` → link path + display label. */
+export function parseWikiLinkEntry(raw: unknown): WikiLinkEntry | null {
+	if (raw == null) return null;
+	if (typeof raw !== "string") return null;
+	const s = raw.trim();
+	const m = s.match(/^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]\s*$/);
+	if (m?.[1]) {
+		const linkText = m[1].trim();
+		if (!linkText) return null;
+		const displayName = (m[2]?.trim() || linkText).trim();
+		return {linkText, displayName};
+	}
+	const plain = parseWikiLink(raw);
+	if (plain) return {linkText: plain, displayName: plain};
+	return null;
+}
+
 /** Extract link path from `[[Note]]` or `[[Note|alias]]`, or return trimmed plain string. */
 export function parseWikiLink(raw: unknown): string | null {
 	if (raw == null) return null;

@@ -76,7 +76,18 @@ export class RemctlClient {
 		else if (listRef.listName) args.push(listRef.listName);
 		else throw new Error("showList requires listId or listName");
 		const raw = await this.runJson<unknown>(args);
-		return normalizeReminders(raw);
+		const rows = normalizeReminders(raw);
+		if (listRef.listId) {
+			for (const row of rows) {
+				if (!row.listId) row.listId = listRef.listId;
+			}
+		}
+		if (listRef.listName) {
+			for (const row of rows) {
+				if (!row.listName) row.listName = listRef.listName;
+			}
+		}
+		return rows;
 	}
 
 	async info(numericId: number): Promise<RemctlReminderRow | null> {

@@ -47,6 +47,13 @@ import {
 	preferLightForegroundOnAccentCss,
 	resolveProjectAccentCss,
 } from "../fulcrum/utils/projectVisual";
+import {get} from "svelte/store";
+import {areaFilterState} from "../fulcrum/stores";
+import {
+	buildAreaLifeModeMap,
+	isAreaFilterWideOpen,
+	quickStartPassesAreaFilter,
+} from "../fulcrum/utils/areaFocusFilter";
 
 /** Markdown fence for the inline timer UI (legacy alias: `lapse`). */
 export const FULCRUM_TIMER_CODE_BLOCK_LANG = "fulcrum-timer";
@@ -265,7 +272,7 @@ export class TimerModule {
 	}
 
 	async getQuickStartItemsPublic(): Promise<QuickStartItemPublic[]> {
-		const list = await this.getTemplateDataList();
+		const list = this.filterTemplateDataByAreaFocus(await this.getTemplateDataList());
 		return list.map((d) => this.templateDataToPublic(d));
 	}
 
@@ -318,11 +325,34 @@ export class TimerModule {
 		await this.runStartTimerInNoteFromApi(notePath, options);
 	}
 
+	filterTemplateDataByAreaFocus(list: TemplateData[]): TemplateData[] {
+		const state = get(areaFilterState);
+		if (isAreaFilterWideOpen(state)) return list;
+		const snapshot = this.host.vaultIndex.getSnapshot();
+		const settings = this.host.settings;
+		const lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
+			projects: snapshot.projects,
+			app: this.app,
+			typeField: settings.typeField,
+			areaTypeValue: settings.areaTypeValue,
+			settings,
+		});
+		return list.filter((d) =>
+			quickStartPassesAreaFilter(d, snapshot, state, lifeModeMap),
+		);
+	}
+
 	async onload() {
 		const pluginStartTime = Date.now();
 		await this.loadTimerCache();
 
 		console.log(`Fulcrum timer: Plugin loading... (${Date.now() - pluginStartTime}ms)`);
+
+		this.register(
+			areaFilterState.subscribe(() => {
+				this.refreshQuickStartPanel();
+			}),
+		);
 
 		// Listen to metadata cache changes to automatically invalidate stale cache entries
 		this.registerEvent(
@@ -5704,23 +5734,25 @@ class TimerQuickStartModal extends Modal {
 		container.empty();
 
 		const total = this.templateListCache.length;
-		const filtered = this.templateListCache.filter(d => matchesQuickStartFilter(d, this.filterText));
+		const areaScoped = this.plugin.filterTemplateDataByAreaFocus(this.templateListCache);
+		const filtered = areaScoped.filter((d) => matchesQuickStartFilter(d, this.filterText));
 
 		if (seq !== this.contentRenderSeq) return;
 
-		if (this.filterText.trim()) {
+		const visible = filtered.length;
+		if (this.filterText.trim() || areaScoped.length < total) {
 			countStatEl.textContent =
-				filtered.length === total
-					? `${total} timer${total === 1 ? '' : 's'}`
-					: `Showing ${filtered.length} of ${total} timers`;
+				visible === total
+					? `${total} timer${total === 1 ? "" : "s"}`
+					: `Showing ${visible} of ${total} timers`;
 		} else {
-			countStatEl.textContent = `${total} timer${total === 1 ? '' : 's'}`;
+			countStatEl.textContent = `${total} timer${total === 1 ? "" : "s"}`;
 		}
 
 		if (filtered.length === 0) {
-			container.createEl('p', {
-				text: 'No timers match your filter.',
-				cls: 'fulcrum-timer-buttons-empty'
+			container.createEl("p", {
+				text: "No timers match your filters.",
+				cls: "fulcrum-timer-buttons-empty",
 			});
 			return;
 		}
@@ -6006,29 +6038,34 @@ class TimerQuickStartView extends TimerEmbedPanel {
 		const templateDataList = this.templateListCache;
 
 		if (templateDataList.length === 0) {
-			countStatEl.textContent = '0 timers';
-			container.createEl('p', {
-				text: 'No Quick Start items yet. Set the templates folder and/or default project folder in Fulcrum timer settings.',
-				cls: 'fulcrum-timer-buttons-empty'
+			countStatEl.textContent = "0 timers";
+			container.createEl("p", {
+				text: "No Quick Start items yet. Set the templates folder and/or default project folder in Fulcrum timer settings.",
+				cls: "fulcrum-timer-buttons-empty",
 			});
 			return;
 		}
 
-		const filteredTemplates = templateDataList.filter(data => matchesQuickStartFilter(data, this.filterText));
+		const areaScoped = this.plugin.filterTemplateDataByAreaFocus(templateDataList);
+		const filteredTemplates = areaScoped.filter((data) =>
+			matchesQuickStartFilter(data, this.filterText),
+		);
 
-		if (this.filterText.trim()) {
+		const total = templateDataList.length;
+		const visible = filteredTemplates.length;
+		if (this.filterText.trim() || areaScoped.length < total) {
 			countStatEl.textContent =
-				filteredTemplates.length === templateDataList.length
-					? `${templateDataList.length} timer${templateDataList.length === 1 ? '' : 's'}`
-					: `Showing ${filteredTemplates.length} of ${templateDataList.length} timers`;
+				visible === total
+					? `${total} timer${total === 1 ? "" : "s"}`
+					: `Showing ${visible} of ${total} timers`;
 		} else {
-			countStatEl.textContent = `${templateDataList.length} timer${templateDataList.length === 1 ? '' : 's'}`;
+			countStatEl.textContent = `${total} timer${total === 1 ? "" : "s"}`;
 		}
 
 		if (filteredTemplates.length === 0) {
-			container.createEl('p', {
-				text: 'No timers match your filter.',
-				cls: 'fulcrum-timer-buttons-empty'
+			container.createEl("p", {
+				text: "No timers match your filters.",
+				cls: "fulcrum-timer-buttons-empty",
 			});
 			return;
 		}

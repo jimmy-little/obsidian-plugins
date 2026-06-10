@@ -2,7 +2,7 @@
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {KanbanDimension, KanbanSwimlaneDimension} from "../fulcrum/settingsDefaults";
-	import {isDoneStatus, parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
+	import {isDoneStatus, isProjectDone, parseDoneStatusSet} from "../fulcrum/settingsDefaults";
 	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
 	import {
 		areaPathEnabled,
@@ -32,7 +32,8 @@
 	} from "../fulcrum/kanban/dateBuckets";
 	import ProjectListRow from "./ProjectListRow.svelte";
 	import TaskCard from "./TaskCard.svelte";
-	import ConduitSyncToolbar from "./ConduitSyncToolbar.svelte";
+	import TaskToolbarActions from "./TaskToolbarActions.svelte";
+	import FulcrumViewToolbar from "./shared/FulcrumViewToolbar.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -50,7 +51,6 @@
 	}
 
 	$: sRev = $settingsRevision;
-	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
 	$: doneTask = (void sRev, parseDoneStatusSet(plugin.settings.taskDoneStatuses));
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
 	$: areaFilter = $areaFilterState;
@@ -61,11 +61,11 @@
 		areaTypeValue: plugin.settings.areaTypeValue,
 		settings: plugin.settings,
 	});
-	$: activeProjects = filterProjectsByAreaFocus(
-		snapshot.projects.filter((p) => !doneProject.has(p.status)),
+	$: activeProjects = (void sRev, filterProjectsByAreaFocus(
+		snapshot.projects.filter((p) => !isProjectDone(p, plugin.settings)),
 		areaFilter,
 		lifeModeMap,
-	);
+	));
 	$: openTasks = snapshot.tasks
 		.filter(
 			(t) =>
@@ -389,7 +389,8 @@
 
 <div class="fulcrum-kanban" data-fulcrum-kanban-root>
 	{#if !embedded}
-	<div class="fulcrum-kanban__toolbar">
+	<FulcrumViewToolbar ariaLabel="Kanban toolbar" className="fulcrum-kanban__toolbar">
+		<svelte:fragment slot="primary">
 		<div
 			class="fulcrum-kanban__view-toggle fulcrum-kanban__view-toggle--mode"
 			role="tablist"
@@ -472,9 +473,11 @@
 				</button>
 			</div>
 		{/if}
-
-		<ConduitSyncToolbar {plugin} />
-	</div>
+		</svelte:fragment>
+		<svelte:fragment slot="actions">
+			<TaskToolbarActions {plugin} />
+		</svelte:fragment>
+	</FulcrumViewToolbar>
 	{/if}
 
 	<div

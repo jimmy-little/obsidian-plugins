@@ -36,9 +36,11 @@
 	import TaskListPanel from "./TaskListPanel.svelte";
 	import KanbanMain from "./KanbanMain.svelte";
 	import CalendarMain from "./CalendarMain.svelte";
+	import GanttMain from "./GanttMain.svelte";
 	import ProjectFilesTab from "./ProjectFilesTab.svelte";
-	import ProjectListRow from "./ProjectListRow.svelte";
 	import ProjectPageSections from "./ProjectPageSections.svelte";
+	import ConduitProjectToolbar from "./ConduitProjectToolbar.svelte";
+	import PersonCard from "./PersonCard.svelte";
 
 	type ProjectSummaryTab = "overview" | "list" | "board" | "timeline" | "calendar" | "files";
 	const PROJECT_TABS: {id: ProjectSummaryTab; label: string}[] = [
@@ -304,10 +306,30 @@
 			item.setIcon("file-json");
 			item.onClick(() => openProjectProperties());
 		});
+		if (plugin.conduitCanSync()) {
+			if (plugin.conduitIsProjectSyncEnabled(projectPath)) {
+				menu.addItem((item) => {
+					item.setTitle("Stop Sync with Reminders");
+					item.setIcon("bell-off");
+					item.onClick(() => void plugin.conduitStopRemindersSync(projectPath));
+				});
+			} else {
+				menu.addItem((item) => {
+					item.setTitle("Sync with Reminders");
+					item.setIcon("bell");
+					item.onClick(() => void plugin.conduitStartRemindersSync(projectPath));
+				});
+			}
+		}
 		menu.addItem((item) => {
 			item.setTitle("Mark reviewed");
 			item.setIcon("glasses");
 			item.onClick(() => markReviewed());
+		});
+		menu.addItem((item) => {
+			item.setTitle("Add milestone");
+			item.setIcon("gem");
+			item.onClick(() => plugin.openAddMilestoneModal(projectPath));
 		});
 		menu.addItem((item) => {
 			item.setTitle("Mark project complete");
@@ -395,39 +417,96 @@
 						{#if rollup.project.areaName}
 							<div class="fulcrum-project-banner__area">{rollup.project.areaName}</div>
 						{/if}
+						{#if rollup.relatedProjects?.length > 0 || rollup.relatedProducts?.length > 0}
+							<div class="fulcrum-project-banner__related">
+								{#if rollup.relatedProjects?.length > 0}
+									<div class="fulcrum-project-banner__related-row">
+										{#each rollup.relatedProjects as p (p.file.path)}
+											<button
+												type="button"
+												class="fulcrum-project-related-pill"
+												title={p.name}
+												on:click={() => openRelatedProject(p.file.path)}
+											>
+												<span
+													class="fulcrum-project-related-pill__icon"
+													use:bannerBtnIcon={"folder"}
+													aria-hidden="true"
+												></span>
+												<span class="fulcrum-project-related-pill__label">{p.name}</span>
+											</button>
+										{/each}
+									</div>
+								{/if}
+								{#if rollup.relatedProducts?.length > 0}
+									<div class="fulcrum-project-banner__related-row">
+										{#each rollup.relatedProducts as note (note.file.path)}
+											<button
+												type="button"
+												class="fulcrum-project-related-pill"
+												title={note.name}
+												on:click={() => openPath(note.file.path)}
+											>
+												<span
+													class="fulcrum-project-related-pill__icon"
+													use:bannerBtnIcon={"app-window"}
+													aria-hidden="true"
+												></span>
+												<span class="fulcrum-project-related-pill__label">{note.name}</span>
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						{/if}
 						{#if rollup.pageMeta.description}
 							<p class="fulcrum-project-banner__desc">{rollup.pageMeta.description}</p>
 						{/if}
+						{#if rollup.pageMeta.agentSummary?.trim()}
+							<div class="fulcrum-project-banner__agent-summary">
+								<span
+									class="fulcrum-project-banner__agent-summary-icon"
+									use:bannerBtnIcon={"bot"}
+									aria-hidden="true"
+								></span>
+								<p class="fulcrum-project-banner__agent-summary-text">
+									{rollup.pageMeta.agentSummary}
+								</p>
+							</div>
+						{/if}
 					</div>
-					<div class="fulcrum-project-banner__head-actions">
-						{#if statusPillText}
+					<div class="fulcrum-project-banner__head-actions-col">
+						<div class="fulcrum-project-banner__head-actions">
+							{#if statusPillText}
+								<button
+									type="button"
+									class="fulcrum-status-pill fulcrum-status-pill--banner fulcrum-status-pill--jira fulcrum-status-pill--clickable"
+									data-fulcrum-status={statusKind}
+									title="Change status"
+									on:click={() => {
+										plugin.openChangeProjectStatusModal(
+											projectPath,
+											rollup.project.status,
+											(newPath) => {
+												if (newPath) void plugin.openProjectSummary(newPath);
+											},
+										);
+									}}
+								>
+									{statusPillText}
+								</button>
+							{/if}
 							<button
 								type="button"
-								class="fulcrum-status-pill fulcrum-status-pill--banner fulcrum-status-pill--jira fulcrum-status-pill--clickable"
-								data-fulcrum-status={statusKind}
-								title="Change status"
-								on:click={() => {
-									plugin.openChangeProjectStatusModal(
-										projectPath,
-										rollup.project.status,
-										(newPath) => {
-											if (newPath) void plugin.openProjectSummary(newPath);
-										},
-									);
-								}}
+								class="fulcrum-banner-btn fulcrum-banner-btn--icon-only fulcrum-project-banner__menu-btn"
+								aria-label="Project actions"
+								title="Project actions"
+								on:click={openHeaderMenu}
 							>
-								{statusPillText}
+								<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"circle-ellipsis"} aria-hidden="true"></span>
 							</button>
-						{/if}
-						<button
-							type="button"
-							class="fulcrum-banner-btn fulcrum-banner-btn--icon-only fulcrum-project-banner__menu-btn"
-							aria-label="Project actions"
-							title="Project actions"
-							on:click={openHeaderMenu}
-						>
-							<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"circle-ellipsis"} aria-hidden="true"></span>
-						</button>
+						</div>
+						<ConduitProjectToolbar {plugin} {projectPath} />
 					</div>
 				</div>
 			</div>
@@ -456,10 +535,10 @@
 			class="fulcrum-project-tab-panel"
 			class:fulcrum-project-tab-panel--fill={activeTab === "list" ||
 				activeTab === "board" ||
-				activeTab === "calendar"}
-			class:fulcrum-project-tab-panel--scroll={activeTab === "overview" ||
-				activeTab === "files" ||
+				activeTab === "calendar" ||
 				activeTab === "timeline"}
+			class:fulcrum-project-tab-panel--scroll={activeTab === "overview" ||
+				activeTab === "files"}
 		>
 		{#if activeTab === "overview"}
 		<div class="fulcrum-project-meta-strip">
@@ -578,7 +657,7 @@
 			{/if}
 		</section>
 
-		<ProjectPageSections {plugin} {projectPath} accentColorCss={rollup.accentColorCss} />
+		<ProjectPageSections {plugin} {projectPath} />
 
 		<section class="fulcrum-section">
 			<h2>Activity</h2>
@@ -618,69 +697,8 @@
 			<section class="fulcrum-section fulcrum-section--people">
 				<h2 class="fulcrum-section--people__title">Related people</h2>
 				<div class="fulcrum-people-grid">
-					{#each rollup.relatedPeople as person (person.file.path)}
-						<button
-							type="button"
-							class="fulcrum-person-card"
-							aria-label={person.name}
-							on:click={() => openPath(person.file.path)}
-						>
-							<div
-								class="fulcrum-person-card__top"
-								class:fulcrum-person-card__top--has-banner={!!person.bannerImageSrc}
-								style:background-image={person.bannerImageSrc
-									? `url(${JSON.stringify(person.bannerImageSrc)})`
-									: undefined}
-							>
-								<div class="fulcrum-person-card__avatar">
-									{#if person.avatarSrc}
-										<img src={person.avatarSrc} alt="" />
-									{:else}
-										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-											<circle cx="12" cy="8" r="3"/>
-											<path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
-										</svg>
-									{/if}
-								</div>
-							</div>
-							<span class="fulcrum-person-card__name">{person.name}</span>
-						</button>
-					{/each}
-				</div>
-			</section>
-		{/if}
-
-		{#if rollup.relatedProjects?.length > 0}
-			<section class="fulcrum-section">
-				<h2>Related projects</h2>
-				<div class="fulcrum-related-projects-grid">
-					{#each rollup.relatedProjects as p (p.file.path)}
-						<ProjectListRow
-							{plugin}
-							{hoverParentLeaf}
-							{p}
-							tile={true}
-							selectedPath={projectPath}
-							onSelectProject={openRelatedProject}
-						/>
-					{/each}
-				</div>
-			</section>
-		{/if}
-
-		{#if rollup.relatedProducts?.length > 0}
-			<section class="fulcrum-section">
-				<h2>Related products</h2>
-				<div class="fulcrum-related-notes-grid">
-					{#each rollup.relatedProducts as note (note.file.path)}
-						<button
-							type="button"
-							class="fulcrum-related-note-card"
-							aria-label={note.name}
-							on:click={() => openPath(note.file.path)}
-						>
-							<span class="fulcrum-related-note-card__name">{note.name}</span>
-						</button>
+					{#each rollup.relatedPeople as person (person.file?.path ?? `ghost:${person.linkText}`)}
+						<PersonCard person={person} {plugin} onKnownClick={openPath} />
 					{/each}
 				</div>
 			</section>
@@ -692,14 +710,18 @@
 				{hoverParentLeaf}
 				filterProjectPath={projectPath}
 				embedded={true}
+				scheduleDragContext={false}
 			/>
 		{:else if activeTab === "board"}
 			<KanbanMain {plugin} {hoverParentLeaf} filterProjectPath={projectPath} embedded={true} />
 		{:else if activeTab === "timeline"}
-			<section class="fulcrum-section fulcrum-project-tab-placeholder">
-				<h2>Timeline</h2>
-				<p class="fulcrum-muted">Gantt timeline view is coming soon.</p>
-			</section>
+			<GanttMain
+				{plugin}
+				{hoverParentLeaf}
+				filterProjectPath={projectPath}
+				variant="compact"
+				embedded={true}
+			/>
 		{:else if activeTab === "calendar"}
 			<CalendarMain
 				{plugin}

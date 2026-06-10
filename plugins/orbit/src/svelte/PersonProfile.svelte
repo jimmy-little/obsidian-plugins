@@ -32,9 +32,11 @@
 	} from "../orbit/interactions";
 	import {loadOrbitActivityPreviews} from "../orbit/loadActivityPreviews";
 	import {computePersonStats, type PersonStatsTiles} from "../orbit/stats";
-	import {wikiLinkPathsFromText, resolveWikiPath} from "../orbit/orgLinks";
+	import {wikiLinkRefsFromText} from "../orbit/orgLinks";
+	import {buildPeopleDirsMatchIndex, resolvePersonLink} from "../orbit/peopleResolve";
 	import {VIEW_ORBIT_PERSON} from "../orbit/constants";
 	import OrbitActivityRow from "./OrbitActivityRow.svelte";
+	import OrbitPersonPill from "./OrbitPersonPill.svelte";
 
 	const ACTIVITY_PAGE_SIZE = 25;
 
@@ -78,10 +80,13 @@
 	}
 
 	type OrgPersonPill = {
-		path: string;
+		key: string;
+		path: string | null;
+		linkText: string;
 		label: string;
 		displayName: string;
 		avatarSrc: string | null;
+		isGhost: boolean;
 	};
 
 	export let plugin: OrbitHost;
@@ -109,18 +114,32 @@
 	let quickDraft = "";
 	let unsub: (() => void) | null = null;
 
-	function enrichOrgPerson(linkPath: string, linkLabel: string): OrgPersonPill {
-		const pf = plugin.app.vault.getAbstractFileByPath(linkPath);
-		if (!(pf instanceof TFile)) {
-			return {path: linkPath, label: linkLabel, displayName: linkLabel, avatarSrc: null};
+	function buildOrgPersonPill(
+		resolved: ReturnType<typeof resolvePersonLink>,
+		linkLabel: string,
+	): OrgPersonPill {
+		if (resolved.kind === "known") {
+			const pf = resolved.file;
+			const c = plugin.app.metadataCache.getFileCache(pf);
+			const fm = readPersonFrontmatter(c);
+			return {
+				key: pf.path,
+				path: pf.path,
+				linkText: resolved.linkText,
+				label: linkLabel,
+				displayName: displayNameForPerson(fm, pf.basename),
+				avatarSrc: resolvePersonAvatarSrc(plugin.app, pf, plugin.settings.avatarFrontmatterField),
+				isGhost: false,
+			};
 		}
-		const c = plugin.app.metadataCache.getFileCache(pf);
-		const fm = readPersonFrontmatter(c);
 		return {
-			path: linkPath,
+			key: `ghost:${resolved.linkText}`,
+			path: null,
+			linkText: resolved.linkText,
 			label: linkLabel,
-			displayName: displayNameForPerson(fm, pf.basename),
-			avatarSrc: resolvePersonAvatarSrc(plugin.app, pf, plugin.settings.avatarFrontmatterField),
+			displayName: resolved.displayName,
+			avatarSrc: null,
+			isGhost: true,
 		};
 	}
 
@@ -158,21 +177,36 @@
 		const pronRaw = stripWikiLinkDisplay(fm.pronouns?.trim() ?? "").trim();
 		pronounsDisplay = pronRaw;
 
+		const peopleIndex = buildPeopleDirsMatchIndex(plugin.app, plugin.settings.peopleDirs);
 		orgUpPaths = [];
-		for (const lt of wikiLinkPathsFromText(fm.org_up)) {
-			const p = resolveWikiPath(plugin.app, lt, f);
-			if (p) orgUpPaths.push(enrichOrgPerson(p, lt));
+		for (const ref of wikiLinkRefsFromText(fm.org_up)) {
+			const resolved = resolvePersonLink(
+				plugin.app,
+				ref.linkText,
+				ref.displayName,
+				f.path,
+				plugin.settings.peopleDirs,
+				peopleIndex,
+			);
+			orgUpPaths.push(buildOrgPersonPill(resolved, ref.linkText));
 		}
 		orgDownPaths = [];
 		const downRaw = fm.org_down;
-		let downList: string[] = [];
-		if (typeof downRaw === "string") downList = wikiLinkPathsFromText(downRaw);
+		const downRefs: {linkText: string; displayName: string}[] = [];
+		if (typeof downRaw === "string") downRefs.push(...wikiLinkRefsFromText(downRaw));
 		else if (Array.isArray(downRaw)) {
-			for (const x of downRaw) downList.push(...wikiLinkPathsFromText(String(x)));
+			for (const x of downRaw) downRefs.push(...wikiLinkRefsFromText(String(x)));
 		}
-		for (const lt of downList) {
-			const p = resolveWikiPath(plugin.app, lt, f);
-			if (p) orgDownPaths.push(enrichOrgPerson(p, lt));
+		for (const ref of downRefs) {
+			const resolved = resolvePersonLink(
+				plugin.app,
+				ref.linkText,
+				ref.displayName,
+				f.path,
+				plugin.settings.peopleDirs,
+				peopleIndex,
+			);
+			orgDownPaths.push(buildOrgPersonPill(resolved, ref.linkText));
 		}
 
 		void plugin.app.vault.read(f).then(async (body) => {
@@ -286,6 +320,15 @@
 			state: {path},
 		});
 		await plugin.app.workspace.revealLeaf(leaf);
+	}
+
+	async function onOrgPillClick(pill: OrgPersonPill): Promise<void> {
+		if (pill.isGhost) {
+			await plugin.createPersonNote(pill.linkText, pill.displayName);
+			rebuild();
+			return;
+		}
+		if (pill.path) await openPersonPath(pill.path);
 	}
 
 	async function submitQuick(): Promise<void> {
@@ -502,25 +545,14 @@
 				<div class="orbit-org-row orbit-org-row--pills">
 					<span class="orbit-org-row__label">Reports to</span>
 					<div class="orbit-org-pills">
-						{#each orgUpPaths as o (o.path)}
-							<button
-								type="button"
-								class="fulcrum-person-inline-pill"
-								aria-label={o.displayName}
-								on:click={() => openPersonPath(o.path)}
-							>
-								<span class="fulcrum-person-inline-pill__avatar" aria-hidden="true">
-									{#if o.avatarSrc}
-										<img src={o.avatarSrc} alt="" />
-									{:else}
-										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-											<circle cx="12" cy="8" r="3" />
-											<path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
-										</svg>
-									{/if}
-								</span>
-								<span class="fulcrum-person-inline-pill__name">{o.displayName}</span>
-							</button>
+						{#each orgUpPaths as o (o.key)}
+							<OrbitPersonPill
+								displayName={o.displayName}
+								avatarSrc={o.avatarSrc}
+								isGhost={o.isGhost}
+								title={o.isGhost ? "Create person note" : undefined}
+								on:click={() => void onOrgPillClick(o)}
+							/>
 						{/each}
 					</div>
 				</div>
@@ -529,25 +561,14 @@
 				<div class="orbit-org-row orbit-org-row--pills">
 					<span class="orbit-org-row__label">Direct reports</span>
 					<div class="orbit-org-pills">
-						{#each orgDownPaths as o (o.path)}
-							<button
-								type="button"
-								class="fulcrum-person-inline-pill"
-								aria-label={o.displayName}
-								on:click={() => openPersonPath(o.path)}
-							>
-								<span class="fulcrum-person-inline-pill__avatar" aria-hidden="true">
-									{#if o.avatarSrc}
-										<img src={o.avatarSrc} alt="" />
-									{:else}
-										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-											<circle cx="12" cy="8" r="3" />
-											<path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
-										</svg>
-									{/if}
-								</span>
-								<span class="fulcrum-person-inline-pill__name">{o.displayName}</span>
-							</button>
+						{#each orgDownPaths as o (o.key)}
+							<OrbitPersonPill
+								displayName={o.displayName}
+								avatarSrc={o.avatarSrc}
+								isGhost={o.isGhost}
+								title={o.isGhost ? "Create person note" : undefined}
+								on:click={() => void onOrgPillClick(o)}
+							/>
 						{/each}
 					</div>
 				</div>
@@ -918,7 +939,7 @@
 		flex: 1 1 auto;
 		min-width: 0;
 	}
-	.orbit-org-pills .fulcrum-person-inline-pill {
+	.orbit-org-pills :global(.fulcrum-person-inline-pill) {
 		font: inherit;
 		cursor: pointer;
 		max-width: 100%;

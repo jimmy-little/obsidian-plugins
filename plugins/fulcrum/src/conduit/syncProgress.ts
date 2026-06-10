@@ -6,6 +6,7 @@ export type ConduitSyncPhase =
 	| "waiting"
 	| "lists"
 	| "fetching"
+	| "importing"
 	| "pulling"
 	| "pushing"
 	| "saving"
@@ -47,6 +48,7 @@ export function phaseToActiveAction(
 	fallback: ConduitActiveAction,
 ): ConduitActiveAction {
 	if (phase === "pulling") return "pull";
+	if (phase === "importing") return "pull";
 	if (phase === "pushing") return "push";
 	return fallback;
 }
@@ -87,6 +89,8 @@ export function formatConduitToolbarBadge(p: ConduitSyncProgress): string {
 			return "Lists…";
 		case "fetching":
 			return "Read…";
+		case "importing":
+			return "Import…";
 		case "pulling":
 			return "Pull…";
 		case "pushing":

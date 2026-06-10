@@ -43,20 +43,23 @@ function orderColumns(
 	return out;
 }
 
-function buildAreaColumnDefs(areas: IndexedArea[], projects: IndexedProject[]): KanbanColumnDef[] {
-	const byAreaPath = new Map<string, IndexedProject[]>();
+function buildAreaColumnDefs(
+	areas: IndexedArea[],
+	projects: IndexedProject[],
+	tasks: IndexedTask[] = [],
+): KanbanColumnDef[] {
+	const byAreaPath = new Set<string>();
 	for (const p of projects) {
 		if (p.areaFiles.length === 0) {
-			const cur = byAreaPath.get(UNASSIGNED_AREA) ?? [];
-			cur.push(p);
-			byAreaPath.set(UNASSIGNED_AREA, cur);
+			byAreaPath.add(UNASSIGNED_AREA);
 		} else {
 			for (const af of p.areaFiles) {
-				const cur = byAreaPath.get(af.path) ?? [];
-				cur.push(p);
-				byAreaPath.set(af.path, cur);
+				byAreaPath.add(af.path);
 			}
 		}
+	}
+	for (const t of tasks) {
+		byAreaPath.add(t.areaFile?.path ?? UNASSIGNED_AREA);
 	}
 	const out: KanbanColumnDef[] = [];
 	for (const a of areas) {
@@ -67,15 +70,20 @@ function buildAreaColumnDefs(areas: IndexedArea[], projects: IndexedProject[]): 
 	if (byAreaPath.has(UNASSIGNED_AREA)) {
 		out.push({id: UNASSIGNED_AREA, label: "Unassigned"});
 	}
-	for (const [path, ps] of byAreaPath) {
+	for (const path of byAreaPath) {
 		if (path === UNASSIGNED_AREA || areas.some((a) => a.file.path === path)) continue;
-		if (!ps.length) continue;
-		const sample = ps[0];
-		const oa = sample?.areaFiles[0];
+		const sampleProject = projects.find((p) =>
+			p.areaFiles.some((af) => af.path === path),
+		);
+		const sampleTask = tasks.find((t) => t.areaFile?.path === path);
+		const oa =
+			sampleProject?.areaFiles.find((af) => af.path === path) ??
+			sampleTask?.areaFile ??
+			undefined;
 		out.push({
 			id: path,
 			label:
-				sample?.areaName?.trim() ||
+				sampleProject?.areaName?.trim() ||
 				oa?.basename.replace(/\.md$/i, "") ||
 				"Other",
 			area: oa ? areas.find((a) => a.file.path === oa.path) : undefined,
@@ -140,6 +148,7 @@ function columnDefsForDimension(
 			return buildAreaColumnDefs(
 				snapshot.areas,
 				view === "projects" ? activeProjects : [],
+				view === "tasks" ? openTasks : [],
 			);
 		case "status":
 			if (view === "projects") {

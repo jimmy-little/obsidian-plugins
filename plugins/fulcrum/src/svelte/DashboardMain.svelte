@@ -12,8 +12,8 @@
 	} from "../fulcrum/utils/areaFocusFilter";
 	import {
 		isDoneStatus,
+		isProjectDone,
 		parseDoneStatusSet,
-		parseList,
 		parseTaskStatusChoices,
 		DASHBOARD_ACTIVITY_MAX_DAYS,
 		DASHBOARD_ACTIVITY_MAX_ROWS,
@@ -42,6 +42,8 @@
 	import ActivityRow from "./ActivityRow.svelte";
 	import ProjectListRow from "./ProjectListRow.svelte";
 	import TaskSectionHead from "./TaskSectionHead.svelte";
+	import GanttMain from "./GanttMain.svelte";
+	import FulcrumDateNavToolbar from "./shared/FulcrumDateNavToolbar.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -55,7 +57,6 @@
 
 	$: sRev = $settingsRevision;
 	$: doneTask = parseDoneStatusSet(plugin.settings.taskDoneStatuses);
-	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
 
 	$: areaFilter = $areaFilterState;
 	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
@@ -69,9 +70,10 @@
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
 
 	/** Active projects that qualify for any attention bucket; split by priority (review → tasks → meetings). */
-	$: attentionBuckets = (() => {
+	$: attentionBuckets = (void sRev, (() => {
+		const settings = plugin.settings;
 		const candidates = filterProjectsByAreaFocus(
-			snapshot.projects.filter((p) => !doneProject.has((p.status ?? "").trim().toLowerCase())),
+			snapshot.projects.filter((p) => !isProjectDone(p, settings)),
 			areaFilter,
 			lifeModeMap,
 		);
@@ -82,7 +84,7 @@
 			return projectReviewIsOverdue(p) || openTasks > 0 || upcomingMeetings > 0;
 		});
 		return bucketDashboardAttentionProjects(withSignals, projectCounts);
-	})();
+	})());
 
 	$: attentionAny =
 		attentionBuckets.needsReview.length +
@@ -308,33 +310,18 @@
 			<div class="fulcrum-dashboard-meetings-nav" role="toolbar" aria-label="Week navigation">
 				<div class="fulcrum-dashboard-meetings-nav__lead" aria-hidden="true"></div>
 				<div class="fulcrum-dashboard-meetings-nav__controls">
-					<button
-						type="button"
-						class="fulcrum-dashboard-meetings-nav__btn"
-						on:click={dashboardWeekPrev}
-						aria-label="Previous week"
-						title="Previous week"
-					>
-						‹
-					</button>
-					<button
-						type="button"
-						class="fulcrum-dashboard-meetings-nav__btn fulcrum-dashboard-meetings-nav__btn--dot"
-						on:click={dashboardWeekThis}
-						aria-label="This week"
-						title="This week"
-					>
-						•
-					</button>
-					<button
-						type="button"
-						class="fulcrum-dashboard-meetings-nav__btn"
-						on:click={dashboardWeekNext}
-						aria-label="Next week"
-						title="Next week"
-					>
-						›
-					</button>
+					<FulcrumDateNavToolbar
+						title=""
+						prevAriaLabel="Previous week"
+						nextAriaLabel="Next week"
+						todayVariant="dot"
+						todayAriaLabel="This week"
+						todayTitle="This week"
+						onPrev={dashboardWeekPrev}
+						onNext={dashboardWeekNext}
+						onToday={dashboardWeekThis}
+						className="fulcrum-dashboard-meetings-nav__toolbar"
+					/>
 				</div>
 			</div>
 			<div class="fulcrum-dashboard-meetings-grid" role="grid" aria-label="Meetings by day">
@@ -377,6 +364,20 @@
 			{/each}
 			</div>
 		</div>
+	</div>
+</section>
+
+<section class="fulcrum-section fulcrum-section--gantt">
+	<h2>Project timeline</h2>
+	<div class="fulcrum-dashboard-gantt">
+		<GanttMain
+			{plugin}
+			{hoverParentLeaf}
+			variant="compact"
+			embedded={true}
+			includeTasks={false}
+			onlyDatedItems={true}
+		/>
 	</div>
 </section>
 

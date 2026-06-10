@@ -27,8 +27,11 @@
 	export let previewAccentCss: string | undefined = undefined;
 
 	let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+	let titleHost: HTMLElement | undefined;
 	let previewHost: HTMLElement | undefined;
 	let previewRenderChain: Promise<void> = Promise.resolve();
+
+	$: titleHasWikilinks = /\[\[[^\]]+\]\]/.test(title);
 
 	function onHover(ev: MouseEvent): void {
 		if (suppressHoverPreview || !hoverPath || !hoverParentLeaf) return;
@@ -67,13 +70,23 @@
 	}
 
 	function onRowClick(ev: MouseEvent): void {
-		if ((ev.target as HTMLElement | null)?.closest(".fulcrum-activity-row__preview a")) return;
+		const target = ev.target as HTMLElement | null;
+		if (target?.closest(".fulcrum-activity-row__preview a, .fulcrum-activity-row__title a")) return;
 		whenClick();
 	}
 
 	function onContextMenu(ev: MouseEvent): void {
 		if (kind !== "task" || !task) return;
 		showFulcrumTaskContextMenu(ev, plugin, task, hoverParentLeaf);
+	}
+
+	$: if (titleHost) {
+		if (hoverPath && titleHasWikilinks) {
+			plugin.renderActivityTitleInline(titleHost, hoverPath, title);
+		} else {
+			titleHost.textContent = title;
+			titleHost.classList.remove("markdown-preview-view");
+		}
 	}
 
 	$: if (previewHost && bodyPreview && hoverPath) {
@@ -180,7 +193,11 @@
 		</div>
 	{/if}
 	<div class="fulcrum-activity-row__body">
-		<div class="fulcrum-activity-row__title">{title}</div>
+		<div
+			class="fulcrum-activity-row__title"
+			class:fulcrum-activity-row__title--wikilinks={titleHasWikilinks && !!hoverPath}
+			bind:this={titleHost}
+		></div>
 		{#if chips.length > 0}
 			<div class="fulcrum-activity-row__meta">
 				{#each chips as c}

@@ -1,6 +1,6 @@
 import {ItemView, WorkspaceLeaf, type ViewStateResult} from "obsidian";
 import type {SvelteComponent} from "svelte";
-import {VIEW_PROJECT_MANAGER} from "../fulcrum/constants";
+import {FULCRUM_PLUGIN_ICON, VIEW_PROJECT_MANAGER} from "../fulcrum/constants";
 import type {FulcrumHost} from "../fulcrum/pluginBridge";
 import ProjectManager from "../svelte/ProjectManager.svelte";
 
@@ -62,7 +62,7 @@ export class ProjectManagerView extends ItemView {
 	}
 
 	getIcon(): string {
-		return "layout-dashboard";
+		return FULCRUM_PLUGIN_ICON;
 	}
 
 	getState(): ProjectManagerViewState {

@@ -1,10 +1,7 @@
 import {MarkdownView, normalizePath, setIcon, TFile, type App, type EventRef} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
-import {
-	buildPeopleFolderMatchIndex,
-	extractWikilinksFromText,
-	resolvePeopleFolderNote,
-} from "./projectPeople";
+import {collectPeopleRefsFromNoteFrontmatter, extractWikilinksFromText} from "./projectPeople";
+import {buildPersonCardButton} from "./personCardDom";
 import {readTrackedMinutesFromFm} from "./utils/trackedMinutes";
 import {parseWikiLink} from "./utils/wikilinks";
 import {resolveBannerImageSrc, resolveProjectAccentCss} from "./utils/projectVisual";
@@ -12,7 +9,6 @@ import {isTaskNoteFile} from "./utils/taskNoteFile";
 import {formatTrackedMinutesShort} from "./utils/dates";
 import {leafIsInWorkspace, type FulcrumCompanionLeaf} from "./openBesideFulcrum";
 import {leadingTimelineEmojiFromNoteType} from "./utils/projectActivity";
-import {isUnderFolder} from "./utils/paths";
 
 export type CompanionChromeHost = {
 	readonly app: App;
@@ -25,6 +21,7 @@ export type CompanionChromeHost = {
 	) => Promise<void>;
 	openNoteProperties(file: TFile): void;
 	openProjectSummary(path: string): Promise<void>;
+	createPersonNote(linkText: string, displayName: string): Promise<void>;
 };
 
 function fmDisplayString(v: unknown): string {
@@ -57,94 +54,6 @@ function collectLinkTextsFromFmValue(v: unknown): string[] {
 		uniq.push(t);
 	}
 	return uniq;
-}
-
-function resolveFirstPeopleFileFromLinks(
-	app: App,
-	linkTexts: string[],
-	sourcePath: string,
-	folder: string,
-	matchIndex: Map<string, TFile>,
-): TFile | null {
-	for (const link of linkTexts) {
-		const dest = resolvePeopleFolderNote(app, link, sourcePath, folder, matchIndex);
-		if (dest) return dest;
-	}
-	return null;
-}
-
-function collectPeopleFilesFromFm(
-	app: App,
-	sourcePath: string,
-	fm: Record<string, unknown>,
-	s: FulcrumSettings,
-): TFile[] {
-	const folder = normalizePath(s.peopleFolder.trim());
-	if (!folder) return [];
-
-	const matchIndex = buildPeopleFolderMatchIndex(app, folder);
-	const meetingsRoot = normalizePath(s.meetingsFolder.trim());
-	const isMeetingNote = Boolean(meetingsRoot && isUnderFolder(sourcePath, meetingsRoot));
-
-	const organizerKey = (s.meetingOrganizerField ?? "organizer").trim();
-	let organizerFile: TFile | null = null;
-	if (isMeetingNote && organizerKey) {
-		const rawOrg = fm[organizerKey];
-		const orgLinks = collectLinkTextsFromFmValue(rawOrg);
-		organizerFile = resolveFirstPeopleFileFromLinks(app, orgLinks, sourcePath, folder, matchIndex);
-	}
-
-	const linkTexts: string[] = [];
-	for (const [k, v] of Object.entries(fm)) {
-		if (isMeetingNote && organizerKey && k.trim().toLowerCase() === organizerKey.toLowerCase()) {
-			continue;
-		}
-		if (typeof v === "string") {
-			linkTexts.push(...extractWikilinksFromText(v));
-			const single = parseWikiLink(v);
-			if (single) linkTexts.push(single);
-		} else if (Array.isArray(v)) {
-			for (const item of v) {
-				if (typeof item === "string") {
-					linkTexts.push(...extractWikilinksFromText(item));
-					const single = parseWikiLink(item);
-					if (single) linkTexts.push(single);
-				}
-			}
-		}
-	}
-
-	const seen = new Set<string>();
-	if (organizerFile) seen.add(organizerFile.path);
-
-	const others: TFile[] = [];
-	for (const link of linkTexts) {
-		const dest = resolvePeopleFolderNote(app, link, sourcePath, folder, matchIndex);
-		if (!dest) continue;
-		if (seen.has(dest.path)) continue;
-		seen.add(dest.path);
-		others.push(dest);
-	}
-	others.sort((a, b) => a.basename.localeCompare(b.basename, undefined, {sensitivity: "base"}));
-
-	return organizerFile ? [organizerFile, ...others] : others;
-}
-
-function personChip(
-	app: App,
-	file: TFile,
-	avatarField: string,
-	bannerField: string,
-): {name: string; avatarSrc: string | null; bannerImageSrc: string | null; path: string} {
-	const cache = app.metadataCache.getFileCache(file);
-	const fm = cache?.frontmatter as Record<string, unknown> | undefined;
-	const name =
-		(typeof fm?.name === "string" && fm.name.trim()) || file.basename.replace(/\.md$/i, "");
-	const avatarRaw = fm && avatarField ? (fm[avatarField] as string | undefined) : undefined;
-	const avatarSrc = resolveBannerImageSrc(app, file, avatarRaw);
-	const bannerRaw = bannerField && fm ? (fm[bannerField] as string | undefined) : undefined;
-	const bannerImageSrc = bannerField ? resolveBannerImageSrc(app, file, bannerRaw) : null;
-	return {name, avatarSrc, bannerImageSrc, path: file.path};
 }
 
 function resolveLinkedProjectFile(
@@ -339,35 +248,19 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 
 	const peopleRow = el("div", "fulcrum-companion-people-row");
 
-	const avatarField = s.peopleAvatarField.trim() || "avatar";
-	const bannerField = s.projectBannerField.trim() || "banner";
-	const peopleFiles = collectPeopleFilesFromFm(app, file.path, fm, s);
-	for (const pf of peopleFiles) {
-		const p = personChip(app, pf, avatarField, bannerField);
-		const btn = el("button", "fulcrum-person-card fulcrum-companion-person-card");
-		btn.type = "button";
-		btn.setAttribute("aria-label", p.name);
-		btn.addEventListener("click", () => {
-			void app.workspace.getLeaf("tab").openFile(pf);
-		});
-		const topZone = el("div", "fulcrum-person-card__top");
-		if (p.bannerImageSrc) {
-			topZone.classList.add("fulcrum-person-card__top--has-banner");
-			topZone.style.backgroundImage = `url(${JSON.stringify(p.bannerImageSrc)})`;
-		}
-		const av = el("div", "fulcrum-person-card__avatar");
-		if (p.avatarSrc) {
-			const img = document.createElement("img");
-			img.src = p.avatarSrc;
-			img.alt = "";
-			av.append(img);
-		} else {
-			av.innerHTML =
-				'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="3"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>';
-		}
-		topZone.append(av);
-		btn.append(topZone, el("span", "fulcrum-person-card__name", p.name));
-		peopleRow.append(btn);
+	const peopleRefs = collectPeopleRefsFromNoteFrontmatter(app, file.path, fm, s);
+	for (const person of peopleRefs) {
+		peopleRow.append(
+			buildPersonCardButton(
+				person,
+				(path) => {
+					const pf = app.vault.getAbstractFileByPath(path);
+					if (pf instanceof TFile) void app.workspace.getLeaf("tab").openFile(pf);
+				},
+				(linkText, displayName) => void hostCtx.createPersonNote(linkText, displayName),
+				"fulcrum-companion-person-card",
+			),
+		);
 	}
 
 	surface.append(top);

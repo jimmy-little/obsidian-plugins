@@ -93,6 +93,38 @@ function parseRawEntry(raw: unknown, index: number, filePath: string): TimeEntry
 	};
 }
 
+/** Inclusive local-calendar span from timer entry start/end timestamps. */
+export function timeEntryDateSpan(
+	entries: TimeEntry[],
+): {startIso: string; endIso: string} | null {
+	if (entries.length === 0) return null;
+	let minMs: number | null = null;
+	let maxMs: number | null = null;
+	for (const e of entries) {
+		if (e.startTime != null) {
+			minMs = minMs == null ? e.startTime : Math.min(minMs, e.startTime);
+		}
+		const endMs = e.endTime ?? e.startTime;
+		if (endMs != null) {
+			maxMs = maxMs == null ? endMs : Math.max(maxMs, endMs);
+		}
+	}
+	if (minMs == null || maxMs == null) return null;
+	const startIso = localDateIsoFromMs(minMs);
+	const endIso = localDateIsoFromMs(maxMs);
+	return startIso <= endIso
+		? {startIso, endIso}
+		: {startIso: endIso, endIso: startIso};
+}
+
+function localDateIsoFromMs(ms: number): string {
+	const d = new Date(ms);
+	const y = d.getFullYear();
+	const mo = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${y}-${mo}-${day}`;
+}
+
 /** Read and merge timer entries from all configured frontmatter keys. */
 export function readTimerEntriesFromFm(
 	fm: Record<string, unknown> | undefined,

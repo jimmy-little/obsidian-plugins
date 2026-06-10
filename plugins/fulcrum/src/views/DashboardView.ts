@@ -1,6 +1,6 @@
 import {ItemView, WorkspaceLeaf} from "obsidian";
 import type {SvelteComponent} from "svelte";
-import {VIEW_DASHBOARD} from "../fulcrum/constants";
+import {FULCRUM_PLUGIN_ICON, VIEW_DASHBOARD} from "../fulcrum/constants";
 import type {FulcrumHost} from "../fulcrum/pluginBridge";
 import Dashboard from "../svelte/Dashboard.svelte";
 
@@ -22,7 +22,7 @@ export class DashboardView extends ItemView {
 	}
 
 	getIcon(): string {
-		return "layout-dashboard";
+		return FULCRUM_PLUGIN_ICON;
 	}
 
 	async onOpen(): Promise<void> {

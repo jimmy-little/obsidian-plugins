@@ -199,6 +199,16 @@ export function sortMsForMeeting(m: IndexedMeeting): number {
 	return m.file.stat.mtime;
 }
 
+/**
+ * Activity feed sort for atomic notes: explicit anchor date (startTime/date/startDate) first,
+ * then file mtime when the note was last touched, then ctime as the ultimate fallback.
+ */
+export function sortMsForAtomicNote(n: AtomicNoteRow): number {
+	if (n.anchorDateMs != null) return n.anchorDateMs;
+	if (n.modifiedMs) return n.modifiedMs;
+	return n.file.stat.ctime;
+}
+
 function earliestTodayOrFutureDueOrSched(t: IndexedTask): string | null {
 	const keys: string[] = [];
 	if (isISODateTodayOrFuture(t.dueDate)) keys.push(t.dueDate!.slice(0, 10));
@@ -352,7 +362,7 @@ export function buildActivityRowModels(
 		items.push({
 			id: `note:${n.file.path}`,
 			kind: "note",
-			sortMs: n.modifiedMs,
+			sortMs: sortMsForAtomicNote(n),
 			title: n.entryTitle,
 			chips: appendFileModifiedChip(chipsForNote(n, deps.formatTracked), "note", n.file.stat.mtime),
 			open: () => deps.openPath(n.file.path),
@@ -484,12 +494,7 @@ function taskActivityAnchorDayForFeed(t: IndexedTask): string | null {
 }
 
 function atomicNoteExcludedFromActivityFeed(n: AtomicNoteRow): boolean {
-	const key = n.dateSort?.trim() ?? "";
-	if (key.length >= 10) {
-		const day = key.slice(0, 10);
-		if (!Number.isNaN(Date.parse(day + "T12:00:00")) && isCalendarDayAfterToday(day)) return true;
-	}
-	return n.modifiedMs >= tomorrowMidnightLocalMs();
+	return sortMsForAtomicNote(n) >= tomorrowMidnightLocalMs();
 }
 
 function completedTaskExcludedFromActivityFeed(t: IndexedTask, doneTask: Set<string>): boolean {
@@ -621,7 +626,8 @@ export function buildWeeklyReviewActivityRows(
 		};
 
 		for (const n of rollup.atomicNotes) {
-			if (n.modifiedMs < cutoffMs) continue;
+			const noteSortMs = sortMsForAtomicNote(n);
+			if (noteSortMs < cutoffMs) continue;
 			if (meetingPaths.has(n.file.path)) continue;
 			if (atomicNoteExcludedFromActivityFeed(n)) continue;
 			const challenge = atomicNoteIsChallenge(n);
@@ -635,7 +641,7 @@ export function buildWeeklyReviewActivityRows(
 			items.push({
 				id: `note:${n.file.path}`,
 				kind: "note",
-				sortMs: n.modifiedMs,
+				sortMs: noteSortMs,
 				title: n.entryTitle,
 				chips: addProjectChip(
 					appendFileModifiedChip(chipsForNote(n, deps.formatTracked), "note", n.file.stat.mtime),
@@ -861,13 +867,14 @@ export function buildAggregatedActivityRows(
 		};
 
 		for (const n of rollup.atomicNotes) {
-			if (n.modifiedMs < cutoffMs) continue;
+			const noteSortMs = sortMsForAtomicNote(n);
+			if (noteSortMs < cutoffMs) continue;
 			if (meetingPaths.has(n.file.path)) continue;
 			if (atomicNoteExcludedFromActivityFeed(n)) continue;
 			items.push({
 				id: `note:${n.file.path}`,
 				kind: "note",
-				sortMs: n.modifiedMs,
+				sortMs: noteSortMs,
 				title: n.entryTitle,
 				chips: addProjectChip(
 					appendFileModifiedChip(chipsForNote(n, deps.formatTracked), "note", n.file.stat.mtime),

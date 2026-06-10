@@ -2,7 +2,8 @@
 	import {onMount} from "svelte";
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
-	import AreaFilterPanel from "./AreaFilterPanel.svelte";
+	import FulcrumDateNavToolbar from "./shared/FulcrumDateNavToolbar.svelte";
+	import FulcrumGlobalFilterStrip from "./shared/FulcrumGlobalFilterStrip.svelte";
 	import {areaFilterState, indexRevision, settingsRevision, timerRevision} from "../fulcrum/stores";
 	import {
 		buildAreaLifeModeMap,
@@ -237,19 +238,19 @@
 	}
 </script>
 
-<div class="fulcrum-timeline" data-fulcrum-timeline-root>
-	<AreaFilterPanel {plugin} />
-	<div class="fulcrum-timeline__toolbar fulcrum-calendar__toolbar">
-		<button type="button" class="fulcrum-calendar__nav-btn" aria-label="Previous day" on:click={goPrev}>
-			‹
-		</button>
-		<button type="button" class="fulcrum-calendar__nav-btn" aria-label="Next day" on:click={goNext}>
-			›
-		</button>
-		<h2 class="fulcrum-timeline__title fulcrum-calendar__title" class:fulcrum-timeline__title--today={isToday}>
-			{titleText}
-		</h2>
-		<button type="button" class="fulcrum-calendar__today" on:click={goToday}>Today</button>
+<div class="fulcrum-timeline fulcrum-standalone-with-filter" data-fulcrum-timeline-root>
+	<div class="fulcrum-standalone-with-filter__main">
+	<div class="fulcrum-timeline__toolbar-row">
+		<FulcrumDateNavToolbar
+			className="fulcrum-timeline__toolbar"
+			title={titleText}
+			titleClass={isToday ? "fulcrum-timeline__title fulcrum-timeline__title--today" : "fulcrum-timeline__title"}
+			prevAriaLabel="Previous day"
+			nextAriaLabel="Next day"
+			onPrev={goPrev}
+			onNext={goNext}
+			onToday={goToday}
+		/>
 		{#if plannerEnabled}
 			<button
 				type="button"
@@ -389,4 +390,6 @@
 			</div>
 		</div>
 	</div>
+	</div>
+	<FulcrumGlobalFilterStrip {plugin} />
 </div>

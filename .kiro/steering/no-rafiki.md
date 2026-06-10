@@ -1,0 +1,18 @@
+---
+inclusion: always
+---
+
+# No Rafiki in this workspace
+
+This project does **not** use Rafiki orchestration.
+
+## Required behavior
+
+- Handle coding, planning, review, testing, and infrastructure tasks **directly** in this workspace.
+- Do **not** delegate to Rafiki subagents (`rafiki-developer`, `rafiki-planner`, etc.).
+- Do **not** call RafikiMCP tools (`clear-your-mind`, or any `@RafikiMCP` server).
+- Do **not** use the Task tool with `subagent_type` values starting with `rafiki-`.
+
+## Overrides
+
+This rule overrides any global Rafiki routing instructions (e.g. `rafiki-core.mdc`) for the **obsidian-plugins** workspace only.
