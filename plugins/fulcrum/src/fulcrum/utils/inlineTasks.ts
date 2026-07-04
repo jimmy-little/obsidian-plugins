@@ -1,9 +1,16 @@
+import type {App, TFile} from "obsidian";
+import {MarkdownView} from "obsidian";
 import type {FulcrumSettings} from "../settingsDefaults";
 import {normalizeIsoDateTime} from "../calendar/isoDateTime";
 import {
 	fileMatchesFolderScopeWithExcludes,
 	parseFolderScopeList,
 } from "./folderScopes";
+import {
+	formatInlineProjectLink,
+	INLINE_PROJECT_LINK_RE,
+	stripInlineProjectLinks,
+} from "./projectLink";
 
 const DATE_TOKEN =
 	/(\d{4}-\d{2}-\d{2})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?/u;
@@ -24,6 +31,24 @@ export function isCheckboxLine(line: string): boolean {
 	return /^\s*[-*+]\s*\[[^\]]*\]/.test(line);
 }
 
+/** Metadata or active cursor indicates checkbox task lines worth live-preview work. */
+export function fileHasTaskCheckboxContent(app: App, file: TFile): boolean {
+	const cache = app.metadataCache.getFileCache(file);
+	if (cache?.listItems?.some((item) => item.task !== undefined)) return true;
+
+	const leaf = app.workspace.activeLeaf;
+	const view = leaf?.view;
+	if (
+		view instanceof MarkdownView &&
+		view.file?.path === file.path &&
+		view.getMode() !== "preview"
+	) {
+		const editor = view.editor;
+		if (isCheckboxLine(editor.getLine(editor.getCursor().line))) return true;
+	}
+	return false;
+}
+
 /** Whether inline-task autocomplete / indexing folder scope includes this file. */
 export function isInlineTaskLineInScope(filePath: string, settings: FulcrumSettings): boolean {
 	const scope = parseFolderScopeList(settings.obsidianTasksFolderPaths);
@@ -40,7 +65,8 @@ export function inlineTaskPlainTitle(rawLine: string): string {
 	const titleBare = parseCheckboxLineTitle(rawLine);
 	if (titleBare === null) return "";
 	const parsed = parseObsidianTasksEmojiDates(titleBare);
-	return stripInlineTagsForTitle(parsed.title.replace(/\[\[[^\]]+\]\]/g, " "))
+	const withoutProject = stripInlineProjectLinks(parsed.title);
+	return stripInlineTagsForTitle(withoutProject.replace(/\[\[[^\]]+\]\]/g, " "))
 		.replace(/\s+/g, " ")
 		.trim();
 }
@@ -102,10 +128,21 @@ export function stripInlineTagsForTitle(text: string): string {
 	return text.replace(/(?:^|[\s(])#[\w-]+/gu, " ").replace(/\s+/g, " ").trim();
 }
 
-/** Human-readable title for inline task cards (strip wikilinks, tags, date tokens). */
+/** Replace page `[[links]]` with visible text; does not affect `+[[project]]` (strip those first). */
+export function wikilinksToDisplayText(text: string): string {
+	return text.replace(/\[\[([^\]]+)\]\]/gu, (_, inner: string) => {
+		const pathPart = inner.split("#")[0] ?? inner;
+		const pipe = pathPart.split("|");
+		return (pipe.length > 1 ? pipe[pipe.length - 1] : pipe[0])?.trim() ?? inner;
+	});
+}
+
+/** Human-readable title for inline task cards (strip project link + tags; keep page link text). */
 export function inlineTaskDisplayTitle(title: string): string {
 	const parsed = parseObsidianTasksEmojiDates(title);
-	const cleaned = stripInlineTagsForTitle(parsed.title.replace(/\[\[[^\]]+\]\]/g, " "));
+	const withoutProject = stripInlineProjectLinks(parsed.title);
+	const withLinkText = wikilinksToDisplayText(withoutProject);
+	const cleaned = stripInlineTagsForTitle(withLinkText);
 	return cleaned.replace(/\s+/g, " ").trim() || "Task";
 }
 
@@ -249,7 +286,7 @@ export function setInlineTaskScheduled(line: string, schedIso: string | null): s
 	return `${m[1]}[${m[2]}] ${rest}`.replace(/\s+$/, "");
 }
 
-/** Set project wikilink on checkbox line (replaces existing project links in title portion). */
+/** Set `+[[project]]` on checkbox line; preserves page wikilinks in the title. */
 export function setInlineTaskProjectLink(
 	line: string,
 	projectBasename: string | null,
@@ -257,9 +294,10 @@ export function setInlineTaskProjectLink(
 	const m = line.match(/^(\s*[-*+]\s*)\[([^\]]*)\](.*)$/);
 	if (!m) return null;
 	const parsed = parseObsidianTasksEmojiDates(m[3] ?? "");
-	let title = parsed.title.replace(/\[\[[^\]]+\]\]/g, " ").replace(/\s+/g, " ").trim();
+	let title = stripInlineProjectLinks(parsed.title);
 	if (projectBasename) {
-		title = title ? `${title} [[${projectBasename}]]` : `[[${projectBasename}]]`;
+		const projectToken = formatInlineProjectLink(projectBasename);
+		title = title ? `${title} ${projectToken}` : projectToken;
 	}
 	const dues = parsed.dueDate ? ` 📅 ${parsed.dueDate}` : "";
 	const sched = parsed.scheduledDate ? ` ⏳ ${parsed.scheduledDate}` : "";
@@ -268,7 +306,12 @@ export function setInlineTaskProjectLink(
 }
 
 function extractWikiLinks(text: string): string[] {
-	return [...text.matchAll(/\[\[[^\]]+\]\]/gu)].map((m) => m[0] ?? "").filter(Boolean);
+	const withoutProject = text.replace(INLINE_PROJECT_LINK_RE, " ");
+	return [...withoutProject.matchAll(/\[\[[^\]]+\]\]/gu)].map((m) => m[0] ?? "").filter(Boolean);
+}
+
+function extractInlineProjectLinks(text: string): string[] {
+	return [...text.matchAll(INLINE_PROJECT_LINK_RE)].map((m) => m[0] ?? "").filter(Boolean);
 }
 
 /** Replace visible title text; preserves wikilinks, inline tags, and date tokens. */
@@ -276,11 +319,13 @@ export function setInlineTaskTitle(line: string, newTitle: string): string | nul
 	const m = line.match(/^(\s*[-*+]\s*)\[([^\]]*)\](.*)$/);
 	if (!m) return null;
 	const parsed = parseObsidianTasksEmojiDates(m[3] ?? "");
+	const projectLinks = extractInlineProjectLinks(parsed.title);
 	const links = extractWikiLinks(parsed.title);
 	const tags = parseInlineTags(parsed.title);
 	const title = newTitle.trim();
 	let body = title;
 	if (links.length) body = `${body} ${links.join(" ")}`.trim();
+	if (projectLinks.length) body = `${body} ${projectLinks.join(" ")}`.trim();
 	if (tags.length) body = `${body} ${tags.map((t) => `#${t}`).join(" ")}`.trim();
 	const dues = parsed.dueDate ? ` 📅 ${parsed.dueDate}` : "";
 	const sched = parsed.scheduledDate ? ` ⏳ ${parsed.scheduledDate}` : "";

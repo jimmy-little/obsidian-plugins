@@ -1,28 +1,13 @@
-export type ConduitSyncForce = "pull" | "push" | "both";
-
-export interface ConduitTaskSnapshot {
+export interface FulcrumReminder {
+	id: number;
 	title: string;
-	status: string;
+	completed: boolean;
 	dueDate: string | null;
-	done: boolean;
-}
-
-export interface ConduitEntityState {
-	vaultKey: string;
-	reminderNumericId?: number;
-	projectPath?: string;
-	base: ConduitTaskSnapshot;
-	vaultRevision: string;
-	reminderRevision: string;
-	lastWriter: "vault" | "reminders" | null;
-	conflict?: boolean;
-}
-
-export interface ConduitSyncState {
-	lastCompletedAt: string | null;
-	lastRemindersFingerprint: string;
-	lastVaultFingerprint: string;
-	entities: Record<string, ConduitEntityState>;
+	notes: string;
+	listId?: string;
+	listName?: string;
+	tags: string[];
+	lastModified?: string;
 }
 
 export interface RemctlReminderRow {
@@ -33,6 +18,7 @@ export interface RemctlReminderRow {
 	notes: string;
 	listId?: string;
 	listName?: string;
+	tags?: string[];
 	lastModified: string;
 }
 
@@ -44,16 +30,30 @@ export interface RemctlListRow {
 export interface ProjectListMap {
 	byId: Map<string, RemctlListRow>;
 	byName: Map<string, RemctlListRow>;
-	/** Fresh list ids from the current sync pass (avoids stale metadata cache). */
 	projectPathToListId: Map<string, string>;
 }
 
-export interface ConduitSyncResult {
-	ok: boolean;
-	deferred?: boolean;
-	deferReason?: string;
-	message?: string;
-	pulled?: number;
-	pushed?: number;
-	imported?: number;
+export interface CreateReminderOptions {
+	title: string;
+	listId?: string;
+	listName?: string;
+	due?: string | null;
+	notes?: string;
+	tags?: string[];
+}
+
+export interface BridgeCalendarRow {
+	id: string;
+	title: string;
+	color?: string;
+}
+
+export interface BridgeCalendarEvent {
+	id: string;
+	calendarId: string;
+	title: string;
+	startIso: string;
+	endIso: string | null;
+	allDay: boolean;
+	location?: string;
 }

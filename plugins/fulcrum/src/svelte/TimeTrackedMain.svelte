@@ -127,6 +127,7 @@
 					rollups,
 					horizon,
 					excludedAreaPaths,
+					plugin.vaultIndex.getSnapshot().plannerEvents,
 				);
 			} catch (e) {
 				if (id !== loadId) return;

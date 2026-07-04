@@ -65,7 +65,7 @@ export async function moveProjectFolderToParent(
 	return newFolderPath;
 }
 
-function uniqueFilePathInDir(vault: Vault, dir: string, fileName: string): string {
+export function uniqueFilePathInDir(vault: Vault, dir: string, fileName: string): string {
 	const base = normalizePath(`${dir}/${fileName}`);
 	if (!vault.getAbstractFileByPath(base)) return base;
 	const stem = fileName.replace(/\.md$/i, "");

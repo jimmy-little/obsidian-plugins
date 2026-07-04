@@ -5,13 +5,28 @@ import {
 	todayLocalISODate,
 } from "./dates";
 
+const STATUS_RING_OVERDUE = "#e74c3c";
+const STATUS_RING_HIGH = "#f39c12";
+const STATUS_RING_MEDIUM = "#3498db";
+const STATUS_RING_LOW = "#9b59b6";
+
 export function priorityAccentCss(priority: string | undefined): string {
 	if (!(priority != null && priority.trim())) return "var(--text-muted)";
 	const p = priority.trim().toLowerCase();
-	if (/^(high|urgent|critical|highest|p1|1|h)$/u.test(p)) return "#e74c3c";
-	if (/^(medium|normal|med|p2|2|m)$/u.test(p)) return "#f39c12";
-	if (/^(low|p3|p4|3|4|l)$/u.test(p)) return "#5dade2";
+	if (/^(high|urgent|critical|highest|p1|1|h)$/u.test(p)) return STATUS_RING_HIGH;
+	if (/^(medium|normal|med|p2|2|m)$/u.test(p)) return STATUS_RING_MEDIUM;
+	if (/^(low|p3|p4|3|4|l)$/u.test(p)) return STATUS_RING_LOW;
 	return "var(--text-muted)";
+}
+
+/** Status-ring border: overdue wins over priority; done uses CSS --done styling. */
+export function taskStatusRingCss(
+	task: {dueDate?: string; priority?: string},
+	done: boolean,
+): string {
+	if (done) return "var(--text-muted)";
+	if (isOverdue(task.dueDate, false)) return STATUS_RING_OVERDUE;
+	return priorityAccentCss(task.priority);
 }
 
 export function dueChip(

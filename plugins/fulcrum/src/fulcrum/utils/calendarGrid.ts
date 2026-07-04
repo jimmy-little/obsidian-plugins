@@ -116,3 +116,85 @@ export function localMinutesSinceMidnight(d: Date = new Date()): number {
 export function timeGridNowLineTopPercent(d: Date = new Date()): number {
 	return (localMinutesSinceMidnight(d) / (24 * 60)) * 100;
 }
+
+export type DashboardWeekSpan = "fullWeek" | "workWeek";
+export type DashboardWeekAnchor = "startMonday" | "startToday";
+
+const DASHBOARD_WEEK_SPAN_LS = "fulcrum-dashboard-week-span";
+const DASHBOARD_WEEK_ANCHOR_LS = "fulcrum-dashboard-week-anchor";
+
+export function loadDashboardWeekSpan(): DashboardWeekSpan {
+	if (typeof localStorage === "undefined") return "fullWeek";
+	return localStorage.getItem(DASHBOARD_WEEK_SPAN_LS) === "workWeek" ? "workWeek" : "fullWeek";
+}
+
+export function saveDashboardWeekSpan(span: DashboardWeekSpan): void {
+	if (typeof localStorage === "undefined") return;
+	localStorage.setItem(DASHBOARD_WEEK_SPAN_LS, span);
+}
+
+export function loadDashboardWeekAnchor(): DashboardWeekAnchor {
+	if (typeof localStorage === "undefined") return "startMonday";
+	return localStorage.getItem(DASHBOARD_WEEK_ANCHOR_LS) === "startToday"
+		? "startToday"
+		: "startMonday";
+}
+
+export function saveDashboardWeekAnchor(anchor: DashboardWeekAnchor): void {
+	if (typeof localStorage === "undefined") return;
+	localStorage.setItem(DASHBOARD_WEEK_ANCHOR_LS, anchor);
+}
+
+/** Advance `d` by `n` calendar weekdays (Mon–Fri); skips Sat/Sun. */
+export function addWeekdays(d: Date, n: number): Date {
+	let out = new Date(d);
+	let remaining = Math.abs(n);
+	const step = n >= 0 ? 1 : -1;
+	while (remaining > 0) {
+		out = addDays(out, step);
+		if (isWorkWeekDay(out)) remaining--;
+	}
+	return out;
+}
+
+/** Collect `count` consecutive weekdays starting at `start` (inclusive). */
+export function collectWeekdaysFrom(start: Date, count: number): Date[] {
+	const out: Date[] = [];
+	let d = new Date(start);
+	d.setHours(0, 0, 0, 0);
+	while (out.length < count) {
+		if (isWorkWeekDay(d)) out.push(new Date(d));
+		d = addDays(d, 1);
+	}
+	return out;
+}
+
+/** Dashboard meetings strip: visible days from span, anchor, and week offset. */
+export function dashboardMeetingGridDates(opts: {
+	span: DashboardWeekSpan;
+	anchor: DashboardWeekAnchor;
+	weekOffset: number;
+	now?: Date;
+}): Date[] {
+	const today = new Date(opts.now ?? new Date());
+	today.setHours(0, 0, 0, 0);
+	const spanDays = opts.span === "workWeek" ? 5 : 7;
+
+	if (opts.anchor === "startToday") {
+		const start =
+			opts.span === "workWeek"
+				? addWeekdays(today, opts.weekOffset * spanDays)
+				: addDays(today, opts.weekOffset * spanDays);
+		if (opts.span === "workWeek") return collectWeekdaysFrom(start, spanDays);
+		const out: Date[] = [];
+		for (let i = 0; i < spanDays; i++) out.push(addDays(start, i));
+		return out;
+	}
+
+	const focal = addDays(today, opts.weekOffset * 7);
+	const weekStart = getWeekStart(focal, 1);
+	if (opts.span === "workWeek") return collectWeekdaysFrom(weekStart, spanDays);
+	const out: Date[] = [];
+	for (let i = 0; i < spanDays; i++) out.push(addDays(weekStart, i));
+	return out;
+}

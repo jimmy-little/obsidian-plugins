@@ -1,7 +1,37 @@
 import {RRule, rrulestr} from "rrule";
 import type {RecurrenceAnchorMode} from "../types";
 
+export type RecurrenceAdvanceAction = "complete" | "skip";
+
+export type RecurrenceAdvanceInput = {
+	recurrence: string;
+	scheduledDate?: string;
+	dueDate?: string;
+	recurrenceAnchor?: RecurrenceAnchorMode;
+	completeInstances: string[];
+	skippedInstances: string[];
+};
+
+export type RecurrenceAdvanceFieldKeys = {
+	status: string;
+	completedDate: string;
+	scheduled: string;
+	due: string;
+	completeInstances: string;
+	skippedInstances: string;
+	openStatus: string;
+	doneStatus: string;
+	maintainDueOffset: boolean;
+};
+
 const ISO_DATE = /^(\d{4}-\d{2}-\d{2})/;
+
+function formatLocalIsoDate(d: Date): string {
+	const y = d.getFullYear();
+	const mo = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${y}-${mo}-${day}`;
+}
 
 export function isoDateOnly(iso: string | undefined | null): string | null {
 	if (!iso?.trim()) return null;
@@ -14,7 +44,8 @@ export function parseRRule(recurrence: string): RRule | null {
 	if (!raw) return null;
 	try {
 		if (raw.includes("DTSTART")) {
-			return rrulestr(raw, {forceset: false}) as RRule;
+			const normalized = normalizeDtStartRRuleString(raw);
+			return rrulestr(normalized, {forceset: false}) as RRule;
 		}
 		return rrulestr(`RRULE:${raw}`, {forceset: false}) as RRule;
 	} catch {
@@ -24,6 +55,61 @@ export function parseRRule(recurrence: string): RRule | null {
 			return null;
 		}
 	}
+}
+
+/** Fulcrum stores DTSTART and RRULE segments semicolon-separated; rrule needs iCal layout. */
+function normalizeDtStartRRuleString(raw: string): string {
+	if (raw.includes("\n") && raw.includes("RRULE:")) return raw;
+
+	const segments = raw.split(";").filter(Boolean);
+	let dtstart: string | undefined;
+	const rruleParts: string[] = [];
+
+	for (const seg of segments) {
+		if (seg.startsWith("DTSTART:")) {
+			dtstart = seg.slice("DTSTART:".length);
+		} else if (seg.startsWith("DTSTART")) {
+			dtstart = seg.slice("DTSTART".length).replace(/^:/, "");
+		} else {
+			rruleParts.push(seg);
+		}
+	}
+
+	if (!dtstart || rruleParts.length === 0) return raw;
+
+	const dtNorm = /^\d{8}$/.test(dtstart) ? `${dtstart}T120000` : dtstart;
+	return `DTSTART:${dtNorm}\nRRULE:${rruleParts.join(";")}`;
+}
+
+/** Next N upcoming occurrence dates (YYYY-MM-DD), from today forward. */
+export function computeNextOccurrences(
+	recurrence: string,
+	scheduledDate: string | undefined,
+	completeInstances: string[],
+	skippedInstances: string[],
+	count = 3,
+): string[] {
+	const rule = parseRRule(recurrence);
+	if (!rule) return [];
+
+	const today = formatLocalIsoDate(new Date());
+	const sched = isoDateOnly(scheduledDate) ?? today;
+	const result: string[] = [];
+
+	// Search from the day before max(today, scheduled) so the first match can be today or later.
+	const anchor = sched > today ? sched : today;
+	let cursor = new Date(anchor + "T00:00:00");
+	cursor.setDate(cursor.getDate() - 1);
+
+	while (result.length < count) {
+		const next = nextOccurrenceAfter(recurrence, cursor, completeInstances, skippedInstances);
+		if (!next) break;
+		const key = formatLocalIsoDate(next);
+		if (!result.includes(key)) result.push(key);
+		cursor = new Date(next.getTime() + 60_000);
+	}
+
+	return result.slice(0, count);
 }
 
 export function nextOccurrenceAfter(
@@ -40,7 +126,7 @@ export function nextOccurrenceAfter(
 	for (let i = 0; i < 366; i++) {
 		const next = rule.after(cursor, false);
 		if (!next) return null;
-		const key = isoDateOnly(next.toISOString()) ?? next.toISOString().slice(0, 10);
+		const key = formatLocalIsoDate(next);
 		if (!completed.has(key) && !skipped.has(key)) return next;
 		cursor = new Date(next.getTime() + 60_000);
 	}
@@ -127,4 +213,54 @@ export function presetRecurrence(preset: "daily" | "weekly" | "monthly", startIs
 		case "monthly":
 			return `DTSTART:${dt};FREQ=MONTHLY`;
 	}
+}
+
+/** Frontmatter patch for completing or skipping one recurring occurrence. */
+export function buildRecurringOccurrenceAdvancePatch(
+	occurrenceDate: string,
+	input: RecurrenceAdvanceInput,
+	keys: RecurrenceAdvanceFieldKeys,
+	action: RecurrenceAdvanceAction,
+): Record<string, unknown> {
+	const completeInstances = [...input.completeInstances];
+	const skippedInstances = [...input.skippedInstances];
+
+	if (action === "complete") {
+		if (!completeInstances.includes(occurrenceDate)) completeInstances.push(occurrenceDate);
+	} else if (!skippedInstances.includes(occurrenceDate)) {
+		skippedInstances.push(occurrenceDate);
+	}
+
+	const nextSched = computeNextScheduledAfterComplete(
+		input.recurrence,
+		input.scheduledDate,
+		occurrenceDate,
+		completeInstances,
+		skippedInstances,
+		input.recurrenceAnchor,
+	);
+
+	const patch: Record<string, unknown> = {
+		[keys.status]: keys.openStatus,
+		[keys.completedDate]: null,
+		[keys.completeInstances]: completeInstances,
+		[keys.skippedInstances]: skippedInstances.length > 0 ? skippedInstances : null,
+	};
+
+	if (nextSched) {
+		patch[keys.scheduled] = nextSched;
+		if (keys.maintainDueOffset && input.dueDate && input.scheduledDate) {
+			const offset = daysBetween(input.scheduledDate, input.dueDate);
+			if (offset != null) {
+				patch[keys.due] = addDaysToIso(nextSched, offset);
+			}
+		} else {
+			patch[keys.due] = nextSched;
+		}
+	} else {
+		patch[keys.status] = keys.doneStatus;
+		patch[keys.completedDate] = occurrenceDate;
+	}
+
+	return patch;
 }

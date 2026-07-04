@@ -1,6 +1,5 @@
 import {Menu, Notice, normalizePath, TFile, type App} from "obsidian";
 import type {IndexedTask} from "./types";
-import {buildObsidianOpenLink} from "../conduit/deepLink";
 import type {FulcrumSettings} from "./settingsDefaults";
 import {openMarkdownBesideFulcrum, type FulcrumCompanionLeaf} from "./openBesideFulcrum";
 import type {WorkspaceLeaf} from "obsidian";
@@ -24,7 +23,7 @@ export function obsidianLinkForTask(
 		task.source === "inline" && task.line != null
 			? `${task.file.path}#${task.line + 1}`
 			: task.file.path;
-	return buildObsidianOpenLink(app, settings.conduitVaultNameOverride, path);
+	return `obsidian://open?vault=${encodeURIComponent(app.vault.getName())}&file=${encodeURIComponent(path)}`;
 }
 
 export function openTaskNote(

@@ -141,6 +141,7 @@
 					p,
 					() => plugin.openPlannerEvent(p, hoverParentLeaf),
 					plannerDefaultDur,
+					projectColors,
 				),
 			);
 		}

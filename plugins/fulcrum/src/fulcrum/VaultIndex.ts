@@ -1,4 +1,4 @@
-import {MarkdownView, type App, TFile} from "obsidian";
+import {MarkdownView, type App, type Editor, TFile} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
 import {resolveAreasRoot, resolveProjectsRoot} from "./settingsDefaults";
 import {parseDoneStatusSet, isDoneStatus, isProjectDone, parseList} from "./settingsDefaults";
@@ -17,7 +17,6 @@ import {formatShortMonthDay, isOverdue, parseFrontmatterDateToMs} from "./utils/
 import {parseAreaLinkPaths, parseWikiLink} from "./utils/wikilinks";
 import {parseFolderPrefixList, isUnderAtomicPrefixes} from "./utils/atomicFolders";
 import {
-	fileLinksToProject,
 	firstLinkedProjectFileInLine,
 	resolveProjectFileFromFm,
 } from "./utils/projectLink";
@@ -34,6 +33,7 @@ import {
 	parseFolderScopeList,
 } from "./utils/folderScopes";
 import {
+	isCheckboxLine,
 	parseCheckboxLineTitle,
 	parseInlinePriority,
 	parseInlineTags,
@@ -41,7 +41,7 @@ import {
 	lineIncludesTag,
 } from "./utils/inlineTasks";
 import {applyTimeRangeToTaskDates, parseTimeRangeFromLine} from "./utils/dayPlannerTime";
-import {indexDailyPlannerEvents} from "./utils/dailyPlannerEvents";
+import {indexDailyPlannerEvents, plannerTrackedMinutesForProject} from "./utils/dailyPlannerEvents";
 import {
 	buildNoteBodyPreview,
 	parseTagsFromFm,
@@ -116,6 +116,21 @@ function tagsIncludeTask(fm: Record<string, unknown>, tag: string): boolean {
 			.includes(want);
 	}
 	return false;
+}
+
+/** Same eligibility as the project branch in `rebuild()` (explicit type or infer-without-area-type). */
+function noteQualifiesForProjectIndex(
+	path: string,
+	fm: Record<string, unknown> | undefined,
+	s: FulcrumSettings,
+): boolean {
+	if (!fm || !isUnderFolder(path, resolveProjectsRoot(s))) return false;
+	const tVal = fmString(fm, s.typeField)?.toLowerCase();
+	const areaTypeLc = s.areaTypeValue.toLowerCase();
+	const projectTypeLc = s.projectTypeValue.toLowerCase();
+	const isExplicitProject = tVal === projectTypeLc;
+	const isInferredProject = s.inferProjectsInAreasFolder && tVal !== areaTypeLc;
+	return isExplicitProject || isInferredProject;
 }
 
 function createdAtMsForFile(file: TFile, fm: Record<string, unknown> | undefined): number {
@@ -209,6 +224,17 @@ export class VaultIndex {
 	private debounceHandle: number | null = null;
 	private maxWaitHandle: number | null = null;
 	private idleDebounceHandle: number | null = null;
+	private rollupAtomicNotesByProject: Map<string, AtomicNoteRow[]> | null = null;
+	private rollupAtomicNotesIndexAt = 0;
+	private rollupAtomicNotesInflight: Promise<Map<string, AtomicNoteRow[]>> | null = null;
+	private rollupCache = new Map<string, ProjectRollup>();
+	private rollupInflight = new Map<string, Promise<ProjectRollup | null>>();
+
+	private clearRollupCaches(): void {
+		this.rollupAtomicNotesByProject = null;
+		this.rollupAtomicNotesIndexAt = 0;
+		this.rollupCache.clear();
+	}
 
 	/** Debounce for background metadata changes (non-active notes). */
 	static readonly REBUILD_DEBOUNCE_MS = 400;
@@ -248,14 +274,38 @@ export class VaultIndex {
 
 	/**
 	 * Metadata cache updates for the note being edited fire on every keystroke.
-	 * Defer those until typing pauses; other files use the normal debounced rebuild.
+	 * While typing, only re-index checkbox lines (inline tasks, planner blocks).
+	 * Saved files and background notes use normal debounced rebuild.
 	 */
-	scheduleRebuildFromMetadataChange(file: TFile): void {
+	scheduleRebuildFromMetadataChange(file: TFile, options?: {persisted?: boolean}): void {
+		if (options?.persisted) {
+			this.scheduleRebuild();
+			return;
+		}
 		if (this.isFileOpenInMarkdownEditor(file.path)) {
+			if (!this.fileNeedsIndexWhileEditing(file)) return;
 			this.scheduleIdleRebuild();
 			return;
 		}
 		this.scheduleRebuild();
+	}
+
+	/** Live editor: index only when the cursor is on a task / planner checkbox line. */
+	private fileNeedsIndexWhileEditing(file: TFile): boolean {
+		const editor = this.getActiveMarkdownEditorForPath(file.path);
+		if (!editor) return false;
+		return isCheckboxLine(editor.getLine(editor.getCursor().line));
+	}
+
+	private getActiveMarkdownEditorForPath(path: string): Editor | null {
+		let editor: Editor | null = null;
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const view = leaf.view;
+			if (view instanceof MarkdownView && view.file?.path === path && view.getMode() !== "preview") {
+				editor = view.editor;
+			}
+		});
+		return editor;
 	}
 
 	private scheduleIdleRebuild(): void {
@@ -321,7 +371,6 @@ export class VaultIndex {
 
 			const tVal = fmString(fm, typeField)?.toLowerCase();
 			const areaTypeLc = s.areaTypeValue.toLowerCase();
-			const projectTypeLc = s.projectTypeValue.toLowerCase();
 
 			if (inArea && fm && tVal === areaTypeLc) {
 				const wr = fmBooleanLoose(fm, ["work-related", "workRelated"]);
@@ -339,10 +388,7 @@ export class VaultIndex {
 				continue;
 			}
 
-			const isExplicitProject = tVal === projectTypeLc;
-			const isInferredProject =
-				s.inferProjectsInAreasFolder && tVal !== areaTypeLc;
-			if (inProject && fm && (isExplicitProject || isInferredProject)) {
+			if (inProject && fm && noteQualifiesForProjectIndex(path, fm, s)) {
 				const areaFilesResolved: TFile[] = [];
 				const seenAreaPath = new Set<string>();
 				for (const link of parseAreaLinkPaths(fm[s.areaLinkField])) {
@@ -570,6 +616,7 @@ export class VaultIndex {
 						rawLine,
 						file.path,
 						projectPaths,
+						projects,
 					);
 					if (!proj && projectPaths.has(file.path)) {
 						proj = file;
@@ -636,7 +683,7 @@ export class VaultIndex {
 
 		augmentTaskRelationships(tasks, taskNotePaths, this.app, s);
 
-		const plannerEvents = await indexDailyPlannerEvents(this.app, s);
+		const plannerEvents = await indexDailyPlannerEvents(this.app, s, projects);
 
 		this.snapshot = {
 			areas,
@@ -646,6 +693,7 @@ export class VaultIndex {
 			plannerEvents,
 			rebuiltAt: Date.now(),
 		};
+		this.clearRollupCaches();
 		bumpIndexRevision();
 	}
 
@@ -657,50 +705,99 @@ export class VaultIndex {
 		projectPath: string,
 		s: FulcrumSettings,
 	): Promise<ProjectRollup | null> {
-		const project = this.resolveProjectByPath(projectPath);
-		if (!project) return null;
+		const cacheKey = `${projectPath}:${this.snapshot.rebuiltAt}`;
+		const cached = this.rollupCache.get(cacheKey);
+		if (cached) return cached;
 
-		const done = parseDoneStatusSet(s.taskDoneStatuses);
-		const projectTasks = this.snapshot.tasks.filter(
-			(t) => t.projectFile?.path === projectPath,
-		);
-		// Exclude inline tasks that live directly on the project note from overview/rollup
-		// (they're already visible as raw markdown on the same page).
-		const rollupTasks = projectTasks.filter(
-			(t) => !(t.source === "inline" && t.file.path === projectPath),
-		);
-		const meetings = this.snapshot.meetings.filter(
-			(m) => m.projectFile?.path === projectPath,
-		);
+		const inflight = this.rollupInflight.get(cacheKey);
+		if (inflight) return inflight;
 
+		const promise = this.buildProjectRollup(projectPath, s)
+			.then((rollup) => {
+				if (this.rollupInflight.get(cacheKey) === promise) {
+					this.rollupInflight.delete(cacheKey);
+				}
+				if (rollup) this.rollupCache.set(cacheKey, rollup);
+				return rollup;
+			})
+			.catch((err) => {
+				if (this.rollupInflight.get(cacheKey) === promise) {
+					this.rollupInflight.delete(cacheKey);
+				}
+				console.error("Fulcrum: project rollup failed", projectPath, err);
+				return null;
+			});
+		this.rollupInflight.set(cacheKey, promise);
+		return promise;
+	}
+
+	private async buildAtomicNotesByProject(
+		s: FulcrumSettings,
+	): Promise<Map<string, AtomicNoteRow[]>> {
+		if (
+			this.rollupAtomicNotesByProject &&
+			this.rollupAtomicNotesIndexAt === this.snapshot.rebuiltAt
+		) {
+			return this.rollupAtomicNotesByProject;
+		}
+		if (this.rollupAtomicNotesInflight) {
+			return this.rollupAtomicNotesInflight;
+		}
+
+		const promise = this.scanAtomicNotesByProject(s).finally(() => {
+			if (this.rollupAtomicNotesInflight === promise) {
+				this.rollupAtomicNotesInflight = null;
+			}
+		});
+		this.rollupAtomicNotesInflight = promise;
+		return promise;
+	}
+
+	private async scanAtomicNotesByProject(
+		s: FulcrumSettings,
+	): Promise<Map<string, AtomicNoteRow[]>> {
+		const map = new Map<string, AtomicNoteRow[]>();
 		const year = String(new Date().getFullYear());
 		const typeField = s.typeField;
 		const prefixes = parseFolderPrefixList(s.atomicNoteFolderPrefixes);
 		const linkField = s.projectLinkField;
 		const taskNoteRoots = parseFolderPathList(s.taskNotesFolderPaths);
 		const entryKey = s.atomicNoteEntryField;
-		const atomicRows: AtomicNoteRow[] = [];
+		const meetingStartKey = s.meetingStartTimeField?.trim();
+		const projectPaths = new Set(this.snapshot.projects.map((p) => p.file.path));
+
+		if (prefixes.length === 0) {
+			this.rollupAtomicNotesByProject = map;
+			this.rollupAtomicNotesIndexAt = this.snapshot.rebuiltAt;
+			return map;
+		}
 
 		for (const f of this.app.vault.getMarkdownFiles()) {
-			if (f.path === projectPath) continue;
-			if (!fileLinksToProject(this.app, f, projectPath, linkField)) continue;
+			if (projectPaths.has(f.path)) continue;
 			if (
 				taskNoteRoots.length > 0 &&
 				fileMatchesFolderScope(f.path, taskNoteRoots)
 			) {
 				continue;
 			}
-			if (prefixes.length > 0 && !isUnderAtomicPrefixes(f.path, prefixes, year)) {
-				continue;
-			}
-			if (prefixes.length === 0) continue;
+			if (!isUnderAtomicPrefixes(f.path, prefixes, year)) continue;
 
 			const cache = this.app.metadataCache.getFileCache(f);
 			const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+			const projectFile = resolveProjectFileFromFm(this.app, fm, f.path, linkField);
+			if (!projectFile || !projectPaths.has(projectFile.path)) continue;
+
 			const dateRaw =
 				fmString(fm, "date") ??
 				fmString(fm, "startTime") ??
 				fmString(fm, "startDate");
+			const fmStartTime =
+				fmString(fm, "startTime")?.trim() ||
+				(meetingStartKey ? fmString(fm, meetingStartKey)?.trim() : undefined);
+			const startTime =
+				fmStartTime ||
+				(dateRaw && dateRaw.length > 10 ? dateRaw : undefined) ||
+				undefined;
 			const anchorDateMs = parseFrontmatterDateToMs(dateRaw) ?? undefined;
 			const dateSort = dateRaw
 				? dateRaw.slice(0, 10)
@@ -720,11 +817,16 @@ export class VaultIndex {
 			});
 			const noteType = resolveNoteType(body, fmString(fm, typeField));
 			const bodyPreview = buildNoteBodyPreview(body, entryTitle, entryKey);
-			const endTimeRaw = fmString(fm, "endTime")?.trim();
-			atomicRows.push({
+			const endTimeRaw =
+				fmString(fm, "endTime")?.trim() ||
+				(s.meetingEndTimeField?.trim()
+					? fmString(fm, s.meetingEndTimeField)?.trim()
+					: undefined);
+			const row: AtomicNoteRow = {
 				file: f,
 				status: fmString(fm, s.taskStatusField) ?? fmString(fm, "status"),
 				dateSort,
+				startTime: startTime || undefined,
 				dateDisplay: formatShortMonthDay(dateSort) || dateSort,
 				trackedMinutes: readTrackedMinutesFromFm(fm, s.taskTrackedMinutesField),
 				entryTitle,
@@ -735,23 +837,58 @@ export class VaultIndex {
 				anchorDateMs,
 				modifiedMs: f.stat.mtime,
 				endTime: endTimeRaw || undefined,
+			};
+			const rows = map.get(projectFile.path) ?? [];
+			rows.push(row);
+			map.set(projectFile.path, rows);
+		}
+
+		for (const rows of map.values()) {
+			rows.sort((a, b) => {
+				const c = b.dateSort.localeCompare(a.dateSort);
+				if (c !== 0) return c;
+				return b.file.basename.localeCompare(a.file.basename);
 			});
 		}
 
-		atomicRows.sort((a, b) => {
-			const c = b.dateSort.localeCompare(a.dateSort);
-			if (c !== 0) return c;
-			return b.file.basename.localeCompare(a.file.basename);
-		});
+		this.rollupAtomicNotesByProject = map;
+		this.rollupAtomicNotesIndexAt = this.snapshot.rebuiltAt;
+		return map;
+	}
+
+	private async buildProjectRollup(
+		projectPath: string,
+		s: FulcrumSettings,
+	): Promise<ProjectRollup | null> {
+		const project = this.resolveProjectByPath(projectPath);
+		if (!project) return null;
+
+		const done = parseDoneStatusSet(s.taskDoneStatuses);
+		const projectTasks = this.snapshot.tasks.filter(
+			(t) => t.projectFile?.path === projectPath,
+		);
+		const projectNoteTasks = projectTasks.filter(
+			(t) => t.source === "inline" && t.file.path === projectPath,
+		);
+		// Exclude inline tasks on the project note from rollup lists (shown as task cards on Overview).
+		const rollupTasks = projectTasks.filter(
+			(t) => !(t.source === "inline" && t.file.path === projectPath),
+		);
+		const meetings = this.snapshot.meetings.filter(
+			(m) => m.projectFile?.path === projectPath,
+		);
+
+		const atomicNotesByProject = await this.buildAtomicNotesByProject(s);
+		const atomicRows = [...(atomicNotesByProject.get(projectPath) ?? [])];
 
 		let doneTasks = 0;
 		let overdueTasks = 0;
-		for (const t of rollupTasks) {
+		for (const t of projectTasks) {
 			const isDone = isDoneStatus(t.status, done);
 			if (isDone) doneTasks++;
 			if (isOverdue(t.dueDate, isDone)) overdueTasks++;
 		}
-		const totalTasks = rollupTasks.length;
+		const totalTasks = projectTasks.length;
 		const openTasks = totalTasks - doneTasks;
 		const completionRatio =
 			totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
@@ -803,8 +940,17 @@ export class VaultIndex {
 			}
 		}
 
+		const plannerTrackedMinutes = plannerTrackedMinutesForProject(
+			this.snapshot.plannerEvents,
+			projectPath,
+		);
+
 		const aggregatedTrackedMinutes =
-			projectSelfMinutes + taskTracked + atomicSum + meetingOnlyMinutes;
+			projectSelfMinutes +
+			taskTracked +
+			atomicSum +
+			meetingOnlyMinutes +
+			plannerTrackedMinutes;
 
 		const hasProjectColor = Boolean(project.color?.trim());
 		const bannerImageSrc = resolveBannerImageSrc(
@@ -841,6 +987,7 @@ export class VaultIndex {
 		return {
 			project,
 			tasks: rollupTasks,
+			projectNoteTasks,
 			meetings,
 			atomicNotes: atomicRows,
 			totalTasks,
@@ -850,6 +997,7 @@ export class VaultIndex {
 			completionRatio,
 			nextTasks,
 			aggregatedTrackedMinutes,
+			plannerTrackedMinutes,
 			pageMeta,
 			bannerImageSrc,
 			accentColorCss,

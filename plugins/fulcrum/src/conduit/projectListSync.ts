@@ -1,10 +1,9 @@
 import type {App} from "obsidian";
-import {Notice} from "obsidian";
 import type {FulcrumSettings} from "../fulcrum/settingsDefaults";
 import type {IndexedProject} from "../fulcrum/types";
-import type {RemctlClient} from "./remctlClient";
+import {readProjectListId} from "./mapping";
+import type {RemindersBridge} from "./remindersBridge";
 import type {ProjectListMap, RemctlListRow} from "./types";
-import {isProjectDone, readProjectListId, writeProjectListId} from "./mapping";
 import {remctlListColorArgs} from "./projectMeta";
 
 export function indexLists(lists: RemctlListRow[]): ProjectListMap {
@@ -30,7 +29,7 @@ function rememberProjectList(
 }
 
 export async function applyListColorForProject(
-	remctl: RemctlClient,
+	bridge: RemindersBridge,
 	project: IndexedProject,
 	listId: string,
 	settings: FulcrumSettings,
@@ -39,17 +38,17 @@ export async function applyListColorForProject(
 	const color = remctlListColorArgs(project.color);
 	if (!color) return;
 	try {
-		await remctl.listEdit(listId, {
+		await bridge.listEdit(listId, {
 			color: color.color,
 			usePrivate: color.usePrivate || color.color.startsWith("#"),
 		});
 	} catch (e) {
-		console.warn("Conduit list color sync failed", project.file.path, e);
+		console.warn("Reminders list color failed", project.file.path, e);
 	}
 }
 
 export async function ensureInboxList(
-	remctl: RemctlClient,
+	bridge: RemindersBridge,
 	settings: FulcrumSettings,
 	listIndex: ProjectListMap,
 ): Promise<ProjectListMap> {
@@ -60,51 +59,12 @@ export async function ensureInboxList(
 		return listIndex;
 	}
 	try {
-		const id = await remctl.listCreate(name);
+		const id = await bridge.listCreate(name);
 		rememberProjectList(listIndex, `__inbox__:${name}`, id, name);
 	} catch (e) {
-		console.warn("Conduit inbox list create failed", e);
+		console.warn("Inbox list create failed", e);
 	}
 	return listIndex;
-}
-
-export async function ensureProjectLists(
-	app: App,
-	remctl: RemctlClient,
-	projects: IndexedProject[],
-	settings: FulcrumSettings,
-	listIndex: ProjectListMap,
-): Promise<ProjectListMap> {
-	let lists = listIndex;
-	for (const project of projects) {
-		if (isProjectDone(project, settings, project.file.path)) continue;
-		const archivedKey = settings.conduitListArchivedField.trim() || "conduitListArchived";
-		const cache = app.metadataCache.getFileCache(project.file);
-		const fm = cache?.frontmatter as Record<string, unknown> | undefined;
-		if (fm?.[archivedKey] === true) continue;
-
-		let listId = readProjectListId(app, project, settings);
-		if (!listId) continue;
-
-		const listName = project.name.trim() || project.file.basename.replace(/\.md$/i, "");
-
-		if (lists.byId.has(listId)) {
-			const existing = lists.byId.get(listId)!;
-			if (existing.name !== listName) {
-				try {
-					await remctl.listRename(listId, listName);
-					existing.name = listName;
-					lists.byName.set(listName.toLowerCase(), existing);
-				} catch (e) {
-					console.warn("Conduit list rename failed", e);
-				}
-			}
-			rememberProjectList(lists, project.file.path, listId, listName);
-			await writeProjectListId(app, project, settings, listId);
-			await applyListColorForProject(remctl, project, listId, settings);
-		}
-	}
-	return lists;
 }
 
 export function resolveListForTask(
@@ -130,49 +90,4 @@ export function resolveListForTask(
 		return {listId: row.id};
 	}
 	return {listName: inbox};
-}
-
-export async function archiveProjectListIfEmpty(
-	app: App,
-	remctl: RemctlClient,
-	projectPath: string,
-	projects: IndexedProject[],
-	settings: FulcrumSettings,
-): Promise<void> {
-	const project = projects.find((p) => p.file.path === projectPath);
-	if (!project) return;
-
-	const listId = readProjectListId(app, project, settings);
-	if (!listId) return;
-
-	const rows = await remctl.showList({listId});
-	const incomplete = rows.filter((r) => !r.completed);
-	if (incomplete.length > 0) {
-		new Notice(
-			`Conduit: Reminders list "${project.name}" still has ${incomplete.length} open task(s). Archive skipped.`,
-		);
-		return;
-	}
-
-	const prefix = settings.conduitArchivedListPrefix || "✓ ";
-	const lists = await remctl.lists();
-	const current = lists.find((l) => l.id === listId);
-	const newName = current?.name.startsWith(prefix)
-		? current.name
-		: `${prefix}${current?.name ?? project.name}`;
-
-	try {
-		await remctl.listUnpin({listId});
-		if (current && current.name !== newName) {
-			await remctl.listRename(listId, newName);
-		}
-		const archivedKey = settings.conduitListArchivedField.trim() || "conduitListArchived";
-		await app.fileManager.processFrontMatter(project.file, (fm) => {
-			fm[archivedKey] = true;
-		});
-		new Notice(`Conduit: archived Reminders list for ${project.name}.`);
-	} catch (e) {
-		console.error("Conduit archive list failed", e);
-		new Notice("Conduit: could not archive Reminders list.");
-	}
 }

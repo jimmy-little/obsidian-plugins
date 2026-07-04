@@ -132,8 +132,9 @@ export function registerTaskNoteChrome(host: FulcrumHost & Pick<Plugin, "registe
 	host.registerEvent(host.app.workspace.on("file-open", schedule));
 	host.registerEvent(host.app.workspace.on("layout-change", schedule));
 	host.registerEvent(host.app.workspace.on("active-leaf-change", schedule));
+	// Metadata fires on every keystroke; refresh task-note chrome after save instead.
 	host.registerEvent(
-		host.app.metadataCache.on("changed", (f) => {
+		host.app.vault.on("modify", (f) => {
 			if (!(f instanceof TFile) || f.extension !== "md") return;
 			for (const leaf of host.app.workspace.getLeavesOfType("markdown")) {
 				const view = leaf.view;

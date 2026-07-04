@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type {WorkspaceLeaf} from "obsidian";
+	import {Menu} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {ProjectLogActivityEntry} from "../fulcrum/projectNote";
 	import type {IndexedMeeting, ProjectRollup} from "../fulcrum/types";
@@ -31,7 +32,7 @@
 		dayStartMs,
 		formatTrackedMinutesShort,
 	} from "../fulcrum/utils/dates";
-	import {addDays, toISODate, formatDayShort, getWeekStart} from "../fulcrum/utils/calendarGrid";
+	import {toISODate, formatDayShort, dashboardMeetingGridDates, loadDashboardWeekSpan, saveDashboardWeekSpan, loadDashboardWeekAnchor, saveDashboardWeekAnchor, type DashboardWeekSpan, type DashboardWeekAnchor} from "../fulcrum/utils/calendarGrid";
 	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
 	import {
 		buildAggregatedActivityRows,
@@ -44,6 +45,7 @@
 	import TaskSectionHead from "./TaskSectionHead.svelte";
 	import GanttMain from "./GanttMain.svelte";
 	import FulcrumDateNavToolbar from "./shared/FulcrumDateNavToolbar.svelte";
+	import DashboardActiveTimers from "./DashboardActiveTimers.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -120,35 +122,31 @@
 		return c >= weekAgo;
 	});
 
-	/** 0 = week that contains today; ±1 = adjacent weeks (calendar week per `calendarFirstDayOfWeek`). */
+	/** 0 = anchor week containing today; ±1 = adjacent periods. */
 	let weekOffset = 0;
+	let weekSpan: DashboardWeekSpan = loadDashboardWeekSpan();
+	let weekAnchor: DashboardWeekAnchor = loadDashboardWeekAnchor();
 
-	$: dashboardWeekStart = ((): Date => {
+	$: meetingGridDays = ((): {iso: string; dayLabel: string; dayNum: string}[] => {
 		void sRev;
 		void weekOffset;
-		const today = new Date();
-		today.setHours(0, 0, 0, 0);
-		const ws = getWeekStart(today, plugin.settings.calendarFirstDayOfWeek);
-		return addDays(ws, weekOffset * 7);
-	})();
-
-	/** Seven days for the visible calendar week */
-	$: meetingGridDays = (() => {
-		const out: {iso: string; dayLabel: string; dayNum: string}[] = [];
-		for (let i = 0; i < 7; i++) {
-			const d = addDays(dashboardWeekStart, i);
-			out.push({
-				iso: toISODate(d),
-				dayLabel: formatDayShort(d),
-				dayNum: String(d.getDate()),
-			});
-		}
-		return out;
+		void weekSpan;
+		void weekAnchor;
+		return dashboardMeetingGridDates({
+			span: weekSpan,
+			anchor: weekAnchor,
+			weekOffset,
+		}).map((d) => ({
+			iso: toISODate(d),
+			dayLabel: formatDayShort(d),
+			dayNum: String(d.getDate()),
+		}));
 	})();
 
 	$: meetingsByDate = ((): Map<string, IndexedMeeting[]> => {
-		const startIso = toISODate(dashboardWeekStart);
-		const endIso = toISODate(addDays(dashboardWeekStart, 6));
+		if (meetingGridDays.length === 0) return new Map();
+		const startIso = meetingGridDays[0]!.iso;
+		const endIso = meetingGridDays[meetingGridDays.length - 1]!.iso;
 		const m = new Map<string, IndexedMeeting[]>();
 		for (const mt of snapshot.meetings) {
 			if (!meetingPassesAreaFilter(mt, snapshot, areaFilter, lifeModeMap)) continue;
@@ -176,6 +174,7 @@
 		.slice(0, 20);
 
 	let aggregatedActivity: ActivityRowModel[] = [];
+	let aggregatedActivityLoadId = 0;
 
 	$: {
 		void rev;
@@ -187,6 +186,7 @@
 			areaFilter,
 			lifeModeMap,
 		);
+		const loadId = ++aggregatedActivityLoadId;
 		const load = async (): Promise<void> => {
 			const inputs = await Promise.all(
 				active.map(async (p) => {
@@ -199,6 +199,7 @@
 					return {rollup, logEntries};
 				}),
 			);
+			if (loadId !== aggregatedActivityLoadId) return;
 			const valid = inputs.filter(
 				(x): x is {rollup: ProjectRollup; logEntries: ProjectLogActivityEntry[]} =>
 					x != null,
@@ -280,6 +281,44 @@
 	function dashboardWeekNext(): void {
 		weekOffset += 1;
 	}
+
+	function openDashboardWeekMenu(ev: MouseEvent): void {
+		const menu = new Menu();
+		menu.addItem((item) => {
+			item.setTitle("Work Week");
+			item.setChecked(weekSpan === "workWeek");
+			item.onClick(() => {
+				weekSpan = "workWeek";
+				saveDashboardWeekSpan(weekSpan);
+			});
+		});
+		menu.addItem((item) => {
+			item.setTitle("Full Week");
+			item.setChecked(weekSpan === "fullWeek");
+			item.onClick(() => {
+				weekSpan = "fullWeek";
+				saveDashboardWeekSpan(weekSpan);
+			});
+		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item.setTitle("Start on Monday");
+			item.setChecked(weekAnchor === "startMonday");
+			item.onClick(() => {
+				weekAnchor = "startMonday";
+				saveDashboardWeekAnchor(weekAnchor);
+			});
+		});
+		menu.addItem((item) => {
+			item.setTitle("Start Today");
+			item.setChecked(weekAnchor === "startToday");
+			item.onClick(() => {
+				weekAnchor = "startToday";
+				saveDashboardWeekAnchor(weekAnchor);
+			});
+		});
+		menu.showAtMouseEvent(ev);
+	}
 </script>
 
 <section class="fulcrum-section">
@@ -304,6 +343,8 @@
 	</div>
 </section>
 
+<DashboardActiveTimers {plugin} />
+
 <section class="fulcrum-section">
 	<div class="fulcrum-dashboard-meetings-scroll">
 		<div class="fulcrum-dashboard-meetings-week">
@@ -321,10 +362,26 @@
 						onNext={dashboardWeekNext}
 						onToday={dashboardWeekThis}
 						className="fulcrum-dashboard-meetings-nav__toolbar"
-					/>
+					>
+						<button
+							slot="trailing"
+							type="button"
+							class="fulcrum-dashboard-meetings-nav__btn fulcrum-dashboard-meetings-nav__btn--more"
+							aria-label="Week display options"
+							title="Week display options"
+							on:click={openDashboardWeekMenu}
+						>
+							⋯
+						</button>
+					</FulcrumDateNavToolbar>
 				</div>
 			</div>
-			<div class="fulcrum-dashboard-meetings-grid" role="grid" aria-label="Meetings by day">
+			<div
+				class="fulcrum-dashboard-meetings-grid"
+				role="grid"
+				aria-label="Meetings by day"
+				style={`--fulcrum-dashboard-meeting-cols: ${meetingGridDays.length}`}
+			>
 			{#each meetingGridDays as {iso, dayLabel, dayNum}}
 				{@const dayMeetings = meetingsByDate.get(iso) ?? []}
 				{@const isToday = iso === todayLocalISODate()}
@@ -364,20 +421,6 @@
 			{/each}
 			</div>
 		</div>
-	</div>
-</section>
-
-<section class="fulcrum-section fulcrum-section--gantt">
-	<h2>Project timeline</h2>
-	<div class="fulcrum-dashboard-gantt">
-		<GanttMain
-			{plugin}
-			{hoverParentLeaf}
-			variant="compact"
-			embedded={true}
-			includeTasks={false}
-			onlyDatedItems={true}
-		/>
 	</div>
 </section>
 
@@ -480,6 +523,22 @@
 			</div>
 		</div>
 	{/if}
+</section>
+
+<section class="fulcrum-section fulcrum-section--gantt">
+	<h2>Project timeline</h2>
+	<div class="fulcrum-dashboard-gantt">
+		<GanttMain
+			{plugin}
+			{hoverParentLeaf}
+			variant="compact"
+			embedded={true}
+			includeTasks={false}
+			onlyDatedItems={true}
+			excludeOngoingProjects={true}
+			requireBoundedProjectDates={true}
+		/>
+	</div>
 </section>
 
 <section class="fulcrum-section">

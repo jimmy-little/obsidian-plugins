@@ -1,4 +1,5 @@
 import {Menu, Notice, type WorkspaceLeaf} from "obsidian";
+import {convertInlineTaskToNote} from "./convertInlineTaskToNote";
 import {
 	applyTaskDueChange,
 	applyTaskProjectChange,
@@ -8,6 +9,11 @@ import {
 	applyTaskTitleChange,
 } from "./kanban/taskFieldUpdate";
 import {
+	handleRecurringTaskComplete,
+	taskIsRecurring,
+} from "./recurrence/recurrenceComplete";
+import {
+	CreateTaskNoteModal,
 	EditTaskTagsModal,
 	EditTaskTitleModal,
 	ProjectPickerModal,
@@ -54,6 +60,20 @@ export function handleTaskStatusClick(
 	const statuses = parseTaskStatusChoices(host.settings);
 	if (statuses.length === 0) return;
 
+	if (statuses.length === 2 && taskIsRecurring(task)) {
+		if (!taskIsDone(task, host.settings)) {
+			void withFileResolved(host, task, async () => {
+				await handleRecurringTaskComplete(host.app, task, host.settings);
+			}).catch(handleError);
+		} else {
+			const openStatus = statuses[0] ?? parseList(host.settings.taskStatuses)[0] ?? "todo";
+			void withFileResolved(host, task, () =>
+				applyTaskStatusChange(host.app, task, host.settings, openStatus),
+			).catch(handleError);
+		}
+		return;
+	}
+
 	if (statuses.length === 2) {
 		const current = (task.status ?? "").trim().toLowerCase();
 		const next = statuses.find((s) => s.trim().toLowerCase() !== current) ?? statuses[0];
@@ -97,6 +117,27 @@ export function openEditTaskProject(host: FulcrumHost, task: IndexedTask): void 
 			applyTaskProjectChange(host.app, task, host.settings, p.file.path, projects),
 		).catch(handleError);
 	}).open();
+}
+
+export function openEditTaskNote(host: FulcrumHost, task: IndexedTask): void {
+	if (task.source !== "taskNote") {
+		host.openIndexedTask(task);
+		return;
+	}
+	new CreateTaskNoteModal(host.app, host, {task}).open();
+}
+
+export function openTaskNoteFromCard(
+	host: FulcrumHost,
+	task: IndexedTask,
+	anchorLeaf?: WorkspaceLeaf,
+): void {
+	host.openIndexedTask(task, anchorLeaf);
+}
+
+export function openTaskProjectFromCard(host: FulcrumHost, task: IndexedTask): void {
+	if (!task.projectFile) return;
+	void host.openProjectSummary(task.projectFile.path);
 }
 
 export function openEditTaskDue(host: FulcrumHost, task: IndexedTask): void {
@@ -147,10 +188,56 @@ export function stopChipClick(ev: MouseEvent): void {
 	ev.stopPropagation();
 }
 
-const TASK_CARD_INTERACTIVE =
-	"button,a,[role=button],.fulcrum-task-card__status-dot,.fulcrum-task-card__title,.fulcrum-task-card__meta-chip,.fulcrum-task-card__timer,.fulcrum-task-inline-pill__status,.fulcrum-task-inline-pill__title,.fulcrum-task-inline-pill__meta,.fulcrum-task-inline-pill__open-note";
+/** Start a timer on a task note, converting inline tasks first. */
+export async function startTaskTimerForCard(host: FulcrumHost, task: IndexedTask): Promise<void> {
+	let notePath = task.file.path;
+	let noteTitle = task.title;
+	let projectFile = task.projectFile;
 
-/** Click on non-interactive card chrome opens the task note beside Fulcrum. */
+	if (task.source === "inline") {
+		const created = await convertInlineTaskToNote(host, task);
+		if (!created) return;
+		notePath = created.path;
+	}
+
+	const projectName = projectFile?.basename.replace(/\.md$/i, "") ?? null;
+	try {
+		await host.startTimerInNote(notePath, {
+			projectName,
+			noteTitle,
+		});
+		host.bumpTimerRevision();
+	} catch (e) {
+		console.error(e);
+		const msg = e instanceof Error ? e.message : String(e);
+		new Notice(msg.length < 120 ? msg : "Could not start timer.");
+	}
+}
+
+export function handleTaskTimerToggleClick(
+	ev: MouseEvent,
+	host: FulcrumHost,
+	task: IndexedTask,
+): void {
+	stopChipClick(ev);
+	const active = host.timer
+		.listActiveTimersInMemory()
+		.some((row) => row.filePath === task.file.path);
+	if (active) {
+		void host.stopTimerInNote(task.file.path);
+		return;
+	}
+	void startTaskTimerForCard(host, task);
+}
+
+export function taskCardTimerActive(host: FulcrumHost, task: IndexedTask): boolean {
+	return host.timer.listActiveTimersInMemory().some((row) => row.filePath === task.file.path);
+}
+
+const TASK_CARD_INTERACTIVE =
+	"button,a,[role=button],.fulcrum-task-card__status-dot,.fulcrum-task-card__title,.fulcrum-task-card__meta-chip,.fulcrum-task-card__start-timer,.fulcrum-task-card__timer,.fulcrum-task-inline-pill__status,.fulcrum-task-inline-pill__title,.fulcrum-task-inline-pill__meta,.fulcrum-task-inline-pill__open-note,.fulcrum-task-inline-pill__to-note";
+
+/** Click on non-interactive card chrome opens the task edit modal (task notes) or note (inline). */
 export function handleTaskCardBlankClick(
 	ev: MouseEvent,
 	host: FulcrumHost,
@@ -162,6 +249,10 @@ export function handleTaskCardBlankClick(
 	if (target.closest(TASK_CARD_INTERACTIVE)) return;
 	ev.preventDefault();
 	ev.stopPropagation();
+	if (task.source === "taskNote") {
+		openEditTaskNote(host, task);
+		return;
+	}
 	host.openIndexedTask(task, anchorLeaf);
 }
 

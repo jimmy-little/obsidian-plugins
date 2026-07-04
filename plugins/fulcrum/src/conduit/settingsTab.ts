@@ -1,34 +1,40 @@
 import {Notice, Platform, Setting} from "obsidian";
 import type FulcrumPlugin from "../main";
-import {FulcrumSettingTab} from "../settings";
-import {addConduitSyncSettingsRow} from "./actions";
+import {addConduitBridgeSettingsRow} from "./actions";
+import {
+	cleanupRemindersConduitMetadata,
+	cleanupVaultConduitMetadata,
+} from "./conduitMigration";
 import {findRemctlBinary} from "./remctlPath";
 import {RemctlClient} from "./remctlClient";
-import {resetConduitSyncDatabase} from "./syncState";
 
 function heading(containerEl: HTMLElement, text: string): void {
 	containerEl.createEl("h3", {text, cls: "fulcrum-settings-heading"});
 }
 
-export function displayConduitSettings(containerEl: HTMLElement, plugin: FulcrumPlugin): void {
-	heading(containerEl, "Conduit (Apple Reminders)");
+export function displayConduitSettings(
+	containerEl: HTMLElement,
+	plugin: FulcrumPlugin,
+	refresh?: () => void,
+): void {
+	heading(containerEl, "Reminders bridge");
 
 	if (!Platform.isMacOS) {
 		containerEl.createEl("p", {
-			text: "Conduit syncs Fulcrum tasks with Apple Reminders via remctl on macOS only.",
+			text: "Apple Reminders integration is available on macOS only.",
 			cls: "fulcrum-settings-lead",
 		});
 		return;
 	}
 
 	containerEl.createEl("p", {
-		text: "Bidirectional sync for linked tasks (title, status, due date). Enable sync per project from the project header menu and choose a Reminders list manually. Tasks without a project use the Inbox list.",
+		text: "Live Reminders views in notes (fulcrum-reminders code blocks) and one-way convert actions. Tasks live in Obsidian or Reminders — not both. Use the Fulcrum Bridge app or remctl for API access.",
 		cls: "fulcrum-settings-lead",
 	});
 
 	new Setting(containerEl)
-		.setName("Enable Conduit")
-		.setDesc("Sync Fulcrum tasks with Apple Reminders using the remctl CLI.")
+		.setName("Enable Reminders bridge")
+		.setDesc("Query blocks and convert actions for Apple Reminders.")
 		.addToggle((tg) =>
 			tg.setValue(plugin.settings.conduitEnabled).onChange(async (v) => {
 				plugin.settings.conduitEnabled = v;
@@ -39,19 +45,18 @@ export function displayConduitSettings(containerEl: HTMLElement, plugin: Fulcrum
 
 	if (!plugin.settings.conduitEnabled) return;
 
-	const defer = plugin.conduit?.coordinator.getDeferReason();
-	if (defer) {
-		containerEl.createEl("p", {
-			text: `Sync deferred: ${defer}`,
-			cls: "fulcrum-muted",
-		});
-	}
+	textSetting(
+		plugin,
+		containerEl,
+		"remindersBridgeUrl",
+		"Bridge URL",
+		"Fulcrum Bridge HTTP API (default http://127.0.0.1:9247). Falls back to remctl when unreachable.",
+	);
+	textSetting(plugin, containerEl, "remindersBridgeToken", "Bridge token (optional)");
 
 	const remctlRow = new Setting(containerEl)
-		.setName("remctl path")
-		.setDesc(
-			"Full path required — Obsidian does not use your shell PATH. Common: ~/.local/bin/remctl",
-		);
+		.setName("remctl path (fallback)")
+		.setDesc("Used when the HTTP bridge is unavailable. Full path required.");
 	remctlRow.addText((t) => {
 		const client = new RemctlClient(plugin.settings.conduitRemctlPath);
 		t.setPlaceholder(client.resolvedPath)
@@ -59,6 +64,7 @@ export function displayConduitSettings(containerEl: HTMLElement, plugin: Fulcrum
 			.onChange(async (v) => {
 				plugin.settings.conduitRemctlPath = v;
 				await plugin.saveSettings();
+				plugin.conduit?.invalidateBridge();
 			});
 	});
 	remctlRow.addButton((b) =>
@@ -70,62 +76,46 @@ export function displayConduitSettings(containerEl: HTMLElement, plugin: Fulcrum
 			}
 			plugin.settings.conduitRemctlPath = found;
 			await plugin.saveSettings();
+			plugin.conduit?.invalidateBridge();
 			new Notice(`Using ${found}`);
-			new FulcrumSettingTab(plugin.app, plugin).display();
+			refresh?.();
 		}),
 	);
+
 	textSetting(
 		plugin,
 		containerEl,
-		"conduitVaultNameOverride",
-		"Vault name override",
-		"For obsidian:// links in Reminder notes (mobile). Empty uses this vault’s name.",
+		"conduitInboxListName",
+		"Inbox list name",
+		"Default Reminders list when converting tasks without a project list.",
 	);
-	textSetting(plugin, containerEl, "conduitInboxListName", "Inbox list name", "Reminders list for tasks without a project.");
-	textSetting(plugin, containerEl, "conduitReminderIdField", "Task reminder id field");
 	textSetting(plugin, containerEl, "conduitReminderListIdField", "Project list id field");
-	textSetting(plugin, containerEl, "conduitSyncField", "Project sync enabled field", "Frontmatter boolean set when a project syncs with Reminders.");
-	textSetting(plugin, containerEl, "conduitArchivedListPrefix", "Archived list name prefix");
+	textSetting(
+		plugin,
+		containerEl,
+		"taskNotesArchiveFolder",
+		"Task note archive folder",
+		"Where task notes move after Convert to Reminder.",
+	);
 
 	new Setting(containerEl)
-		.setName("Sync interval (seconds)")
-		.setDesc("0 = manual only.")
+		.setName("Query block refresh (seconds)")
+		.setDesc("Auto-refresh fulcrum-reminders blocks. 0 = manual only.")
 		.addText((t) =>
 			t
-				.setValue(String(plugin.settings.conduitSyncIntervalSeconds))
+				.setValue(String(plugin.settings.remindersQueryRefreshSeconds))
 				.onChange(async (v) => {
-					const n = Math.max(0, Number.parseInt(v, 10) || 0);
-					plugin.settings.conduitSyncIntervalSeconds = n;
-					await plugin.saveSettings();
-					plugin.conduit?.stop();
-					await plugin.restartConduit();
-				}),
-		);
-
-	new Setting(containerEl)
-		.setName("Vault quiet period (seconds)")
-		.setDesc("Wait after vault edits before auto sync (reduces Obsidian Sync race overwrites).")
-		.addText((t) =>
-			t
-				.setValue(String(plugin.settings.conduitVaultQuietSeconds))
-				.onChange(async (v) => {
-					plugin.settings.conduitVaultQuietSeconds = Math.max(0, Number.parseInt(v, 10) || 60);
+					plugin.settings.remindersQueryRefreshSeconds = Math.max(
+						0,
+						Number.parseInt(v, 10) || 0,
+					);
 					await plugin.saveSettings();
 				}),
-		);
-
-	new Setting(containerEl)
-		.setName("Delete Reminders when task removed")
-		.addToggle((tg) =>
-			tg.setValue(plugin.settings.conduitDeleteReminderWhenTaskDeleted).onChange(async (v) => {
-				plugin.settings.conduitDeleteReminderWhenTaskDeleted = v;
-				await plugin.saveSettings();
-			}),
 		);
 
 	new Setting(containerEl)
 		.setName("Sync project colors to lists")
-		.setDesc("Uses remctl list color (private API for custom hex).")
+		.setDesc("When setting a project's Reminders list, apply project color.")
 		.addToggle((tg) =>
 			tg.setValue(plugin.settings.conduitSyncListColors).onChange(async (v) => {
 				plugin.settings.conduitSyncListColors = v;
@@ -133,53 +123,64 @@ export function displayConduitSettings(containerEl: HTMLElement, plugin: Fulcrum
 			}),
 		);
 
+	addConduitBridgeSettingsRow(containerEl, plugin);
+
+	heading(containerEl, "Migration from Conduit sync");
+	containerEl.createEl("p", {
+		text: "If you used bidirectional Conduit sync, remove leftover links in the vault and Reminders.",
+		cls: "fulcrum-settings-lead",
+	});
 	new Setting(containerEl)
-		.setName("Tag reminders with project Area")
-		.setDesc("Adds the Area name as a Reminders tag for filtering.")
-		.addToggle((tg) =>
-			tg.setValue(plugin.settings.conduitSyncAreaTags).onChange(async (v) => {
-				plugin.settings.conduitSyncAreaTags = v;
-				await plugin.saveSettings();
-			}),
-		);
-
-	new Setting(containerEl)
-		.setName("Show sync progress in status bar")
-		.setDesc("Phase and task counts in the footer while Conduit runs. Toolbar badge always shows when syncing.")
-		.addToggle((tg) =>
-			tg.setValue(plugin.settings.conduitShowSyncProgress).onChange(async (v) => {
-				plugin.settings.conduitShowSyncProgress = v;
-				await plugin.saveSettings();
-			}),
-		);
-
-	addConduitSyncSettingsRow(containerEl, plugin);
-
-	heading(containerEl, "Danger zone");
-
-	new Setting(containerEl)
-		.setName("Reset sync database")
-		.setDesc(
-			"Wipe all stored reminder IDs and sync state. Removes appleReminderId from task notes and appleReminderListId / conduitSync from projects. Next sync will re-link by title or create fresh reminders.",
-		)
-		.addButton((btn) =>
-			btn
-				.setButtonText("Reset…")
-				.setWarning()
-				.onClick(async () => {
-					if (
-						!window.confirm(
-							"This will remove all Conduit sync mappings from plugin data and vault frontmatter. Reminders lists themselves are untouched. Continue?",
-						)
-					) {
-						return;
+		.setName("Clean up vault metadata")
+		.setDesc("Remove appleReminderId frontmatter, inline reminder-id comments, and conduitSync from projects.")
+		.addButton((btn) => {
+			btn.setButtonText("Clean vault").onClick(() => {
+				void (async () => {
+					try {
+						const result = await cleanupVaultConduitMetadata(plugin);
+						const total =
+							result.taskNotesCleared +
+							result.inlineCommentsCleared +
+							result.projectSyncFieldsCleared;
+						if (total === 0) {
+							new Notice("No legacy Conduit metadata found in the vault.");
+							return;
+						}
+						new Notice(
+							`Removed legacy Conduit metadata (${result.taskNotesCleared} task notes, ${result.inlineCommentsCleared} inline lines, ${result.projectSyncFieldsCleared} projects).`,
+						);
+					} catch (e) {
+						console.error(e);
+						new Notice("Could not clean up vault Conduit metadata.");
 					}
-					const count = await resetConduitSyncDatabase(plugin);
-					new Notice(
-						`Conduit reset: cleared sync state and ${count} frontmatter field(s).`,
-					);
-				}),
-		);
+				})();
+			});
+		});
+	new Setting(containerEl)
+		.setName("Clean up Reminders metadata")
+		.setDesc("Strip obsidian:// links and area tags from reminders in project-linked lists.")
+		.addButton((btn) => {
+			btn.setButtonText("Clean Reminders").onClick(() => {
+				void (async () => {
+					try {
+						const {updated, scanned} = await cleanupRemindersConduitMetadata(plugin);
+						if (updated === 0) {
+							new Notice(
+								scanned > 0
+									? `Scanned ${scanned} reminders — no Conduit metadata to remove.`
+									: "No reminders in linked project lists.",
+							);
+							return;
+						}
+						new Notice(`Cleaned Conduit metadata from ${updated} reminder(s).`);
+					} catch (e) {
+						console.error(e);
+						const msg = e instanceof Error ? e.message : String(e);
+						new Notice(msg.length < 120 ? msg : "Could not clean up Reminders metadata.");
+					}
+				})();
+			});
+		});
 }
 
 function textSetting(
@@ -197,6 +198,9 @@ function textSetting(
 		t.setValue(str).onChange(async (value) => {
 			(plugin.settings as unknown as Record<string, unknown>)[key as string] = value;
 			await plugin.saveSettings();
+			if (key === "remindersBridgeUrl" || key === "remindersBridgeToken") {
+				plugin.conduit?.invalidateBridge();
+			}
 		}),
 	);
 }

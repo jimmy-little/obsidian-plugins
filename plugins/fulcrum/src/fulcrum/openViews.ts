@@ -17,14 +17,19 @@ function resolveProjectManagerState(initial?: ProjectManagerViewState): ProjectM
 	if (initial.mode === "project" && initial.projectPath) {
 		return {mode: "project", projectPath: initial.projectPath};
 	}
+	if (initial.mode === "orbit") {
+		return initial.personPath
+			? {mode: "orbit", personPath: initial.personPath}
+			: {mode: "orbit"};
+	}
 	if (
-		initial.mode === "areas" ||
+		initial.mode === "tasks" ||
 		initial.mode === "kanban" ||
 		initial.mode === "calendar" ||
 		initial.mode === "time" ||
 		initial.mode === "review"
 	) {
-		return {mode: initial.mode};
+		return {mode: initial.mode, timeTab: initial.timeTab};
 	}
 	return {mode: "dashboard"};
 }
@@ -73,15 +78,26 @@ export async function revealOrCreateTimeTracked(
 	await revealOrCreateProjectManager(app, settings, {mode: "time", timeTab: tab ?? settings.timeModeTab});
 }
 
-export async function revealOrCreateAreas(
+export async function revealOrCreateTasks(
 	app: App,
 	settings: FulcrumSettings,
 ): Promise<void> {
-	await revealOrCreateProjectManager(app, settings, {mode: "areas"});
+	await revealOrCreateProjectManager(app, settings, {mode: "tasks"});
 }
 
 export async function revealOrCreateReview(app: App, settings: FulcrumSettings): Promise<void> {
 	await revealOrCreateProjectManager(app, settings, {mode: "review"});
+}
+
+export async function revealOrCreateOrbit(
+	app: App,
+	settings: FulcrumSettings,
+	initial?: {personPath?: string},
+): Promise<void> {
+	await revealOrCreateProjectManager(app, settings, {
+		mode: "orbit",
+		personPath: initial?.personPath,
+	});
 }
 
 /** Single-day timeline (tasks + meetings); optional persisted focal date. */

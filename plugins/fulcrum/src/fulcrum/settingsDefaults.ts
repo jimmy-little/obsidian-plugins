@@ -13,8 +13,6 @@ export type ProjectSidebarSortBy = "launch" | "nextReview" | "rank" | "name";
 export type ProjectSidebarSortDir = "asc" | "desc";
 export type TaskSidebarGroupBy = "area" | "status" | "project" | "none";
 export type TaskSidebarSortBy = "due" | "name" | "project";
-export type ProjectTaskListGroupBy = "status" | "date" | "tag";
-export type ProjectTaskListSortBy = "due" | "scheduled";
 
 export type KanbanView = "projects" | "tasks";
 export type KanbanDimension = "area" | "project" | "status" | "date";
@@ -34,6 +32,17 @@ export const DASHBOARD_ACTIVITY_MAX_DAYS = 7 as const;
 export const DASHBOARD_ACTIVITY_MAX_ROWS = 80 as const;
 
 export type CalendarTaskScheduleField = "due" | "scheduled" | "ask";
+
+export type TasksViewGroupBy = "day" | "project" | "tag";
+
+export type TasksViewColumnId =
+	| "title"
+	| "project"
+	| "scheduled"
+	| "due"
+	| "tags"
+	| "status"
+	| "priority";
 
 export interface FulcrumSettings {
 	/** Legacy combined root; used when optional folders below are empty. */
@@ -83,6 +92,8 @@ export interface FulcrumSettings {
 	taskProjectsField: string;
 	taskRecurrenceParentField: string;
 	taskOccurrenceDateField: string;
+	/** Cached next N occurrence dates for recurring tasks. */
+	taskNextOccurrencesField: string;
 	/** Maintain due/scheduled offset when recurring task rolls forward. */
 	recurrenceMaintainDueOffset: boolean;
 	/** Only index inline checkboxes containing this tag (empty = no tag filter). */
@@ -119,7 +130,6 @@ export interface FulcrumSettings {
 	obsidianTasksFolderPaths: string;
 	/** Include/exclude paths and `!file:` basename rules; see settings UI. */
 	inlineTaskRegex: string;
-	tasksPluginMode: "auto-detect" | "off" | "force";
 	/** Inline checkbox tasks: require project link vs index all in scanned folders. */
 	taskIndexScope: TaskIndexScope;
 
@@ -135,7 +145,6 @@ export interface FulcrumSettings {
 	projectActiveStatuses: string;
 	projectDoneStatuses: string;
 
-	defaultProjectView: "summary" | "board";
 	openViewsIn: "main" | "sidebar";
 	/** Kanban view: projects or tasks board */
 	kanbanView: KanbanView;
@@ -147,42 +156,31 @@ export interface FulcrumSettings {
 	kanbanHiddenColumns: Record<string, string[]>;
 	/** Column order keyed by `${view}:${dimension}` */
 	kanbanColumnOrder: Record<string, string[]>;
-	/** @deprecated migrated to kanbanHiddenColumns */
-	kanbanHiddenStatus: string[];
-	/** @deprecated migrated to kanbanHiddenColumns */
-	kanbanHiddenArea: string[];
-	/** @deprecated migrated to kanbanColumnOrder */
-	kanbanOrderStatus: string[];
-	/** @deprecated migrated to kanbanColumnOrder */
-	kanbanOrderArea: string[];
 	/** Calendar view mode */
 	calendarViewMode: "month" | "workWeek" | "week" | "threeDay" | "day";
 	/** Default date field when dragging unscheduled tasks onto the calendar. */
 	calendarTaskScheduleField: CalendarTaskScheduleField;
 	showRibbonIcon: boolean;
-	dateDisplayFormat: string;
-	completionThresholdPercent: number;
 	dashboardActiveProjectsGroupBy: "area" | "status" | "reviewDue" | "none";
 	projectSidebarSortBy: ProjectSidebarSortBy;
 	projectSidebarSortDir: ProjectSidebarSortDir;
 	/** Project sidebar filter: unchecked status keys (empty = all checked). Use __none__ for no status. */
 	projectSidebarFilterUncheckedStatus: string[];
-	/** Project sidebar filter: unchecked area keys (empty = all checked). Use __none__ for no area. */
-	projectSidebarFilterUncheckedArea: string[];
 	/** Calendar / Kanban tasks sidebar: group open tasks by area, status, project, or flat. */
 	taskSidebarGroupBy: TaskSidebarGroupBy;
 	taskSidebarSortBy: TaskSidebarSortBy;
 	taskSidebarSortDir: ProjectSidebarSortDir;
 	/** Task sidebar filter: unchecked status keys (empty = all checked). */
 	taskSidebarFilterUncheckedStatus: string[];
-	/** Task sidebar filter: unchecked area keys. */
-	taskSidebarFilterUncheckedArea: string[];
 	/** Task sidebar filter: unchecked project file paths. Use __none__ for no project. */
 	taskSidebarFilterUncheckedProject: string[];
-	/** Project page → List tab: group tasks by status, date bucket, or tag. */
-	projectTaskListGroupBy: ProjectTaskListGroupBy;
-	/** Project page → List tab: sort grouped tasks by due or scheduled date. */
-	projectTaskListSortBy: ProjectTaskListSortBy;
+
+	/** Tasks view: center list grouping */
+	tasksViewGroupBy: TasksViewGroupBy;
+	/** Tasks view: visible columns in center grid (order matters). */
+	tasksViewColumns: TasksViewColumnId[];
+	/** Tasks view: number of future day sections after today. */
+	tasksViewFutureDays: number;
 
 	projectStatusIndication: ProjectStatusIndication;
 	projectStatusField: string;
@@ -225,8 +223,24 @@ export interface FulcrumSettings {
 	projectRelatedProjectsField: string;
 	/** Project frontmatter field for related product wikilinks (e.g. relatedProducts). */
 	projectRelatedProductsField: string;
-	/** People directory: when set, collect people from related notes/tasks; when empty, only project frontmatter. */
-	peopleFolder: string;
+	/** People directories (vault paths). Source of truth for pills, related people, and Orbit. */
+	peopleDirs: string[];
+	/** @deprecated Migrated to peopleDirs on load. */
+	peopleFolder?: string;
+	/** Orbit: avatar display style on person profiles and list rows. */
+	avatarStyle: "circle" | "cover" | "thumbnail";
+	/** Orbit: banner color when person note has no `color` frontmatter. */
+	defaultBannerColor: string;
+	/** Orbit: primary frontmatter key for interaction dates. */
+	orbitDateField: string;
+	/** Orbit: secondary frontmatter key for interaction timestamps. */
+	orbitStartTimeField: string;
+	/** Orbit: inline metadata key stripped from activity preview excerpts. */
+	orbitActivityPreviewEntryField: string;
+	/** Orbit: max content lines per activity preview card. */
+	orbitActivityPreviewMaxLines: number;
+	/** Orbit: heatmap first day of week (0 = Sunday … 6 = Saturday). */
+	orbitFirstDayOfWeek: number;
 	/** Products directory: notes under this path become product inline pills when linked. */
 	productsFolder: string;
 	/** Frontmatter field on people notes for avatar image (when people directory is set). */
@@ -267,24 +281,45 @@ export interface FulcrumSettings {
 
 	conduitEnabled: boolean;
 	conduitRemctlPath: string;
-	conduitVaultNameOverride: string;
-	conduitSyncIntervalSeconds: number;
-	conduitVaultQuietSeconds: number;
 	conduitInboxListName: string;
-	conduitReminderIdField: string;
 	conduitReminderListIdField: string;
 	conduitListArchivedField: string;
 	conduitArchivedListPrefix: string;
-	/** Project frontmatter key: true = this project syncs with its linked Reminders list. */
-	conduitSyncField: string;
-	conduitDeleteReminderWhenTaskDeleted: boolean;
 	/** Apply project frontmatter color to the matching Reminders list. */
 	conduitSyncListColors: boolean;
-	/** Tag each reminder with the project’s Area name (Reminders tags, --private). */
-	conduitSyncAreaTags: boolean;
-	/** Show Conduit sync phase and counts in the status bar while syncing. */
-	conduitShowSyncProgress: boolean;
+	/** HTTP bridge URL (Fulcrum Bridge app). Empty = remctl only. */
+	remindersBridgeUrl: string;
+	remindersBridgeToken: string;
+	taskNotesArchiveFolder: string;
+	remindersQueryRefreshSeconds: number;
+	remindersCalendarIds: string;
+	/** Forecast: comma-separated macOS calendar IDs to show (independent of Calendar view). */
+	forecastCalendarIds: string;
+	/** Forecast: show vault meeting notes in the day-grouped center list. */
+	forecastShowVaultMeetings: boolean;
+	/** Forecast: show system calendar events from Fulcrum Bridge. */
+	forecastShowSystemCalendars: boolean;
+
+	/** Quick note themes for project page segmented submit (emoji, type, journal). */
+	quickNoteThemes: QuickNoteTheme[];
 }
+
+/** Configurable theme for themed project quick notes (inline fields in Fulcrum log). */
+export interface QuickNoteTheme {
+	id: string;
+	label: string;
+	emoji: string;
+	/** Value for inline `type::` (defaults to `${emoji} ${label}` when empty). */
+	type: string;
+	journal?: string;
+}
+
+export const DEFAULT_QUICK_NOTE_THEMES: QuickNoteTheme[] = [
+	{id: "communication", label: "Communication", emoji: "☎️", type: "☎️ Communication", journal: "Work"},
+	{id: "challenge", label: "Challenge", emoji: "🧗", type: "🧗 Challenge", journal: "Work"},
+	{id: "intention", label: "Intention", emoji: "🎯", type: "🎯 Intention", journal: "Work"},
+	{id: "big-win", label: "Big Win", emoji: "🏆", type: "🏆 Big Win", journal: "Work"},
+];
 
 /** Root path for area notes (separate from projects when `areasFolder` is set). */
 export function resolveAreasRoot(s: FulcrumSettings): string {
@@ -330,6 +365,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	taskProjectsField: "projects",
 	taskRecurrenceParentField: "recurrence_parent",
 	taskOccurrenceDateField: "occurrence_date",
+	taskNextOccurrencesField: "next_occurrences",
 	recurrenceMaintainDueOffset: false,
 	inlineTaskIncludeTag: "task",
 	taskNoteDefaultFolder: "",
@@ -358,7 +394,6 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	taskNotesFolderPaths: "35 Tasks/TaskNotes",
 	obsidianTasksFolderPaths: "",
 	inlineTaskRegex: "",
-	tasksPluginMode: "auto-detect",
 	taskIndexScope: "projectLinked",
 
 	taskNotesHttpApiEnabled: false,
@@ -373,7 +408,6 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	projectActiveStatuses: "planning, active, on-hold",
 	projectDoneStatuses: "completed, archived",
 
-	defaultProjectView: "summary",
 	openViewsIn: "main",
 	kanbanView: "projects",
 	kanbanColumnBy: "status",
@@ -381,28 +415,21 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	kanbanProjectDateSource: "nextReview",
 	kanbanHiddenColumns: {},
 	kanbanColumnOrder: {},
-	kanbanHiddenStatus: [],
-	kanbanHiddenArea: [],
-	kanbanOrderStatus: [],
-	kanbanOrderArea: [],
 	calendarViewMode: "week",
 	calendarTaskScheduleField: "ask",
 	showRibbonIcon: true,
-	dateDisplayFormat: "YYYY-MM-DD",
-	completionThresholdPercent: 100,
 	dashboardActiveProjectsGroupBy: "area",
 	projectSidebarSortBy: "launch",
 	projectSidebarSortDir: "asc",
 	projectSidebarFilterUncheckedStatus: [],
-	projectSidebarFilterUncheckedArea: [],
 	taskSidebarGroupBy: "area",
 	taskSidebarSortBy: "due",
 	taskSidebarSortDir: "asc",
 	taskSidebarFilterUncheckedStatus: [],
-	taskSidebarFilterUncheckedArea: [],
 	taskSidebarFilterUncheckedProject: [],
-	projectTaskListGroupBy: "status",
-	projectTaskListSortBy: "due",
+	tasksViewGroupBy: "day",
+	tasksViewColumns: ["title", "project", "scheduled", "due", "tags"],
+	tasksViewFutureDays: 14,
 
 	projectStatusIndication: "frontmatter",
 	projectStatusField: "status",
@@ -433,7 +460,14 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	projectRelatedPeopleField: "relatedPeople",
 	projectRelatedProjectsField: "relatedProjects",
 	projectRelatedProductsField: "relatedProducts",
-	peopleFolder: "",
+	peopleDirs: [],
+	avatarStyle: "circle",
+	defaultBannerColor: "#2a2a2a",
+	orbitDateField: "date",
+	orbitStartTimeField: "startTime",
+	orbitActivityPreviewEntryField: "entry",
+	orbitActivityPreviewMaxLines: 10,
+	orbitFirstDayOfWeek: 0,
 	productsFolder: "",
 	peopleAvatarField: "avatar",
 
@@ -457,24 +491,24 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	plannerHeading: "Day planner",
 	plannerDefaultDurationMinutes: 30,
 
-	/** macOS: sync Fulcrum tasks ↔ Apple Reminders via remctl. */
+	/** macOS: Apple Reminders bridge (live views + convert). */
 	conduitEnabled: false,
 	conduitRemctlPath: "",
-	conduitVaultNameOverride: "",
-	/** 0 = manual sync only. */
-	conduitSyncIntervalSeconds: 0,
-	/** Wait after vault changes before bidirectional sync. */
-	conduitVaultQuietSeconds: 60,
 	conduitInboxListName: "Fulcrum Inbox",
-	conduitReminderIdField: "appleReminderId",
 	conduitReminderListIdField: "appleReminderListId",
 	conduitListArchivedField: "conduitListArchived",
 	conduitArchivedListPrefix: "✓ ",
-	conduitSyncField: "conduitSync",
-	conduitDeleteReminderWhenTaskDeleted: false,
 	conduitSyncListColors: true,
-	conduitSyncAreaTags: true,
-	conduitShowSyncProgress: true,
+	remindersBridgeUrl: "http://127.0.0.1:9247",
+	remindersBridgeToken: "",
+	taskNotesArchiveFolder: "35 Tasks/TaskNotes/Archive",
+	remindersQueryRefreshSeconds: 0,
+	remindersCalendarIds: "",
+	forecastCalendarIds: "",
+	forecastShowVaultMeetings: true,
+	forecastShowSystemCalendars: false,
+
+	quickNoteThemes: [...DEFAULT_QUICK_NOTE_THEMES],
 };
 
 export function parseList(s: string): string[] {

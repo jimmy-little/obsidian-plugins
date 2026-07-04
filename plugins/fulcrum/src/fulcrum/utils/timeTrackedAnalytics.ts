@@ -1,6 +1,7 @@
 import {type App, TFile} from "obsidian";
 import type {FulcrumSettings, TimeTrackerHorizon} from "../settingsDefaults";
-import type {ProjectRollup} from "../types";
+import type {IndexedPlannerEvent, ProjectRollup} from "../types";
+import {plannerTrackedMinutesForProject} from "./plannerBlockParse";
 import {readTimerEntriesFromFm, sumEntryMinutes} from "./timerEntries";
 import {readTrackedMinutesFromFm} from "./trackedMinutes";
 import {meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
@@ -80,6 +81,7 @@ export type ProjectTimeBreakdown = {
 	fromMeetings: number;
 	fromAtomicNotes: number;
 	fromProjectNote: number;
+	fromPlannerBlocks: number;
 	tasksWithTrack: number;
 	meetingsWithTime: number;
 	atomicNotesWithTrack: number;
@@ -127,6 +129,7 @@ export function buildTimeTrackedModel(
 	rollups: ProjectRollup[],
 	horizon: TimeHorizonId,
 	excludedAreaPaths?: Set<string>,
+	plannerEvents: IndexedPlannerEvent[] = [],
 ): TimeTrackedModel {
 	const cutoff = cutoffMs(horizon);
 	const field = settings.taskTrackedMinutesField;
@@ -216,7 +219,15 @@ export function buildTimeTrackedModel(
 			atomicNotesWithTrack++;
 		}
 
-		const totalMinutes = fromTasks + fromMeetings + fromAtomic + fromProjectNote;
+		let fromPlanner = 0;
+		const fromPlannerAll = plannerTrackedMinutesForProject(plannerEvents, path, {
+			sinceMs: cutoff,
+		});
+		if (fromPlannerAll > 0) {
+			fromPlanner = fromPlannerAll;
+		}
+
+		const totalMinutes = fromTasks + fromMeetings + fromAtomic + fromProjectNote + fromPlanner;
 
 		if (totalMinutes <= 0) continue;
 
@@ -229,6 +240,7 @@ export function buildTimeTrackedModel(
 			fromMeetings,
 			fromAtomicNotes: fromAtomic,
 			fromProjectNote,
+			fromPlannerBlocks: fromPlanner,
 			tasksWithTrack,
 			meetingsWithTime,
 			atomicNotesWithTrack,

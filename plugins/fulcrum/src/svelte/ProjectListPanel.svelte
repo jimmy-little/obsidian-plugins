@@ -14,16 +14,23 @@
 	import FulcrumFacetPanel from "./shared/FulcrumFacetPanel.svelte";
 	import FulcrumFacetRow from "./shared/FulcrumFacetRow.svelte";
 	import FulcrumFilterPopover from "./shared/FulcrumFilterPopover.svelte";
+	import FulcrumCollapsibleHead from "./shared/FulcrumCollapsibleHead.svelte";
+	import {
+		loadCollapsedGroupKeys,
+		saveCollapsedGroupKeys,
+		toggleCollapsedGroupKey,
+	} from "../fulcrum/utils/collapsibleGroups";
 
 	const NONE_KEY = "__none__";
 	const FACETS_COLLAPSED_KEY = "fulcrum-sidebar-facets-collapsed";
+	const GROUPS_COLLAPSED_KEY = "fulcrum-sidebar-groups-collapsed";
 
 	export let plugin: FulcrumHost;
 	/** When set, opening area notes uses split + companion chrome beside Fulcrum. */
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 
-	/** Set of group keys that are collapsed. Key = `groupBy:label` */
-	let collapsedGroupKeys: string[] = [];
+	/** Collapsed group keys: `groupBy:label` */
+	let collapsedGroupKeys = loadCollapsedGroupKeys(GROUPS_COLLAPSED_KEY);
 	export let selectedPath: string | null = null;
 	export let onSelectProject: (path: string) => void;
 	/** When true, project rows can be dragged onto the Kanban board. */
@@ -291,10 +298,6 @@
 		return `${groupBy}:${label}`;
 	}
 
-	function isGroupCollapsed(label: string): boolean {
-		return collapsedGroupKeys.includes(groupKey(label));
-	}
-
 	$: projectFilterSections = [
 		{
 			title: "Status",
@@ -306,11 +309,8 @@
 
 	function toggleGroup(label: string): void {
 		const key = groupKey(label);
-		if (collapsedGroupKeys.includes(key)) {
-			collapsedGroupKeys = collapsedGroupKeys.filter((k) => k !== key);
-		} else {
-			collapsedGroupKeys = [...collapsedGroupKeys, key];
-		}
+		collapsedGroupKeys = toggleCollapsedGroupKey(collapsedGroupKeys, key);
+		saveCollapsedGroupKeys(GROUPS_COLLAPSED_KEY, collapsedGroupKeys);
 	}
 </script>
 
@@ -422,24 +422,15 @@
 		</ul>
 	{:else if groupBy === "area"}
 		{#each areaGroups as g}
+			{@const groupCollapsed = collapsedGroupKeys.has(groupKey(g.label))}
 			<div class="fulcrum-dashboard__area-group fulcrum-project-list-panel__group">
 				<div class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle">
-					<button
-						type="button"
-						class="fulcrum-project-list-panel__group-toggle"
-						aria-expanded={!isGroupCollapsed(g.label)}
-						on:click={() => toggleGroup(g.label)}
-					>
-						<span
-							class="fulcrum-project-list-panel__group-chevron"
-							class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(g.label)}
-							aria-hidden="true"
-						>▾</span>
-						{#if g.kind === "area" && g.area?.icon?.trim()}
-							<span class="fulcrum-area-icon">{g.area.icon}</span>
-						{/if}
-						<span class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-text">{g.label}</span>
-					</button>
+					<FulcrumCollapsibleHead
+						title={g.label}
+						areaIcon={g.kind === "area" ? g.area?.icon : undefined}
+						expanded={!groupCollapsed}
+						onToggle={() => toggleGroup(g.label)}
+					/>
 					{#if g.kind === "area" && g.area}
 						<button
 							type="button"
@@ -452,7 +443,7 @@
 						</button>
 					{/if}
 				</div>
-				{#if !isGroupCollapsed(g.label)}
+				{#if !groupCollapsed}
 					<ul class="fulcrum-sidebar-project-list">
 						{#each g.projects as p}
 							<li>
@@ -474,23 +465,16 @@
 		{/each}
 	{:else if groupBy === "reviewDue"}
 		{#each reviewDueGroups as rg}
+			{@const groupCollapsed = collapsedGroupKeys.has(groupKey(rg.label))}
 			<div class="fulcrum-dashboard__area-group fulcrum-project-list-panel__group">
 				<div class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle">
-					<button
-						type="button"
-						class="fulcrum-project-list-panel__group-toggle"
-						aria-expanded={!isGroupCollapsed(rg.label)}
-						on:click={() => toggleGroup(rg.label)}
-					>
-						<span
-							class="fulcrum-project-list-panel__group-chevron"
-							class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(rg.label)}
-							aria-hidden="true"
-						>▾</span>
-						<span class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-text">{rg.label}</span>
-					</button>
+					<FulcrumCollapsibleHead
+						title={rg.label}
+						expanded={!groupCollapsed}
+						onToggle={() => toggleGroup(rg.label)}
+					/>
 				</div>
-				{#if !isGroupCollapsed(rg.label)}
+				{#if !groupCollapsed}
 					<ul class="fulcrum-sidebar-project-list">
 						{#each rg.projects as p}
 							<li>
@@ -512,23 +496,16 @@
 		{/each}
 	{:else if groupBy === "status"}
 		{#each statusGroups as sg}
+			{@const groupCollapsed = collapsedGroupKeys.has(groupKey(sg.label))}
 			<div class="fulcrum-dashboard__area-group fulcrum-project-list-panel__group">
 				<div class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle">
-					<button
-						type="button"
-						class="fulcrum-project-list-panel__group-toggle"
-						aria-expanded={!isGroupCollapsed(sg.label)}
-						on:click={() => toggleGroup(sg.label)}
-					>
-						<span
-							class="fulcrum-project-list-panel__group-chevron"
-							class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(sg.label)}
-							aria-hidden="true"
-						>▾</span>
-						<span class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-text">{sg.label}</span>
-					</button>
+					<FulcrumCollapsibleHead
+						title={sg.label}
+						expanded={!groupCollapsed}
+						onToggle={() => toggleGroup(sg.label)}
+					/>
 				</div>
-				{#if !isGroupCollapsed(sg.label)}
+				{#if !groupCollapsed}
 					<ul class="fulcrum-sidebar-project-list">
 						{#each sg.projects as p}
 							<li>

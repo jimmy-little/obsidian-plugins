@@ -8,8 +8,9 @@ import {
 	TFolder,
 	getAllTags,
 } from "obsidian";
-import {markProjectCompleteAndMove} from "./projectCompletion";
+import {ensureFolderPath, markProjectCompleteAndMove} from "./projectCompletion";
 import {applyProjectStatusChange, getProjectStatusOptions} from "./projectStatusApply";
+import {resolveNewProjectPaths} from "./createProject";
 import {
 	appendFulcrumProjectLog,
 	formatFulcrumProjectLogLine,
@@ -19,11 +20,34 @@ import {
 import {appendProjectMilestone} from "./utils/projectMilestones";
 import type {FulcrumHost} from "./pluginBridge";
 import {parseList, parseTaskStatusChoices, resolveProjectsRoot} from "./settingsDefaults";
-import type {IndexedProject, IndexedTask} from "./types";
+import type {IndexedProject, IndexedTask, RecurrenceAnchorMode, TaskReminderSpec} from "./types";
 import {todayLocalISODate} from "./utils/dates";
-import {createTaskNoteFile, type CreateTaskNoteOptions} from "./createTaskNote";
-import {presetRecurrence} from "./recurrence/recurrenceEngine";
-import type {TaskReminderSpec} from "./types";
+import {createTaskNoteFile, extractMarkdownBody, saveTaskNoteEdit, type CreateTaskNoteOptions} from "./createTaskNote";
+import {computeNextOccurrences} from "./recurrence/recurrenceEngine";
+import {
+	buildRecurrenceRule,
+	defaultRecurrenceUiState,
+	describeRecurrenceUiState,
+	parseMonthlyDaysInput,
+	parseRecurrenceToUiState,
+	weekdayLabelsOrdered,
+	type MonthlyMode,
+	type RecurrenceFreq,
+	type RecurrenceUiState,
+} from "./recurrence/recurrenceRuleBuilder";
+import {
+	joinCalendarIds,
+	loadBridgeCalendarRows,
+	parseCalendarIdList,
+	renderCalendarIdPicker,
+} from "../conduit/bridgeCalendarSettings";
+import type {FulcrumSettings} from "./settingsDefaults";
+import {
+	scheduleNextWeekIso,
+	scheduleThisWeekendIso,
+	scheduleTodayIso,
+	scheduleTomorrowIso,
+} from "./taskSchedulePresets";
 
 export class ProjectPickerModal extends FuzzySuggestModal<IndexedProject> {
 	private readonly projects: IndexedProject[];
@@ -65,7 +89,7 @@ export class NewProjectModal extends Modal {
 
 		new Setting(contentEl)
 			.setName("Name")
-			.setDesc("Creates a note under your areas & projects folder.")
+			.setDesc("Creates a project folder and note under your projects root (inside the status folder).")
 			.addText((t) =>
 				t.onChange((v) => {
 					this.name = v;
@@ -106,10 +130,14 @@ export class NewProjectModal extends Modal {
 			return;
 		}
 		const s = this.host.settings;
-		const base = resolveProjectsRoot(s).replace(/\/+$/, "");
-		const path = `${base}/${name}.md`;
+		const paths = resolveNewProjectPaths(this.app.vault, s, name);
+		if (!paths) {
+			new Notice("Set a projects folder in Fulcrum settings.");
+			return;
+		}
+		const path = paths.projectFilePath;
 		if (this.app.vault.getAbstractFileByPath(path)) {
-			new Notice("A note already exists at that path.");
+			new Notice("A project already exists at that path.");
 			return;
 		}
 
@@ -130,10 +158,18 @@ export class NewProjectModal extends Modal {
 		if (areaLink) {
 			lines.push(`${s.areaLinkField}: ${JSON.stringify(areaLink)}`);
 		}
-		lines.push("status: planning", `${s.taskPriorityField}: medium`, "---", "", `# ${name}`, "");
+		lines.push(
+			`status: ${paths.initialStatus}`,
+			`${s.taskPriorityField}: medium`,
+			"---",
+			"",
+			`# ${name}`,
+			"",
+		);
 
 		const body = lines.join("\n");
 		try {
+			await ensureFolderPath(this.app.vault, paths.projectFolderPath);
 			await this.app.vault.create(path, body);
 			new Notice(`Created ${path}`);
 			await this.host.vaultIndex.rebuild();
@@ -805,6 +841,144 @@ function addNativeTimeSetting(
 	});
 }
 
+function createModalSection(
+	container: HTMLElement,
+	title: string,
+	desc?: string,
+): HTMLElement {
+	const section = container.createDiv({cls: "fulcrum-create-task-note-modal__section"});
+	section.createEl("div", {cls: "fulcrum-create-task-note-modal__section-title", text: title});
+	if (desc) {
+		section.createEl("p", {
+			cls: "fulcrum-create-task-note-modal__section-desc",
+			text: desc,
+		});
+	}
+	return section.createDiv({cls: "fulcrum-create-task-note-modal__section-body"});
+}
+
+function addCompactFieldRow(
+	body: HTMLElement,
+	label: string,
+	buildControl: (control: HTMLElement) => void,
+	hint?: string,
+): void {
+	const row = body.createDiv({cls: "fulcrum-create-task-note-modal__field-row"});
+	const labelCol = row.createDiv({cls: "fulcrum-create-task-note-modal__field-label"});
+	labelCol.createSpan({text: label});
+	if (hint) {
+		labelCol.createEl("span", {cls: "fulcrum-create-task-note-modal__field-hint", text: hint});
+	}
+	buildControl(row.createDiv({cls: "fulcrum-create-task-note-modal__field-control"}));
+}
+
+function addCompactDateInput(
+	control: HTMLElement,
+	value: string,
+	onChange: (v: string) => void,
+): HTMLInputElement {
+	const input = control.createEl("input", {
+		type: "date",
+		cls: "fulcrum-create-task-note-modal__input",
+	});
+	if (/^\d{4}-\d{2}-\d{2}$/.test(value)) input.value = value;
+	input.addEventListener("change", () => onChange(input.value));
+	return input;
+}
+
+function addCompactTimeInput(
+	control: HTMLElement,
+	value: string,
+	onChange: (v: string) => void,
+): HTMLInputElement {
+	const input = control.createEl("input", {
+		type: "time",
+		cls: "fulcrum-create-task-note-modal__input",
+	});
+	if (/^\d{2}:\d{2}$/.test(value)) input.value = value;
+	input.addEventListener("change", () => onChange(input.value));
+	return input;
+}
+
+function addCompactTextInput(
+	control: HTMLElement,
+	value: string,
+	placeholder: string,
+	onChange: (v: string) => void,
+): HTMLInputElement {
+	const input = control.createEl("input", {
+		type: "text",
+		cls: "fulcrum-create-task-note-modal__input",
+		attr: {placeholder},
+	});
+	input.value = value;
+	input.addEventListener("input", () => onChange(input.value));
+	return input;
+}
+
+function addCompactTextArea(
+	control: HTMLElement,
+	value: string,
+	onChange: (v: string) => void,
+): HTMLTextAreaElement {
+	const area = control.createEl("textarea", {
+		cls: "fulcrum-create-task-note-modal__input fulcrum-create-task-note-modal__input--area",
+	});
+	area.value = value;
+	area.addEventListener("input", () => onChange(area.value));
+	return area;
+}
+
+function addCompactDropdown(
+	control: HTMLElement,
+	options: Record<string, string>,
+	value: string,
+	onChange: (v: string) => void,
+): HTMLSelectElement {
+	const select = control.createEl("select", {cls: "fulcrum-create-task-note-modal__input"});
+	for (const [optVal, label] of Object.entries(options)) {
+		select.createEl("option", {value: optVal, text: label});
+	}
+	select.value = value;
+	select.addEventListener("change", () => onChange(select.value));
+	return select;
+}
+
+function renderDateTimeSection(
+	container: HTMLElement,
+	host: FulcrumHost,
+	title: string,
+	dateValue: string,
+	timeValue: string,
+	timeHint: string,
+	onDateChange: (v: string) => void,
+	onTimeChange: (v: string) => void,
+	onPresetPick: (iso: string, dateInput: HTMLInputElement) => void,
+): void {
+	const body = createModalSection(container, title);
+	const fields = body.createDiv({cls: "fulcrum-create-task-note-modal__datetime-fields"});
+
+	const dateField = fields.createDiv({cls: "fulcrum-create-task-note-modal__datetime-field"});
+	dateField.createEl("span", {
+		cls: "fulcrum-create-task-note-modal__datetime-label",
+		text: "Date",
+	});
+	const dateInput = addCompactDateInput(dateField, dateValue, onDateChange);
+
+	const timeField = fields.createDiv({cls: "fulcrum-create-task-note-modal__datetime-field"});
+	timeField.createEl("span", {
+		cls: "fulcrum-create-task-note-modal__datetime-label",
+		text: "Time",
+	});
+	addCompactTimeInput(timeField, timeValue, onTimeChange);
+	timeField.createEl("span", {
+		cls: "fulcrum-create-task-note-modal__field-hint",
+		text: timeHint,
+	});
+
+	addDatePresetRow(body, host, (iso) => onPresetPick(iso, dateInput));
+}
+
 export function promptDeleteIndexedTask(app: App, task: IndexedTask): Promise<boolean> {
 	return new Promise((resolve) => {
 		let settled = false;
@@ -840,9 +1014,53 @@ export function promptDeleteIndexedTask(app: App, task: IndexedTask): Promise<bo
 	});
 }
 
+const CREATE_TASK_REMINDER_PRESETS: {label: string; spec: TaskReminderSpec}[] = [
+	{
+		label: "At scheduled time",
+		spec: {type: "relative", anchor: "scheduled", offset: 0, unit: "minutes", direction: "before"},
+	},
+	{
+		label: "1 day before due",
+		spec: {type: "relative", anchor: "due", offset: 1, unit: "days", direction: "before"},
+	},
+	{
+		label: "1 hour before scheduled",
+		spec: {type: "relative", anchor: "scheduled", offset: 1, unit: "hours", direction: "before"},
+	},
+];
+
+function addDatePresetRow(
+	container: HTMLElement,
+	host: FulcrumHost,
+	onPick: (iso: string) => void,
+): void {
+	const row = container.createDiv({cls: "fulcrum-create-task-note-modal__date-presets"});
+	const presets: {title: string; iso: () => string}[] = [
+		{title: "Today", iso: scheduleTodayIso},
+		{title: "Tomorrow", iso: scheduleTomorrowIso},
+		{title: "This weekend", iso: scheduleThisWeekendIso},
+		{
+			title: "Next week",
+			iso: () => scheduleNextWeekIso(host.settings.calendarFirstDayOfWeek),
+		},
+	];
+	for (const p of presets) {
+		const btn = row.createEl("button", {text: p.title, type: "button"});
+		btn.classList.add("fulcrum-create-task-note-modal__date-preset");
+		btn.onclick = () => onPick(p.iso());
+	}
+}
+
+function reminderSpecKey(spec: TaskReminderSpec): string {
+	if (spec.type === "absolute") return `abs:${spec.date}:${spec.time ?? ""}`;
+	return `${spec.type}:${spec.anchor}:${spec.offset}:${spec.unit}:${spec.direction}`;
+}
+
 export interface CreateTaskNoteModalOptions {
 	projectPath?: string;
 	parentTask?: IndexedTask;
+	/** When set, modal edits an existing task note instead of creating one. */
+	task?: IndexedTask;
 	onCreated?: (path: string) => void | Promise<void>;
 }
 
@@ -855,6 +1073,15 @@ export class CreateTaskNoteModal extends Modal {
 	private dueTimeValue = "";
 	private schedDateValue = "";
 	private schedTimeValue = "";
+	private notesValue = "";
+	private projectPath: string | null = null;
+	private recurrenceMode: "none" | RecurrenceFreq = "none";
+	private recurrenceUiState: RecurrenceUiState;
+	private recurrenceAnchor: RecurrenceAnchorMode = "scheduled";
+	private recurrenceCustomRule = "";
+	private reminders: TaskReminderSpec[] = [];
+	private recurrencePanelEl!: HTMLElement;
+	private recurrencePreviewEl!: HTMLElement;
 
 	constructor(
 		app: App,
@@ -863,29 +1090,84 @@ export class CreateTaskNoteModal extends Modal {
 	) {
 		super(app);
 		const s = host.settings;
+		const editTask = opts.task;
+		if (editTask) {
+			this.titleValue = editTask.title?.trim() || editTask.file.basename.replace(/\.md$/i, "");
+			this.statusValue =
+				editTask.status?.trim() || (parseTaskStatusChoices(s)[0] ?? "todo");
+			this.priorityValue = editTask.priority?.trim() ?? "";
+			const dueParts = splitTaskDateTime(editTask.dueDate);
+			this.dueDateValue = dueParts.date;
+			this.dueTimeValue = dueParts.time;
+			const schedParts = splitTaskDateTime(editTask.scheduledDate);
+			this.schedDateValue = schedParts.date;
+			this.schedTimeValue = schedParts.time;
+			this.projectPath = editTask.projectFile?.path ?? null;
+			this.recurrenceAnchor = editTask.recurrenceAnchor ?? "scheduled";
+			this.reminders = editTask.reminders ? [...editTask.reminders] : [];
+			const startIso =
+				editTask.scheduledDate?.slice(0, 10) ??
+				editTask.dueDate?.slice(0, 10) ??
+				todayLocalISODate();
+			if (editTask.recurrence?.trim()) {
+				const parsed = parseRecurrenceToUiState(editTask.recurrence, startIso);
+				if (parsed) {
+					this.recurrenceUiState = parsed;
+					this.recurrenceMode = parsed.freq;
+				} else {
+					this.recurrenceMode = "custom";
+					this.recurrenceCustomRule = editTask.recurrence;
+					this.recurrenceUiState = defaultRecurrenceUiState("weekly", startIso);
+				}
+			} else {
+				this.recurrenceUiState = defaultRecurrenceUiState("weekly", startIso);
+			}
+			return;
+		}
 		const statuses = parseTaskStatusChoices(s);
 		this.statusValue = statuses[0] ?? "todo";
 		const priorities = parseList(s.priorities);
 		this.priorityValue = priorities[1] ?? priorities[0] ?? "medium";
+		this.projectPath =
+			opts.projectPath ??
+			opts.parentTask?.projectFile?.path ??
+			null;
+		this.recurrenceUiState = defaultRecurrenceUiState("weekly");
+	}
+
+	private get isEditMode(): boolean {
+		return !!this.opts.task;
 	}
 
 	onOpen(): void {
-		const {contentEl} = this;
+		const {contentEl, modalEl} = this;
+		modalEl.addClass("fulcrum-create-task-note-modal-shell");
 		contentEl.empty();
+		contentEl.addClass("fulcrum-create-task-note-modal");
+
 		contentEl.createEl("h2", {
-			text: this.opts.parentTask ? "Create subtask" : "Create task note",
+			text: this.isEditMode
+				? "Edit task"
+				: this.opts.parentTask
+					? "Create subtask"
+					: "Create task note",
 		});
 
-		new Setting(contentEl)
+		const columns = contentEl.createDiv({cls: "fulcrum-create-task-note-modal__columns"});
+		const metaCol = columns.createDiv({cls: "fulcrum-create-task-note-modal__meta"});
+		const notesCol = columns.createDiv({cls: "fulcrum-create-task-note-modal__notes"});
+
+		new Setting(metaCol)
 			.setName("Title")
 			.addText((t) => {
 				t.setPlaceholder("What needs doing?");
+				if (this.titleValue) t.setValue(this.titleValue);
 				t.onChange((v) => {
 					this.titleValue = v;
 				});
 			});
 
-		new Setting(contentEl)
+		new Setting(metaCol)
 			.setName("Status")
 			.addDropdown((d) => {
 				for (const st of parseTaskStatusChoices(this.host.settings)) {
@@ -896,7 +1178,7 @@ export class CreateTaskNoteModal extends Modal {
 				});
 			});
 
-		new Setting(contentEl)
+		new Setting(metaCol)
 			.setName("Priority")
 			.addDropdown((d) => {
 				d.addOption("", "(none)");
@@ -908,44 +1190,381 @@ export class CreateTaskNoteModal extends Modal {
 				});
 			});
 
-		addNativeDateSetting(contentEl, "Due date", this.dueDateValue, (v) => {
-			this.dueDateValue = v;
-		});
-		addNativeTimeSetting(
-			contentEl,
-			"Due time (optional)",
+		this.renderProjectSetting(metaCol);
+
+		renderDateTimeSection(
+			metaCol,
+			this.host,
+			"Due date",
+			this.dueDateValue,
 			this.dueTimeValue,
+			"Leave empty for date-only.",
+			(v) => {
+				this.dueDateValue = v;
+			},
 			(v) => {
 				this.dueTimeValue = v;
 			},
-			"Leave empty for date-only.",
+			(iso, dateInput) => {
+				this.dueDateValue = iso;
+				dateInput.value = iso;
+			},
 		);
 
-		addNativeDateSetting(contentEl, "Scheduled date", this.schedDateValue, (v) => {
-			this.schedDateValue = v;
-		});
-		addNativeTimeSetting(
-			contentEl,
-			"Scheduled time (optional)",
+		renderDateTimeSection(
+			metaCol,
+			this.host,
+			"Scheduled date",
+			this.schedDateValue,
 			this.schedTimeValue,
+			"Leave empty for all-day.",
+			(v) => {
+				this.schedDateValue = v;
+				this.syncRecurrenceStart();
+			},
 			(v) => {
 				this.schedTimeValue = v;
 			},
-			"Leave empty for all-day.",
+			(iso, dateInput) => {
+				this.schedDateValue = iso;
+				dateInput.value = iso;
+				this.syncRecurrenceStart();
+			},
 		);
 
-		new Setting(contentEl).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+		this.renderRemindersSetting(metaCol);
+		this.renderRecurrenceSetting(metaCol);
 
-		new Setting(contentEl).addButton((b) =>
-			b
-				.setButtonText("Create")
-				.setCta()
-				.onClick(() => void this.submit()),
-		);
+		notesCol.createEl("label", {
+			cls: "fulcrum-create-task-note-modal__notes-label",
+			text: "Notes",
+		});
+		const notesArea = notesCol.createEl("textarea", {
+			cls: "fulcrum-create-task-note-modal__notes-input",
+			attr: {placeholder: "Task details, context, links…"},
+		});
+		notesArea.addEventListener("input", () => {
+			this.notesValue = notesArea.value;
+		});
+		if (this.isEditMode) {
+			void this.app.vault.read(this.opts.task!.file).then((raw) => {
+				this.notesValue = extractMarkdownBody(raw);
+				notesArea.value = this.notesValue;
+			});
+		}
+
+		const actions = contentEl.createDiv({cls: "fulcrum-modal-actions"});
+		actions.createEl("button", {text: "Cancel"}).onclick = () => this.close();
+		actions.createEl("button", {text: this.isEditMode ? "Save" : "Create", cls: "mod-cta"}).onclick =
+			() => void this.submit();
 	}
 
 	onClose(): void {
 		this.contentEl.empty();
+	}
+
+	private recurrenceStartIso(): string {
+		const sched = combineTaskDateTime(this.schedDateValue, this.schedTimeValue);
+		if (sched) return sched.slice(0, 10);
+		const due = combineTaskDateTime(this.dueDateValue, this.dueTimeValue);
+		if (due) return due.slice(0, 10);
+		return todayLocalISODate();
+	}
+
+	private syncRecurrenceStart(): void {
+		const start = this.recurrenceStartIso();
+		if (this.recurrenceUiState.freq === "weekly" && this.recurrenceUiState.weeklyDays.length === 0) {
+			this.recurrenceUiState = defaultRecurrenceUiState("weekly", start);
+		}
+		this.refreshRecurrencePreview();
+	}
+
+	private renderProjectSetting(container: HTMLElement): void {
+		const projects = this.host.vaultIndex.getSnapshot().projects;
+		if (this.opts.parentTask) {
+			new Setting(container)
+				.setName("Parent task")
+				.setDesc("Subtask will link to this task note.")
+				.addText((t) => {
+					const label =
+						this.opts.parentTask!.title?.trim() ||
+						this.opts.parentTask!.file.basename.replace(/\.md$/i, "");
+					t.setValue(label).setDisabled(true);
+				});
+			return;
+		}
+		if (projects.length === 0) return;
+
+		if (projects.length >= 20) {
+			new Setting(container)
+				.setName("Project")
+				.addButton((b) => {
+					const label = () => {
+						if (!this.projectPath) return "(none)";
+						const p = projects.find((x) => x.file.path === this.projectPath);
+						return p?.name ?? this.projectPath;
+					};
+					b.setButtonText(label()).onClick(() => {
+						new ProjectPickerModal(this.app, projects, (p) => {
+							this.projectPath = p.file.path;
+							b.setButtonText(label());
+						}).open();
+					});
+				});
+			return;
+		}
+
+		new Setting(container).setName("Project").addDropdown((d) => {
+			d.addOption("", "(none)");
+			for (const p of projects) {
+				d.addOption(p.file.path, p.name);
+			}
+			if (this.projectPath) d.setValue(this.projectPath);
+			d.onChange((v) => {
+				this.projectPath = v || null;
+			});
+		});
+	}
+
+	private renderRemindersSetting(container: HTMLElement): void {
+		const body = createModalSection(
+			container,
+			"Alerts",
+			"Optional reminders (TaskNotes format).",
+		);
+
+		const list = body.createDiv({cls: "fulcrum-create-task-note-modal__reminder-list"});
+		const renderList = () => {
+			list.empty();
+			if (this.reminders.length === 0) {
+				list.createEl("p", {
+					cls: "fulcrum-muted fulcrum-create-task-note-modal__reminder-empty",
+					text: "No alerts set.",
+				});
+				return;
+			}
+			for (const spec of this.reminders) {
+				const preset = CREATE_TASK_REMINDER_PRESETS.find(
+					(p) => reminderSpecKey(p.spec) === reminderSpecKey(spec),
+				);
+				const row = list.createDiv({cls: "fulcrum-create-task-note-modal__reminder-row"});
+				row.createSpan({
+					text: preset?.label ?? "Custom reminder",
+				});
+				const remove = row.createEl("button", {text: "Remove", type: "button"});
+				remove.onclick = () => {
+					this.reminders = this.reminders.filter((r) => reminderSpecKey(r) !== reminderSpecKey(spec));
+					renderList();
+				};
+			}
+		};
+
+		const presetRow = body.createDiv({cls: "fulcrum-create-task-note-modal__reminder-presets"});
+		for (const preset of CREATE_TASK_REMINDER_PRESETS) {
+			const btn = presetRow.createEl("button", {text: preset.label, type: "button"});
+			btn.classList.add("fulcrum-create-task-note-modal__date-preset");
+			btn.onclick = () => {
+				const key = reminderSpecKey(preset.spec);
+				if (this.reminders.some((r) => reminderSpecKey(r) === key)) return;
+				this.reminders = [...this.reminders, preset.spec];
+				renderList();
+			};
+		}
+		const clearBtn = presetRow.createEl("button", {text: "Clear all", type: "button"});
+		clearBtn.classList.add("fulcrum-create-task-note-modal__date-preset");
+		clearBtn.onclick = () => {
+			this.reminders = [];
+			renderList();
+		};
+		renderList();
+	}
+
+	private renderRecurrenceSetting(container: HTMLElement): void {
+		const body = createModalSection(container, "Recurrence");
+
+		addCompactFieldRow(body, "Frequency", (control) => {
+			addCompactDropdown(
+				control,
+				{
+					none: "(none)",
+					daily: "Daily",
+					weekly: "Weekly",
+					monthly: "Monthly",
+					custom: "Custom (RRULE)",
+				},
+				this.recurrenceMode,
+				(v) => {
+					this.recurrenceMode = v as typeof this.recurrenceMode;
+					if (v !== "none" && v !== "custom") {
+						const freq = v as RecurrenceFreq;
+						this.recurrenceUiState = {
+							...defaultRecurrenceUiState(freq, this.recurrenceStartIso()),
+							interval: this.recurrenceUiState.interval,
+						};
+						this.recurrenceUiState.freq = freq;
+					}
+					this.renderRecurrencePanel();
+					this.refreshRecurrencePreview();
+				},
+			);
+		});
+
+		this.recurrencePanelEl = body.createDiv({cls: "fulcrum-recurrence-panel"});
+		this.recurrencePreviewEl = body.createEl("p", {cls: "fulcrum-recurrence-preview"});
+		this.renderRecurrencePanel();
+		this.refreshRecurrencePreview();
+	}
+
+	private renderRecurrencePanel(): void {
+		this.recurrencePanelEl.empty();
+		if (this.recurrenceMode === "none") {
+			this.recurrencePanelEl.toggleClass("fulcrum-hidden", true);
+			return;
+		}
+		this.recurrencePanelEl.toggleClass("fulcrum-hidden", false);
+
+		if (this.recurrenceMode === "custom") {
+			addCompactFieldRow(this.recurrencePanelEl, "RRULE", (control) => {
+				addCompactTextArea(control, this.recurrenceCustomRule, (v) => {
+					this.recurrenceCustomRule = v;
+					this.refreshRecurrencePreview();
+				});
+			});
+		} else {
+			const unit =
+				this.recurrenceUiState.freq === "daily"
+					? "day(s)"
+					: this.recurrenceUiState.freq === "weekly"
+						? "week(s)"
+						: "month(s)";
+			addCompactFieldRow(
+				this.recurrencePanelEl,
+				"Every",
+				(control) => {
+					addCompactTextInput(
+						control,
+						String(this.recurrenceUiState.interval),
+						"1",
+						(v) => {
+							const n = Number.parseInt(v.trim(), 10);
+							this.recurrenceUiState.interval =
+								Number.isFinite(n) && n >= 1 ? Math.min(99, n) : 1;
+							this.refreshRecurrencePreview();
+						},
+					);
+				},
+				`Repeat every N ${unit}.`,
+			);
+
+			if (this.recurrenceUiState.freq === "weekly") {
+				const row = this.recurrencePanelEl.createDiv({cls: "fulcrum-recurrence-day-row"});
+				for (const {dow, label} of weekdayLabelsOrdered(this.host.settings.calendarFirstDayOfWeek)) {
+					const selected = this.recurrenceUiState.weeklyDays.includes(dow);
+					const btn = row.createEl("button", {
+						cls: `fulcrum-recurrence-day-toggle${selected ? " is-selected" : ""}`,
+						text: label,
+						type: "button",
+					});
+					btn.onclick = () => {
+						const set = new Set(this.recurrenceUiState.weeklyDays);
+						if (set.has(dow)) set.delete(dow);
+						else set.add(dow);
+						this.recurrenceUiState.weeklyDays = [...set];
+						this.renderRecurrencePanel();
+						this.refreshRecurrencePreview();
+					};
+				}
+			}
+
+			if (this.recurrenceUiState.freq === "monthly") {
+				const monthlyOptions = Object.fromEntries(
+					MONTHLY_MODE_OPTIONS.map((opt) => [opt.value, opt.label]),
+				);
+				addCompactFieldRow(this.recurrencePanelEl, "Monthly pattern", (control) => {
+					addCompactDropdown(
+						control,
+						monthlyOptions,
+						this.recurrenceUiState.monthlyMode,
+						(v) => {
+							this.recurrenceUiState.monthlyMode = v as MonthlyMode;
+							this.renderRecurrencePanel();
+							this.refreshRecurrencePreview();
+						},
+					);
+				});
+
+				if (this.recurrenceUiState.monthlyMode === "onDays") {
+					addCompactFieldRow(this.recurrencePanelEl, "Day(s) of month", (control) => {
+						addCompactTextInput(
+							control,
+							this.recurrenceUiState.monthlyDays,
+							"15",
+							(v) => {
+								this.recurrenceUiState.monthlyDays = v;
+								this.refreshRecurrencePreview();
+							},
+						);
+					});
+				}
+
+				if (
+					this.recurrenceUiState.monthlyMode === "firstWeekdayNamed" ||
+					this.recurrenceUiState.monthlyMode === "lastWeekdayNamed"
+				) {
+					const row = this.recurrencePanelEl.createDiv({cls: "fulcrum-recurrence-day-row"});
+					for (const {dow, label} of weekdayLabelsOrdered(this.host.settings.calendarFirstDayOfWeek)) {
+						const selected = this.recurrenceUiState.monthlyWeekday === dow;
+						const btn = row.createEl("button", {
+							cls: `fulcrum-recurrence-day-toggle${selected ? " is-selected" : ""}`,
+							text: label,
+							type: "button",
+						});
+						btn.onclick = () => {
+							this.recurrenceUiState.monthlyWeekday = dow;
+							this.renderRecurrencePanel();
+							this.refreshRecurrencePreview();
+						};
+					}
+				}
+			}
+		}
+
+		addCompactFieldRow(this.recurrencePanelEl, "Repeat from", (control) => {
+			addCompactDropdown(
+				control,
+				{scheduled: "Scheduled date", done: "Completion date"},
+				this.recurrenceAnchor,
+				(v) => {
+					this.recurrenceAnchor = v as RecurrenceAnchorMode;
+				},
+			);
+		});
+	}
+
+	private refreshRecurrencePreview(): void {
+		if (!this.recurrencePreviewEl) return;
+		if (this.recurrenceMode === "none") {
+			this.recurrencePreviewEl.setText("");
+			return;
+		}
+		const rule = this.effectiveRecurrenceRule();
+		if (!rule) {
+			this.recurrencePreviewEl.setText("No recurrence");
+			return;
+		}
+		const summary =
+			this.recurrenceMode === "custom"
+				? "Custom recurrence"
+				: describeRecurrenceUiState(this.recurrenceUiState);
+		const next = computeNextOccurrences(rule, this.recurrenceStartIso(), [], [], 3);
+		const nextText = next.length > 0 ? next.join(", ") : "No upcoming dates";
+		this.recurrencePreviewEl.setText(`${summary} · Next: ${nextText}`);
+	}
+
+	private effectiveRecurrenceRule(): string {
+		if (this.recurrenceMode === "none") return "";
+		if (this.recurrenceMode === "custom") return this.recurrenceCustomRule.trim();
+		return buildRecurrenceRule(this.recurrenceUiState, this.recurrenceStartIso());
 	}
 
 	private async submit(): Promise<void> {
@@ -954,21 +1573,65 @@ export class CreateTaskNoteModal extends Modal {
 			new Notice("Enter a task title.");
 			return;
 		}
+		if (
+			this.recurrenceMode === "weekly" &&
+			this.recurrenceUiState.weeklyDays.length === 0
+		) {
+			new Notice("Select at least one weekday for weekly recurrence.");
+			return;
+		}
+		if (
+			this.recurrenceMode === "monthly" &&
+			this.recurrenceUiState.monthlyMode === "onDays" &&
+			parseMonthlyDaysInput(this.recurrenceUiState.monthlyDays).length === 0
+		) {
+			new Notice("Enter at least one day of the month (1–31) for monthly recurrence.");
+			return;
+		}
+
 		const s = this.host.settings;
+		const recurrenceRule = this.effectiveRecurrenceRule();
 		const createOpts: CreateTaskNoteOptions = {
 			title,
 			status: this.statusValue,
 			priority: this.priorityValue || undefined,
 			dueDate: combineTaskDateTime(this.dueDateValue, this.dueTimeValue),
 			scheduledDate: combineTaskDateTime(this.schedDateValue, this.schedTimeValue),
-			tags: [s.taskTag.trim() || "task"],
+			bodyContent: this.notesValue,
+			reminders: this.reminders.length > 0 ? this.reminders : undefined,
+			recurrence: recurrenceRule || undefined,
+			recurrenceAnchor: recurrenceRule ? this.recurrenceAnchor : undefined,
 		};
+
+		if (this.isEditMode && this.opts.task) {
+			const ok = await saveTaskNoteEdit(
+				this.app,
+				s,
+				this.opts.task,
+				createOpts,
+				this.projectPath,
+			);
+			if (!ok) return;
+			await this.host.refreshIndex();
+			new Notice("Task saved.");
+			this.close();
+			return;
+		}
+
+		createOpts.tags = [s.taskTag.trim() || "task"];
 
 		if (this.opts.parentTask) {
 			const bn = this.opts.parentTask.file.basename.replace(/\.md$/i, "");
 			createOpts.parentTaskLink = `[[${bn}]]`;
-		} else if (this.opts.projectPath) {
-			const pf = this.app.vault.getAbstractFileByPath(this.opts.projectPath);
+			if (this.opts.parentTask.projectFile) {
+				const pf = this.opts.parentTask.projectFile;
+				const lt =
+					this.app.metadataCache.fileToLinktext(pf, pf.path, false) ??
+					pf.basename.replace(/\.md$/i, "");
+				createOpts.projectLinks = [`[[${lt}]]`];
+			}
+		} else if (this.projectPath) {
+			const pf = this.app.vault.getAbstractFileByPath(this.projectPath);
 			if (pf instanceof TFile) {
 				const lt =
 					this.app.metadataCache.fileToLinktext(pf, pf.path, false) ??
@@ -1055,36 +1718,232 @@ export class TaskFieldDateModal extends Modal {
 	}
 }
 
+const MONTHLY_MODE_OPTIONS: {value: MonthlyMode; label: string}[] = [
+	{value: "onDays", label: "On day(s) of month"},
+	{value: "firstDay", label: "First day of month"},
+	{value: "lastDay", label: "Last day of month"},
+	{value: "firstWeekday", label: "First weekday of month"},
+	{value: "lastWeekday", label: "Last weekday of month"},
+	{value: "firstWeekdayNamed", label: "First weekday (pick day)"},
+	{value: "lastWeekdayNamed", label: "Last weekday (pick day)"},
+];
+
 export class TaskRecurrenceModal extends Modal {
-	private ruleValue = "";
 	private anchor: "scheduled" | "done" = "scheduled";
+	private uiState: RecurrenceUiState;
+	private customMode = false;
+	private ruleValue = "";
+	private panelEl!: HTMLElement;
+	private previewEl!: HTMLElement;
+	private ruleAreaEl!: HTMLTextAreaElement;
+	private monthlyWeekdayRow!: HTMLElement;
+	private monthlyDaysRow!: HTMLElement;
 
 	constructor(
 		app: App,
 		private readonly task: IndexedTask,
+		private readonly settings: FulcrumSettings,
 		private readonly onSubmit: (rule: string | null, anchor: "scheduled" | "done") => void | Promise<void>,
+		private readonly initialFreq?: RecurrenceFreq,
 	) {
 		super(app);
-		this.ruleValue = task.recurrence ?? "";
 		this.anchor = task.recurrenceAnchor ?? "scheduled";
+		const startIso = task.scheduledDate ?? task.dueDate ?? todayLocalISODate();
+		const parsed = task.recurrence?.trim()
+			? parseRecurrenceToUiState(task.recurrence, startIso)
+			: null;
+		if (parsed) {
+			this.uiState = parsed;
+			this.ruleValue = task.recurrence ?? "";
+		} else if (task.recurrence?.trim()) {
+			this.customMode = true;
+			this.ruleValue = task.recurrence;
+			this.uiState = defaultRecurrenceUiState(initialFreq ?? "weekly", startIso);
+		} else {
+			this.uiState = defaultRecurrenceUiState(initialFreq ?? "weekly", startIso);
+			this.ruleValue = buildRecurrenceRule(this.uiState, startIso);
+		}
+	}
+
+	private startIso(): string {
+		return this.task.scheduledDate ?? this.task.dueDate ?? todayLocalISODate();
+	}
+
+	private effectiveRule(): string {
+		if (this.customMode) return this.ruleValue.trim();
+		return buildRecurrenceRule(this.uiState, this.startIso());
+	}
+
+	private syncRuleFromUi(): void {
+		if (!this.customMode) {
+			this.ruleValue = buildRecurrenceRule(this.uiState, this.startIso());
+			if (this.ruleAreaEl) this.ruleAreaEl.value = this.ruleValue;
+		}
+		this.refreshPreview();
+	}
+
+	private refreshPreview(): void {
+		if (!this.previewEl) return;
+		const rule = this.effectiveRule();
+		if (!rule) {
+			this.previewEl.setText("No recurrence");
+			return;
+		}
+		const summary = this.customMode
+			? "Custom recurrence"
+			: describeRecurrenceUiState(this.uiState);
+		const next = computeNextOccurrences(
+			rule,
+			this.startIso(),
+			this.task.completeInstances ?? [],
+			this.task.skippedInstances ?? [],
+			3,
+		);
+		const nextText = next.length > 0 ? next.join(", ") : "No upcoming dates";
+		this.previewEl.setText(`${summary} · Next: ${nextText}`);
+	}
+
+	private renderFreqPanel(): void {
+		this.panelEl.empty();
+		if (this.customMode) return;
+
+		if (this.uiState.freq !== "custom") {
+			const unit =
+				this.uiState.freq === "daily"
+					? "day(s)"
+					: this.uiState.freq === "weekly"
+						? "week(s)"
+						: "month(s)";
+			new Setting(this.panelEl)
+				.setName("Every")
+				.setDesc(`Repeat every N ${unit}.`)
+				.addText((t) =>
+					t
+						.setPlaceholder("1")
+						.setValue(String(this.uiState.interval))
+						.onChange((v) => {
+							const n = Number.parseInt(v.trim(), 10);
+							this.uiState.interval = Number.isFinite(n) && n >= 1 ? Math.min(99, n) : 1;
+							this.syncRuleFromUi();
+						}),
+				);
+		}
+
+		if (this.uiState.freq === "weekly") {
+			const row = this.panelEl.createDiv({cls: "fulcrum-recurrence-day-row"});
+			for (const {dow, label} of weekdayLabelsOrdered(this.settings.calendarFirstDayOfWeek)) {
+				const selected = this.uiState.weeklyDays.includes(dow);
+				const btn = row.createEl("button", {
+					cls: `fulcrum-recurrence-day-toggle${selected ? " is-selected" : ""}`,
+					text: label,
+					type: "button",
+				});
+				btn.onclick = () => {
+					const set = new Set(this.uiState.weeklyDays);
+					if (set.has(dow)) set.delete(dow);
+					else set.add(dow);
+					this.uiState.weeklyDays = [...set];
+					this.syncRuleFromUi();
+					this.renderFreqPanel();
+				};
+			}
+		}
+
+		if (this.uiState.freq === "monthly") {
+			new Setting(this.panelEl)
+				.setName("Monthly pattern")
+				.addDropdown((d) => {
+					for (const opt of MONTHLY_MODE_OPTIONS) {
+						d.addOption(opt.value, opt.label);
+					}
+					d.setValue(this.uiState.monthlyMode);
+					d.onChange((v) => {
+						this.uiState.monthlyMode = v as MonthlyMode;
+						this.updateMonthlyPanelVisibility();
+						this.syncRuleFromUi();
+					});
+				});
+
+			this.monthlyDaysRow = this.panelEl.createDiv({cls: "fulcrum-recurrence-monthly-days"});
+			new Setting(this.monthlyDaysRow)
+				.setName("Day(s) of month")
+				.setDesc("Calendar day(s) 1–31. Comma-separated for multiple (e.g. 15, 30).")
+				.addText((t) =>
+					t
+						.setPlaceholder("15")
+						.setValue(this.uiState.monthlyDays)
+						.onChange((v) => {
+							this.uiState.monthlyDays = v;
+							this.syncRuleFromUi();
+						}),
+				);
+
+			this.monthlyWeekdayRow = this.panelEl.createDiv({cls: "fulcrum-recurrence-day-row"});
+			for (const {dow, label} of weekdayLabelsOrdered(this.settings.calendarFirstDayOfWeek)) {
+				const selected = this.uiState.monthlyWeekday === dow;
+				const btn = this.monthlyWeekdayRow.createEl("button", {
+					cls: `fulcrum-recurrence-day-toggle${selected ? " is-selected" : ""}`,
+					text: label,
+					type: "button",
+				});
+				btn.onclick = () => {
+					this.uiState.monthlyWeekday = dow;
+					this.syncRuleFromUi();
+					this.renderFreqPanel();
+				};
+			}
+
+			this.updateMonthlyPanelVisibility();
+		}
+	}
+
+	private updateMonthlyPanelVisibility(): void {
+		if (!this.monthlyDaysRow || !this.monthlyWeekdayRow) return;
+		const showNamed =
+			this.uiState.monthlyMode === "firstWeekdayNamed" ||
+			this.uiState.monthlyMode === "lastWeekdayNamed";
+		this.monthlyDaysRow.toggleClass("fulcrum-hidden", this.uiState.monthlyMode !== "onDays");
+		this.monthlyWeekdayRow.toggleClass("fulcrum-hidden", !showNamed);
 	}
 
 	onOpen(): void {
 		const {contentEl} = this;
 		contentEl.empty();
+		contentEl.addClass("fulcrum-recurrence-modal");
 		contentEl.createEl("h2", {text: "Recurrence"});
-		contentEl.createEl("p", {
-			cls: "fulcrum-muted",
-			text: "RFC 5545 RRULE with DTSTART, or use presets below.",
-		});
+		const taskTitle = this.task.title?.trim() || this.task.file.basename.replace(/\.md$/i, "");
+		contentEl.createEl("p", {cls: "fulcrum-recurrence-task-name", text: taskTitle});
+
 		new Setting(contentEl)
-			.setName("RRULE")
-			.addTextArea((t) => {
-				t.setValue(this.ruleValue);
-				t.onChange((v) => {
-					this.ruleValue = v;
+			.setName("Frequency")
+			.addDropdown((d) => {
+				d.addOptions({
+					daily: "Daily",
+					weekly: "Weekly",
+					monthly: "Monthly",
+					custom: "Custom (RRULE)",
+				});
+				d.setValue(this.customMode ? "custom" : this.uiState.freq);
+				d.onChange((v) => {
+					if (v === "custom") {
+						this.customMode = true;
+						this.renderFreqPanel();
+						this.syncRuleFromUi();
+						return;
+					}
+					this.customMode = false;
+					this.uiState.freq = v as RecurrenceFreq;
+					if (v === "weekly" && this.uiState.weeklyDays.length === 0) {
+						this.uiState = defaultRecurrenceUiState("weekly", this.startIso());
+					}
+					this.renderFreqPanel();
+					this.syncRuleFromUi();
 				});
 			});
+
+		this.panelEl = contentEl.createDiv({cls: "fulcrum-recurrence-panel"});
+		this.renderFreqPanel();
+
 		new Setting(contentEl)
 			.setName("Repeat from")
 			.addDropdown((d) =>
@@ -1095,34 +1954,50 @@ export class TaskRecurrenceModal extends Modal {
 						this.anchor = v as "scheduled" | "done";
 					}),
 			);
-		const presets = contentEl.createDiv({cls: "fulcrum-modal-button-row"});
-		for (const [label, key] of [
-			["Daily", "daily"],
-			["Weekly", "weekly"],
-			["Monthly", "monthly"],
-		] as const) {
-			presets.createEl("button", {text: label}).onclick = () => {
-				const start =
-					this.task.scheduledDate ?? this.task.dueDate ?? todayLocalISODate();
-				this.ruleValue = presetRecurrence(key, start);
-			};
+
+		this.previewEl = contentEl.createEl("p", {cls: "fulcrum-recurrence-preview"});
+
+		if (!this.customMode) {
+			this.syncRuleFromUi();
+		} else {
+			this.refreshPreview();
 		}
-		new Setting(contentEl).addButton((b) =>
-			b.setButtonText("Clear recurrence").onClick(() => {
-				void this.onSubmit(null, this.anchor);
-				this.close();
-			}),
-		);
-		new Setting(contentEl).addButton((b) =>
-			b
-				.setButtonText("Save")
-				.setCta()
-				.onClick(() => {
-					const r = this.ruleValue.trim();
-					void this.onSubmit(r.length ? r : null, this.anchor);
-					this.close();
-				}),
-		);
+
+		new Setting(contentEl)
+			.setName("RRULE")
+			.setDesc("Advanced: edit directly or switch to Custom frequency.")
+			.addTextArea((t) => {
+				this.ruleAreaEl = t.inputEl;
+				t.setValue(this.ruleValue);
+				t.onChange((v) => {
+					this.ruleValue = v;
+					this.refreshPreview();
+				});
+			});
+
+		const actions = contentEl.createDiv({cls: "fulcrum-modal-actions"});
+		actions.createEl("button", {text: "Clear recurrence"}).onclick = () => {
+			void this.onSubmit(null, this.anchor);
+			this.close();
+		};
+		actions.createEl("button", {text: "Save", cls: "mod-cta"}).onclick = () => {
+			if (!this.customMode && this.uiState.freq === "weekly" && this.uiState.weeklyDays.length === 0) {
+				new Notice("Select at least one weekday.");
+				return;
+			}
+			if (
+				!this.customMode &&
+				this.uiState.freq === "monthly" &&
+				this.uiState.monthlyMode === "onDays" &&
+				parseMonthlyDaysInput(this.uiState.monthlyDays).length === 0
+			) {
+				new Notice("Enter at least one day of the month (1–31).");
+				return;
+			}
+			const r = this.effectiveRule();
+			void this.onSubmit(r.length ? r : null, this.anchor);
+			this.close();
+		};
 	}
 
 	onClose(): void {
@@ -1327,6 +2202,97 @@ export class EditTaskTagsModal extends Modal {
 			.filter(Boolean);
 		await this.onSubmit(tags);
 		this.close();
+	}
+}
+
+export class TasksForecastSettingsModal extends Modal {
+	private showVaultMeetings: boolean;
+	private showSystemCalendars: boolean;
+	private selectedIds = new Set<string>();
+
+	constructor(
+		app: App,
+		private readonly host: FulcrumHost,
+		private readonly onSaved?: () => void,
+	) {
+		super(app);
+		this.showVaultMeetings = host.settings.forecastShowVaultMeetings;
+		this.showSystemCalendars = host.settings.forecastShowSystemCalendars;
+		this.selectedIds = parseCalendarIdList(host.settings.forecastCalendarIds);
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		contentEl.empty();
+		contentEl.createEl("h2", {text: "Horizon display"});
+
+		new Setting(contentEl)
+			.setName("Show vault meeting notes")
+			.setDesc("Read-only meeting rows from your meetings folder in the day-grouped list.")
+			.addToggle((t) =>
+				t.setValue(this.showVaultMeetings).onChange((v) => {
+					this.showVaultMeetings = v;
+				}),
+			);
+
+		new Setting(contentEl)
+			.setName("Show system calendars")
+			.setDesc("Read-only events from macOS calendars via Fulcrum Bridge.")
+			.addToggle((t) =>
+				t.setValue(this.showSystemCalendars).onChange((v) => {
+					this.showSystemCalendars = v;
+				}),
+			);
+
+		contentEl.createEl("p", {
+			cls: "fulcrum-settings-lead",
+			text: "Calendars to show in Horizon. The same list is under Settings → Integrations → Calendar integration.",
+		});
+
+		void this.loadCalendars(contentEl);
+
+		new Setting(contentEl).addButton((b) =>
+			b
+				.setButtonText("Save")
+				.setCta()
+				.onClick(() => void this.save()),
+		);
+	}
+
+	private async loadCalendars(containerEl: HTMLElement): Promise<void> {
+		const listEl = containerEl.createDiv({cls: "fulcrum-forecast-settings-calendars"});
+		listEl.createEl("p", {text: "Loading calendars…", cls: "fulcrum-muted"});
+
+		const {rows, error} = await loadBridgeCalendarRows(this.host);
+		listEl.empty();
+
+		if (error) {
+			listEl.createEl("p", {text: error, cls: "fulcrum-muted"});
+		}
+
+		renderCalendarIdPicker(listEl, {
+			sectionTitle: "",
+			rows,
+			selectedIds: this.selectedIds,
+			onToggle: (ids) => {
+				this.selectedIds = ids;
+			},
+		});
+	}
+
+	private async save(): Promise<void> {
+		const forecastCalendarIds = joinCalendarIds(this.selectedIds);
+		await this.host.patchSettings({
+			forecastShowVaultMeetings: this.showVaultMeetings,
+			forecastShowSystemCalendars: this.showSystemCalendars,
+			forecastCalendarIds,
+		});
+		this.onSaved?.();
+		this.close();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
 	}
 }
 

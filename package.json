@@ -2,10 +2,16 @@
 	"name": "obsidian-plugins",
 	"private": true,
 	"version": "0.0.0",
-	"description": "Monorepo: Pulse, Ratchet, Fulcrum, Orbit, Repose — @obsidian-suite/core, heatmap, theme, interop, svelte-shell",
+	"description": "Monorepo: Pulse, Ratchet, Fulcrum (incl. Orbit), Repose, Chisel, Quill, Trace — @obsidian-suite/core, heatmap, theme, interop, svelte-shell",
 	"workspaces": [
 		"packages/*",
-		"plugins/*"
+		"plugins/fulcrum",
+		"plugins/pulse",
+		"plugins/ratchet",
+		"plugins/repose",
+		"plugins/chisel",
+		"plugins/quill",
+		"plugins/trace"
 	],
 	"scripts": {
 		"install:all": "node tooling/install-all-to-vault.mjs",
@@ -13,9 +19,9 @@
 		"build:pulse": "npm run build -w obsidian-plugin-pulse",
 		"build:ratchet": "npm run build -w obsidian-plugin-ratchet",
 		"build:fulcrum": "npm run build -w obsidian-plugin-fulcrum",
-		"build:orbit": "npm run build -w obsidian-plugin-orbit",
 		"build:repose": "npm run build -w obsidian-plugin-repose",
-		"build:chisel": "npm run build -w obsidian-plugin-chisel"
+		"build:chisel": "npm run build -w obsidian-plugin-chisel",
+		"build:trace": "npm run build -w obsidian-plugin-trace"
 	},
 	"engines": {
 		"node": ">=18"

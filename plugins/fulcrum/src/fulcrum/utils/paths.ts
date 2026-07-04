@@ -9,10 +9,10 @@ export function normalizeVaultRelPath(folder: string): string {
 	return f;
 }
 
-/** True if `filePath` is exactly `folder` or under it. */
+/** True if `filePath` is exactly `folder` or under it. Empty `folder` → false. */
 export function isUnderFolder(filePath: string, folder: string): boolean {
 	const f = normalizeVaultRelPath(folder);
-	if (!f) return true;
+	if (!f) return false;
 	const p = filePath.replace(/^\/+/, "");
 	if (p === f) return true;
 	return p.startsWith(f + "/");

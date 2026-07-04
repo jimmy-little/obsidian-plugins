@@ -125,7 +125,7 @@
 			<div class="fulcrum-activity-timeline__stem fulcrum-activity-timeline__stem--before"></div>
 			<div
 				class="fulcrum-activity-timeline__node"
-				class:fulcrum-activity-timeline__node--emoji={kind === "note" && !!timelineEmoji}
+				class:fulcrum-activity-timeline__node--emoji={(kind === "note" || kind === "log") && !!timelineEmoji}
 			>
 				{#if kind === "task"}
 					<svg class="fulcrum-activity-timeline__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -152,6 +152,8 @@
 						/>
 						<path d="M16 2v4M8 2v4M3 10h18" fill="none" stroke="currentColor" stroke-width="2" />
 					</svg>
+				{:else if kind === "log" && timelineEmoji}
+					<span class="fulcrum-activity-timeline__emoji" aria-hidden="true">{timelineEmoji}</span>
 				{:else if kind === "log"}
 					<svg class="fulcrum-activity-timeline__icon" viewBox="0 0 24 24" aria-hidden="true">
 						<rect

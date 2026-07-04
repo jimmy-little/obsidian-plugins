@@ -1,6 +1,8 @@
 import type {App, TFile} from "obsidian";
 import {addDaysIso, todayLocalISODate} from "./utils/dates";
-import type {FulcrumSettings} from "./settingsDefaults";
+import type {FulcrumSettings, QuickNoteTheme} from "./settingsDefaults";
+import {readInlineField, resolveEntryTitle, resolveNoteType} from "./utils/notePreview";
+import {toISODate} from "./utils/calendarGrid";
 
 function fmString(fm: Record<string, unknown> | undefined, key: string): string | undefined {
 	if (!fm) return undefined;
@@ -50,7 +52,7 @@ export async function appendFulcrumProjectLog(
 	await app.vault.modify(projectFile, insertLogEntry(body, heading, bodyLine));
 }
 
-/** Non-empty bullet / numbered lines under the log heading (most recent last). */
+/** Non-empty log blocks under the log heading (most recent last). Each block may be multiline. */
 export async function readFulcrumLogTail(
 	app: App,
 	projectFile: TFile,
@@ -59,20 +61,109 @@ export async function readFulcrumLogTail(
 ): Promise<string[]> {
 	const heading = headingLine.trim();
 	const body = await app.vault.read(projectFile);
+	const section = extractLogSectionBody(body, heading);
+	if (!section) return [];
+	return splitLogSectionIntoBlocks(section).slice(-maxEntries);
+}
+
+/** Extract markdown body under the log heading (before next `##`). */
+export function extractLogSectionBody(body: string, headingLine: string): string | null {
+	const heading = headingLine.trim();
 	const idx = body.indexOf(heading);
-	if (idx === -1) return [];
+	if (idx === -1) return null;
 	const afterHeading = body.slice(idx + heading.length);
 	const nextSection = afterHeading.search(/\n##[ \t]/);
-	const section = nextSection === -1 ? afterHeading : afterHeading.slice(0, nextSection);
+	return nextSection === -1 ? afterHeading : afterHeading.slice(0, nextSection);
+}
+
+/** Split log section into bullet blocks (top-level bullet + indented continuation lines). */
+export function splitLogSectionIntoBlocks(section: string): string[] {
 	const lines = section.split("\n");
-	const entries: string[] = [];
+	const blocks: string[] = [];
+	let current: string[] = [];
+
+	const flush = (): void => {
+		if (current.length === 0) return;
+		blocks.push(current.join("\n").trimEnd());
+		current = [];
+	};
+
 	for (const line of lines) {
-		const t = line.trim();
-		if (/^[-*]\s+/.test(t) || /^\d+\.\s+/.test(t)) {
-			entries.push(t);
+		const trimmed = line.trim();
+		if (!trimmed) {
+			if (current.length > 0) current.push(line);
+			continue;
+		}
+		if (/^[-*]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed)) {
+			flush();
+			current.push(line);
+		} else if (current.length > 0 && /^\s+/.test(line)) {
+			current.push(line);
 		}
 	}
-	return entries.slice(-maxEntries);
+	flush();
+	return blocks;
+}
+
+/** Wikilink target for a project note file. */
+export function projectFileWikilink(app: App, projectFile: TFile): string {
+	const lt =
+		app.metadataCache.fileToLinktext(projectFile, projectFile.path, false) ??
+		projectFile.basename.replace(/\.md$/i, "");
+	return `[[${lt}]]`;
+}
+
+function formatLocalDateTime(d: Date): string {
+	const y = d.getFullYear();
+	const mo = String(d.getMonth() + 1).padStart(2, "0");
+	const da = String(d.getDate()).padStart(2, "0");
+	const h = String(d.getHours()).padStart(2, "0");
+	const mi = String(d.getMinutes()).padStart(2, "0");
+	const s = String(d.getSeconds()).padStart(2, "0");
+	return `${y}-${mo}-${da}T${h}:${mi}:${s}`;
+}
+
+function themeTypeValue(theme: QuickNoteTheme): string {
+	const t = theme.type?.trim();
+	if (t) return t;
+	return `${theme.emoji} ${theme.label}`.trim();
+}
+
+/**
+ * Build a multiline quick-note block for the Fulcrum log (Dataview-compatible inline fields).
+ * Always includes `projectLinkField:: [[Project]]`.
+ */
+export function formatQuickNoteLogBlock(params: {
+	text: string;
+	projectLink: string;
+	projectLinkField: string;
+	theme?: QuickNoteTheme | null;
+	now?: Date;
+}): string {
+	const d = params.now ?? new Date();
+	const trimmed = params.text.replace(/\s+/g, " ").trim();
+	const sortMs = d.getTime();
+	const stamp = d.toLocaleString(undefined, {
+		dateStyle: "short",
+		timeStyle: "short",
+	});
+	const bullet = `- <!-- fulcrum-log:${sortMs} -->${stamp} — ${trimmed}`;
+	const indent = "  ";
+	const fieldKey = params.projectLinkField.trim() || "project";
+	const lines = [bullet];
+
+	if (params.theme) {
+		lines.push(`${indent}type:: ${themeTypeValue(params.theme)}`);
+		lines.push(`${indent}entry:: ${trimmed}`);
+		if (params.theme.journal?.trim()) {
+			lines.push(`${indent}journal:: ${params.theme.journal.trim()}`);
+		}
+		lines.push(`${indent}date:: ${toISODate(d)}`);
+		lines.push(`${indent}startDate:: ${formatLocalDateTime(d)}`);
+	}
+	lines.push(`${indent}${fieldKey}:: ${params.projectLink}`);
+
+	return lines.join("\n");
 }
 
 export async function markProjectReviewDates(
@@ -144,7 +235,12 @@ export interface ProjectLogActivityEntry {
 	sortMs: number;
 	title: string;
 	stampLabel: string;
+	/** First line of the block (bullet). */
 	rawLine: string;
+	/** Full markdown block including indented inline fields. */
+	rawBlock: string;
+	noteType?: string;
+	journal?: string;
 }
 
 /** One `##` section from a project note body (excluding the project log). */
@@ -179,9 +275,15 @@ export function isProjectSnapshotSectionHeading(heading: string): boolean {
 	return normalizeSectionHeading(heading).startsWith("project snapshot");
 }
 
+/** Whether a section heading is the inline checkbox task block on project notes. */
+export function isProjectTasksSectionHeading(heading: string): boolean {
+	return normalizeSectionHeading(heading) === "project tasks";
+}
+
 /**
  * Parse `##` sections from a project note body for the Overview tab.
- * Omits the project log section (configured heading and common aliases) and Fulcrum snapshots.
+ * Omits the project log section (configured heading and common aliases), Fulcrum snapshots,
+ * and the Project Tasks checkbox block (rendered as task cards instead).
  */
 export function parseProjectPageSections(
 	body: string,
@@ -203,6 +305,7 @@ export function parseProjectPageSections(
 		const match = matches[i]!;
 		if (isProjectLogSectionHeading(match.title, logSectionHeading)) continue;
 		if (isProjectSnapshotSectionHeading(match.title)) continue;
+		if (isProjectTasksSectionHeading(match.title)) continue;
 		const start = match.index;
 		const end = i + 1 < matches.length ? matches[i + 1]!.index : trimmed.length;
 		const raw = trimmed.slice(start, end).trimEnd();
@@ -324,18 +427,36 @@ function sortMsForLegacyLogLine(
 /**
  * Parse log bullets; lines with `<!-- fulcrum-log:ms -->` use that instant. Legacy lines use the
  * human stamp before " — " when present, not the project note's modified time.
+ * Accepts multiline blocks (bullet + indented `key:: value` lines).
  */
-export function parseProjectLogLines(lines: string[]): ProjectLogActivityEntry[] {
+export function parseProjectLogLines(blocks: string[]): ProjectLogActivityEntry[] {
 	const out: ProjectLogActivityEntry[] = [];
-	for (let i = 0; i < lines.length; i++) {
-		const core = parseProjectLogLineCore(lines[i]!);
+	for (let i = 0; i < blocks.length; i++) {
+		const block = blocks[i]!;
+		const firstLine = block.split("\n")[0] ?? block;
+		const core = parseProjectLogLineCore(firstLine);
 		if (!core) continue;
 		const sortMs = sortMsForLegacyLogLine(core, i);
+		const noteType = resolveNoteType(block, undefined);
+		const journal = readInlineField(block, "journal");
+		const entryInline = readInlineField(block, "entry");
+		const title =
+			entryInline?.trim() ||
+			core.title ||
+			resolveEntryTitle({
+				body: block,
+				fmEntry: undefined,
+				basename: "Log entry",
+				entryFieldKey: "entry",
+			});
 		out.push({
 			sortMs,
-			title: core.title,
+			title,
 			stampLabel: core.stampLabel,
 			rawLine: core.rawLine,
+			rawBlock: block,
+			noteType: noteType || undefined,
+			journal: journal || undefined,
 		});
 	}
 	return out;

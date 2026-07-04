@@ -11,7 +11,9 @@ import {
 import {
 	appendFulcrumProjectLog,
 	formatFulcrumProjectLogLine,
+	formatQuickNoteLogBlock,
 	parseProjectLogLines,
+	projectFileWikilink,
 	readFulcrumLogTail,
 	type ProjectLogActivityEntry,
 } from "./fulcrum/projectNote";
@@ -46,28 +48,31 @@ import type {FulcrumHost} from "./fulcrum/pluginBridge";
 import {
 	openProjectSummaryLeaf,
 	revealOrCreateActiveTimers,
-	revealOrCreateAreas,
+	revealOrCreateTasks,
 	revealOrCreateDashboard,
 	revealOrCreateProjectManager,
 	revealOrCreateQuickStart,
 	revealOrCreateTimeTracked,
 	revealOrCreateTimeline,
 	revealOrCreateReview,
+	revealOrCreateOrbit,
 	openFloatingTimersPopout,
 } from "./fulcrum/openViews";
 import {openNotePropertiesModal, revealOrCreateView} from "@obsidian-suite/core";
 import {
 	buildPluginPersistedPayload,
-	pruneConduitSyncState,
 	pruneTimerEntryCache,
 } from "./fulcrum/pluginDataPrune";
-import {loadConduitSyncState} from "./conduit/syncState";
 import {DEFAULT_SETTINGS, DASHBOARD_ACTIVITY_MAX_DAYS, isDoneStatus, migrateTaskCardDisplaySettings, parseDoneStatusSet, parseList, parseTaskStatusChoices, type FulcrumSettings} from "./fulcrum/settingsDefaults";
 import {migrateKanbanSettings} from "./fulcrum/kanban/settingsKey";
 import {postTaskNotesToggleStatus} from "./fulcrum/taskNotesApi";
 import {CreateTaskNoteModal} from "./fulcrum/modals";
 import {applyTaskStatusChange} from "./fulcrum/kanban/taskFieldUpdate";
-import {deleteConduitReminderForTask} from "./conduit/deleteReminderForTask";
+import {
+	handleRecurringTaskComplete,
+	taskIsRecurring,
+} from "./fulcrum/recurrence/recurrenceComplete";
+import {taskIsDone} from "./fulcrum/taskCardInteractions";
 import {toggleInlineTaskLine} from "./fulcrum/taskVaultToggle";
 import {bumpSettingsRevision, bumpTimerRevision} from "./fulcrum/stores";
 import {appendTimeBlockToDailyNote as appendTimeBlockLineToDailyNote} from "./fulcrum/utils/dailyPlannerEvents";
@@ -86,6 +91,7 @@ import {
 	registerLivePreviewInlineTaskScan,
 } from "./fulcrum/inlineTaskPills";
 import {registerInlineTaskEditorSuggest} from "./fulcrum/inlineTaskEditorSuggest";
+import {registerInlineTaskLinkSuggestGuard} from "./fulcrum/inlineTaskLinkSuggestGuard";
 import {convertInlineTaskAtLine} from "./fulcrum/convertInlineTaskToNote";
 import {isCheckboxLine, isInlineTaskLineInScope} from "./fulcrum/utils/inlineTasks";
 import {openMarkdownBesideFulcrum, type FulcrumCompanionLeaf} from "./fulcrum/openBesideFulcrum";
@@ -106,22 +112,49 @@ import {DashboardView} from "./views/DashboardView";
 import {ProjectManagerView} from "./views/ProjectManagerView";
 import {ProjectView} from "./views/ProjectView";
 import {TimelineView} from "./views/TimelineView";
-import {registerConduitCommands, runConduitAction, runConduitProjectAction} from "./conduit/actions";
-import type {ConduitActionId} from "./conduit/actions";
-import {openConnectRemindersListModal} from "./conduit/connectListModal";
-import {ConduitService} from "./conduit/conduitService";
-import {readProjectConduitSync, readProjectListId} from "./conduit/mapping";
+import {registerConduitCommands} from "./conduit/actions";
 import {
-	disableProjectConduitSync,
-	enableProjectConduitSyncIfLinked,
-} from "./conduit/mappingRegistry";
-import type {ConduitSyncForce} from "./conduit/types";
+	CONDUIT_CONVERT_NOTICE_KEY,
+	maybeShowConduitConvertNotice,
+	registerConduitMigrationCommands,
+} from "./conduit/conduitMigration";
+import {openConnectRemindersListModal, clearProjectReminderList} from "./conduit/connectListModal";
+import {ConduitService} from "./conduit/conduitService";
+import {registerReminderQueryBlock} from "./conduit/reminderQueryBlock";
+import {readProjectListId} from "./conduit/mapping";
+import {
+	convertInlineTaskToReminder,
+	convertTaskNoteToReminder,
+} from "./conduit/convertToReminder";
+import type {RemindersBridge} from "./conduit/remindersBridge";
+import type {OrbitHost} from "./orbit/orbit/pluginHost";
+import {
+	appendPersonQuickNote as appendPersonQuickNoteImpl,
+	applyOrbitDeepLink,
+	capturePersonSnapshot as capturePersonSnapshotImpl,
+	initOrbitHost,
+	mergeStandaloneOrbitPluginData,
+	migrateOrbitSettings,
+	openOrgChartForAnchor as openOrgChartForAnchorImpl,
+	openPersonFile as openPersonFileImpl,
+	openPersonInOrbitMode as openPersonInOrbitModeImpl,
+	openPersonMarkdownFile as openPersonMarkdownFileImpl,
+	openPersonProperties as openPersonPropertiesImpl,
+	registerOrbitCommands,
+	registerOrbitEvents,
+	registerOrbitViews,
+	renderOrbitActivityPreview as renderOrbitActivityPreviewImpl,
+} from "./orbit/registerOrbit";
 
 export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	settings: FulcrumSettings = DEFAULT_SETTINGS;
 	vaultIndex!: VaultIndex;
 	timer!: TimerModule;
 	conduit: ConduitService | null = null;
+	conduitConvertNoticeShown = false;
+	orbitHost!: OrbitHost;
+	/** Paths opened via Orbit "Open note" — skip auto profile routing until reopened. */
+	readonly personMarkdownPreferred = new Set<string>();
 	/** Reused markdown leaf for “open beside” from project / linked surfaces. */
 	private readonly fulcrumCompanionLeaf: FulcrumCompanionLeaf = {current: null};
 
@@ -129,6 +162,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		this.register(injectFulcrumPluginStyles(FULCRUM_PLUGIN_CSS));
 
 		await this.loadSettings();
+		initOrbitHost(this);
 		this.vaultIndex = new VaultIndex(this.app, () => this.settings);
 		this.timer = new TimerModule(this);
 		const data = (await this.loadData()) as Record<string, unknown> | null;
@@ -148,6 +182,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		this.registerView(VIEW_ACTIVE_TIMERS, (leaf) => new ActiveTimersView(leaf, this));
 		this.registerView(VIEW_QUICK_START, (leaf) => new QuickStartView(leaf, this));
 		this.registerView(VIEW_FLOATING_TIMERS, (leaf) => new FloatingTimersView(leaf, this));
+		registerOrbitViews(this);
 
 		try {
 			await this.timer.onload();
@@ -186,7 +221,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		this.registerEvent(
 			this.app.vault.on("modify", (f) => {
 				if (f instanceof TFile && f.extension === "md") {
-					this.vaultIndex.scheduleRebuild();
+					this.vaultIndex.scheduleRebuildFromMetadataChange(f, {persisted: true});
 				}
 			}),
 		);
@@ -209,6 +244,12 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 				app: this.app,
 				getSettings: () => this.settings,
 				registerEvent: (r) => this.registerEvent(r),
+				registerCleanup: (fn) => this.register(fn),
+				timer: {
+					findActiveEntryForFile: (filePath) => this.timer.findActiveEntryForFile(filePath),
+					getActiveEntryElapsedMs: (entry) => this.timer.getActiveEntryElapsedMs(entry),
+					formatTimeAsHHMMSS: (ms) => this.timer.formatTimeAsHHMMSS(ms),
+				},
 				startTimerInOpenNote: (file, meta) =>
 					this.startTimerInNote(file.path, {
 						projectName: meta.projectLabel,
@@ -222,6 +263,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 				openProjectSummary: (path) => this.openProjectSummary(path),
 				createPersonNote: (linkText, displayName) =>
 					this.createPersonNote(linkText, displayName),
+				openPersonFile: (file) => this.openPersonFile(file),
 			},
 			this.fulcrumCompanionLeaf,
 		);
@@ -232,7 +274,15 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		registerLivePreviewLinkPillScan(this, () => this.settings, () => this.vaultIndex);
 		registerInlineTaskPills(this, () => this.settings);
 		registerLivePreviewInlineTaskScan(this);
-		registerInlineTaskEditorSuggest(this, () => this.settings, () => this.vaultIndex);
+		const inlineTaskSuggest = registerInlineTaskEditorSuggest(
+			this,
+			() => this.settings,
+			() => this.vaultIndex,
+		);
+		registerInlineTaskLinkSuggestGuard(this, () => this.settings, inlineTaskSuggest);
+
+		registerOrbitEvents(this);
+		registerOrbitCommands(this);
 
 		this.addSettingTab(new FulcrumSettingTab(this.app, this));
 
@@ -257,10 +307,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			},
 		});
 		this.addCommand({
-			id: "open-areas",
-			name: "Open areas",
+			id: "open-tasks",
+			name: "Open tasks",
 			callback: () => {
-				void this.openAreas();
+				void this.openTasks();
 			},
 		});
 		this.addCommand({
@@ -334,7 +384,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		});
 		this.addCommand({
 			id: "repair-plugin-data",
-			name: "Repair plugin data (prune timer cache & Conduit state)",
+			name: "Repair plugin data (prune timer cache)",
 			callback: () => {
 				void this.repairPluginPersistedData();
 			},
@@ -364,12 +414,21 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		});
 
 		registerConduitCommands(this);
+		registerConduitMigrationCommands(this);
+		registerReminderQueryBlock(this);
 
 		this.registerObsidianProtocolHandler(this.manifest.id, (params) => {
 			this.handleFulcrumOpenUri(params);
 		});
+		this.registerObsidianProtocolHandler("orbit", (params) => {
+			void applyOrbitDeepLink(this, params).catch((err) => {
+				console.error(err);
+				new Notice("Orbit could not open that link.");
+			});
+		});
 
 		this.app.workspace.onLayoutReady(() => {
+			void maybeShowConduitConvertNotice(this, data);
 			void this.restartConduit();
 		});
 	}
@@ -389,38 +448,22 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		await this.conduit.start();
 	}
 
-	async notifyConduitProjectCompleted(projectPath: string): Promise<void> {
-		await this.conduit?.onProjectCompleted(projectPath);
+	async notifyConduitProjectCompleted(_projectPath: string): Promise<void> {
+		// No-op: convert model does not archive Reminders lists on project complete.
 	}
 
 	conduitCanSync(): boolean {
 		return ConduitService.canRun(this.settings);
 	}
 
-	async deleteConduitReminderForTask(task: IndexedTask): Promise<void> {
-		await deleteConduitReminderForTask(this.app, this.settings, task);
-	}
-
-	async conduitSyncNow(opts?: {
-		force?: ConduitSyncForce;
-		skipQuiet?: boolean;
-		projectPath?: string;
-	}): Promise<void> {
+	async getRemindersBridge(): Promise<RemindersBridge> {
 		const svc = this.conduit ?? new ConduitService(this);
-		await svc.syncNow(opts);
+		return svc.getBridge();
 	}
 
 	async conduitRunDoctor(): Promise<void> {
 		const svc = this.conduit ?? new ConduitService(this);
 		await svc.runDoctor();
-	}
-
-	conduitRunAction(id: ConduitActionId): void {
-		runConduitAction(this, id);
-	}
-
-	conduitRunProjectAction(projectPath: string, id: "sync" | "pull" | "push"): void {
-		runConduitProjectAction(this, projectPath, id);
 	}
 
 	conduitIsProjectConnected(projectPath: string): boolean {
@@ -431,20 +474,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		return !!readProjectListId(this.app, project, this.settings);
 	}
 
-	conduitIsProjectSyncEnabled(projectPath: string): boolean {
-		const svc = this.conduit;
-		if (svc) return svc.isProjectSyncEnabled(projectPath);
-		const project = this.vaultIndex.resolveProjectByPath(projectPath);
-		if (!project) return false;
-		return (
-			readProjectConduitSync(this.app, project, this.settings) &&
-			!!readProjectListId(this.app, project, this.settings)
-		);
-	}
-
 	async conduitConnectProject(projectPath: string): Promise<void> {
 		if (!ConduitService.canRun(this.settings)) {
-			new Notice("Enable Conduit in Fulcrum settings (macOS only).");
+			new Notice("Enable the Reminders bridge in Fulcrum settings (macOS only).");
 			return;
 		}
 		const project = this.vaultIndex.resolveProjectByPath(projectPath);
@@ -462,33 +494,30 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 	}
 
-	async conduitStartRemindersSync(projectPath: string): Promise<void> {
-		if (!ConduitService.canRun(this.settings)) {
-			new Notice("Enable Conduit in Fulcrum settings (macOS only).");
-			return;
-		}
+	async conduitClearProjectReminderList(projectPath: string): Promise<void> {
+		if (!ConduitService.canRun(this.settings)) return;
 		try {
-			const enabled = await enableProjectConduitSyncIfLinked(this, projectPath);
-			if (!enabled) {
-				await this.conduitConnectProject(projectPath);
-			}
+			await clearProjectReminderList(this, projectPath);
 			const svc = this.conduit ?? new ConduitService(this);
 			await svc.refreshRemindersListCache();
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
-			new Notice(`Could not enable Reminders sync: ${msg}`);
+			new Notice(`Could not clear Reminders list: ${msg}`);
 		}
 	}
 
-	async conduitStopRemindersSync(projectPath: string): Promise<void> {
-		if (!ConduitService.canRun(this.settings)) return;
-		try {
-			await disableProjectConduitSync(this, projectPath);
-			const svc = this.conduit ?? new ConduitService(this);
-			await svc.refreshRemindersListCache();
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : String(e);
-			new Notice(`Could not stop Reminders sync: ${msg}`);
+	async convertTaskToReminder(task: IndexedTask): Promise<void> {
+		if (!ConduitService.canRun(this.settings)) {
+			new Notice("Enable the Reminders bridge in Fulcrum settings (macOS only).");
+			return;
+		}
+		const svc = this.conduit ?? new ConduitService(this);
+		const bridge = await svc.getBridge();
+		const lists = await svc.refreshRemindersListCache();
+		if (task.source === "inline") {
+			await convertInlineTaskToReminder(this, bridge, task, lists);
+		} else if (task.source === "taskNote") {
+			await convertTaskNoteToReminder(this, bridge, task, lists);
 		}
 	}
 
@@ -572,8 +601,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			case "dashboard":
 				await revealOrCreateDashboard(this.app, this.settings);
 				return;
+			case "tasks":
 			case "areas":
-				await revealOrCreateAreas(this.app, this.settings);
+				await revealOrCreateTasks(this.app, this.settings);
 				return;
 			case "kanban":
 				await revealOrCreateProjectManager(this.app, this.settings, {mode: "kanban"});
@@ -599,6 +629,25 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 				}
 				await openProjectSummaryLeaf(this.app, this.settings, normalizePath(projectPath));
 				return;
+			case "orbit":
+				await revealOrCreateOrbit(this.app, this.settings);
+				return;
+			case "person":
+			case "profile": {
+				const personPath = String(params.path ?? params.personPath ?? "").trim();
+				if (!personPath) {
+					new Notice("Fulcrum: add path= or personPath= (vault path to the person note).");
+					return;
+				}
+				await revealOrCreateOrbit(this.app, this.settings, {
+					personPath: normalizePath(personPath),
+				});
+				return;
+			}
+			case "org-chart":
+			case "orgchart":
+				await applyOrbitDeepLink(this, params);
+				return;
 			case "classic":
 				await revealOrCreateView(this.app, VIEW_DASHBOARD, this.settings.openViewsIn);
 				return;
@@ -609,6 +658,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	async loadSettings(): Promise<void> {
 		const raw = (await this.loadData()) as Record<string, unknown> | null;
+		this.conduitConvertNoticeShown = raw?.[CONDUIT_CONVERT_NOTICE_KEY] === true;
 		const loaded = raw ?? {};
 		const merged = {...DEFAULT_SETTINGS, ...loaded} as FulcrumSettings & Record<string, unknown>;
 
@@ -714,33 +764,14 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		) {
 			merged.kanbanColumnOrder = {...DEFAULT_SETTINGS.kanbanColumnOrder};
 		}
-		if (!Array.isArray(merged.kanbanHiddenStatus)) {
-			merged.kanbanHiddenStatus = DEFAULT_SETTINGS.kanbanHiddenStatus;
-		}
-		if (!Array.isArray(merged.kanbanHiddenArea)) {
-			merged.kanbanHiddenArea = DEFAULT_SETTINGS.kanbanHiddenArea;
-		}
-		if (!Array.isArray(merged.kanbanOrderStatus)) {
-			merged.kanbanOrderStatus = DEFAULT_SETTINGS.kanbanOrderStatus;
-		}
-		if (!Array.isArray(merged.kanbanOrderArea)) {
-			merged.kanbanOrderArea = DEFAULT_SETTINGS.kanbanOrderArea;
-		}
-		migrateKanbanSettings(merged as FulcrumSettings);
+		migrateKanbanSettings(merged as FulcrumSettings, loaded);
 		if (!Array.isArray(merged.projectSidebarFilterUncheckedStatus)) {
 			merged.projectSidebarFilterUncheckedStatus =
 				DEFAULT_SETTINGS.projectSidebarFilterUncheckedStatus;
 		}
-		if (!Array.isArray(merged.projectSidebarFilterUncheckedArea)) {
-			merged.projectSidebarFilterUncheckedArea =
-				DEFAULT_SETTINGS.projectSidebarFilterUncheckedArea;
-		}
 		if (!Array.isArray(merged.taskSidebarFilterUncheckedStatus)) {
 			merged.taskSidebarFilterUncheckedStatus =
 				DEFAULT_SETTINGS.taskSidebarFilterUncheckedStatus;
-		}
-		if (!Array.isArray(merged.taskSidebarFilterUncheckedArea)) {
-			merged.taskSidebarFilterUncheckedArea = DEFAULT_SETTINGS.taskSidebarFilterUncheckedArea;
 		}
 		if (typeof merged.areaLifeModeField !== "string" || !merged.areaLifeModeField.trim()) {
 			merged.areaLifeModeField = DEFAULT_SETTINGS.areaLifeModeField;
@@ -755,24 +786,31 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (typeof merged.conduitRemctlPath !== "string") {
 			merged.conduitRemctlPath = DEFAULT_SETTINGS.conduitRemctlPath;
 		}
-		if (typeof merged.conduitVaultNameOverride !== "string") {
-			merged.conduitVaultNameOverride = DEFAULT_SETTINGS.conduitVaultNameOverride;
+		if (typeof merged.remindersBridgeUrl !== "string") {
+			merged.remindersBridgeUrl = DEFAULT_SETTINGS.remindersBridgeUrl;
 		}
-		if (typeof merged.conduitSyncIntervalSeconds !== "number") {
-			merged.conduitSyncIntervalSeconds = DEFAULT_SETTINGS.conduitSyncIntervalSeconds;
+		if (typeof merged.remindersBridgeToken !== "string") {
+			merged.remindersBridgeToken = DEFAULT_SETTINGS.remindersBridgeToken;
 		}
-		if (typeof merged.conduitVaultQuietSeconds !== "number") {
-			merged.conduitVaultQuietSeconds = DEFAULT_SETTINGS.conduitVaultQuietSeconds;
+		if (typeof merged.taskNotesArchiveFolder !== "string") {
+			merged.taskNotesArchiveFolder = DEFAULT_SETTINGS.taskNotesArchiveFolder;
 		}
-		if (typeof merged.conduitShowSyncProgress !== "boolean") {
-			merged.conduitShowSyncProgress = DEFAULT_SETTINGS.conduitShowSyncProgress;
+		if (typeof merged.remindersQueryRefreshSeconds !== "number") {
+			merged.remindersQueryRefreshSeconds = DEFAULT_SETTINGS.remindersQueryRefreshSeconds;
 		}
-		if (typeof merged.conduitSyncField !== "string" || !merged.conduitSyncField.trim()) {
-			merged.conduitSyncField = DEFAULT_SETTINGS.conduitSyncField;
+		if (typeof merged.remindersCalendarIds !== "string") {
+			merged.remindersCalendarIds = DEFAULT_SETTINGS.remindersCalendarIds;
 		}
-		delete (merged as Record<string, unknown>).conduitImportUnmapped;
+		if (typeof merged.forecastCalendarIds !== "string") {
+			merged.forecastCalendarIds = DEFAULT_SETTINGS.forecastCalendarIds;
+		}
+		if (typeof merged.forecastShowVaultMeetings !== "boolean") {
+			merged.forecastShowVaultMeetings = DEFAULT_SETTINGS.forecastShowVaultMeetings;
+		}
+		if (typeof merged.forecastShowSystemCalendars !== "boolean") {
+			merged.forecastShowSystemCalendars = DEFAULT_SETTINGS.forecastShowSystemCalendars;
+		}
 		delete (merged as Record<string, unknown>).conduitSyncOverrides;
-		delete (merged as Record<string, unknown>).conduitProjectListPairs;
 		if (
 			merged.calendarViewMode !== "month" &&
 			merged.calendarViewMode !== "workWeek" &&
@@ -821,6 +859,39 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 
 		migrateTaskCardDisplaySettings(merged as FulcrumSettings & Record<string, unknown>);
+
+		if (!Array.isArray(merged.quickNoteThemes) || merged.quickNoteThemes.length === 0) {
+			merged.quickNoteThemes = [...DEFAULT_SETTINGS.quickNoteThemes];
+		}
+
+		for (const legacyKey of [
+			"kanbanHiddenStatus",
+			"kanbanHiddenArea",
+			"kanbanOrderStatus",
+			"kanbanOrderArea",
+			"projectTaskListGroupBy",
+			"projectTaskListSortBy",
+			"projectSidebarFilterUncheckedArea",
+			"taskSidebarFilterUncheckedArea",
+			"dateDisplayFormat",
+			"completionThresholdPercent",
+			"tasksPluginMode",
+			"defaultProjectView",
+			"taskNotesFolder",
+			"taskNotesEnabled",
+			"inlineTasksEnabled",
+			"projectLaunchDateField",
+			"conduitImportUnmapped",
+			"conduitSyncOverrides",
+			"conduitProjectListPairs",
+			CONDUIT_CONVERT_NOTICE_KEY,
+			"conduitEntityState",
+		]) {
+			delete mergedRec[legacyKey];
+		}
+
+		migrateOrbitSettings(merged as FulcrumSettings, loaded);
+		mergeStandaloneOrbitPluginData(this, merged as FulcrumSettings);
 
 		this.settings = merged as FulcrumSettings;
 
@@ -879,14 +950,13 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (this.settings.timer.totalTimeKey !== this.settings.taskTrackedMinutesField) {
 			this.settings.timer.totalTimeKey = this.settings.taskTrackedMinutesField;
 		}
-		const conduitRaw = (await this.loadData()) as Record<string, unknown> | null;
-		let conduitSync = await loadConduitSyncState(() => Promise.resolve(conduitRaw));
-		conduitSync = pruneConduitSyncState(this.app, conduitSync);
 		const payload = buildPluginPersistedPayload(
 			{...this.settings} as Record<string, unknown>,
 			this.timer?.entryCache ?? {},
-			conduitSync,
 		);
+		if (this.conduitConvertNoticeShown) {
+			payload[CONDUIT_CONVERT_NOTICE_KEY] = true;
+		}
 		try {
 			await this.saveData(payload);
 		} catch (e) {
@@ -896,6 +966,11 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			);
 			throw e;
 		}
+	}
+
+	/** Persist plugin meta flags without changing settings fields. */
+	async savePluginMeta(): Promise<void> {
+		await this.saveSettings();
 	}
 
 	async openTimeTracked(tab: TimeModeTab = this.settings.timeModeTab): Promise<void> {
@@ -1028,6 +1103,17 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	async toggleIndexedTask(task: IndexedTask): Promise<void> {
 		if (!Platform.isDesktop) return;
 		try {
+			if (task.source === "taskNote" && taskIsRecurring(task)) {
+				if (!taskIsDone(task, this.settings)) {
+					await handleRecurringTaskComplete(this.app, task, this.settings);
+				} else {
+					const openStatus = parseTaskStatusChoices(this.settings)[0] ?? "todo";
+					await applyTaskStatusChange(this.app, task, this.settings, openStatus);
+				}
+				await this.vaultIndex.rebuild();
+				return;
+			}
+
 			let apiOk = false;
 			if (task.source === "taskNote" && this.settings.taskNotesHttpApiEnabled) {
 				const ac = new AbortController();
@@ -1116,6 +1202,42 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 	}
 
+	async openPersonFile(file: TFile): Promise<void> {
+		await openPersonFileImpl(this, file);
+	}
+
+	async openPersonMarkdownFile(file: TFile): Promise<void> {
+		await openPersonMarkdownFileImpl(this, file);
+	}
+
+	async appendPersonQuickNote(personFile: TFile, text: string): Promise<void> {
+		await appendPersonQuickNoteImpl(this, personFile, text);
+	}
+
+	async capturePersonSnapshot(personFile: TFile): Promise<void> {
+		await capturePersonSnapshotImpl(this, personFile);
+	}
+
+	async renderOrbitActivityPreview(
+		el: HTMLElement,
+		sourcePath: string,
+		markdown: string,
+	): Promise<void> {
+		await renderOrbitActivityPreviewImpl(this, el, sourcePath, markdown);
+	}
+
+	async openOrgChartForAnchor(anchorPath: string): Promise<void> {
+		await openOrgChartForAnchorImpl(this, anchorPath);
+	}
+
+	async openPersonInOrbitMode(personPath: string): Promise<void> {
+		await openPersonInOrbitModeImpl(this, personPath);
+	}
+
+	openPersonProperties(file: TFile): void {
+		openPersonPropertiesImpl(this, file);
+	}
+
 	async openDashboard(): Promise<void> {
 		await revealOrCreateDashboard(this.app, this.settings);
 	}
@@ -1125,8 +1247,8 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	}
 
 
-	async openAreas(): Promise<void> {
-		await revealOrCreateAreas(this.app, this.settings);
+	async openTasks(): Promise<void> {
+		await revealOrCreateTasks(this.app, this.settings);
 	}
 
 	async openTimeline(): Promise<void> {
@@ -1142,7 +1264,11 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		new Notice("Fulcrum index rebuilt.");
 	}
 
-	async appendProjectLogEntry(projectPath: string, text: string): Promise<boolean> {
+	async appendProjectLogEntry(
+		projectPath: string,
+		text: string,
+		themeId?: string,
+	): Promise<boolean> {
 		const trimmed = text.trim();
 		if (!trimmed) {
 			new Notice("Write something to add to the project note.");
@@ -1153,17 +1279,22 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			new Notice("Project file not found.");
 			return false;
 		}
-		const stamp = new Date().toLocaleString(undefined, {
-			dateStyle: "short",
-			timeStyle: "short",
+		const theme =
+			themeId != null
+				? this.settings.quickNoteThemes?.find((t) => t.id === themeId) ?? null
+				: null;
+		const block = formatQuickNoteLogBlock({
+			text: trimmed,
+			projectLink: projectFileWikilink(this.app, f),
+			projectLinkField: this.settings.projectLinkField,
+			theme,
 		});
-		const line = `- ${stamp} — ${trimmed.replace(/\s+/g, " ")}`;
 		try {
 			await appendFulcrumProjectLog(
 				this.app,
 				f,
 				this.settings.projectLogSectionHeading,
-				line,
+				block,
 			);
 			await this.vaultIndex.rebuild();
 			new Notice("Appended to project note.");

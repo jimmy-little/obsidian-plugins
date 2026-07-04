@@ -113,10 +113,15 @@ export async function convertInlineTaskAtLine(
 	let proj = projectFile;
 	let area = areaFile;
 	if (!proj) {
-		const projectPaths = new Set(
-			host.vaultIndex.getSnapshot().projects.map((p) => p.file.path),
+		const snap = host.vaultIndex.getSnapshot();
+		const projectPaths = new Set(snap.projects.map((p) => p.file.path));
+		proj = firstLinkedProjectFileInLine(
+			host.app,
+			rawLine,
+			file.path,
+			projectPaths,
+			snap.projects,
 		);
-		proj = firstLinkedProjectFileInLine(host.app, rawLine, file.path, projectPaths);
 		if (!proj && projectPaths.has(file.path)) {
 			proj = file;
 		}

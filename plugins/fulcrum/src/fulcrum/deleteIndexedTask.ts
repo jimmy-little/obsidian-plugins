@@ -1,16 +1,7 @@
 import type {App} from "obsidian";
-import type {FulcrumHost} from "./pluginBridge";
 import type {IndexedTask} from "./types";
 
-export async function deleteIndexedTask(
-	app: App,
-	task: IndexedTask,
-	host?: FulcrumHost,
-): Promise<void> {
-	if (host) {
-		await host.deleteConduitReminderForTask(task);
-	}
-
+export async function deleteIndexedTask(app: App, task: IndexedTask): Promise<void> {
 	if (task.source === "taskNote") {
 		await app.vault.delete(task.file);
 		return;

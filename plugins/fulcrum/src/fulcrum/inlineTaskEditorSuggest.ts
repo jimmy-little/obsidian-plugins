@@ -109,19 +109,19 @@ export class InlineTaskEditorSuggest extends EditorSuggest<InlineTaskSuggestItem
 
 		const before = textBeforeCursor(editor, cursor);
 
-		const projectMatch = before.match(/\[\[([^\]|]*)$/u);
-		if (projectMatch) {
-			const start = posAtIndex(cursor.line, before.length - projectMatch[0].length);
-			this.triggerMeta = {kind: "project", emoji: "[["};
-			return {start, end: cursor, query: projectMatch[1] ?? ""};
+		const plusProjectMatch = before.match(/\+\[\[([^\]|]*)$/u);
+		if (plusProjectMatch) {
+			const matchLen = plusProjectMatch[0].length;
+			const start = posAtIndex(cursor.line, before.length - matchLen + 1);
+			this.triggerMeta = {kind: "project", emoji: "+[["};
+			return {start, end: cursor, query: plusProjectMatch[1] ?? ""};
 		}
 
-		const plusProjectMatch = before.match(/(?:^|\s)\+([\w-]*)$/u);
-		if (plusProjectMatch) {
-			const query = plusProjectMatch[1] ?? "";
-			const start = posAtIndex(cursor.line, before.length - query.length - 1);
+		const plusOnlyMatch = before.match(/\+\s*$/u);
+		if (plusOnlyMatch) {
+			const start = posAtIndex(cursor.line, before.length);
 			this.triggerMeta = {kind: "project", emoji: "+"};
-			return {start, end: cursor, query};
+			return {start, end: cursor, query: ""};
 		}
 
 		const tagMatch = before.match(/(?:^|\s)#([\w-]*)$/u);
@@ -193,12 +193,15 @@ export class InlineTaskEditorSuggest extends EditorSuggest<InlineTaskSuggestItem
 
 	private projectSuggestions(query: string): InlineTaskSuggestItem[] {
 		const projects = this.getVaultIndex().getSnapshot().projects;
-		const names = projects.map((p) => p.name);
-		return filterByQuery(names, query, this.limit).map((name) => ({
+		const q = query.toLowerCase();
+		const filtered = q
+			? projects.filter((p) => p.name.toLowerCase().includes(q))
+			: projects;
+		return filtered.slice(0, this.limit).map((project) => ({
 			kind: "project" as const,
-			label: name,
-			detail: "Project",
-			insert: `[[${name}]]`,
+			label: project.name,
+			detail: project.file.parent?.path ?? "Project",
+			insert: `[[${project.name}]]`,
 		}));
 	}
 
@@ -262,8 +265,8 @@ export function registerInlineTaskEditorSuggest(
 	plugin: Plugin,
 	getSettings: () => FulcrumSettings,
 	getVaultIndex: () => VaultIndex,
-): void {
-	plugin.registerEditorSuggest(
-		new InlineTaskEditorSuggest(plugin.app, getSettings, getVaultIndex),
-	);
+): InlineTaskEditorSuggest {
+	const suggest = new InlineTaskEditorSuggest(plugin.app, getSettings, getVaultIndex);
+	plugin.registerEditorSuggest(suggest);
+	return suggest;
 }

@@ -6,7 +6,9 @@ import {parseList, parseTaskStatusChoices} from "./settingsDefaults";
 import type {IndexedTask} from "./types";
 import {taskIsDone} from "./taskCardInteractions";
 import {
+	fileHasTaskCheckboxContent,
 	inlineTaskDisplayTitle,
+	isCheckboxLine,
 	isTaskNoteEmbedBareTitle,
 	parseCheckboxLineTitle,
 	parseInlineTags,
@@ -110,11 +112,13 @@ function resolveProjectFromLi(
 		if (dest instanceof TFile && projectPaths.has(dest.path)) return dest;
 	}
 	const projectPathsSet = projectPaths;
+	const indexedProjects = host.vaultIndex.getSnapshot().projects;
 	return firstLinkedProjectFileInLine(
 		host.app,
 		`- [ ] ${lineText}`,
 		sourcePath,
 		projectPathsSet,
+		indexedProjects,
 	);
 }
 
@@ -250,9 +254,11 @@ function resolveTaskNoteEmbedPresentation(
 	const task = resolveTaskNoteTask(host, taskNoteFile);
 	if (!task) return null;
 
+	const done =
+		liHasChecked(li) || taskIsDone(task, host.settings);
 	return {
 		task,
-		done: liHasChecked(li),
+		done,
 		compact: true,
 		embedHost: lineNo != null ? {file, line: lineNo} : undefined,
 	};
@@ -342,7 +348,7 @@ function updateReadingMount(
 		const task = resolveTaskNoteTask(host, taskNoteFile);
 		if (!task) return;
 		const comp = mountMap.get(li);
-		const done = liHasChecked(li);
+		const done = liHasChecked(li) || taskIsDone(task, host.settings);
 		comp?.$set({task, done});
 		return;
 	}
@@ -476,46 +482,69 @@ export function registerInlineTaskPills(
 	void getSettings;
 }
 
+function shouldScheduleInlineTaskScanForFileChange(
+	app: Plugin["app"],
+	file: TFile,
+): boolean {
+	const view = app.workspace.activeLeaf?.view;
+	if (
+		view instanceof MarkdownView &&
+		view.file?.path === file.path &&
+		view.getMode() !== "preview"
+	) {
+		return isCheckboxLine(view.editor.getLine(view.editor.getCursor().line));
+	}
+	return fileHasTaskCheckboxContent(app, file);
+}
+
 export function registerLivePreviewInlineTaskScan(plugin: Plugin & FulcrumHost): void {
 	let debounceTimer: number | undefined;
 
-	function scanMarkdownLeaves(): void {
-		for (const leaf of plugin.app.workspace.getLeavesOfType("markdown")) {
-			const view = leaf.view;
-			if (!(view instanceof MarkdownView) || !view.file) continue;
-			if (view.getMode() === "preview") continue;
-			transformInlineTasksInRoot(
-				plugin,
-				view.containerEl,
-				view.file.path,
-				view.leaf,
-				false,
-			);
-		}
+	function scanActiveMarkdownLeaf(): void {
+		const leaf = plugin.app.workspace.activeLeaf;
+		const view = leaf?.view;
+		if (!(view instanceof MarkdownView) || !view.file) return;
+		if (view.getMode() === "preview") return;
+		if (!fileHasTaskCheckboxContent(plugin.app, view.file)) return;
+		transformInlineTasksInRoot(
+			plugin,
+			view.containerEl,
+			view.file.path,
+			view.leaf,
+			false,
+		);
 	}
 
 	function scheduleScan(): void {
 		window.clearTimeout(debounceTimer);
 		debounceTimer = window.setTimeout(() => {
 			debounceTimer = undefined;
-			scanMarkdownLeaves();
+			scanActiveMarkdownLeaf();
 		}, 120);
 	}
 
-	const mo = new MutationObserver(() => scheduleScan());
-	mo.observe(plugin.app.workspace.containerEl, {childList: true, subtree: true});
-
 	plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", scheduleScan));
 	plugin.registerEvent(plugin.app.workspace.on("layout-change", scheduleScan));
-	plugin.registerEvent(plugin.app.workspace.on("editor-change", scheduleScan));
+	plugin.registerEvent(
+		plugin.app.workspace.on("editor-change", (editor, view) => {
+			if (!(view instanceof MarkdownView) || !view.file) return;
+			if (view.getMode() === "preview") return;
+			if (!isCheckboxLine(editor.getLine(editor.getCursor().line))) return;
+			scheduleScan();
+		}),
+	);
 	plugin.registerEvent(
 		plugin.app.metadataCache.on("changed", (file) => {
-			if (file instanceof TFile && file.extension === "md") scheduleScan();
+			if (!(file instanceof TFile && file.extension === "md")) return;
+			if (!shouldScheduleInlineTaskScanForFileChange(plugin.app, file)) return;
+			scheduleScan();
 		}),
 	);
 	plugin.registerEvent(
 		plugin.app.vault.on("modify", (file) => {
-			if (file instanceof TFile && file.extension === "md") scheduleScan();
+			if (!(file instanceof TFile && file.extension === "md")) return;
+			if (!fileHasTaskCheckboxContent(plugin.app, file)) return;
+			scheduleScan();
 		}),
 	);
 
@@ -523,6 +552,5 @@ export function registerLivePreviewInlineTaskScan(plugin: Plugin & FulcrumHost):
 
 	plugin.register(() => {
 		window.clearTimeout(debounceTimer);
-		mo.disconnect();
 	});
 }

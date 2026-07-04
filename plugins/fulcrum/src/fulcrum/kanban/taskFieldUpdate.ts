@@ -21,7 +21,34 @@ import {representativeDateForBucket} from "./dateBuckets";
 import {NO_PROJECT, UNASSIGNED_AREA} from "./buildBoard";
 import {handleRecurringTaskComplete, taskIsRecurring} from "../recurrence/recurrenceComplete";
 import type {TaskReminderSpec} from "../types";
-import {presetRecurrence} from "../recurrence/recurrenceEngine";
+import {computeNextOccurrences, presetRecurrence} from "../recurrence/recurrenceEngine";
+import {renameRecurringTaskNoteIfNeeded} from "../recurrence/recurringTaskRename";
+import {fmStringArray} from "../taskFmParse";
+
+function refreshRecurrenceDerivedFields(
+	fm: Record<string, unknown>,
+	settings: FulcrumSettings,
+): void {
+	const recKey = settings.taskRecurrenceField.trim() || "recurrence";
+	const nextKey = settings.taskNextOccurrencesField.trim() || "next_occurrences";
+	const schedKey = settings.taskScheduledDateField;
+	const completeKey = settings.taskCompleteInstancesField.trim() || "complete_instances";
+	const skippedKey = settings.taskSkippedInstancesField.trim() || "skipped_instances";
+
+	const recurrenceRaw = fm[recKey];
+	const recurrence =
+		typeof recurrenceRaw === "string" && recurrenceRaw.trim() ? recurrenceRaw.trim() : "";
+	if (!recurrence) {
+		delete fm[nextKey];
+		return;
+	}
+
+	const scheduled =
+		typeof fm[schedKey] === "string" ? (fm[schedKey] as string) : undefined;
+	const complete = fmStringArray(fm, completeKey);
+	const skipped = fmStringArray(fm, skippedKey);
+	fm[nextKey] = computeNextOccurrences(recurrence, scheduled, complete, skipped, 3);
+}
 
 export async function updateTaskNoteField(
 	app: App,
@@ -39,6 +66,7 @@ export async function updateTaskNoteField(
 				fm[k] = v;
 			}
 		}
+		refreshRecurrenceDerivedFields(fm, settings);
 	});
 }
 
@@ -172,7 +200,10 @@ export async function applyTaskRecurrenceChange(
 	};
 	if (anchor) patch[anchorKey] = anchor;
 	else if (!recurrence) patch[anchorKey] = null;
+
+	const hadRecurrence = !!task.recurrence?.trim();
 	await updateTaskNoteField(app, task, settings, patch);
+	await renameRecurringTaskNoteIfNeeded(app, task.file, hadRecurrence, recurrence);
 }
 
 export async function applyTaskRecurrencePreset(
@@ -274,6 +305,45 @@ export async function applyTaskTagsChange(
 		return;
 	}
 	await updateInlineLine(app, task, (line) => setInlineTaskTags(line, normalized));
+}
+
+/** Add a tag without removing existing tags (case-insensitive dedupe). */
+export async function applyTaskTagAdd(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	tag: string,
+): Promise<void> {
+	const add = tag.trim().replace(/^#/, "");
+	if (!add) return;
+	const existing =
+		task.source === "inline" && task.inlineTags?.length
+			? task.inlineTags
+			: task.tags;
+	const merged = [...existing];
+	const lc = add.toLowerCase();
+	if (!merged.some((t) => t.trim().replace(/^#/, "").toLowerCase() === lc)) {
+		merged.push(add);
+	}
+	await applyTaskTagsChange(app, task, settings, merged);
+}
+
+function mergeDatePreserveTime(existing: string | undefined, dateIso: string): string {
+	const prev = existing?.trim() ?? "";
+	const tMatch = prev.match(/T(\d{2}:\d{2})/);
+	if (tMatch?.[1]) return `${dateIso}T${tMatch[1]}`;
+	return dateIso;
+}
+
+/** Set due date to a calendar day, preserving any existing time component. */
+export async function applyTaskDueChangeToIso(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	dateIso: string,
+): Promise<void> {
+	const value = mergeDatePreserveTime(task.dueDate, dateIso);
+	await applyTaskDueChange(app, task, settings, value);
 }
 
 export async function applyTaskDateChange(

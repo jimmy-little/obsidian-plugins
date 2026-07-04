@@ -6,6 +6,9 @@ node_modules/
 .vault-path.local.json
 Thumbs.db
 
+# Swift Package Manager
+**/.build/
+
 # Xcode / Fulcrum Companion
 companion/**/DerivedData/
 companion/**/*.xcodeproj/

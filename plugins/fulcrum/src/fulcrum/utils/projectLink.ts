@@ -1,5 +1,9 @@
 import {TFile, type App} from "obsidian";
+import type {IndexedProject} from "../types";
 import {parseWikiLink} from "./wikilinks";
+
+/** Inline task project marker: `+[[Project name]]` (distinct from page wikilinks). */
+export const INLINE_PROJECT_LINK_RE = /\+\[\[([^\]]+)\]\]/gu;
 
 function destForRawLink(app: App, raw: unknown, sourcePath: string): TFile | null {
 	if (raw == null) return null;
@@ -15,6 +19,31 @@ function destForRawLink(app: App, raw: unknown, sourcePath: string): TFile | nul
 		}
 	}
 	return null;
+}
+
+function displayFromWikiInner(inner: string): string {
+	const pathPart = inner.split("#")[0] ?? inner;
+	return pathPart.split("|")[0]?.trim() ?? "";
+}
+
+function normalizeProjectKey(value: string): string {
+	return value.trim().toLowerCase();
+}
+
+/** Display target from `+[[note|alias]]` / `+[[note#heading]]`. */
+export function displayFromPlusProjectLinkInner(inner: string): string {
+	return displayFromWikiInner(inner);
+}
+
+/** Format an inline task project link token. */
+export function formatInlineProjectLink(projectBasename: string): string {
+	const safe = projectBasename.replace(/\]\]/g, "");
+	return `+[[${safe}]]`;
+}
+
+/** Remove `+[[project]]` tokens from checkbox body text. */
+export function stripInlineProjectLinks(text: string): string {
+	return text.replace(INLINE_PROJECT_LINK_RE, " ").replace(/\s+/g, " ").trim();
 }
 
 /** Resolve project TFile from task frontmatter. Handles project (single) and projects (TaskNotes array). */
@@ -47,23 +76,140 @@ export function fileLinksToProject(
 	return dest?.path === projectPath;
 }
 
+function resolveProjectDest(
+	app: App,
+	display: string,
+	sourcePath: string,
+	projectPaths: Set<string>,
+): TFile | null {
+	if (!display) return null;
+	const dest = app.metadataCache.getFirstLinkpathDest(display, sourcePath);
+	if (dest instanceof TFile && projectPaths.has(dest.path)) return dest;
+	return null;
+}
+
+/**
+ * Resolve an indexed Fulcrum project from link display text.
+ * Matches indexed project name/basename first, then Obsidian link resolution.
+ */
+export function resolveIndexedProjectByDisplay(
+	app: App,
+	display: string,
+	sourcePath: string,
+	indexedProjects: IndexedProject[],
+	projectPaths: Set<string>,
+): TFile | null {
+	const key = normalizeProjectKey(displayFromPlusProjectLinkInner(display) || display);
+	if (!key) return null;
+
+	for (const project of indexedProjects) {
+		if (normalizeProjectKey(project.name) === key) return project.file;
+		const basename = project.file.basename.replace(/\.md$/i, "");
+		if (normalizeProjectKey(basename) === key) return project.file;
+		const linktext = app.metadataCache.fileToLinktext(project.file, sourcePath, false);
+		if (linktext && normalizeProjectKey(linktext) === key) return project.file;
+	}
+
+	const dest = app.metadataCache.getFirstLinkpathDest(display, sourcePath);
+	if (!(dest instanceof TFile)) return null;
+
+	const direct = indexedProjects.find((p) => p.file.path === dest.path);
+	if (direct) return direct.file;
+
+	for (const project of indexedProjects) {
+		const folder = project.file.parent?.path;
+		if (folder && dest.path.startsWith(`${folder}/`)) return project.file;
+	}
+
+	if (projectPaths.has(dest.path)) return dest;
+	return null;
+}
+
+/** First `+[[project]]` in `line` that resolves to an indexed project. */
+export function firstPlusLinkedProjectFileInLine(
+	app: App,
+	line: string,
+	sourcePath: string,
+	projectPaths: Set<string>,
+	indexedProjects: IndexedProject[] = [],
+): TFile | null {
+	const re = /\+\[\[([^\]]+)\]\]/g;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(line)) !== null) {
+		const inner = m[1];
+		if (!inner) continue;
+		const display = displayFromPlusProjectLinkInner(inner);
+		const dest =
+			indexedProjects.length > 0
+				? resolveIndexedProjectByDisplay(
+						app,
+						display,
+						sourcePath,
+						indexedProjects,
+						projectPaths,
+					)
+				: resolveProjectDest(app, display, sourcePath, projectPaths);
+		if (dest) return dest;
+	}
+	return null;
+}
+
 /** First wikilink in `line` that resolves to a file whose path is in `projectPaths`. */
+export function firstLegacyLinkedProjectFileInLine(
+	app: App,
+	line: string,
+	sourcePath: string,
+	projectPaths: Set<string>,
+	indexedProjects: IndexedProject[] = [],
+): TFile | null {
+	const re = /\[\[([^\]]+)\]\]/g;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(line)) !== null) {
+		const matchIndex = m.index ?? 0;
+		if (matchIndex > 0 && line[matchIndex - 1] === "+") continue;
+		const inner = m[1];
+		if (!inner) continue;
+		const display = displayFromWikiInner(inner);
+		const dest =
+			indexedProjects.length > 0
+				? resolveIndexedProjectByDisplay(
+						app,
+						display,
+						sourcePath,
+						indexedProjects,
+						projectPaths,
+					)
+				: resolveProjectDest(app, display, sourcePath, projectPaths);
+		if (dest) return dest;
+	}
+	return null;
+}
+
+/**
+ * Resolve the project for an inline task line.
+ * Prefers `+[[project]]`; falls back to a legacy bare `[[project]]` when no plus link exists.
+ */
 export function firstLinkedProjectFileInLine(
 	app: App,
 	line: string,
 	sourcePath: string,
 	projectPaths: Set<string>,
+	indexedProjects: IndexedProject[] = [],
 ): TFile | null {
-	const re = /\[\[([^\]]+)\]\]/g;
-	let m: RegExpExecArray | null;
-	while ((m = re.exec(line)) !== null) {
-		const inner = m[1];
-		if (!inner) continue;
-		const pathPart = inner.split("#")[0] ?? inner;
-		const display = pathPart.split("|")[0]?.trim();
-		if (!display) continue;
-		const dest = app.metadataCache.getFirstLinkpathDest(display, sourcePath);
-		if (dest instanceof TFile && projectPaths.has(dest.path)) return dest;
-	}
-	return null;
+	return (
+		firstPlusLinkedProjectFileInLine(
+			app,
+			line,
+			sourcePath,
+			projectPaths,
+			indexedProjects,
+		) ??
+		firstLegacyLinkedProjectFileInLine(
+			app,
+			line,
+			sourcePath,
+			projectPaths,
+			indexedProjects,
+		)
+	);
 }

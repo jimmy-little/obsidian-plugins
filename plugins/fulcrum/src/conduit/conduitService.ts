@@ -1,28 +1,16 @@
-import {Notice, Platform, TFile} from "obsidian";
+import {Notice, Platform} from "obsidian";
 import type FulcrumPlugin from "../main";
-import type {ConduitSyncForce, ConduitSyncResult, RemctlListRow} from "./types";
-import {SyncCoordinator} from "./syncCoordinator";
-import {RemctlClient} from "./remctlClient";
+import type {RemctlListRow} from "./types";
 import {findRemctlBinary} from "./remctlPath";
-import {ConduitSyncIndicator} from "./syncIndicator";
-import {
-	isProjectConduitConnected,
-	isProjectConduitSyncEnabled,
-	findProjectByPath,
-} from "./mappingRegistry";
-import {indexLists} from "./projectListSync";
+import {createRemindersBridge, type RemindersBridge} from "./remindersBridge";
+import {readProjectListId} from "./mapping";
+import {findProjectByPath} from "./mappingRegistry";
 
 export class ConduitService {
-	readonly coordinator: SyncCoordinator;
-	private vaultHooked = false;
-	private indicator: ConduitSyncIndicator | null = null;
-	private intervalTimer: number | undefined;
 	private cachedLists: RemctlListRow[] = [];
+	private bridge: RemindersBridge | null = null;
 
-	constructor(private readonly plugin: FulcrumPlugin) {
-		this.coordinator = new SyncCoordinator(plugin);
-		this.indicator = new ConduitSyncIndicator(plugin);
-	}
+	constructor(private readonly plugin: FulcrumPlugin) {}
 
 	static canRun(settings: {conduitEnabled: boolean}): boolean {
 		return settings.conduitEnabled && Platform.isMacOS;
@@ -31,15 +19,26 @@ export class ConduitService {
 	async start(): Promise<void> {
 		if (!ConduitService.canRun(this.plugin.settings)) return;
 		this.ensureRemctlPathConfigured();
-		this.hookVaultEvents();
-		this.coordinator.stopInterval();
-		this.startInterval();
 		void this.refreshRemindersListCache().catch(() => undefined);
 	}
 
+	async getBridge(): Promise<RemindersBridge> {
+		const url = this.plugin.settings.remindersBridgeUrl.trim();
+		if (this.bridge) {
+			// Retry HTTP when a bridge URL is set but we previously fell back to remctl.
+			if (!url || this.bridge.calendars) return this.bridge;
+		}
+		this.bridge = await createRemindersBridge(this.plugin.settings);
+		return this.bridge;
+	}
+
+	invalidateBridge(): void {
+		this.bridge = null;
+	}
+
 	async refreshRemindersListCache(): Promise<RemctlListRow[]> {
-		const client = new RemctlClient(this.plugin.settings.conduitRemctlPath);
-		this.cachedLists = await client.lists();
+		const bridge = await this.getBridge();
+		this.cachedLists = await bridge.lists();
 		return this.cachedLists;
 	}
 
@@ -50,15 +49,7 @@ export class ConduitService {
 	isProjectConnected(projectPath: string): boolean {
 		const project = findProjectByPath(this.plugin.vaultIndex.getSnapshot().projects, projectPath);
 		if (!project) return false;
-		const listIndex = indexLists(this.cachedLists);
-		return isProjectConduitConnected(this.plugin.app, project, this.plugin.settings, listIndex);
-	}
-
-	isProjectSyncEnabled(projectPath: string): boolean {
-		const project = findProjectByPath(this.plugin.vaultIndex.getSnapshot().projects, projectPath);
-		if (!project) return false;
-		const listIndex = indexLists(this.cachedLists);
-		return isProjectConduitSyncEnabled(this.plugin.app, project, this.plugin.settings, listIndex);
+		return !!readProjectListId(this.plugin.app, project, this.plugin.settings);
 	}
 
 	/** Obsidian GUI apps often lack ~/.local/bin on PATH — persist a discovered full path once. */
@@ -72,143 +63,37 @@ export class ConduitService {
 	}
 
 	stop(): void {
-		this.stopInterval();
-		this.coordinator.stopInterval();
-		this.indicator?.dispose();
-		this.indicator = null;
-	}
-
-	private startInterval(): void {
-		this.stopInterval();
-		const sec = this.plugin.settings.conduitSyncIntervalSeconds;
-		if (sec <= 0) return;
-		const periodMs = sec * 1000;
-		this.intervalTimer = window.setInterval(() => {
-			void this.executeSync("interval", {force: "both", notify: false});
-		}, periodMs);
-	}
-
-	private stopInterval(): void {
-		if (this.intervalTimer != null) {
-			window.clearInterval(this.intervalTimer);
-			this.intervalTimer = undefined;
-		}
-	}
-
-	restartInterval(): void {
-		this.coordinator.stopInterval();
-		this.startInterval();
-	}
-
-	private hookVaultEvents(): void {
-		if (this.vaultHooked) return;
-		this.vaultHooked = true;
-		this.plugin.registerEvent(
-			this.plugin.app.vault.on("modify", (file) => {
-				if (file instanceof TFile && file.extension === "md") {
-					this.coordinator.markVaultActivity();
-				}
-			}),
-		);
-		this.plugin.registerEvent(
-			this.plugin.app.vault.on("create", () => this.coordinator.markVaultActivity()),
-		);
-		this.plugin.registerEvent(
-			this.plugin.app.vault.on("delete", () => this.coordinator.markVaultActivity()),
-		);
-		this.plugin.registerEvent(
-			this.plugin.app.vault.on("rename", () => this.coordinator.markVaultActivity()),
-		);
+		this.invalidateBridge();
 	}
 
 	async runDoctor(): Promise<void> {
 		if (!Platform.isMacOS) {
-			new Notice("Conduit requires macOS.");
+			new Notice("Reminders bridge requires macOS.");
 			return;
 		}
 		try {
-			const client = new RemctlClient(this.plugin.settings.conduitRemctlPath);
-			const {ok} = await client.doctorForAgent();
+			this.invalidateBridge();
+			const bridge = await this.getBridge();
+			const health = await bridge.health();
 			new Notice(
-				ok
-					? "remctl doctor: OK for this Obsidian process."
-					: "remctl doctor failed — grant Reminders and Full Disk Access from Obsidian.",
+				health.ok
+					? `Reminders bridge: OK (${health.detail ?? "connected"}).`
+					: `Reminders bridge failed — ${health.detail ?? "check permissions"}.`,
 			);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
-			new Notice(`remctl not available: ${msg}`);
+			new Notice(`Reminders bridge not available: ${msg}`);
 		}
 	}
 
-	/** Runs a full sync with status bar / toolbar progress (used by retry timer too). */
-	async runSync(
-		reason: string,
-		opts?: {
-			force?: ConduitSyncForce;
-			skipQuiet?: boolean;
-			notify?: boolean;
-			projectPath?: string;
-		},
-	): Promise<ConduitSyncResult> {
-		return this.executeSync(reason, opts);
-	}
-
-	private async executeSync(
-		reason: string,
-		opts?: {
-			force?: ConduitSyncForce;
-			skipQuiet?: boolean;
-			notify?: boolean;
-			projectPath?: string;
-		},
-	): Promise<ConduitSyncResult> {
-		const force = opts?.force ?? "both";
-		let result: ConduitSyncResult = {ok: false, message: "Sync did not run"};
+	async testBridgeConnection(): Promise<boolean> {
 		try {
-			result = await this.coordinator.requestSync(reason, {
-				force,
-				skipQuiet: opts?.skipQuiet,
-				projectPath: opts?.projectPath,
-			});
-			void this.refreshRemindersListCache().catch(() => undefined);
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : String(e);
-			result = {ok: false, message: msg};
-		} finally {
-			const skipFinish =
-				result.deferred && result.deferReason === "sync already running";
-			if (!skipFinish) {
-				this.indicator?.finish(result);
-			}
+			this.invalidateBridge();
+			const bridge = await this.getBridge();
+			const health = await bridge.health();
+			return health.ok;
+		} catch {
+			return false;
 		}
-
-		const notify = opts?.notify !== false;
-		if (notify) {
-			if (result.deferred) {
-				new Notice(`Conduit: sync deferred — ${result.deferReason ?? "waiting"}.`);
-			} else if (result.ok) {
-				new Notice(result.message ?? "Conduit sync complete.");
-			} else {
-				new Notice(result.message ?? "Conduit sync failed.");
-			}
-		}
-		return result;
-	}
-
-	async syncNow(opts?: {
-		force?: ConduitSyncForce;
-		skipQuiet?: boolean;
-		projectPath?: string;
-	}): Promise<void> {
-		if (!ConduitService.canRun(this.plugin.settings)) {
-			new Notice("Enable Conduit in Fulcrum settings (macOS only).");
-			return;
-		}
-		await this.executeSync("manual", opts);
-	}
-
-	async onProjectCompleted(projectPath: string): Promise<void> {
-		if (!ConduitService.canRun(this.plugin.settings)) return;
-		await this.coordinator.archiveCompletedProject(projectPath);
 	}
 }

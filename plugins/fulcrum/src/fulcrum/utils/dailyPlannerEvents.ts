@@ -7,13 +7,16 @@ import {
 } from "obsidian-daily-notes-interface";
 import moment from "moment";
 import type {FulcrumSettings} from "../settingsDefaults";
-import type {IndexedPlannerEvent} from "../types";
+import type {IndexedPlannerEvent, IndexedProject} from "../types";
 import {todayLocalISODate} from "./dates";
 import {parseCheckboxLineTitle} from "./inlineTasks";
-import {minutesToHHmm, parseTimeRangeFromLine, stripTimeRangeFromTitle} from "./dayPlannerTime";
+import {minutesToHHmm} from "./dayPlannerTime";
+import {
+	DEFAULT_PLANNER_BLOCK_TITLE,
+	parsePlannerCheckboxBody,
+} from "./plannerBlockParse";
 
-/** Default label for new planner lines and empty parsed titles. */
-export const DEFAULT_PLANNER_BLOCK_TITLE = "Time block";
+export {DEFAULT_PLANNER_BLOCK_TITLE, plannerTrackedMinutesForProject} from "./plannerBlockParse";
 
 type PartialPos = {start: Pos["start"]; end?: Pos["start"]};
 
@@ -152,6 +155,7 @@ export async function appendTimeBlockToDailyNote(
 export async function indexDailyPlannerEvents(
 	app: App,
 	settings: FulcrumSettings,
+	indexedProjects: IndexedProject[],
 ): Promise<IndexedPlannerEvent[]> {
 	if (!settings.timelineDailyPlannerEnabled) return [];
 
@@ -161,6 +165,7 @@ export async function indexDailyPlannerEvents(
 		1,
 		Math.round(settings.plannerDefaultDurationMinutes) || 30,
 	);
+	const projectPaths = new Set(indexedProjects.map((p) => p.file.path));
 
 	const dailyNotes = getAllDailyNotes();
 	const files = Object.values(dailyNotes);
@@ -189,34 +194,29 @@ export async function indexDailyPlannerEvents(
 			const titleBare = parseCheckboxLineTitle(firstLine);
 			if (titleBare === null) continue;
 
-			const time = parseTimeRangeFromLine(fullText);
-			let title = time ? stripTimeRangeFromTitle(titleBare) : titleBare;
-			if (!title.trim()) title = DEFAULT_PLANNER_BLOCK_TITLE;
-
 			const isChecked = item.task === "x" || item.task === "X";
-			const status = isChecked ? "done" : "todo";
+			const parsed = parsePlannerCheckboxBody({
+				titleBare,
+				fullText,
+				defaultDurationMinutes: defaultDur,
+				isChecked,
+				app,
+				sourcePath: file.path,
+				projectPaths,
+				indexedProjects,
+			});
 
-			if (time) {
-				out.push({
-					file,
-					line: lineNo,
-					dateIso,
-					title,
-					status,
-					startMinutes: time.startMinutes,
-					durationMinutes: time.durationMinutes ?? defaultDur,
-				});
-			} else {
-				out.push({
-					file,
-					line: lineNo,
-					dateIso,
-					title,
-					status,
-					startMinutes: null,
-					durationMinutes: null,
-				});
-			}
+			out.push({
+				file,
+				line: lineNo,
+				dateIso,
+				title: parsed.title,
+				status: parsed.status,
+				startMinutes: parsed.startMinutes,
+				durationMinutes: parsed.durationMinutes,
+				projectFile: parsed.projectFile,
+				trackedMinutes: parsed.trackedMinutes,
+			});
 		}
 	}
 

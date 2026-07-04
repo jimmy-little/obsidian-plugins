@@ -11,6 +11,7 @@
 		ganttRangeTitle,
 		ganttTodayMarkerLeft,
 		ganttZoomDayCount,
+		isOngoingProjectStatus,
 		shiftGanttRangeStart,
 		type GanttVariant,
 		type GanttZoom,
@@ -40,6 +41,10 @@
 	export let includeTasks = true;
 	/** Only show projects/milestones that have dates. */
 	export let onlyDatedItems = false;
+	/** Omit projects with status `ongoing`. */
+	export let excludeOngoingProjects = false;
+	/** Project bars require both startDate and endDate. */
+	export let requireBoundedProjectDates = false;
 
 	let snapshot = plugin.vaultIndex.getSnapshot();
 	$: rev = $indexRevision;
@@ -66,15 +71,19 @@
 		void filterProjectPath;
 		void filterAreaPath;
 		void filterUnassignedProjects;
+		void excludeOngoingProjects;
 		if (filterProjectPath) return [filterProjectPath];
 		const active = snapshot.projects.filter((p) => !isProjectDone(p, plugin.settings));
+		const datedActive = excludeOngoingProjects
+			? active.filter((p) => !isOngoingProjectStatus(p.status))
+			: active;
 		if (filterAreaPath) {
-			return active
+			return datedActive
 				.filter((p) => p.areaFiles.some((af) => af.path === filterAreaPath))
 				.map((p) => p.file.path);
 		}
 		if (filterUnassignedProjects) {
-			return active.filter((p) => p.areaFiles.length === 0).map((p) => p.file.path);
+			return datedActive.filter((p) => p.areaFiles.length === 0).map((p) => p.file.path);
 		}
 		const lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 			projects: snapshot.projects,
@@ -83,7 +92,7 @@
 			areaTypeValue: plugin.settings.areaTypeValue,
 			settings: plugin.settings,
 		});
-		return filterProjectsByAreaFocus(active, areaFilter, lifeModeMap).map((p) => p.file.path);
+		return filterProjectsByAreaFocus(datedActive, areaFilter, lifeModeMap).map((p) => p.file.path);
 	})());
 
 	$: {
@@ -115,6 +124,8 @@
 		milestonesByProject,
 		includeTasks,
 		onlyDatedItems,
+		excludeOngoingProjects,
+		requireBoundedProjectDates,
 		openProject: (path) => {
 			if (onSelectProject) {
 				onSelectProject(path);

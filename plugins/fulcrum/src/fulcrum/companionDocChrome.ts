@@ -1,5 +1,7 @@
 import {MarkdownView, normalizePath, setIcon, TFile, type App, type EventRef} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
+import {timerRevision} from "./stores";
+import type {TimeEntry} from "../timer/types";
 import {collectPeopleRefsFromNoteFrontmatter, extractWikilinksFromText} from "./projectPeople";
 import {buildPersonCardButton} from "./personCardDom";
 import {readTrackedMinutesFromFm} from "./utils/trackedMinutes";
@@ -10,10 +12,18 @@ import {formatTrackedMinutesShort} from "./utils/dates";
 import {leafIsInWorkspace, type FulcrumCompanionLeaf} from "./openBesideFulcrum";
 import {leadingTimelineEmojiFromNoteType} from "./utils/projectActivity";
 
+export type CompanionChromeTimerApi = {
+	findActiveEntryForFile(filePath: string): TimeEntry | null;
+	getActiveEntryElapsedMs(entry: TimeEntry): number;
+	formatTimeAsHHMMSS(ms: number): string;
+};
+
 export type CompanionChromeHost = {
 	readonly app: App;
 	getSettings(): FulcrumSettings;
 	registerEvent(ref: EventRef): void;
+	registerCleanup?(fn: () => void): void;
+	readonly timer?: CompanionChromeTimerApi;
 	/** Start a timer in the open companion note. */
 	startTimerInOpenNote?: (
 		file: TFile,
@@ -22,7 +32,49 @@ export type CompanionChromeHost = {
 	openNoteProperties(file: TFile): void;
 	openProjectSummary(path: string): Promise<void>;
 	createPersonNote(linkText: string, displayName: string): Promise<void>;
+	openPersonFile(file: TFile): Promise<void>;
 };
+
+const trackedTickers = new WeakMap<HTMLElement, () => void>();
+
+function clearTrackedTicker(host: HTMLElement): void {
+	trackedTickers.get(host)?.();
+	trackedTickers.delete(host);
+}
+
+function mountTrackedTimeTicker(
+	chromeHost: HTMLElement,
+	hostCtx: CompanionChromeHost,
+	file: TFile,
+	timeVal: HTMLElement,
+): void {
+	if (!hostCtx.timer) return;
+	const timerApi = hostCtx.timer;
+
+	const s = hostCtx.getSettings();
+	let tickId: number | undefined;
+
+	function update(): void {
+		const active = timerApi.findActiveEntryForFile(file.path);
+		if (active?.startTime) {
+			const elapsed = timerApi.getActiveEntryElapsedMs(active);
+			timeVal.textContent = timerApi.formatTimeAsHHMMSS(elapsed);
+			timeVal.classList.add("fulcrum-companion-time-card__value--live");
+			return;
+		}
+		timeVal.classList.remove("fulcrum-companion-time-card__value--live");
+		const cache = hostCtx.app.metadataCache.getFileCache(file);
+		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
+		const tracked = readTrackedMinutesFromFm(fm, s.taskTrackedMinutesField);
+		timeVal.textContent = tracked > 0 ? formatTrackedMinutesShort(tracked) : "—";
+	}
+
+	update();
+	tickId = window.setInterval(update, 1000);
+	trackedTickers.set(chromeHost, () => {
+		if (tickId != null) window.clearInterval(tickId);
+	});
+}
 
 function fmDisplayString(v: unknown): string {
 	if (v == null) return "";
@@ -240,6 +292,7 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 	const timeLbl = el("div", "fulcrum-companion-time-card__label", "Tracked");
 	timeCard.append(timeVal, timeLbl);
 	actionsRow.append(timeCard);
+	mountTrackedTimeTicker(host, hostCtx, file, timeVal);
 
 	if (actionsRow.childNodes.length > 0) {
 		dates.append(actionsRow);
@@ -255,7 +308,7 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 				person,
 				(path) => {
 					const pf = app.vault.getAbstractFileByPath(path);
-					if (pf instanceof TFile) void app.workspace.getLeaf("tab").openFile(pf);
+					if (pf instanceof TFile) void hostCtx.openPersonFile(pf);
 				},
 				(linkText, displayName) => void hostCtx.createPersonNote(linkText, displayName),
 				"fulcrum-companion-person-card",
@@ -301,6 +354,7 @@ function syncCompanionChrome(host: CompanionChromeHost, companion: FulcrumCompan
 
 	view.contentEl.classList.add("fulcrum-companion-doc");
 	const prev = view.contentEl.querySelector(":scope > .fulcrum-companion-chrome-host");
+	if (prev instanceof HTMLElement) clearTrackedTicker(prev);
 	prev?.remove();
 	view.contentEl.prepend(buildChromeDom(host, file, fm));
 }
@@ -322,8 +376,9 @@ export function registerCompanionDocChrome(
 	host.registerEvent(host.app.workspace.on("file-open", schedule));
 	host.registerEvent(host.app.workspace.on("layout-change", schedule));
 	host.registerEvent(host.app.workspace.on("active-leaf-change", schedule));
+	// Metadata fires on every keystroke; companion chrome only needs frontmatter updates on save.
 	host.registerEvent(
-		host.app.metadataCache.on("changed", (f) => {
+		host.app.vault.on("modify", (f) => {
 			const leaf = companion.current;
 			if (!leaf || !leafIsInWorkspace(host.app, leaf)) return;
 			const v = leaf.view;
@@ -331,6 +386,9 @@ export function registerCompanionDocChrome(
 			if (f instanceof TFile && v.file?.path === f.path) schedule();
 		}),
 	);
+
+	const unsubTimer = timerRevision.subscribe(() => schedule());
+	host.registerCleanup?.(unsubTimer);
 
 	schedule();
 }

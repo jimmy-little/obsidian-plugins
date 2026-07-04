@@ -118,6 +118,10 @@ export interface IndexedPlannerEvent {
 	status: string;
 	startMinutes: number | null;
 	durationMinutes: number | null;
+	/** From `+[[project]]` on the line (inline-task project marker). */
+	projectFile: TFile | null;
+	/** Minutes credited to the project when the block is checked done. */
+	trackedMinutes: number;
 }
 
 export interface IndexedMeeting {
@@ -135,6 +139,8 @@ export interface AtomicNoteRow {
 	file: TFile;
 	status?: string;
 	dateSort: string;
+	/** Full frontmatter date/startTime/startDate when present (may include time). */
+	startTime?: string;
 	dateDisplay: string;
 	trackedMinutes: number;
 	/** Primary label for the row (entry / heading / basename). */
@@ -183,6 +189,8 @@ export interface ProjectPageMeta {
 export interface ProjectRollup {
 	project: IndexedProject;
 	tasks: IndexedTask[];
+	/** Inline checkbox tasks on the project note (`## Project Tasks`). */
+	projectNoteTasks: IndexedTask[];
 	meetings: IndexedMeeting[];
 	/** TaskNotes (and similar) linked to this project. */
 	atomicNotes: AtomicNoteRow[];
@@ -192,8 +200,10 @@ export interface ProjectRollup {
 	overdueTasks: number;
 	completionRatio: number;
 	nextTasks: IndexedTask[];
-	/** Task + atomic + project self + meetings (positive tracked FM if set, else duration minutes). */
+	/** Task + atomic + project self + meetings + done interstitial blocks (positive tracked FM if set, else duration minutes). */
 	aggregatedTrackedMinutes: number;
+	/** Done interstitial planner blocks linked via `+[[project]]`. */
+	plannerTrackedMinutes: number;
 	pageMeta: ProjectPageMeta;
 
 	bannerImageSrc: string | null;

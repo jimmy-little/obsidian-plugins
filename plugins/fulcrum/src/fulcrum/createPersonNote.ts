@@ -1,5 +1,7 @@
 import {normalizePath, Notice, TFile, type App} from "obsidian";
 import type {FulcrumSettings} from "./settingsDefaults";
+import {primaryPeopleDir} from "./people/pathUtils";
+import {revealOrCreateOrbit} from "./openViews";
 
 function sanitizeTitleForFilename(title: string): string {
 	return title
@@ -34,12 +36,7 @@ function uniquePath(app: App, folder: string, basename: string): string {
 	return path;
 }
 
-function resolvePeopleFolder(settings: FulcrumSettings): string {
-	const folder = settings.peopleFolder.trim();
-	return folder ? normalizePath(folder) : "People";
-}
-
-/** Create a people-folder note from a ghost wikilink and open it in a new tab. */
+/** Create a people-folder note from a ghost wikilink and open it in Orbit. */
 export async function createPersonNoteFile(
 	app: App,
 	settings: FulcrumSettings,
@@ -51,7 +48,7 @@ export async function createPersonNoteFile(
 		return null;
 	}
 
-	const folder = resolvePeopleFolder(settings);
+	const folder = primaryPeopleDir(settings.peopleDirs) || "People";
 	await ensureFolder(app, folder);
 	const filenameStem =
 		sanitizeTitleForFilename(displayName) || sanitizeTitleForFilename(opts.linkText);
@@ -68,8 +65,7 @@ export async function createPersonNoteFile(
 		return null;
 	}
 
-	const leaf = app.workspace.getLeaf("tab");
-	await leaf.openFile(file);
+	await revealOrCreateOrbit(app, settings, {personPath: normalizePath(file.path)});
 	new Notice(`Created ${displayName}`);
 	return file;
 }

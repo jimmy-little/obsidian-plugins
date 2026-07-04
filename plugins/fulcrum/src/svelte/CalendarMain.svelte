@@ -33,13 +33,20 @@
 	import {todayLocalISODate} from "../fulcrum/utils/dates";
 	import {
 		taskToCalendarEvent,
+		taskOccurrenceToCalendarEvents,
 		meetingToCalendarEvent,
 		atomicNoteToCalendarEvent,
 		projectColorMap,
 		type CalendarEvent,
 	} from "../fulcrum/utils/calendarEvents";
+	import {isRecurringParentTask, horizonRecurringOccurrenceDates} from "../fulcrum/tasks/horizonRecurringOccurrences";
 	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
 	import {buildTimerCalendarOverlay} from "../fulcrum/utils/timerCalendarOverlay";
+	import {fetchBridgeCalendarEvents} from "../conduit/bridgeCalendar";
+	import {
+		filterAtomicNotesAgainstMeetings,
+		filterExternalCalendarEventsAgainstMeetings,
+	} from "../fulcrum/utils/calendarOccurrenceDedupe";
 	import {
 		applyCalendarEventToSlot,
 		calendarEventDragPayload,
@@ -98,6 +105,8 @@
 
 	let timerOverlayEvents: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
 	let timerOverlayLoadId = 0;
+	let externalCalendarEvents: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
+	let externalCalendarLoadId = 0;
 
 	let dragOverSlot: CalendarDropSlot | null = null;
 	let calendarEventDragActive = false;
@@ -226,6 +235,24 @@
 		? resolveProjectAccentCss(projectColors.get(filterProjectPath))
 		: null;
 
+	$: {
+		void rev;
+		void dates;
+		void plugin.settings.remindersCalendarIds;
+		void plugin.settings.conduitEnabled;
+		const id = ++externalCalendarLoadId;
+		const from = toISODate(startDate);
+		const to = toISODate(addDays(startDate, Math.max(dayCount - 1, 0)));
+		void (async (): Promise<void> => {
+			try {
+				const rows = await fetchBridgeCalendarEvents(plugin.settings, from, to);
+				if (id === externalCalendarLoadId) externalCalendarEvents = rows;
+			} catch {
+				if (id === externalCalendarLoadId) externalCalendarEvents = [];
+			}
+		})();
+	}
+
 	/** Unified calendar events (tasks + meetings + timer overlay) */
 	$: allCalendarEvents = ((): import("../fulcrum/utils/calendarEvents").CalendarEvent[] => {
 		void timerLayers.calendarShowTasks;
@@ -238,13 +265,25 @@
 		void noteAccentCss;
 		const out: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
 		if (timerLayers.calendarShowTasks) {
+			const todayIso = todayLocalISODate();
 			for (const t of datedTasks) {
-				for (const e of taskToCalendarEvent(
-					t,
-					() => plugin.openIndexedTask(t, hoverParentLeaf),
-					projectColors,
-				)) {
-					out.push(e);
+				const open = () => plugin.openIndexedTask(t, hoverParentLeaf);
+				if (isRecurringParentTask(t)) {
+					for (const [idx, iso] of horizonRecurringOccurrenceDates(t, todayIso).entries()) {
+						out.push(
+							...taskOccurrenceToCalendarEvents(
+								t,
+								iso,
+								idx > 0,
+								open,
+								projectColors,
+							),
+						);
+					}
+				} else {
+					for (const e of taskToCalendarEvent(t, open, projectColors)) {
+						out.push(e);
+					}
 				}
 			}
 		}
@@ -260,7 +299,15 @@
 				if (e) out.push(e);
 			}
 		}
-		for (const n of projectAtomicNotes) {
+		const meetingsForNoteDedupe = snapshot.meetings.filter(
+			(m) =>
+				meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap) &&
+				(!filterProjectPath || m.projectFile?.path === filterProjectPath),
+		);
+		for (const n of filterAtomicNotesAgainstMeetings(
+			projectAtomicNotes,
+			meetingsForNoteDedupe,
+		)) {
 			const e = atomicNoteToCalendarEvent(
 				n,
 				() => plugin.openLinkedNoteFromFulcrum(n.file.path, hoverParentLeaf),
@@ -269,6 +316,18 @@
 			if (e) out.push(e);
 		}
 		out.push(...scopedTimerOverlayEvents);
+		if (!filterProjectPath) {
+			const meetingsForDedupe = snapshot.meetings.filter(
+				(m) =>
+					meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap),
+			);
+			out.push(
+				...filterExternalCalendarEventsAgainstMeetings(
+					externalCalendarEvents,
+					meetingsForDedupe,
+				),
+			);
+		}
 		return out;
 	})();
 
@@ -309,7 +368,10 @@
 	}
 
 	function calendarEventKey(e: CalendarEvent): string {
-		if (e.task) return `task:${e.task.file.path}:${e.task.line ?? ""}:${e.dateIso}`;
+		if (e.task) {
+			const occ = e.occurrenceDateIso ?? e.dateIso;
+			return `task:${e.task.file.path}:${e.task.line ?? ""}:${occ}:${e.isGhostOccurrence ? "ghost" : "live"}`;
+		}
 		if (e.meeting) return `meeting:${e.meeting.file.path}:${e.dateIso}`;
 		if (e.planner) return `planner:${e.planner.file.path}:${e.planner.line}`;
 		return `${e.kind}:${e.title}:${e.dateIso}:${e.startMinutes ?? "a"}`;
@@ -640,6 +702,7 @@
 											<button
 												type="button"
 												class="fulcrum-calendar__event fulcrum-calendar__event--{e.kind}"
+												class:fulcrum-calendar__event--ghost={e.isGhostOccurrence}
 												style={e.accentCss ? `--fulcrum-event-accent: ${e.accentCss}` : undefined}
 												data-fulcrum-calendar-event
 												draggable="true"
@@ -703,10 +766,11 @@
 						on:dragleave={(e) => onDropZoneDragLeave(e, iso)}
 						on:drop={(e) => void onDropZoneDrop(e, iso)}
 					>
-						{#each allDay as e (e.task ? `${e.task.file.path}:${e.task.line ?? ""}` : (e.meeting?.file.path ?? ""))}
+						{#each allDay as e (calendarEventKey(e))}
 							<button
 								type="button"
 								class="fulcrum-calendar__event fulcrum-calendar__event--{e.kind}"
+								class:fulcrum-calendar__event--ghost={e.isGhostOccurrence}
 								style={e.accentCss ? `--fulcrum-event-accent: ${e.accentCss}` : undefined}
 								data-fulcrum-calendar-event
 								draggable="true"
@@ -756,13 +820,14 @@
 							{/each}
 						</div>
 						<div class="fulcrum-calendar__day-events-overlay">
-							{#each timed as e (e.task ? `${e.task.file.path}:${e.task.line ?? ""}:${e.startMinutes}` : `${e.meeting?.file.path ?? ""}:${e.startMinutes}`)}
+							{#each timed as e (calendarEventKey(e))}
 								{@const totalMinutes = 24 * 60}
 								{@const topPct = ((e.startMinutes ?? 0) / totalMinutes) * 100}
 								{@const heightPct = ((e.durationMinutes ?? 30) / totalMinutes) * 100}
 								<button
 									type="button"
 									class="fulcrum-calendar__timed-event fulcrum-calendar__timed-event--{e.kind}"
+									class:fulcrum-calendar__timed-event--ghost={e.isGhostOccurrence}
 									style="top: {topPct}%; height: {heightPct}%;{e.accentCss ? ` --fulcrum-event-accent: ${e.accentCss};` : ""}"
 									data-fulcrum-calendar-event
 									draggable="true"

@@ -33,6 +33,7 @@
 	import ProjectListRow from "./ProjectListRow.svelte";
 	import TaskCard from "./TaskCard.svelte";
 	import TaskToolbarActions from "./TaskToolbarActions.svelte";
+	import TaskCreateToolbar from "./TaskCreateToolbar.svelte";
 	import FulcrumViewToolbar from "./shared/FulcrumViewToolbar.svelte";
 
 	export let plugin: FulcrumHost;
@@ -67,11 +68,7 @@
 		lifeModeMap,
 	)).filter((p) => !filterProjectPath || p.file.path === filterProjectPath);
 	$: openTasks = snapshot.tasks
-		.filter(
-			(t) =>
-				!isDoneStatus(t.status, doneTask) &&
-				taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
-		)
+		.filter((t) => taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap))
 		.filter((t) => !filterProjectPath || t.projectFile?.path === filterProjectPath);
 
 	$: kanbanSnapshot = {
@@ -484,6 +481,12 @@
 			<TaskToolbarActions {plugin} />
 		</svelte:fragment>
 	</FulcrumViewToolbar>
+	{/if}
+
+	{#if embedded && filterProjectPath}
+		<div class="fulcrum-kanban__embedded-actions">
+			<TaskCreateToolbar {plugin} projectPath={filterProjectPath} />
+		</div>
 	{/if}
 
 	<div

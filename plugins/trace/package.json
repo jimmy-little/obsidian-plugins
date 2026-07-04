@@ -1,0 +1,30 @@
+{
+	"name": "obsidian-plugin-trace",
+	"version": "0.1.0",
+	"description": "Parse, highlight, filter, and query structured log files (obsidian-suite monorepo)",
+	"main": "main.js",
+	"scripts": {
+		"prebuild": "node ../../tooling/merge-css.mjs",
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -p tsconfig.json --noEmit && node esbuild.config.mjs production",
+		"build:install": "npm run build && node ../../tooling/install-to-vault.mjs .",
+		"test": "vitest run",
+		"release": "node ../../tooling/release-plugin.mjs plugins/trace"
+	},
+	"keywords": ["obsidian", "obsidian-plugin"],
+	"author": "Jimmy Little",
+	"license": "MIT",
+	"dependencies": {
+		"@obsidian-suite/core": "*"
+	},
+	"devDependencies": {
+		"@codemirror/state": "^6.6.0",
+		"@codemirror/view": "^6.40.0",
+		"@types/node": "^16.18.0",
+		"esbuild": "^0.27.0",
+		"obsidian": "latest",
+		"tslib": "2.4.0",
+		"typescript": "^5.6.0",
+		"vitest": "^4.1.8"
+	}
+}

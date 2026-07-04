@@ -1,6 +1,7 @@
 import {
 	App,
 	MarkdownView,
+	normalizePath,
 	type MarkdownPostProcessorContext,
 	MarkdownRenderChild,
 	Modal,
@@ -19,6 +20,7 @@ import type {TimerSettings, QuickStartGroupBy} from "./settings";
 import type {IndexedProject} from "../fulcrum/types";
 import {isUnderFolder} from "../fulcrum/utils/paths";
 import {
+	applyCompletedMemoryOverrides,
 	normalizeTimerEntries,
 	readTimerEntriesFromFm,
 	resolveEntriesWriteKey,
@@ -148,6 +150,9 @@ export class TimerModule {
 	activeTimersPanel: ActiveTimersPanel | null = null;
 	/** Separate instances for the floating pop-out HUD (do not share docked leaf containers). */
 	floatingActiveTimersPanel: ActiveTimersPanel | null = null;
+	dashboardActiveTimersPanel: ActiveTimersPanel | null = null;
+	projectActiveTimersPanel: ActiveTimersPanel | null = null;
+	projectActiveTimersPath: string | null = null;
 	floatingQuickStartPanel: TimerQuickStartView | null = null;
 
 	async loadTimerCache(): Promise<void> {
@@ -211,6 +216,54 @@ export class TimerModule {
 		this.activeTimersPanel?.unmount();
 	}
 
+	async mountDashboardActiveTimers(container: HTMLElement): Promise<void> {
+		if (!this.dashboardActiveTimersPanel) {
+			this.dashboardActiveTimersPanel = new ActiveTimersPanel(this);
+		}
+		await this.dashboardActiveTimersPanel.render(container, {
+			showHeader: false,
+			listLayout: "grid",
+		});
+	}
+
+	async refreshDashboardActiveTimers(): Promise<void> {
+		await this.dashboardActiveTimersPanel?.refresh();
+	}
+
+	unmountDashboardActiveTimers(): void {
+		this.dashboardActiveTimersPanel?.unmount();
+		if (this.dashboardActiveTimersPanel) {
+			this.dashboardActiveTimersPanel = null;
+		}
+	}
+
+	async mountProjectActiveTimers(
+		container: HTMLElement,
+		projectPath: string,
+	): Promise<void> {
+		if (!this.projectActiveTimersPanel) {
+			this.projectActiveTimersPanel = new ActiveTimersPanel(this);
+		}
+		this.projectActiveTimersPath = projectPath;
+		await this.projectActiveTimersPanel.render(container, {
+			showHeader: false,
+			listLayout: "grid",
+			filterProjectPath: projectPath,
+		});
+	}
+
+	async refreshProjectActiveTimers(): Promise<void> {
+		await this.projectActiveTimersPanel?.refresh();
+	}
+
+	unmountProjectActiveTimers(): void {
+		this.projectActiveTimersPanel?.unmount();
+		if (this.projectActiveTimersPanel) {
+			this.projectActiveTimersPanel = null;
+		}
+		this.projectActiveTimersPath = null;
+	}
+
 	async mountFloatingTimersHud(root: HTMLElement): Promise<void> {
 		root.empty();
 		root.addClass("fulcrum-floating-timers");
@@ -243,6 +296,8 @@ export class TimerModule {
 		void this.activityEmbed?.refresh();
 		void this.activeTimersPanel?.refresh();
 		void this.floatingActiveTimersPanel?.refresh();
+		void this.dashboardActiveTimersPanel?.refresh();
+		void this.projectActiveTimersPanel?.refresh();
 		this.host.bumpTimerRevision?.();
 		// Native widget bridge (tabled): this.host.scheduleWidgetBridgeSync?.();
 	}
@@ -930,8 +985,11 @@ export class TimerModule {
 			const previous = this.timeData.get(filePath);
 			const activeInMemory =
 				previous?.entries.filter((e) => e.startTime != null && e.endTime == null) ?? [];
+			const completedInMemory =
+				previous?.entries.filter((e) => e.startTime != null && e.endTime != null) ?? [];
 			const fm = (this.app.metadataCache.getFileCache(file)?.frontmatter ?? {}) as Record<string, unknown>;
 			let entries = readTimerEntriesFromFm(fm, this.settings, filePath);
+			entries = applyCompletedMemoryOverrides(entries, completedInMemory);
 			for (const active of activeInMemory) {
 				if (active.startTime == null) continue;
 				const byIdIdx = active.id
@@ -1384,6 +1442,26 @@ export class TimerModule {
 		}
 		
 		return null;
+	}
+
+	async resolveProjectLink(
+		filePath: string,
+	): Promise<{ displayName: string; projectPath: string } | null> {
+		const projectRaw = await this.getProjectFromFrontmatter(filePath);
+		if (!projectRaw || this.isQuickStartPlaceholder(projectRaw)) return null;
+
+		const displayName = this.displayQuickStartLabel(projectRaw);
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		const link = projectRaw.replace(/\[\[|\]\]/g, "").trim();
+		const dest =
+			this.app.metadataCache.getFirstLinkpathDest(
+				link,
+				file instanceof TFile ? file.path : "",
+			) ?? this.app.metadataCache.getFirstLinkpathDest(link, "");
+		if (!(dest instanceof TFile)) return null;
+
+		const indexed = this.host.vaultIndex.resolveProjectByPath(dest.path);
+		return { displayName, projectPath: indexed?.file.path ?? dest.path };
 	}
 
 	async processLapseButton(codeEl: HTMLElement, templateName: string, ctx: MarkdownPostProcessorContext) {
@@ -4103,11 +4181,12 @@ export class TimerModule {
 
 		// Entries already loaded in memory
 		this.timeData.forEach((pageData, filePath) => {
-			pageData.entries.forEach((entry) => {
+			pageData.entries = normalizeTimerEntries(pageData.entries);
+			for (const entry of pageData.entries) {
 				if (entry.startTime && !entry.endTime) {
 					activeTimers.push({filePath, entry});
 				}
-			});
+			}
 		});
 
 		// Discover active timers in notes not yet loaded (metadata-only scan; read on match)
@@ -4136,7 +4215,36 @@ export class TimerModule {
 		return this.dedupeActiveTimerRows(activeTimers);
 	}
 
+	/** Active timers whose note is this project or whose frontmatter project links here. */
+	async getActiveTimersForProject(
+		projectPath: string,
+	): Promise<Array<{filePath: string; entry: TimeEntry}>> {
+		const normalized = normalizePath(projectPath);
+		const all = await this.getActiveTimers();
+		const filtered: Array<{filePath: string; entry: TimeEntry}> = [];
+
+		for (const row of all) {
+			if (normalizePath(row.filePath) === normalized) {
+				filtered.push(row);
+				continue;
+			}
+			const link = await this.resolveProjectLink(row.filePath);
+			if (link && normalizePath(link.projectPath) === normalized) {
+				filtered.push(row);
+			}
+		}
+
+		return filtered;
+	}
+
 	/** Active timers from in-memory `timeData` only (normalized, one row per note). */
+	findActiveEntryForFile(filePath: string): TimeEntry | null {
+		for (const row of this.listActiveTimersInMemory()) {
+			if (row.filePath === filePath) return row.entry;
+		}
+		return null;
+	}
+
 	listActiveTimersInMemory(): Array<{filePath: string; entry: TimeEntry}> {
 		const rows: Array<{filePath: string; entry: TimeEntry}> = [];
 		this.timeData.forEach((pageData, filePath) => {
@@ -4168,8 +4276,12 @@ export class TimerModule {
 	}
 
 	async stopAllActiveEntriesInFile(filePath: string): Promise<boolean> {
-		const pageData = this.timeData.get(filePath);
-		if (!pageData) return false;
+		let pageData = this.timeData.get(filePath);
+		if (!pageData) {
+			await this.loadEntriesFromFrontmatter(filePath);
+			pageData = this.timeData.get(filePath);
+			if (!pageData) return false;
+		}
 		const actives = pageData.entries.filter(
 			(e) => e.startTime !== null && e.endTime === null,
 		);
@@ -4181,6 +4293,27 @@ export class TimerModule {
 		}
 		pageData.totalTimeTracked = pageData.entries.reduce((sum, e) => sum + e.duration, 0);
 		await this.updateFrontmatter(filePath);
+		const pendingReload = this.timerEntryReloadHandles.get(filePath);
+		if (pendingReload != null) {
+			window.clearTimeout(pendingReload);
+			this.timerEntryReloadHandles.delete(filePath);
+		}
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (file instanceof TFile) {
+			const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
+				| Record<string, unknown>
+				| undefined;
+			const projectRaw = fm?.[this.settings.projectKey];
+			const project = typeof projectRaw === "string" ? projectRaw : null;
+			this.entryCache[filePath] = {
+				lastModified: file.stat.mtime,
+				entries: pageData.entries,
+				project,
+				totalTime: pageData.totalTimeTracked,
+			};
+		}
+		this.refreshTimerWidgetsForFile(filePath);
+		this.updateStatusBar();
 		return true;
 	}
 
@@ -5080,9 +5213,12 @@ class TimerActivityView extends TimerEmbedPanel {
 	refreshCounter: number = 0; // Counter for periodic full refreshes
 	showEntriesList: boolean = true; // Toggle for showing/hiding the entries list section
 	showChart: boolean = true; // Toggle for showing/hiding the chart section
+	private activeTimersPanel: ActiveTimersPanel | null = null;
 
 	async render() {
 		const container = this.panelEl();
+		this.activeTimersPanel?.unmount();
+		this.activeTimersPanel = null;
 		container.empty();
 		this.timeDisplays.clear();
 		
@@ -5135,83 +5271,9 @@ class TimerActivityView extends TimerEmbedPanel {
 			new TimerQuickStartModal(this.app, this.plugin).open();
 		};
 
-		const activeTimers = this.plugin.listActiveTimersInMemory();
-
-		if (activeTimers.length === 0) {
-			container.createEl('p', { text: 'No active timers', cls: 'fulcrum-timer-sidebar-empty' });
-		} else {
-			// Active timers section with card layout
-			for (const { filePath, entry } of activeTimers) {
-				const card = container.createDiv({ cls: 'fulcrum-timer-activity-card' });
-				
-				// Timer row with timer and stop button
-				const timerRow = card.createDiv({ cls: 'fulcrum-timer-activity-timer-row' });
-				
-				// Timer display - big on the left
-				const elapsed = entry.duration + (entry.isPaused ? 0 : (Date.now() - entry.startTime!));
-				const timeText = this.plugin.formatTimeAsHHMMSS(elapsed);
-				const timerDisplay = timerRow.createDiv({ 
-					text: timeText, 
-					cls: 'fulcrum-timer-activity-timer' 
-				});
-				this.timeDisplays.set(entry.id, timerDisplay);
-				
-				// Stop button on the right
-				const stopBtn = timerRow.createEl('button', {
-					cls: 'fulcrum-timer-activity-stop-btn',
-					attr: { 'aria-label': 'Stop timer' }
-				});
-				setIcon(stopBtn, 'square');
-				stopBtn.onclick = async (e) => {
-					e.stopPropagation();
-					await this.plugin.stopAllActiveEntriesInFile(filePath);
-					await this.render();
-				};
-				
-				// Get file name without extension
-				const file = this.app.vault.getAbstractFileByPath(filePath);
-				let fileName = file && file instanceof TFile ? file.basename : filePath.split('/').pop()?.replace('.md', '') || filePath;
-				
-				// Remove timestamps from filename if setting enabled
-				if (this.plugin.settings.hideTimestampsInViews) {
-					fileName = this.plugin.removeTimestampFromFileName(fileName);
-				}
-				
-				// Details container - smaller text below timer
-				const detailsContainer = card.createDiv({ cls: 'fulcrum-timer-activity-details' });
-				
-				// Create link to the note
-				const link = detailsContainer.createEl('a', { 
-					text: fileName,
-					cls: 'fulcrum-timer-activity-page internal-link',
-					href: filePath
-				});
-				
-				// Add click handler to open the note
-				link.onclick = (e) => {
-					e.preventDefault();
-					const file = this.app.vault.getAbstractFileByPath(filePath);
-					if (file && file instanceof TFile) {
-						this.app.workspace.openLinkText(filePath, '', false);
-					}
-				};
-				
-				// Get project from frontmatter
-				const project = await this.plugin.getProjectFromFrontmatter(filePath);
-				
-				// Project (if available)
-				if (project) {
-					const projectColor = await this.plugin.getProjectColor(project);
-					const projectEl = detailsContainer.createDiv({ text: project, cls: 'fulcrum-timer-activity-project' });
-					if (projectColor) {
-						projectEl.style.color = projectColor;
-					}
-				}
-				
-				// Entry label
-				detailsContainer.createDiv({ text: entry.label, cls: 'fulcrum-timer-activity-label' });
-			}
-		}
+		const activeHost = container.createDiv({ cls: "fulcrum-timer-activity-active-host" });
+		this.activeTimersPanel = new ActiveTimersPanel(this.plugin);
+		await this.activeTimersPanel.render(activeHost, { showHeader: false });
 
 		// Get today's entries and group by note (only if entries list is visible)
 		if (this.showEntriesList) {
@@ -5383,58 +5445,14 @@ class TimerActivityView extends TimerEmbedPanel {
 		if (this.refreshCounter >= 60) {
 			this.refreshCounter = 0;
 			// Clear cache for files that have active entries to reload fresh metadata
-			this.plugin.timeData.forEach((pageData, filePath) => {
+			this.plugin.timeData.forEach((_pageData, filePath) => {
 				this.plugin.invalidateCacheForFile(filePath);
 			});
 			await this.render();
 			return;
 		}
-		
-		const currentActiveTimers = this.plugin.listActiveTimersInMemory();
-		
-		const displayedEntryIds = new Set(this.timeDisplays.keys());
-		const activeEntryIds = new Set(currentActiveTimers.map(({ entry }) => entry.id));
-		
-		// Check if we need a full refresh (new timer started or timer stopped)
-		const needsFullRefresh = 
-			currentActiveTimers.length !== displayedEntryIds.size || 
-			![...displayedEntryIds].every(id => activeEntryIds.has(id)) ||
-			!currentActiveTimers.every(({ entry }) => displayedEntryIds.has(entry.id));
-		
-		if (needsFullRefresh) {
-			// New timer started or timer stopped - do full refresh
-			await this.render();
-			return;
-		}
-		
-		// Only update the time displays for existing timers (no full refresh)
-		for (const [entryId, timeDisplay] of this.timeDisplays.entries()) {
-			// Find the entry in timeData
-			let foundEntry: TimeEntry | null = null;
-			
-			for (const [filePath, pageData] of this.plugin.timeData) {
-				for (const entry of pageData.entries) {
-					if (entry.id === entryId && entry.startTime && !entry.endTime) {
-						foundEntry = entry;
-						break;
-					}
-				}
-				if (foundEntry) break;
-			}
-			
-			if (foundEntry && foundEntry.startTime) {
-				const elapsed = foundEntry.duration + (foundEntry.isPaused ? 0 : (Date.now() - foundEntry.startTime));
-				const timeText = this.plugin.formatTimeAsHHMMSS(elapsed);
-				timeDisplay.setText(timeText);
-			} else {
-				// Entry no longer active, remove from map and trigger full refresh
-				this.timeDisplays.delete(entryId);
-				await this.render();
-				return;
-			}
-		}
-		
-		// Also update the pie chart if visible (only if chart is shown)
+
+		// Active timer rows tick independently via ActiveTimersPanel
 		if (this.showChart && this.refreshCounter % 5 === 0) {
 			// Update pie chart every 5 seconds without full refresh
 			const today = new Date();
@@ -5629,6 +5647,8 @@ class TimerActivityView extends TimerEmbedPanel {
 	}
 
 	unmount(): void {
+		this.activeTimersPanel?.unmount();
+		this.activeTimersPanel = null;
 		if (this.refreshInterval) {
 			clearInterval(this.refreshInterval);
 			this.refreshInterval = null;

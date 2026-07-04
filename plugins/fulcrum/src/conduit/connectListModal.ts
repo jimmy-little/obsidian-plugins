@@ -1,8 +1,11 @@
 import {App, FuzzySuggestModal, Notice} from "obsidian";
 import type {FulcrumHost} from "../fulcrum/pluginBridge";
 import type {IndexedProject} from "../fulcrum/types";
-import {connectProjectToReminderList, createReminderListForProject} from "./mappingRegistry";
-import {RemctlClient} from "./remctlClient";
+import {
+	clearProjectReminderList,
+	connectProjectToReminderList,
+	createReminderListForProject,
+} from "./mappingRegistry";
 import {indexLists} from "./projectListSync";
 import type {RemctlListRow} from "./types";
 
@@ -44,13 +47,13 @@ export class ConnectRemindersListModal extends FuzzySuggestModal<ConnectListChoi
 
 	private async apply(item: ConnectListChoice): Promise<void> {
 		try {
-			const remctl = new RemctlClient(this.host.settings.conduitRemctlPath);
-			const lists = await remctl.lists();
+			const bridge = await this.host.getRemindersBridge();
+			const lists = await bridge.lists();
 			const listIndex = indexLists(lists);
 			if (item.kind === "create") {
 				await createReminderListForProject(
 					this.app,
-					remctl,
+					bridge,
 					this.project,
 					this.host.settings,
 					listIndex,
@@ -58,7 +61,7 @@ export class ConnectRemindersListModal extends FuzzySuggestModal<ConnectListChoi
 			} else {
 				await connectProjectToReminderList(
 					this.app,
-					remctl,
+					bridge,
 					this.project,
 					item.row.id,
 					this.host.settings,
@@ -66,10 +69,10 @@ export class ConnectRemindersListModal extends FuzzySuggestModal<ConnectListChoi
 				);
 			}
 			await this.host.vaultIndex.rebuild();
-			new Notice(`"${this.project.name}" syncs with Reminders.`);
+			new Notice(`Reminders list set for "${this.project.name}".`);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
-			new Notice(`Could not connect to Reminders: ${msg}`);
+			new Notice(`Could not set Reminders list: ${msg}`);
 		}
 	}
 }
@@ -81,3 +84,5 @@ export function openConnectRemindersListModal(
 ): void {
 	new ConnectRemindersListModal(host.app, host, project, lists).open();
 }
+
+export {clearProjectReminderList};

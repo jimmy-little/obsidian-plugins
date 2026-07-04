@@ -1,4 +1,4 @@
-import {Menu, Notice, type WorkspaceLeaf} from "obsidian";
+import {Menu, Notice, Platform, type WorkspaceLeaf} from "obsidian";
 import {
 	applyTaskDueChange,
 	applyTaskPriorityChange,
@@ -18,8 +18,14 @@ import {
 	TaskFieldDateModal,
 	TaskRecurrenceModal,
 } from "./modals";
+import {
+	handleRecurringTaskComplete,
+	handleRecurringTaskSkip,
+	taskIsRecurring,
+} from "./recurrence/recurrenceComplete";
 import {deleteIndexedTask} from "./deleteIndexedTask";
 import {convertInlineTaskToNote} from "./convertInlineTaskToNote";
+import {startTaskTimerForCard} from "./taskCardInteractions";
 import type {FulcrumHost} from "./pluginBridge";
 import {waitForNextFileResolved} from "./calendar/calendarTaskSchedule";
 import {parseList, parseTaskStatusChoices} from "./settingsDefaults";
@@ -64,21 +70,6 @@ async function withFileResolved(
 	await fn();
 	await resolved;
 	await afterTaskMutation(host, task);
-}
-
-async function startTaskTimer(host: FulcrumHost, task: IndexedTask): Promise<void> {
-	const projectName = task.projectFile?.basename.replace(/\.md$/i, "") ?? null;
-	try {
-		await host.startTimerInNote(task.file.path, {
-			projectName,
-			noteTitle: task.title,
-		});
-		host.bumpTimerRevision();
-	} catch (e) {
-		console.error(e);
-		const msg = e instanceof Error ? e.message : String(e);
-		new Notice(msg.length < 120 ? msg : "Could not start timer.");
-	}
 }
 
 function addDatePresetSubmenu(
@@ -191,27 +182,45 @@ function addRecurrenceSubmenu(menu: Menu, host: FulcrumHost, task: IndexedTask):
 		item.setTitle("Recurrence");
 		item.setIcon("repeat");
 		const sub = createSubmenu(item);
-		for (const [label, preset] of [
-			["Daily", "daily"],
-			["Weekly", "weekly"],
-			["Monthly", "monthly"],
+		sub.addItem((row) => {
+			row.setTitle("Daily");
+			row.onClick(() => {
+				void withFileResolved(host, task, () =>
+					applyTaskRecurrencePreset(host.app, task, host.settings, "daily"),
+				).catch(handleMenuError);
+			});
+		});
+		for (const [label, freq] of [
+			["Weekly…", "weekly"],
+			["Monthly…", "monthly"],
 		] as const) {
 			sub.addItem((row) => {
 				row.setTitle(label);
 				row.onClick(() => {
-					void withFileResolved(host, task, () =>
-						applyTaskRecurrencePreset(host.app, task, host.settings, preset),
-					).catch(handleMenuError);
+					new TaskRecurrenceModal(
+						host.app,
+						task,
+						host.settings,
+						(rule, anchor) =>
+							withFileResolved(host, task, () =>
+								applyTaskRecurrenceChange(host.app, task, host.settings, rule, anchor),
+							),
+						freq,
+					).open();
 				});
 			});
 		}
 		sub.addItem((row) => {
 			row.setTitle("Custom…");
 			row.onClick(() => {
-				new TaskRecurrenceModal(host.app, task, (rule, anchor) =>
-					withFileResolved(host, task, () =>
-						applyTaskRecurrenceChange(host.app, task, host.settings, rule, anchor),
-					),
+				new TaskRecurrenceModal(
+					host.app,
+					task,
+					host.settings,
+					(rule, anchor) =>
+						withFileResolved(host, task, () =>
+							applyTaskRecurrenceChange(host.app, task, host.settings, rule, anchor),
+						),
 				).open();
 			});
 		});
@@ -221,6 +230,17 @@ function addRecurrenceSubmenu(menu: Menu, host: FulcrumHost, task: IndexedTask):
 				void withFileResolved(host, task, () =>
 					applyTaskRecurrenceChange(host.app, task, host.settings, null),
 				).catch(handleMenuError);
+			});
+		});
+		sub.addSeparator();
+		sub.addItem((row) => {
+			row.setTitle("Skip occurrence");
+			row.setIcon("skip-forward");
+			row.onClick(() => {
+				if (!task.recurrence) return;
+				void withFileResolved(host, task, async () => {
+					await handleRecurringTaskSkip(host.app, task, host.settings);
+				}).catch(handleMenuError);
 			});
 		});
 		sub.addSeparator();
@@ -368,6 +388,24 @@ function addNoteActionsSubmenu(
 					void convertInlineTaskToNote(host, task).catch(handleMenuError);
 				});
 			});
+			if (Platform.isMacOS && host.conduitCanSync()) {
+				sub.addItem((row) => {
+					row.setTitle("Convert to Reminder");
+					row.setIcon("bell");
+					row.onClick(() => {
+						void host.convertTaskToReminder(task).catch(handleMenuError);
+					});
+				});
+			}
+		}
+		if (task.source === "taskNote" && Platform.isMacOS && host.conduitCanSync()) {
+			sub.addItem((row) => {
+				row.setTitle("Convert to Reminder");
+				row.setIcon("bell");
+				row.onClick(() => {
+					void host.convertTaskToReminder(task).catch(handleMenuError);
+				});
+			});
 		}
 		showCopyPathMenuItem(sub, task);
 		showCopyObsidianLinkMenuItem(sub, host.app, host.settings, task);
@@ -405,7 +443,7 @@ function addNoteActionsSubmenu(
 				void (async () => {
 					const ok = await promptDeleteIndexedTask(host.app, task);
 					if (!ok) return;
-					await deleteIndexedTask(host.app, task, host);
+					await deleteIndexedTask(host.app, task);
 					await host.refreshIndex();
 					new Notice("Task deleted.");
 				})().catch(handleMenuError);
@@ -431,7 +469,7 @@ export function showFulcrumTaskContextMenu(
 	menu.addItem((item) => {
 		item.setTitle("Start timer");
 		item.setIcon("play");
-		item.onClick(() => void startTaskTimer(host, task));
+		item.onClick(() => void startTaskTimerForCard(host, task));
 	});
 
 	addStatusSubmenu(menu, host, task);

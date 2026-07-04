@@ -24,8 +24,11 @@ export function getKanbanColumnOrder(
 	return settings.kanbanColumnOrder[kanbanConfigKey(view, dimension)] ?? [];
 }
 
-/** One-time migration from legacy kanbanHiddenStatus/Area arrays. */
-export function migrateKanbanSettings(settings: FulcrumSettings): void {
+/** One-time migration from legacy kanbanHiddenStatus/Area arrays (read from raw loaded data). */
+export function migrateKanbanSettings(
+	settings: FulcrumSettings,
+	raw?: Record<string, unknown>,
+): void {
 	if (!settings.kanbanHiddenColumns || typeof settings.kanbanHiddenColumns !== "object") {
 		settings.kanbanHiddenColumns = {};
 	}
@@ -36,19 +39,36 @@ export function migrateKanbanSettings(settings: FulcrumSettings): void {
 	const hidden = settings.kanbanHiddenColumns;
 	const order = settings.kanbanColumnOrder;
 
+	const legacyHiddenStatus = raw?.kanbanHiddenStatus;
 	if (
-		settings.kanbanHiddenStatus?.length &&
+		Array.isArray(legacyHiddenStatus) &&
+		legacyHiddenStatus.length &&
 		!hidden["projects:status"]?.length
 	) {
-		hidden["projects:status"] = [...settings.kanbanHiddenStatus];
+		hidden["projects:status"] = [...legacyHiddenStatus];
 	}
-	if (settings.kanbanHiddenArea?.length && !hidden["projects:area"]?.length) {
-		hidden["projects:area"] = [...settings.kanbanHiddenArea];
+	const legacyHiddenArea = raw?.kanbanHiddenArea;
+	if (
+		Array.isArray(legacyHiddenArea) &&
+		legacyHiddenArea.length &&
+		!hidden["projects:area"]?.length
+	) {
+		hidden["projects:area"] = [...legacyHiddenArea];
 	}
-	if (settings.kanbanOrderStatus?.length && !order["projects:status"]?.length) {
-		order["projects:status"] = [...settings.kanbanOrderStatus];
+	const legacyOrderStatus = raw?.kanbanOrderStatus;
+	if (
+		Array.isArray(legacyOrderStatus) &&
+		legacyOrderStatus.length &&
+		!order["projects:status"]?.length
+	) {
+		order["projects:status"] = [...legacyOrderStatus];
 	}
-	if (settings.kanbanOrderArea?.length && !order["projects:area"]?.length) {
-		order["projects:area"] = [...settings.kanbanOrderArea];
+	const legacyOrderArea = raw?.kanbanOrderArea;
+	if (
+		Array.isArray(legacyOrderArea) &&
+		legacyOrderArea.length &&
+		!order["projects:area"]?.length
+	) {
+		order["projects:area"] = [...legacyOrderArea];
 	}
 }

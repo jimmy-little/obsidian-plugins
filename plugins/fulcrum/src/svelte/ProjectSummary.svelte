@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type {WorkspaceLeaf} from "obsidian";
+	import {TFile} from "obsidian";
 	import {Menu, setIcon} from "obsidian";
 	import {onMount} from "svelte";
 
@@ -13,7 +13,7 @@
 		};
 	}
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
-	import {indexRevision} from "../fulcrum/stores";
+	import {indexRevision, settingsRevision} from "../fulcrum/stores";
 	import {isDoneStatus, parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
 	import type {AtomicNoteRow, ProjectRollup} from "../fulcrum/types";
 	import {
@@ -33,14 +33,17 @@
 	import {loadActivityFeedPreviews} from "../fulcrum/loadActivityFeedPreviews";
 	import ActivityRow from "./ActivityRow.svelte";
 	import NextUpMeetingCard from "./NextUpMeetingCard.svelte";
+	import TaskCard from "./TaskCard.svelte";
 	import TaskListPanel from "./TaskListPanel.svelte";
 	import KanbanMain from "./KanbanMain.svelte";
 	import CalendarMain from "./CalendarMain.svelte";
 	import GanttMain from "./GanttMain.svelte";
 	import ProjectFilesTab from "./ProjectFilesTab.svelte";
 	import ProjectPageSections from "./ProjectPageSections.svelte";
-	import ConduitProjectToolbar from "./ConduitProjectToolbar.svelte";
 	import PersonCard from "./PersonCard.svelte";
+	import QuickNoteSubmitButton from "./QuickNoteSubmitButton.svelte";
+	import ProjectActiveTimers from "./ProjectActiveTimers.svelte";
+	import ProjectHeaderActiveTimers from "./ProjectHeaderActiveTimers.svelte";
 
 	type ProjectSummaryTab = "overview" | "list" | "board" | "timeline" | "calendar" | "files";
 	const PROJECT_TABS: {id: ProjectSummaryTab; label: string}[] = [
@@ -63,6 +66,7 @@
 	let rollup: ProjectRollup | null = null;
 	let rollupLoadId = 0;
 	let rollupMissing = false;
+	let rollupLoadError = false;
 
 	$: rev = $indexRevision;
 	$: {
@@ -71,18 +75,34 @@
 		if (!plugin.vaultIndex.resolveProjectByPath(projectPath)) {
 			rollupMissing = true;
 			rollup = null;
+			rollupLoadError = false;
 		} else {
 			rollupMissing = false;
+			rollup = null;
+			rollupLoadError = false;
 			const id = ++rollupLoadId;
-			void plugin.vaultIndex.getProjectRollup(projectPath, plugin.settings).then((r) => {
-				if (id === rollupLoadId) rollup = r;
-			});
+			void plugin.vaultIndex
+				.getProjectRollup(projectPath, plugin.settings)
+				.then((r) => {
+					if (id !== rollupLoadId) return;
+					rollup = r;
+					rollupLoadError = r == null;
+				})
+				.catch((err) => {
+					if (id !== rollupLoadId) return;
+					console.error("Fulcrum: failed to load project", projectPath, err);
+					rollup = null;
+					rollupLoadError = true;
+				});
 		}
 	}
 
 	let logEntries: ProjectLogActivityEntry[] = [];
 	let logBusy = false;
 	let logDraft = "";
+
+	$: sRev = $settingsRevision;
+	$: quickNoteThemes = (void sRev, plugin.settings.quickNoteThemes ?? []);
 
 	async function loadLogActivity(): Promise<void> {
 		logEntries = await plugin.loadProjectLogActivity(projectPath);
@@ -106,6 +126,11 @@
 		plugin.openLinkedNoteFromFulcrum(path, hoverParentLeaf);
 	}
 
+	function openPersonPath(path: string): void {
+		const f = plugin.app.vault.getAbstractFileByPath(path);
+		if (f instanceof TFile) void plugin.openPersonFile(f);
+	}
+
 	function openRelatedProject(path: string): void {
 		void plugin.openProjectSummary(path);
 	}
@@ -120,6 +145,24 @@
 		return c;
 	}
 
+	const JIRA_TICKET_RE = /^[A-Z][A-Z0-9]+-\d+$/i;
+
+	function jiraTicketLabel(raw: string): string {
+		const t = raw.trim();
+		if (/^https?:\/\//i.test(t)) {
+			try {
+				const u = new URL(t);
+				const browse = u.pathname.match(/\/browse\/([^/?#]+)/i);
+				if (browse?.[1]) return browse[1];
+				const last = u.pathname.split("/").filter(Boolean).pop();
+				if (last && JIRA_TICKET_RE.test(last)) return last;
+			} catch {
+				/* ignore */
+			}
+		}
+		return t;
+	}
+
 	function jiraHref(raw: string | undefined): string | null {
 		if (!raw?.trim()) return null;
 		const t = raw.trim();
@@ -127,11 +170,11 @@
 		return null;
 	}
 
-	async function appendLog(): Promise<void> {
+	async function appendLog(themeId?: string): Promise<void> {
 		if (logBusy) return;
 		logBusy = true;
 		try {
-			await plugin.appendProjectLogEntry(projectPath, logDraft);
+			await plugin.appendProjectLogEntry(projectPath, logDraft, themeId);
 			logDraft = "";
 			await loadLogActivity();
 		} finally {
@@ -197,7 +240,13 @@
 	$: noteFolderHint =
 		plugin.settings.atomicNoteFolderPrefixes.trim().length === 0;
 
-	$: ticketUrl = rollup ? jiraHref(rollup.pageMeta.jira) : null;
+	$: jiraTicket = rollup?.pageMeta.jira?.trim()
+		? {
+				label: jiraTicketLabel(rollup.pageMeta.jira),
+				href: jiraHref(rollup.pageMeta.jira),
+			}
+		: null;
+	$: ticketUrl = jiraTicket?.href ?? null;
 
 	$: bannerMode = !rollup
 		? "plain"
@@ -307,17 +356,17 @@
 			item.onClick(() => openProjectProperties());
 		});
 		if (plugin.conduitCanSync()) {
-			if (plugin.conduitIsProjectSyncEnabled(projectPath)) {
+			if (plugin.conduitIsProjectConnected(projectPath)) {
 				menu.addItem((item) => {
-					item.setTitle("Stop Sync with Reminders");
+					item.setTitle("Clear Reminders list");
 					item.setIcon("bell-off");
-					item.onClick(() => void plugin.conduitStopRemindersSync(projectPath));
+					item.onClick(() => void plugin.conduitClearProjectReminderList(projectPath));
 				});
 			} else {
 				menu.addItem((item) => {
-					item.setTitle("Sync with Reminders");
+					item.setTitle("Set Reminders list…");
 					item.setIcon("bell");
-					item.onClick(() => void plugin.conduitStartRemindersSync(projectPath));
+					item.onClick(() => void plugin.conduitConnectProject(projectPath));
 				});
 			}
 		}
@@ -370,6 +419,8 @@
 
 {#if rollupMissing}
 	<p class="fulcrum-muted">Project not found in index. Check folder settings and frontmatter.</p>
+{:else if rollupLoadError}
+	<p class="fulcrum-muted">Could not load project. Try reloading the Fulcrum index.</p>
 {:else if !rollup}
 	<p class="fulcrum-muted">Loading project…</p>
 {:else}
@@ -417,7 +468,7 @@
 						{#if rollup.project.areaName}
 							<div class="fulcrum-project-banner__area">{rollup.project.areaName}</div>
 						{/if}
-						{#if rollup.relatedProjects?.length > 0 || rollup.relatedProducts?.length > 0}
+						{#if rollup.relatedProjects?.length > 0 || rollup.relatedProducts?.length > 0 || jiraTicket}
 							<div class="fulcrum-project-banner__related">
 								{#if rollup.relatedProjects?.length > 0}
 									<div class="fulcrum-project-banner__related-row">
@@ -438,7 +489,7 @@
 										{/each}
 									</div>
 								{/if}
-								{#if rollup.relatedProducts?.length > 0}
+								{#if rollup.relatedProducts?.length > 0 || jiraTicket}
 									<div class="fulcrum-project-banner__related-row">
 										{#each rollup.relatedProducts as note (note.file.path)}
 											<button
@@ -455,6 +506,33 @@
 												<span class="fulcrum-project-related-pill__label">{note.name}</span>
 											</button>
 										{/each}
+										{#if jiraTicket}
+											{#if jiraTicket.href}
+												<a
+													href={jiraTicket.href}
+													target="_blank"
+													rel="noopener noreferrer"
+													class="fulcrum-project-related-pill"
+													title={jiraTicket.label}
+												>
+													<span
+														class="fulcrum-project-related-pill__icon"
+														use:bannerBtnIcon={"square-kanban"}
+														aria-hidden="true"
+													></span>
+													<span class="fulcrum-project-related-pill__label">{jiraTicket.label}</span>
+												</a>
+											{:else}
+												<span class="fulcrum-project-related-pill" title={jiraTicket.label}>
+													<span
+														class="fulcrum-project-related-pill__icon"
+														use:bannerBtnIcon={"square-kanban"}
+														aria-hidden="true"
+													></span>
+													<span class="fulcrum-project-related-pill__label">{jiraTicket.label}</span>
+												</span>
+											{/if}
+										{/if}
 									</div>
 								{/if}
 							</div>
@@ -477,6 +555,7 @@
 					</div>
 					<div class="fulcrum-project-banner__head-actions-col">
 						<div class="fulcrum-project-banner__head-actions">
+							<ProjectHeaderActiveTimers {plugin} {projectPath} />
 							{#if statusPillText}
 								<button
 									type="button"
@@ -506,7 +585,6 @@
 								<span class="fulcrum-banner-btn__icon" use:bannerBtnIcon={"circle-ellipsis"} aria-hidden="true"></span>
 							</button>
 						</div>
-						<ConduitProjectToolbar {plugin} {projectPath} />
 					</div>
 				</div>
 			</div>
@@ -592,6 +670,8 @@
 			</div>
 		</div>
 
+		<ProjectActiveTimers {plugin} {projectPath} />
+
 		<section class="fulcrum-section fulcrum-section--quick-notes" aria-label="Quick notes">
 			<div class="fulcrum-quick-notes-row">
 				<textarea
@@ -602,14 +682,11 @@
 					disabled={logBusy}
 					on:keydown={onQuickNoteKeydown}
 				/>
-				<button
-					type="button"
-					class="fulcrum-quick-note-btn"
+				<QuickNoteSubmitButton
 					disabled={logBusy}
-					on:click={() => void appendLog()}
-				>
-					Add Quick Note
-				</button>
+					themes={quickNoteThemes}
+					onSubmit={(themeId) => void appendLog(themeId)}
+				/>
 			</div>
 		</section>
 
@@ -636,7 +713,15 @@
 					>
 						{#each nextUpListItems as item}
 							<li>
-								{#if item.kind === "note" && item.note}
+								{#if item.kind === "task" && item.task}
+									<TaskCard
+										{plugin}
+										task={item.task}
+										done={isDoneStatus(item.task.status, doneTask)}
+										anchorLeaf={hoverParentLeaf}
+										showInlineTimer={true}
+									/>
+								{:else if item.kind === "note" && item.note}
 									<ActivityRow
 										variant="icon"
 										title={item.note.entryTitle}
@@ -698,7 +783,7 @@
 				<h2 class="fulcrum-section--people__title">Related people</h2>
 				<div class="fulcrum-people-grid">
 					{#each rollup.relatedPeople as person (person.file?.path ?? `ghost:${person.linkText}`)}
-						<PersonCard person={person} {plugin} onKnownClick={openPath} />
+						<PersonCard person={person} {plugin} onKnownClick={openPersonPath} />
 					{/each}
 				</div>
 			</section>

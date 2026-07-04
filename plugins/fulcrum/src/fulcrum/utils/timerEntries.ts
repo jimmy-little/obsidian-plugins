@@ -53,6 +53,40 @@ function isActiveEntry(e: TimeEntry): boolean {
 	return e.startTime != null && e.endTime == null;
 }
 
+/**
+ * Prefer in-memory completed entries over stale frontmatter rows still marked running.
+ * Metadata cache can lag behind disk after a stop (especially when the note is open).
+ */
+export function applyCompletedMemoryOverrides(
+	entries: TimeEntry[],
+	completedInMemory: TimeEntry[],
+): TimeEntry[] {
+	if (completedInMemory.length === 0) return entries;
+	const out = entries.slice();
+	for (const completed of completedInMemory) {
+		if (completed.startTime == null || completed.endTime == null) continue;
+		let idx = completed.id ? out.findIndex((e) => e.id === completed.id) : -1;
+		if (idx < 0) {
+			idx = out.findIndex(
+				(e) => e.startTime === completed.startTime && e.endTime == null,
+			);
+		}
+		if (idx >= 0 && out[idx]!.endTime == null) {
+			const duration =
+				completed.duration > 0
+					? completed.duration
+					: Math.max(0, completed.endTime - completed.startTime);
+			out[idx] = {
+				...out[idx]!,
+				endTime: completed.endTime,
+				duration,
+				isPaused: false,
+			};
+		}
+	}
+	return normalizeTimerEntries(out);
+}
+
 /** Keep a single running entry per note (latest startTime); dedupe completed rows. */
 export function normalizeTimerEntries(entries: TimeEntry[]): TimeEntry[] {
 	const deduped = dedupeEntries(entries);

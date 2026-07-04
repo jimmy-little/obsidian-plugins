@@ -737,29 +737,96 @@
 	gap: 0.5rem;
 }
 
+.fulcrum-active-timers__list--grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
+	gap: 0.6rem;
+	align-items: stretch;
+}
+
+/* Active Timers leaf — restyled rows to match Timery card layout */
 .fulcrum-active-timers__row {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 0.45rem;
-	padding: 0.45rem 0.5rem;
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	grid-template-rows: auto auto auto;
+	align-items: center;
+	gap: 2px 10px;
+	padding: 8px 10px 8px 8px;
 	border: 1px solid var(--background-modifier-border);
+	border-left: 4px solid var(--fulcrum-pl-accent, var(--interactive-accent));
 	border-radius: var(--radius-m, 6px);
 	background: var(--background-secondary);
 }
 
+.fulcrum-active-timers__row[data-fulcrum-accent] {
+	border-left-color: var(--fulcrum-pl-accent);
+}
+
+.fulcrum-active-timers__timer-col {
+	grid-column: 1;
+	grid-row: 1 / 4;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	align-self: stretch;
+	gap: 6px;
+	min-width: 88px;
+}
+
+.fulcrum-active-timers__row .fulcrum-timer-timer-container {
+	width: 100%;
+	padding: 6px;
+	gap: 0;
+	border: none;
+	background: transparent;
+}
+
+.fulcrum-active-timers__row .fulcrum-timer-timer-display {
+	font-size: 16px;
+}
+
+.fulcrum-active-timers__row .fulcrum-timer-adjust-buttons {
+	width: 100%;
+}
+
 .fulcrum-active-timers__info {
+	grid-column: 2;
+	grid-row: 1 / 4;
 	flex: 1 1 auto;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
+	justify-content: center;
 	gap: 0.15rem;
 }
 
-.fulcrum-active-timers__note {
+.fulcrum-active-timers__project {
 	font-size: var(--font-ui-small);
 	font-weight: 600;
+	color: var(--fulcrum-pl-accent, var(--text-accent));
+	text-decoration: none;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-active-timers__project:hover {
+	text-decoration: underline;
+}
+
+.fulcrum-active-timers__entry-label {
+	font-size: var(--font-ui-small);
+	font-weight: 500;
 	color: var(--text-normal);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-active-timers__note {
+	font-size: var(--font-ui-smaller, 0.75rem);
+	font-weight: 400;
+	color: var(--text-muted);
 	text-decoration: none;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -771,14 +838,6 @@
 	text-decoration: underline;
 }
 
-.fulcrum-active-timers__entry-label {
-	font-size: var(--font-ui-smaller, 0.75rem);
-	color: var(--text-muted);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
 .fulcrum-active-timers__time {
 	font-size: 1.35rem;
 	font-weight: 700;
@@ -787,19 +846,23 @@
 	line-height: 1.15;
 }
 
+/* Stop button as filled accent circle */
 .fulcrum-active-timers__stop {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	grid-column: 3;
+	grid-row: 2;
 	flex: 0 0 auto;
-	width: 2rem;
-	height: 2rem;
-	margin-top: 0.1rem;
+	width: 28px;
+	height: 28px;
+	min-width: 28px;
 	padding: 0;
 	border: none;
-	border-radius: var(--radius-s, 4px);
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
+	border-radius: 50%;
+	background: var(--fulcrum-pl-accent, var(--interactive-accent));
+	color: var(--fulcrum-timer-play-fg, #ffffff);
+	align-self: center;
 	cursor: pointer;
 }
 
@@ -810,6 +873,17 @@
 .fulcrum-active-timers__stop svg {
 	width: 14px;
 	height: 14px;
+	color: var(--fulcrum-timer-play-fg, #ffffff);
+}
+
+.fulcrum-active-timers__stop svg path,
+.fulcrum-active-timers__stop svg line,
+.fulcrum-active-timers__stop svg polyline,
+.fulcrum-active-timers__stop svg polygon,
+.fulcrum-active-timers__stop svg rect,
+.fulcrum-active-timers__stop svg circle {
+	stroke: var(--fulcrum-timer-play-fg, #ffffff);
+	fill: var(--fulcrum-timer-play-fg, #ffffff);
 }
 
 .fulcrum-active-timers__empty {
@@ -844,6 +918,14 @@
 
 .fulcrum-floating-timers__active-host .fulcrum-active-timers {
 	padding: 0;
+}
+
+.fulcrum-timer-activity-active-host .fulcrum-active-timers {
+	padding: 0;
+}
+
+.fulcrum-timer-activity-active-host .fulcrum-active-timers__empty {
+	margin: 0.5rem 0 1rem;
 }
 
 .fulcrum-floating-timers__quick-host {

@@ -1,4 +1,7 @@
+import type {App} from "obsidian";
 import type {FulcrumSettings} from "../settingsDefaults";
+import {fileMatchesFolderScope, parseFolderPathList} from "./folderScopes";
+import type {IndexedTask} from "../types";
 
 function fmString(fm: Record<string, unknown>, key: string): string | undefined {
 	const v = fm[key];
@@ -32,4 +35,19 @@ export function isTaskNoteFile(
 	const typeField = settings.typeField.trim() || "type";
 	const tVal = fmString(fm, typeField)?.toLowerCase();
 	return tagsIncludeTask(fm, settings.taskTag) || tVal === "task";
+}
+
+/** Inline checklist lines inside a task note (subtasks, not separate Reminders). */
+export function isInlineTaskInTaskNoteFile(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+): boolean {
+	if (task.source !== "inline") return false;
+	const taskNoteRoots = parseFolderPathList(settings.taskNotesFolderPaths);
+	if (!fileMatchesFolderScope(task.file.path, taskNoteRoots)) return false;
+	const fm = app.metadataCache.getFileCache(task.file)?.frontmatter as
+		| Record<string, unknown>
+		| undefined;
+	return isTaskNoteFile(fm, settings);
 }

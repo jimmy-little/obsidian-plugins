@@ -7,25 +7,32 @@
 	import CalendarMain from "./CalendarMain.svelte";
 	import TimeMain from "./TimeMain.svelte";
 	import WeeklyReviewMain from "./WeeklyReviewMain.svelte";
-	import AreasMain from "./AreasMain.svelte";
+	import TasksMain from "./TasksMain.svelte";
 	import ProjectListPanel from "./ProjectListPanel.svelte";
 	import TaskListPanel from "./TaskListPanel.svelte";
 	import {settingsRevision} from "../fulcrum/stores";
 	import ProjectSummary from "./ProjectSummary.svelte";
 	import AreaFilterPanel from "./AreaFilterPanel.svelte";
 	import FulcrumLeafToolbar from "./FulcrumLeafToolbar.svelte";
+	import PeopleListPanel from "../orbit/svelte/PeopleListPanel.svelte";
+	import PersonProfile from "../orbit/svelte/PersonProfile.svelte";
+	import type {OrbitHost} from "../orbit/orbit/pluginHost";
 
 	export let plugin: FulcrumHost;
+	export let orbitHost: OrbitHost;
 	export let hoverParentLeaf: WorkspaceLeaf;
-	export let mainMode: "dashboard" | "review" | "areas" | "project" | "kanban" | "calendar" | "time";
+	export let mainMode: "dashboard" | "review" | "tasks" | "project" | "kanban" | "calendar" | "time" | "orbit";
 	export let projectPath: string | null;
+	export let personPath: string | null = null;
 	export let onSelectDashboard: () => void;
-	export let onSelectAreas: () => void;
+	export let onSelectTasks: () => void;
 	export let onSelectProject: (path: string) => void;
 	export let onSelectKanban: () => void;
 	export let onSelectCalendar: () => void;
 	export let onSelectTime: () => void;
 	export let onSelectWeeklyReview: () => void;
+	export let onSelectOrbit: () => void;
+	export let onSelectPerson: (path: string) => void;
 	/** When set (project mode in Project Manager), project summary shows a back control. */
 	export let onBackFromProject: (() => void) | undefined = undefined;
 	export let projectBackTargetLabel = "";
@@ -52,10 +59,12 @@
 	let pmEl: HTMLDivElement | null = null;
 	let leftWidthPx: number | null = readStoredLeftWidth();
 	let dashboardBtnEl: HTMLButtonElement | null = null;
-	let areasBtnEl: HTMLButtonElement | null = null;
+	let tasksBtnEl: HTMLButtonElement | null = null;
 	let kanbanBtnEl: HTMLButtonElement | null = null;
 	let timeBtnEl: HTMLButtonElement | null = null;
 	let reviewBtnEl: HTMLButtonElement | null = null;
+	let orbitBtnEl: HTMLButtonElement | null = null;
+	let orgChartBtnEl: HTMLButtonElement | null = null;
 	let collapseBtnEl: HTMLButtonElement | null = null;
 
 	$: if (collapseBtnEl) {
@@ -65,8 +74,8 @@
 	$: if (dashboardBtnEl && plugin) {
 		setIcon(dashboardBtnEl, "layout-dashboard");
 	}
-	$: if (areasBtnEl && plugin) {
-		setIcon(areasBtnEl, "folder-tree");
+	$: if (tasksBtnEl && plugin) {
+		setIcon(tasksBtnEl, "sunrise");
 	}
 	$: if (kanbanBtnEl && plugin) {
 		setIcon(kanbanBtnEl, "columns-3");
@@ -77,12 +86,22 @@
 	$: if (reviewBtnEl && plugin) {
 		setIcon(reviewBtnEl, "glasses");
 	}
+	$: if (orbitBtnEl && plugin) {
+		setIcon(orbitBtnEl, "users");
+	}
+	$: if (orgChartBtnEl) {
+		setIcon(orgChartBtnEl, "git-branch");
+	}
 
 	$: selectedProjectPath = mainMode === "project" ? projectPath : null;
+	$: selectedPersonPath = mainMode === "orbit" ? personPath : null;
 	$: sRev = $settingsRevision;
 	$: kanbanView = (void sRev, plugin.settings.kanbanView);
 	$: sidebarShowsTasks =
-		mainMode === "calendar" || (mainMode === "kanban" && kanbanView === "tasks");
+		mainMode === "tasks" ||
+		mainMode === "calendar" ||
+		(mainMode === "kanban" && kanbanView === "tasks");
+	$: sidebarShowsPeople = mainMode === "orbit";
 	$: sidebarProjectDraggable = mainMode === "kanban" && kanbanView === "projects";
 
 	function maxLeftColWidth(): number {
@@ -135,6 +154,16 @@
 		if (Platform.isMobile || window.matchMedia("(max-width: 768px)").matches) {
 			leftCollapsed = true;
 		}
+	}
+
+	function onPersonSelected(path: string): void {
+		collapseLeftIfNarrow();
+		onSelectPerson(path);
+	}
+
+	function openOrgChartForSelection(): void {
+		if (!selectedPersonPath) return;
+		void orbitHost.openOrgChartForAnchor(selectedPersonPath);
 	}
 
 	function onProjectSelected(path: string): void {
@@ -194,20 +223,11 @@
 				<button
 					type="button"
 					class="fulcrum-pm__glyph-btn clickable-icon"
-					class:fulcrum-pm__glyph-btn--active={mainMode === "review"}
-					aria-label="Review"
-					title="Review"
-					bind:this={reviewBtnEl}
-					on:click={onSelectWeeklyReview}
-				></button>
-				<button
-					type="button"
-					class="fulcrum-pm__glyph-btn clickable-icon"
-					class:fulcrum-pm__glyph-btn--active={mainMode === "areas"}
-					aria-label="Areas"
-					title="Areas"
-					bind:this={areasBtnEl}
-					on:click={onSelectAreas}
+					class:fulcrum-pm__glyph-btn--active={mainMode === "tasks"}
+					aria-label="Horizon"
+					title="Horizon"
+					bind:this={tasksBtnEl}
+					on:click={onSelectTasks}
 				></button>
 				<span class="fulcrum-pm__glyph-spacer" aria-hidden="true"></span>
 				<button
@@ -238,14 +258,55 @@
 					bind:this={timeBtnEl}
 					on:click={onSelectTime}
 				></button>
+				<button
+					type="button"
+					class="fulcrum-pm__glyph-btn clickable-icon"
+					class:fulcrum-pm__glyph-btn--active={mainMode === "review"}
+					aria-label="Review"
+					title="Review"
+					bind:this={reviewBtnEl}
+					on:click={onSelectWeeklyReview}
+				></button>
+				<button
+					type="button"
+					class="fulcrum-pm__glyph-btn clickable-icon"
+					class:fulcrum-pm__glyph-btn--active={mainMode === "orbit"}
+					aria-label="Orbit"
+					title="Orbit"
+					bind:this={orbitBtnEl}
+					on:click={onSelectOrbit}
+				></button>
+				{#if mainMode === "orbit"}
+					<span class="fulcrum-pm__glyph-spacer" aria-hidden="true"></span>
+					<button
+						type="button"
+						class="fulcrum-pm__glyph-btn clickable-icon"
+						aria-label="Org chart for selected person"
+						title="Org chart"
+						disabled={!selectedPersonPath}
+						bind:this={orgChartBtnEl}
+						on:click={openOrgChartForSelection}
+					></button>
+				{/if}
 			</div>
 			{#if !leftCollapsed}
-				<div class="fulcrum-pm__left-scroll">
-					{#if sidebarShowsTasks}
+				<div
+					class="fulcrum-pm__left-scroll"
+					class:fulcrum-pm__left-scroll--tasks-fill={mainMode === "tasks"}
+				>
+					{#if sidebarShowsPeople}
+						<PeopleListPanel
+							plugin={orbitHost}
+							selectedPath={selectedPersonPath}
+							onSelectPerson={onPersonSelected}
+						/>
+					{:else if sidebarShowsTasks}
 						<TaskListPanel
 							{plugin}
 							{hoverParentLeaf}
-							scheduleDragContext={mainMode === "calendar" ||
+							showWeekStrip={mainMode === "tasks"}
+							scheduleDragContext={mainMode === "tasks" ||
+								mainMode === "calendar" ||
 								(mainMode === "kanban" && kanbanView === "tasks")}
 						/>
 					{:else}
@@ -258,9 +319,11 @@
 						/>
 					{/if}
 				</div>
-				<div class="fulcrum-pm__left-footer">
-					<AreaFilterPanel {plugin} variant="sidebar-footer" />
-				</div>
+				{#if !sidebarShowsPeople}
+					<div class="fulcrum-pm__left-footer">
+						<AreaFilterPanel {plugin} variant="sidebar-footer" />
+					</div>
+				{/if}
 			{/if}
 		</div>
 	</aside>
@@ -278,6 +341,7 @@
 		class="fulcrum-pm__main fulcrum-view-root"
 		class:fulcrum-pm__main--kanban-fill={mainMode === "kanban"}
 		class:fulcrum-pm__main--project-fill={mainMode === "project" && !!projectPath}
+		class:fulcrum-pm__main--tasks-fill={mainMode === "tasks"}
 	>
 		{#if mainMode === "dashboard"}
 			<header class="fulcrum-pm__main-head">
@@ -291,16 +355,8 @@
 				<FulcrumLeafToolbar {plugin} />
 			</header>
 			<WeeklyReviewMain {plugin} hoverParentLeaf={hoverParentLeaf} />
-		{:else if mainMode === "areas"}
-			<header class="fulcrum-pm__main-head">
-				<h1 class="fulcrum-pm__main-title">Areas</h1>
-				<FulcrumLeafToolbar {plugin} />
-			</header>
-			<AreasMain
-				{plugin}
-				hoverParentLeaf={hoverParentLeaf}
-				onSelectProject={onProjectSelected}
-			/>
+		{:else if mainMode === "tasks"}
+			<TasksMain {plugin} {hoverParentLeaf} />
 		{:else if mainMode === "kanban"}
 			<header class="fulcrum-pm__main-head">
 				<h1 class="fulcrum-pm__main-title">Kanban</h1>
@@ -319,6 +375,18 @@
 				<FulcrumLeafToolbar {plugin} />
 			</header>
 			<TimeMain {plugin} {hoverParentLeaf} activeTab={plugin.settings.timeModeTab} />
+		{:else if mainMode === "orbit"}
+			<header class="fulcrum-pm__main-head">
+				<h1 class="fulcrum-pm__main-title">Orbit</h1>
+				<FulcrumLeafToolbar {plugin} />
+			</header>
+			{#if personPath}
+				{#key personPath}
+					<PersonProfile plugin={orbitHost} filePath={personPath} />
+				{/key}
+			{:else}
+				<p class="fulcrum-muted">Pick a person from the list.</p>
+			{/if}
 		{:else if projectPath}
 			{#key projectPath}
 				<ProjectSummary

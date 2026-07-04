@@ -1,0 +1,186 @@
+/* Trace plugin — token colors and UI */
+
+:root {
+	--trace-color-timestamp: #7ec8e3;
+	--trace-color-success: #6dbf6d;
+	--trace-color-error: #e06c6c;
+	--trace-color-warning: #e5c07b;
+	--trace-color-info: #abb2bf;
+	--trace-color-neutral: #6b6b6b;
+	--trace-color-subject: #c678dd;
+	--trace-color-comment: #5c6370;
+}
+
+.theme-light {
+	--trace-color-timestamp: #1a6a8a;
+	--trace-color-success: #2a7a2a;
+	--trace-color-error: #9a2020;
+	--trace-color-warning: #8a6a00;
+	--trace-color-info: #555b66;
+	--trace-color-neutral: #999999;
+	--trace-color-subject: #6a1a8a;
+	--trace-color-comment: #888888;
+}
+
+/* Inline token highlighting (CM6) */
+.trace-token-timestamp {
+	color: var(--trace-color-timestamp);
+}
+
+.trace-token-status.trace-status-success,
+.trace-cell-status-success {
+	color: var(--trace-color-success);
+}
+
+.trace-token-status.trace-status-error,
+.trace-cell-status-error {
+	color: var(--trace-color-error);
+}
+
+.trace-token-status.trace-status-warning,
+.trace-cell-status-warning {
+	color: var(--trace-color-warning);
+}
+
+.trace-token-status.trace-status-info,
+.trace-cell-status-info {
+	color: var(--trace-color-info);
+}
+
+.trace-token-status.trace-status-neutral,
+.trace-cell-status-neutral,
+.trace-cell-neutral {
+	color: var(--trace-color-neutral);
+}
+
+.trace-token-subject,
+.trace-cell-subject {
+	color: var(--trace-color-subject);
+}
+
+.trace-token-comment,
+.trace-cell-message {
+	color: var(--trace-color-comment);
+}
+
+.trace-cell-timestamp {
+	color: var(--trace-color-timestamp);
+}
+
+/* Filter toolbar */
+.trace-filter-toolbar {
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	background: var(--background-primary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding: 8px 12px;
+	margin-bottom: 8px;
+}
+
+.trace-filter-badge {
+	display: block;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 6px;
+}
+
+.trace-filter-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+
+.trace-filter-date,
+.trace-filter-keyword {
+	padding: 4px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 0.9em;
+}
+
+.trace-filter-keyword {
+	min-width: 120px;
+	flex: 1;
+}
+
+.trace-filter-statuses {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.trace-filter-status-label {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 0.85em;
+}
+
+/* Query block output */
+.trace-query-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9em;
+}
+
+.trace-query-table th,
+.trace-query-table td {
+	border: 1px solid var(--background-modifier-border);
+	padding: 4px 8px;
+	text-align: left;
+}
+
+.trace-block-error {
+	color: var(--text-error);
+}
+
+.trace-block-empty {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.trace-summary-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 4px 0;
+	font-family: var(--font-monospace);
+	font-size: 0.9em;
+}
+
+.trace-summary-key {
+	min-width: 80px;
+	text-align: right;
+}
+
+.trace-summary-bar-wrap {
+	flex: 1;
+	height: 12px;
+	background: var(--background-modifier-border);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.trace-summary-bar {
+	height: 100%;
+	background: var(--interactive-accent);
+}
+
+.trace-summary-count {
+	min-width: 32px;
+	text-align: right;
+	color: var(--text-muted);
+}
+
+.trace-log-line {
+	font-family: var(--font-monospace);
+	font-size: 0.9em;
+}
+
+.trace-custom-status-row {
+	margin-left: 0;
+}

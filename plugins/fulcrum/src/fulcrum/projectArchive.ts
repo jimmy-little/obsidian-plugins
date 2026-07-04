@@ -156,10 +156,28 @@ export function buildSnapshotMarkdown(
 			sortMs: e.sortMs,
 			title,
 			stampLabel: e.stampLabel,
-			chips: [],
+			chips: e.noteType ? [stripWikilinks(e.noteType)] : [],
 		});
 	}
 	actItems.sort((a, b) => b.sortMs - a.sortMs);
+
+	const quickNoteBlocks = [...logEntries]
+		.sort((a, b) => b.sortMs - a.sortMs)
+		.map((e) => e.rawBlock || e.rawLine)
+		.filter(Boolean);
+	const quickNoteLimit = 50;
+
+	if (quickNoteBlocks.length > 0) {
+		lines.push("### Quick notes");
+		for (const block of quickNoteBlocks.slice(0, quickNoteLimit)) {
+			lines.push(block);
+			lines.push("");
+		}
+		if (quickNoteBlocks.length > quickNoteLimit) {
+			lines.push(`- *… and ${quickNoteBlocks.length - quickNoteLimit} more quick notes*`);
+			lines.push("");
+		}
+	}
 
 	if (actItems.length > 0) {
 		lines.push("### Activity");
@@ -188,6 +206,10 @@ export function buildSnapshotMarkdown(
 	}
 
 	return lines.join("\n");
+}
+
+function stripWikilinks(s: string): string {
+	return s.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, "$1").trim();
 }
 
 function escapeTablePipe(s: string): string {

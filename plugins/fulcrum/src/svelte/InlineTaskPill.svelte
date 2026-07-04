@@ -3,10 +3,11 @@
 	import {Platform, setIcon} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {IndexedTask} from "../fulcrum/types";
-	import {dueChip, scheduledChip} from "../fulcrum/utils/taskAgendaDisplay";
+	import {dueChip, scheduledChip, taskStatusRingCss} from "../fulcrum/utils/taskAgendaDisplay";
 	import {displayTagsForTask} from "../fulcrum/utils/taskDisplayTags";
-	import {inlineTaskDisplayTitle} from "../fulcrum/utils/inlineTasks";
+	import {inlineTaskDisplayTitle, setInlineTaskChecked} from "../fulcrum/utils/inlineTasks";
 	import {taskProjectAccentCss} from "../fulcrum/utils/taskCardAccent";
+	import {convertInlineTaskToNote} from "../fulcrum/convertInlineTaskToNote";
 	import {showFulcrumTaskContextMenu} from "../fulcrum/taskContextMenu";
 	import {
 		handleTaskStatusClick,
@@ -18,8 +19,15 @@
 		openEditTaskTitle,
 		stopChipClick,
 	} from "../fulcrum/taskCardInteractions";
+	import {taskIsRecurring} from "../fulcrum/recurrence/recurrenceComplete";
+	import {applyTaskStatusChange} from "../fulcrum/kanban/taskFieldUpdate";
+	import {
+		isDoneStatus,
+		normalizeStatusKey,
+		parseDoneStatusSet,
+		parseTaskStatusChoices,
+	} from "../fulcrum/settingsDefaults";
 	import {settingsRevision} from "../fulcrum/stores";
-	import {toggleInlineTaskLine} from "../fulcrum/taskVaultToggle";
 
 	export let plugin: FulcrumHost;
 	export let task: IndexedTask;
@@ -27,28 +35,34 @@
 	export let anchorLeaf: WorkspaceLeaf | undefined = undefined;
 	/** Full-width row layout for Fulcrum list panels. */
 	export let variant: "default" | "row" = "default";
-	/** TaskNotes embed: status + title only; checkbox toggles host line. */
+	/** Task note wikilink embed on a host checkbox line. */
 	export let compact = false;
 	export let embedHost: {file: import("obsidian").TFile; line: number} | undefined = undefined;
 
 	$: s = plugin.settings;
+	$: isTaskNoteEmbed = task.source === "taskNote" && embedHost != null;
 	$: displayTitle =
 		task.source === "taskNote" ? task.title : inlineTaskDisplayTitle(task.title);
 	$: rev = $settingsRevision;
 	$: due = dueChip(task.dueDate, done);
 	$: sched = scheduledChip(task.scheduledDate, done);
 	$: accentCss = taskProjectAccentCss(plugin, task);
-	$: showScheduled = (void rev, s.inlineTaskShowScheduled);
-	$: showDue = (void rev, s.inlineTaskShowDue);
-	$: showProject = (void rev, s.inlineTaskShowProject);
-	$: showTags = (void rev, s.inlineTaskShowTags);
+	$: statusRingCss = taskStatusRingCss(task, done);
+	$: showScheduled = (void rev,
+		isTaskNoteEmbed ? s.taskNoteCardShowScheduled : s.inlineTaskShowScheduled);
+	$: showDue = (void rev, isTaskNoteEmbed ? s.taskNoteCardShowDue : s.inlineTaskShowDue);
+	$: showProject = (void rev,
+		isTaskNoteEmbed ? s.taskNoteCardShowProject : s.inlineTaskShowProject);
+	$: showTags = (void rev, isTaskNoteEmbed ? s.taskNoteCardShowTags : s.inlineTaskShowTags);
 	$: tags = displayTagsForTask(task, s);
 	$: canToggle = Platform.isDesktop;
+	$: canConvertToNote =
+		task.source === "inline" && task.line != null && variant !== "row";
 
 	$: pillClass = [
 		"fulcrum-task-inline-pill",
 		done ? "fulcrum-task-inline-pill--completed" : "",
-		variant === "row" ? "fulcrum-task-inline-pill--row" : "",
+		variant === "row" ? "fulcrum-task-inline-pill--row" : "fulcrum-task-inline-pill--prose",
 	]
 		.filter(Boolean)
 		.join(" ");
@@ -73,30 +87,82 @@
 		onStatusClick(ev as unknown as MouseEvent);
 	}
 
+	async function syncEmbedHostCheckbox(checked: boolean): Promise<void> {
+		if (!embedHost) return;
+		const lines = (await plugin.app.vault.read(embedHost.file)).split("\n");
+		const line = lines[embedHost.line];
+		if (line === undefined) return;
+		const next = setInlineTaskChecked(line, checked);
+		if (!next || next === line) return;
+		lines[embedHost.line] = next;
+		await plugin.app.vault.modify(embedHost.file, lines.join("\n"));
+	}
+
 	function onStatusClick(ev: MouseEvent): void {
 		if (!canToggle) return;
 		ev.preventDefault();
 		ev.stopPropagation();
-		if (embedHost) {
-			void toggleInlineTaskLine(plugin.app, {
-				file: embedHost.file,
-				line: embedHost.line,
-				source: "inline",
-				title: "",
-				status: "",
-				projectFile: null,
-				areaFile: null,
-				tags: [],
-				createdAtMs: embedHost.file.stat.ctime,
-				trackedMinutes: 0,
-			}).then(() => plugin.refreshIndex());
+		if (isTaskNoteEmbed) {
+			const statuses = parseTaskStatusChoices(plugin.settings);
+			if (statuses.length === 2 && taskIsRecurring(task)) {
+				handleTaskStatusClick(ev, plugin, task);
+				return;
+			}
+			if (statuses.length === 2) {
+				const current = (task.status ?? "").trim().toLowerCase();
+				const next =
+					statuses.find((st) => st.trim().toLowerCase() !== current) ?? statuses[0]!;
+				const doneSet = parseDoneStatusSet(plugin.settings.taskDoneStatuses);
+				const yamlDone = plugin.settings.taskNoteYamlStatusDone.trim().toLowerCase();
+				void (async () => {
+					await applyTaskStatusChange(plugin.app, task, plugin.settings, next);
+					const isDone =
+						isDoneStatus(next, doneSet) ||
+						(yamlDone.length > 0 && normalizeStatusKey(next) === yamlDone);
+					await syncEmbedHostCheckbox(isDone);
+					await plugin.refreshIndex();
+				})().catch(console.error);
+				return;
+			}
+			handleTaskStatusClick(ev, plugin, task);
 			return;
 		}
 		handleTaskStatusClick(ev, plugin, task);
 	}
 
+	$: canConvertToReminder =
+		Platform.isMacOS && plugin.conduitCanSync() && task.source === "inline" && !done;
+
+	function onConvertToReminderClick(ev: MouseEvent): void {
+		stopChipClick(ev);
+		void plugin.convertTaskToReminder(task).then(() => plugin.refreshIndex());
+	}
+
+	function onConvertToNoteClick(ev: MouseEvent): void {
+		stopChipClick(ev);
+		void convertInlineTaskToNote(plugin, task).then(() => plugin.refreshIndex());
+	}
+
 	function bindOpenNoteIcon(node: HTMLElement) {
 		setIcon(node, "file-edit");
+		return {
+			destroy() {
+				node.empty();
+			},
+		};
+	}
+
+	function bindConvertNoteIcon(node: HTMLElement) {
+		setIcon(node, "file-check");
+		return {
+			destroy() {
+				node.empty();
+			},
+		};
+	}
+
+	function bindConvertReminderIcon(node: HTMLElement) {
+		setIcon(node, "bell");
 		return {
 			destroy() {
 				node.empty();
@@ -120,6 +186,7 @@
 		class="fulcrum-task-inline-pill__status"
 		class:fulcrum-task-inline-pill__status--done={done}
 		class:fulcrum-task-inline-pill__status--readonly={!canToggle}
+		style={done ? undefined : `border-color: ${statusRingCss}`}
 		title={canToggle ? "Change status" : "Open the note to edit (mobile)"}
 		on:click|stopPropagation={onStatusClick}
 		on:keydown|stopPropagation={onStatusKeydown}
@@ -140,7 +207,7 @@
 		{displayTitle}
 	</button>
 
-	{#if !compact && showDue && due.text}
+	{#if showDue && due.text}
 		<button
 			type="button"
 			class="fulcrum-task-inline-pill__meta fulcrum-task-inline-pill__due"
@@ -158,7 +225,7 @@
 		</button>
 	{/if}
 
-	{#if !compact && showScheduled && sched.text}
+	{#if showScheduled && sched.text}
 		<button
 			type="button"
 			class="fulcrum-task-inline-pill__meta fulcrum-task-inline-pill__scheduled"
@@ -176,7 +243,7 @@
 		</button>
 	{/if}
 
-	{#if !compact && showProject}
+	{#if showProject}
 		<button
 			type="button"
 			class="fulcrum-task-inline-pill__meta fulcrum-task-inline-pill__project"
@@ -190,7 +257,7 @@
 		</button>
 	{/if}
 
-	{#if !compact && showTags}
+	{#if showTags}
 		{#each tags as tag}
 			<button
 				type="button"
@@ -206,18 +273,39 @@
 		{/each}
 	{/if}
 
-	{#if !compact}
-	<button
-		type="button"
-		class="fulcrum-task-inline-pill__open-note"
-		title="Open in editor"
-		aria-label="Open in editor"
-		on:click|stopPropagation={(e) => {
-			stopChipClick(e);
-			plugin.openIndexedTask(task, anchorLeaf);
-		}}
-	>
-		<span class="fulcrum-task-inline-pill__open-note-icon" use:bindOpenNoteIcon aria-hidden="true"></span>
-	</button>
+	{#if canConvertToNote}
+		<button
+			type="button"
+			class="fulcrum-task-inline-pill__to-note"
+			title="Convert to task note"
+			aria-label="Convert to task note"
+			on:click={onConvertToNoteClick}
+		>
+			<span class="fulcrum-task-inline-pill__to-note-icon" use:bindConvertNoteIcon aria-hidden="true"></span>
+		</button>
+	{/if}
+	{#if canConvertToReminder}
+		<button
+			type="button"
+			class="fulcrum-task-inline-pill__to-reminder"
+			title="Convert to Reminder"
+			aria-label="Convert to Reminder"
+			on:click={onConvertToReminderClick}
+		>
+			<span class="fulcrum-task-inline-pill__to-reminder-icon" use:bindConvertReminderIcon aria-hidden="true"></span>
+		</button>
+	{:else if task.source === "taskNote"}
+		<button
+			type="button"
+			class="fulcrum-task-inline-pill__open-note"
+			title="Open task note"
+			aria-label="Open task note"
+			on:click|stopPropagation={(e) => {
+				stopChipClick(e);
+				plugin.openIndexedTask(task, anchorLeaf);
+			}}
+		>
+			<span class="fulcrum-task-inline-pill__open-note-icon" use:bindOpenNoteIcon aria-hidden="true"></span>
+		</button>
 	{/if}
 </div>

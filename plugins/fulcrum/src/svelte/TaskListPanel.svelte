@@ -23,9 +23,19 @@
 	import FulcrumFacetRow from "./shared/FulcrumFacetRow.svelte";
 	import FulcrumFilterPopover from "./shared/FulcrumFilterPopover.svelte";
 	import FulcrumScheduleDropOptions from "./shared/FulcrumScheduleDropOptions.svelte";
+	import TasksWeekStrip from "./TasksWeekStrip.svelte";
+	import FulcrumCollapsibleHead from "./shared/FulcrumCollapsibleHead.svelte";
+	import TaskCreateToolbar from "./TaskCreateToolbar.svelte";
+	import {
+		loadCollapsedGroupKeys,
+		saveCollapsedGroupKeys,
+		toggleCollapsedGroupKey,
+	} from "../fulcrum/utils/collapsibleGroups";
 
 	const NONE_KEY = "__none__";
 	const FACETS_COLLAPSED_KEY = "fulcrum-task-sidebar-facets-collapsed";
+	const GROUPS_COLLAPSED_KEY = "fulcrum-task-sidebar-groups-collapsed";
+	const UNSCHEDULED_COLLAPSED_KEY = "fulcrum-task-sidebar-unscheduled-collapsed";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -33,17 +43,21 @@
 	export let embedded = false;
 	/** When true, show unscheduled drag rows and “Set date as” (calendar / kanban tasks sidebar). */
 	export let scheduleDragContext = false;
+	/** Tasks view: week strip with task counts above the card list. */
+	export let showWeekStrip = false;
 
 	let facetsCollapsed = false;
 	let filterOpen = false;
 	let filterAnchorEl: HTMLDivElement | null = null;
 	let searchQuery = "";
-	let collapsedGroupKeys: string[] = [];
+	let collapsedGroupKeys = loadCollapsedGroupKeys(GROUPS_COLLAPSED_KEY);
+	let unscheduledCollapsed = false;
 	let draggedTaskKey: string | null = null;
 
 	onMount(() => {
 		try {
 			if (localStorage.getItem(FACETS_COLLAPSED_KEY) === "1") facetsCollapsed = true;
+			if (localStorage.getItem(UNSCHEDULED_COLLAPSED_KEY) === "1") unscheduledCollapsed = true;
 		} catch {
 			/* ignore */
 		}
@@ -135,6 +149,18 @@
 		return statusPass && projectPass;
 	}
 
+	/** Project list tab is already scoped; global sidebar facet filters should not hide tasks. */
+	function taskPassesListFilters(t: IndexedTask): boolean {
+		if (!taskMatchesSearchQuery(t, searchQuery.trim().toLowerCase(), snapshot)) return false;
+		if (filterProjectPath) return true;
+		return taskPassesSidebarFilters(t);
+	}
+
+	/** Unscheduled tasks live in a separate section only when calendar drag is enabled. */
+	function taskInMainList(t: IndexedTask): boolean {
+		return !scheduleDragContext || !isUnscheduled(t);
+	}
+
 	function taskMatchesSearchQuery(t: IndexedTask, q: string, snap: IndexSnapshot): boolean {
 		if (!q) return true;
 		if (t.title.toLowerCase().includes(q)) return true;
@@ -147,10 +173,7 @@
 
 	$: unscheduledTasks = sortIndexedTasks(
 		openTasksRaw.filter(
-			(t) =>
-				isUnscheduled(t) &&
-				taskPassesSidebarFilters(t) &&
-				taskMatchesSearchQuery(t, searchQuery.trim().toLowerCase(), snapshot),
+			(t) => isUnscheduled(t) && taskPassesListFilters(t),
 		),
 		"name",
 		"asc",
@@ -191,15 +214,9 @@
 		return out;
 	})();
 
-	$: searchFiltered = ((): IndexedTask[] => {
-		const q = searchQuery.trim().toLowerCase();
-		return openTasksRaw.filter(
-			(t) =>
-				!isUnscheduled(t) &&
-				taskPassesSidebarFilters(t) &&
-				taskMatchesSearchQuery(t, q, snapshot),
-		);
-	})();
+	$: searchFiltered = openTasksRaw.filter(
+		(t) => taskInMainList(t) && taskPassesListFilters(t),
+	);
 
 	$: groupBy = (void sRev, plugin.settings.taskSidebarGroupBy);
 	$: effectiveGroupBy =
@@ -268,6 +285,8 @@
 					: undefined,
 		}));
 	})();
+
+	$: visibleGroupedTaskCount = taskGroups.reduce((n, g) => n + g.tasks.length, 0);
 
 	async function onGroupByChange(ev: Event): Promise<void> {
 		const v = (ev.currentTarget as HTMLSelectElement).value as TaskSidebarGroupBy;
@@ -356,16 +375,18 @@
 		return `${effectiveGroupBy}:${label}`;
 	}
 
-	function isGroupCollapsed(label: string): boolean {
-		return collapsedGroupKeys.includes(groupKey(label));
-	}
-
 	function toggleGroup(label: string): void {
 		const key = groupKey(label);
-		if (collapsedGroupKeys.includes(key)) {
-			collapsedGroupKeys = collapsedGroupKeys.filter((k) => k !== key);
-		} else {
-			collapsedGroupKeys = [...collapsedGroupKeys, key];
+		collapsedGroupKeys = toggleCollapsedGroupKey(collapsedGroupKeys, key);
+		saveCollapsedGroupKeys(GROUPS_COLLAPSED_KEY, collapsedGroupKeys);
+	}
+
+	function toggleUnscheduledCollapsed(): void {
+		unscheduledCollapsed = !unscheduledCollapsed;
+		try {
+			localStorage.setItem(UNSCHEDULED_COLLAPSED_KEY, unscheduledCollapsed ? "1" : "0");
+		} catch {
+			/* ignore */
 		}
 	}
 
@@ -389,7 +410,16 @@
 
 <svelte:window on:click={handleFilterClickOutside} />
 
-<div class="fulcrum-task-list-panel fulcrum-project-list-panel">
+<div class="fulcrum-task-list-panel fulcrum-project-list-panel" class:fulcrum-task-list-panel--tasks-view={showWeekStrip}>
+	<div
+		class="fulcrum-task-list-panel__top"
+		class:fulcrum-task-list-panel__sticky-head={showWeekStrip}
+	>
+	{#if embedded && filterProjectPath}
+		<div class="fulcrum-task-list-panel__embedded-actions">
+			<TaskCreateToolbar {plugin} projectPath={filterProjectPath} />
+		</div>
+	{/if}
 	{#if !embedded}
 	<FulcrumFacetPanel
 		collapsed={facetsCollapsed}
@@ -477,12 +507,29 @@
 	</FulcrumFacetPanel>
 	{/if}
 
+	{#if showWeekStrip}
+		<TasksWeekStrip {plugin} />
+	{/if}
+	</div>
+
+	<div class:fulcrum-task-list-panel__scroll-body={showWeekStrip || embedded}>
+
 	{#if scheduleDragContext}
 	<section class="fulcrum-task-list-panel__unscheduled" aria-label="Unscheduled tasks">
-		<div class="fulcrum-task-list-panel__unscheduled-head">
-			<h3 class="fulcrum-task-list-panel__unscheduled-title">Unscheduled</h3>
-			<FulcrumScheduleDropOptions value={scheduleDateMode} onChange={onScheduleModeChange} />
+		<div class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle">
+			<FulcrumCollapsibleHead
+				title="Unscheduled"
+				suffix="({unscheduledTasks.length})"
+				expanded={!unscheduledCollapsed}
+				onToggle={toggleUnscheduledCollapsed}
+			/>
+			{#if !showWeekStrip && !unscheduledCollapsed}
+				<div class="fulcrum-task-list-panel__unscheduled-schedule">
+					<FulcrumScheduleDropOptions value={scheduleDateMode} onChange={onScheduleModeChange} />
+				</div>
+			{/if}
 		</div>
+		{#if !unscheduledCollapsed}
 		{#if unscheduledTasks.length === 0}
 			<p class="fulcrum-muted fulcrum-task-list-panel__unscheduled-empty">No unscheduled tasks.</p>
 		{:else}
@@ -514,6 +561,7 @@
 				{/each}
 			</ul>
 		{/if}
+		{/if}
 	</section>
 	{/if}
 
@@ -521,7 +569,7 @@
 		<p class="fulcrum-muted fulcrum-project-list-panel__empty">No open tasks in index.</p>
 	{:else if effectiveGroupBy === "none"}
 		{#if flatTasks.length === 0}
-			<p class="fulcrum-muted fulcrum-project-list-panel__empty">No scheduled tasks match your filters.</p>
+			<p class="fulcrum-muted fulcrum-project-list-panel__empty">No tasks match your filters.</p>
 		{:else}
 		<ul class="fulcrum-task-list-panel__list">
 			{#each flatTasks as task (calendarTaskDragKey(task))}
@@ -549,32 +597,17 @@
 	{:else}
 		{#each taskGroups as group (group.label)}
 			{#if group.tasks.length > 0}
+				{@const groupCollapsed = collapsedGroupKeys.has(groupKey(group.label))}
 				<section class="fulcrum-project-list-panel__group">
 					{#if group.label}
 						<div class="fulcrum-project-list-panel__group-header fulcrum-project-list-panel__group-header--toggle">
-							<button
-								type="button"
-								class="fulcrum-project-list-panel__group-toggle"
-								aria-expanded={!isGroupCollapsed(group.label)}
-								on:click={() => toggleGroup(group.label)}
-							>
-								<span
-									class="fulcrum-project-list-panel__group-chevron"
-									class:fulcrum-project-list-panel__group-chevron--collapsed={isGroupCollapsed(group.label)}
-									aria-hidden="true"
-								>▾</span>
-								{#if group.area}
-									{#if group.area.icon?.trim()}
-										<span class="fulcrum-area-icon">{group.area.icon}</span>
-									{/if}
-									<span class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-text">{group.label}</span>
-								{:else}
-									<span class="fulcrum-dashboard__area-group-title fulcrum-project-list-panel__group-title-text">
-										{group.label}
-										<span class="fulcrum-muted"> ({group.tasks.length})</span>
-									</span>
-								{/if}
-							</button>
+							<FulcrumCollapsibleHead
+								title={group.label}
+								suffix={group.area ? undefined : `(${group.tasks.length})`}
+								areaIcon={group.area?.icon}
+								expanded={!groupCollapsed}
+								onToggle={() => toggleGroup(group.label)}
+							/>
 							{#if group.area}
 								<button
 									type="button"
@@ -590,7 +623,7 @@
 							{/if}
 						</div>
 					{/if}
-					{#if !group.label || !isGroupCollapsed(group.label)}
+					{#if !group.label || !groupCollapsed}
 						<ul class="fulcrum-task-list-panel__list">
 							{#each group.tasks as task (calendarTaskDragKey(task))}
 								<li
@@ -617,5 +650,9 @@
 				</section>
 			{/if}
 		{/each}
+		{#if visibleGroupedTaskCount === 0}
+			<p class="fulcrum-muted fulcrum-project-list-panel__empty">No tasks match your filters.</p>
+		{/if}
 	{/if}
+	</div>
 </div>

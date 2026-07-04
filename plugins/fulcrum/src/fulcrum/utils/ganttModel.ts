@@ -78,6 +78,20 @@ export function projectGanttSpan(p: IndexedProject): {startIso: string; endIso: 
 	return null;
 }
 
+/** Project bar only when both startDate and endDate are set (dashboard timeline). */
+export function projectGanttBoundedSpan(
+	p: IndexedProject,
+): {startIso: string; endIso: string} | null {
+	const start = parseIsoDateOnly(p.startDate);
+	const end = parseIsoDateOnly(p.endDate);
+	if (!start || !end) return null;
+	return {startIso: minIso(start, end), endIso: maxIso(start, end)};
+}
+
+export function isOngoingProjectStatus(status: string | undefined): boolean {
+	return status?.trim().toLowerCase() === "ongoing";
+}
+
 /** Task bar from timeEntries span, else a single ganttDate. */
 export function taskGanttSpan(t: IndexedTask): {startIso: string; endIso: string} | null {
 	if (t.ganttTimeEntrySpan) return t.ganttTimeEntrySpan;
@@ -186,6 +200,10 @@ export type BuildGanttModelOpts = {
 	includeTasks?: boolean;
 	/** When true, only projects with start/end dates and dated milestones are shown. */
 	onlyDatedItems?: boolean;
+	/** Omit projects whose status is `ongoing` (case-insensitive). */
+	excludeOngoingProjects?: boolean;
+	/** When true, project bars require both startDate and endDate. */
+	requireBoundedProjectDates?: boolean;
 	openProject: (path: string) => void;
 	openTask: (task: IndexedTask) => void;
 };
@@ -208,6 +226,8 @@ export function buildGanttModel(opts: BuildGanttModelOpts): GanttModel {
 		milestonesByProject = new Map(),
 		includeTasks = true,
 		onlyDatedItems = false,
+		excludeOngoingProjects = false,
+		requireBoundedProjectDates = false,
 		openProject,
 		openTask,
 	} = opts;
@@ -245,8 +265,12 @@ export function buildGanttModel(opts: BuildGanttModelOpts): GanttModel {
 	const rows: GanttRow[] = [];
 
 	for (const p of projects) {
+		if (excludeOngoingProjects && isOngoingProjectStatus(p.status)) continue;
+
 		const accentCss = resolveProjectAccentCss(colors.get(p.file.path) ?? p.color);
-		const projectBar = projectGanttSpan(p);
+		const projectBar = requireBoundedProjectDates
+			? projectGanttBoundedSpan(p)
+			: projectGanttSpan(p);
 		const projectTasks = includeTasks
 			? snapshot.tasks
 					.filter((t) => t.projectFile?.path === p.file.path)

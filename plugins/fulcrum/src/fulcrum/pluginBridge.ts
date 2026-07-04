@@ -5,6 +5,7 @@ import type {IndexedPlannerEvent, IndexedTask} from "./types";
 import type {ProjectLogActivityEntry} from "./projectNote";
 import type {TimerModule} from "../timer/TimerModule";
 import type {TimeModeTab} from "../timer/types";
+import type {OrbitHost} from "../orbit/orbit/pluginHost";
 
 /** Narrow surface passed into Svelte views (avoids circular imports). */
 export interface FulcrumHost {
@@ -12,6 +13,7 @@ export interface FulcrumHost {
 	readonly settings: FulcrumSettings;
 	readonly vaultIndex: VaultIndex;
 	readonly timer: TimerModule;
+	readonly orbitHost: OrbitHost;
 	openProjectSummary(path: string): Promise<void>;
 	openDashboard(): Promise<void>;
 	openReview(): Promise<void>;
@@ -28,7 +30,7 @@ export interface FulcrumHost {
 	): Promise<void>;
 	stopTimerInNote(notePath: string): Promise<void>;
 	refreshIndex(): Promise<void>;
-	appendProjectLogEntry(projectPath: string, text: string): Promise<boolean>;
+	appendProjectLogEntry(projectPath: string, text: string, themeId?: string): Promise<boolean>;
 	/** Opens modal: optional review note, updates review dates, appends Fulcrum log line. */
 	openMarkReviewedModal(
 		projectPath: string,
@@ -89,24 +91,15 @@ export interface FulcrumHost {
 		targetEl: HTMLElement,
 		path: string,
 	): void;
-	/** After project marked complete — archives empty Reminders list when Conduit is enabled. */
+	/** Apple Reminders on macOS (live views + convert). */
 	notifyConduitProjectCompleted(projectPath: string): Promise<void>;
-	/** macOS + Conduit enabled — show Reminders sync toolbar. */
 	conduitCanSync(): boolean;
-	deleteConduitReminderForTask(task: IndexedTask): Promise<void>;
-	conduitSyncNow(opts?: {
-		force?: import("../conduit/types").ConduitSyncForce;
-		skipQuiet?: boolean;
-		projectPath?: string;
-	}): Promise<void>;
+	getRemindersBridge(): Promise<import("../conduit/remindersBridge").RemindersBridge>;
 	conduitRunDoctor(): Promise<void>;
-	conduitRunAction(id: import("../conduit/actions").ConduitActionId): void;
-	conduitRunProjectAction(projectPath: string, id: "sync" | "pull" | "push"): void;
-	conduitIsProjectConnected(projectPath: string): boolean;
-	conduitIsProjectSyncEnabled(projectPath: string): boolean;
 	conduitConnectProject(projectPath: string): Promise<void>;
-	conduitStartRemindersSync(projectPath: string): Promise<void>;
-	conduitStopRemindersSync(projectPath: string): Promise<void>;
+	conduitClearProjectReminderList(projectPath: string): Promise<void>;
+	conduitIsProjectConnected(projectPath: string): boolean;
+	convertTaskToReminder(task: import("./types").IndexedTask): Promise<void>;
 	/** Tabled: native widget bridge — see timer/WidgetBridge.ts */
 	// scheduleWidgetBridgeSync?(): void;
 	/** Renders markdown into a host element (e.g. activity note preview). */
@@ -115,6 +108,8 @@ export interface FulcrumHost {
 	renderActivityTitleInline(el: HTMLElement, sourcePath: string, title: string): void;
 	/** Create a people-folder note from a ghost wikilink and open it. */
 	createPersonNote(linkText: string, displayName: string): Promise<void>;
+	/** Open a person profile in Orbit (Project Manager) or split view. */
+	openPersonFile(file: import("obsidian").TFile): Promise<void>;
 	/** Edit project note YAML in the suite properties modal (same UI as Orbit). */
 	openProjectNoteProperties(projectPath: string): void;
 	/** Notify Svelte views that timer entries changed (start/stop/adjust). */

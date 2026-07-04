@@ -134,7 +134,13 @@ function chipsForTask(t: IndexedTask, formatTracked: (n: number) => string): Act
 function chipsForLog(e: ProjectLogActivityEntry): ActivityChip[] {
 	const c: ActivityChip[] = [];
 	if (e.stampLabel) c.push({kind: "date", label: e.stampLabel});
+	if (e.noteType) c.push({kind: "type", label: stripWikilinks(e.noteType)});
 	return c;
+}
+
+function logEntryIsChallenge(e: ProjectLogActivityEntry): boolean {
+	const type = stripWikilinks(e.noteType ?? "").toLowerCase();
+	return type.includes("challenge");
 }
 
 function chipsForMeeting(m: IndexedMeeting, formatTracked: (n: number) => string): ActivityChip[] {
@@ -265,8 +271,9 @@ function meetingNextUpKey(m: IndexedMeeting): string | null {
 }
 
 /**
- * Next up (project page): meetings (date today+, not already ended) and dated atomic notes — not indexed tasks
- * (they belong in the Tasks section). Notes whose file is an open task, or tagged / typed as `taskTag`, are omitted.
+ * Next up (project page): meetings (date today+), dated atomic notes, and project-note
+ * inline tasks with due/scheduled today+. Other indexed tasks stay on task tabs only.
+ * Notes whose file is an open task, or tagged / typed as `taskTag`, are omitted.
  * Atomic notes whose file is a linked meeting are omitted from `items` (shown only as meeting tiles).
  * Sorted ascending by date key; capped at `limit` total rows, then split into meetings vs note items.
  */
@@ -278,7 +285,7 @@ export function buildNextUpSegments(
 ): NextUpSegments {
 	const meetingPaths = new Set(rollup.meetings.map((m) => m.file.path));
 	const openTaskPaths = new Set(
-		rollup.tasks
+		[...rollup.tasks, ...rollup.projectNoteTasks]
 			.filter((t) => !isDoneStatus(t.status, doneTask) && !t.completedDate?.trim())
 			.map((t) => t.file.path),
 	);
@@ -294,6 +301,12 @@ export function buildNextUpSegments(
 		const key = meetingNextUpKey(m);
 		if (key == null) continue;
 		rows.push({key, kind: "meeting", meeting: m});
+	}
+	for (const t of rollup.projectNoteTasks) {
+		if (isDoneStatus(t.status, doneTask) || t.completedDate?.trim()) continue;
+		const key = earliestTodayOrFutureDueOrSched(t);
+		if (key == null) continue;
+		rows.push({key, kind: "task", task: t});
 	}
 	rows.sort((a, b) => a.key.localeCompare(b.key));
 	const sliced = rows.slice(0, limit);
@@ -406,6 +419,7 @@ export function buildActivityRowModels(
 			title: e.title,
 			chips: chipsForLog(e),
 			open: () => deps.openPath(deps.projectPath),
+			timelineEmoji: leadingTimelineEmojiFromNoteType(e.noteType),
 		});
 	}
 	items.sort((a, b) => b.sortMs - a.sortMs);
@@ -750,7 +764,9 @@ export function buildWeeklyReviewActivityRows(
 			const e = logEntries[i]!;
 			if (e.sortMs < cutoffMs) continue;
 			if (logEntryExcludedFromActivityFeed(e.sortMs)) continue;
-			metrics.quickNotes++;
+			const challenge = logEntryIsChallenge(e);
+			if (challenge) metrics.challenges++;
+			else metrics.quickNotes++;
 			items.push({
 				id: `log:${projectPath}:${e.sortMs}:${i}`,
 				kind: "log",
@@ -760,7 +776,8 @@ export function buildWeeklyReviewActivityRows(
 				open: () => deps.openProject(projectPath),
 				projectName,
 				accentColorCss,
-				reviewFacet: "log",
+				timelineEmoji: leadingTimelineEmojiFromNoteType(e.noteType),
+				reviewFacet: challenge ? "challenge" : "log",
 			});
 		}
 	}

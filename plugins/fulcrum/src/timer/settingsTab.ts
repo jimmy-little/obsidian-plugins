@@ -59,6 +59,23 @@ export function displayTimerSettings(containerEl: HTMLElement, plugin: FulcrumPl
 		);
 
 	new Setting(containerEl)
+		.setName("Quick start group by")
+		.setDesc("How template buttons are grouped in the Quick Start panel.")
+		.addDropdown((dropdown) =>
+			dropdown
+				.addOption("area", "Area")
+				.addOption("project", "Project")
+				.addOption("status", "Status")
+				.setValue(timer.quickStartGroupBy)
+				.onChange(async (value) => {
+					await saveTimer(plugin, {
+						quickStartGroupBy: value as TimerSettings["quickStartGroupBy"],
+					});
+					refresh();
+				}),
+		);
+
+	new Setting(containerEl)
 		.setName("Default project folder")
 		.setDesc(
 			"Optional. Each note in this folder (and subfolders) appears as an extra Quick Start button. Tapping starts a running timer for that project.",

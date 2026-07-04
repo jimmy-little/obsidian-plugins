@@ -1,0 +1,11 @@
+{
+	"id": "trace",
+	"name": "Trace",
+	"version": "0.1.0",
+	"minAppVersion": "1.4.0",
+	"description": "Parse, display, highlight, filter, and query structured log files inside Obsidian.",
+	"author": "Jimmy Little",
+	"authorUrl": "https://github.com/jimmylittle",
+	"isDesktopOnly": false,
+	"styles": ["styles.css"]
+}

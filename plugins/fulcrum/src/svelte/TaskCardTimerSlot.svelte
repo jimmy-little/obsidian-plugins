@@ -7,6 +7,10 @@
 
 	export let plugin: FulcrumHost;
 	export let filePath: string;
+	/** When true, show a stop control beside the elapsed time (project/area views). */
+	export let showStop = false;
+	/** `footer` = bottom-right of the card; `row` = inline on the main row. */
+	export let placement: "footer" | "row" = "footer";
 
 	let entry: TimeEntry | null = null;
 	let elapsedText = "";
@@ -46,7 +50,8 @@
 	onMount(() => {
 		refreshEntry();
 		tickId = window.setInterval(() => {
-			refreshEntry();
+			if (entry) updateElapsed();
+			else refreshEntry();
 		}, 1000);
 	});
 
@@ -56,16 +61,23 @@
 </script>
 
 {#if entry?.startTime}
-	<div class="fulcrum-task-card__timer" aria-label="Active timer">
+	<div
+		class="fulcrum-task-card__timer"
+		class:fulcrum-task-card__timer--footer={placement === "footer"}
+		class:fulcrum-task-card__timer--row={placement === "row"}
+		aria-label="Active timer"
+	>
 		<span class="fulcrum-task-card__timer-elapsed">{elapsedText}</span>
-		<button
-			type="button"
-			class="fulcrum-task-card__timer-stop clickable-icon"
-			aria-label="Stop timer"
-			title="Stop timer"
-			on:click|stopPropagation={stopTimer}
-		>
-			<span class="fulcrum-task-card__timer-stop-icon" use:stopIcon aria-hidden="true"></span>
-		</button>
+		{#if showStop}
+			<button
+				type="button"
+				class="fulcrum-task-card__timer-stop clickable-icon"
+				aria-label="Stop timer"
+				title="Stop timer"
+				on:click|stopPropagation={stopTimer}
+			>
+				<span class="fulcrum-task-card__timer-stop-icon" use:stopIcon aria-hidden="true"></span>
+			</button>
+		{/if}
 	</div>
 {/if}

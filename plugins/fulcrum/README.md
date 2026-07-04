@@ -11,29 +11,62 @@ Fulcrum indexes **task notes** (YAML frontmatter compatible with [TaskNotes](htt
 - **Recurring tasks** use RFC 5545 RRULE in frontmatter (`recurrence`, `complete_instances`, `recurrence_anchor`).
 - **Inline tasks** with your configured include tag appear in Fulcrum with distinct card styling.
 
-## Conduit (Apple Reminders sync, macOS)
+## Reminders bridge (macOS)
 
-Conduit syncs Fulcrum tasks (TaskNotes and inline checkboxes) with **Apple Reminders** using [remctl](https://github.com/viticci/remctl). Enable it under **Settings → Fulcrum → Conduit**.
+Fulcrum shows **live** Apple Reminders in notes and supports **one-way convert** actions. Tasks live in Obsidian **or** Reminders — never mirrored copies.
+
+Enable under **Settings → Fulcrum → Integrations → Reminders bridge**.
 
 ### Setup
 
-1. Install remctl (`git clone` + `./install.sh --bootstrap`, or your preferred install).
-2. Run `remctl onboard` and `remctl permissions full-disk-access`.
-3. Run `remctl doctor --for-agent` from **Terminal** first, then use **Run remctl doctor** in Fulcrum settings (grants must apply to **Obsidian**, not only Terminal).
-4. Enable **Conduit** in Fulcrum settings.
+**Option A — Fulcrum Bridge app (recommended)**
 
-### Behavior
+1. Build and run [`plugins/fulcrum-bridge`](../fulcrum-bridge/README.md) (`swift build -c release`).
+2. Grant Reminders and Calendar access.
+3. Set bridge URL to `http://127.0.0.1:9247` in Fulcrum settings.
 
-- **One Reminders list per active project**; TaskNotes without a project use the configured Inbox list.
-- **Sync scope:** project-linked **inline** checkbox tasks and **TaskNotes** (`type: task` or task tag in TaskNotes folders) only. Unlinked checklists elsewhere in the vault are not synced to Reminders.
-- Syncs **title**, **status**, and **due date** (falls back to scheduled when due is empty). Notes in Reminders contain an `obsidian://open?…` link to the task note (works on iOS when the vault name matches).
-- **Delete linked Reminder** when deleting a task (optional setting).
-- **Vault quiet period** defers auto-sync so Obsidian Sync can catch up after phone edits — use **Pull from Reminders** if you just changed tasks on mobile.
-- Completing a project in Fulcrum **archives** its Reminders list (unpin + rename) when the list has no open tasks.
+**Option B — remctl fallback**
 
-### Obsidian Sync races
+1. Install [remctl](https://github.com/viticci/remctl).
+2. Run `remctl onboard` and grant permissions to Obsidian (or set remctl path in settings).
+3. Fulcrum uses remctl when the HTTP bridge is unreachable.
 
-Reminders on your Mac update quickly; vault files may lag behind Obsidian Sync. Conduit prefers **pull** when the vault looks stale and defers bidirectional sync during the quiet window. After editing on iPhone, open Obsidian on Mac, wait for sync, then **Pull from Reminders** or **Sync now**.
+### Query blocks
+
+````markdown
+```fulcrum-reminders
+due: today
+tags include: #do-this
+list: Shopping
+completed: false
+```
+````
+
+Checkboxes complete/reopen the Apple Reminder directly. Right-click a row for **Create task note** (deletes the Reminder, creates a vault task note).
+
+### Convert actions
+
+| Source | Action |
+|--------|--------|
+| Inline task | **Convert to Reminder** — marks line done with note; creates Reminder |
+| Inline task | **Convert to task note** — existing behavior |
+| Task note | **Convert to Reminder** — marks done, archives note, creates Reminder with body in notes |
+| Reminder row | **Create task note** — deletes Reminder, creates task note |
+
+Projects can **Set Reminders list…** from the project menu (maps `appleReminderListId` for convert targeting).
+
+### Calendar overlay
+
+When calendar IDs are set in settings, Fulcrum calendar shows external events from the bridge (read-only, dashed style).
+
+### Migrating from Conduit sync
+
+On first launch after upgrading, Fulcrum shows a one-time notice if you previously used Conduit sync.
+
+Optional cleanup (command palette or **Settings → Integrations → Reminders bridge → Migration**):
+
+- **Clean up vault metadata** — removes `appleReminderId`, inline `reminder-id` comments, and `conduitSync` from projects
+- **Clean up Reminders metadata** — strips `obsidian://` links from reminder notes in project-linked lists (and area tags synced by Conduit)
 
 ## URL schemes (Obsidian URI)
 
@@ -46,7 +79,7 @@ Use the [Obsidian URI](https://docs.obsidian.md/Advanced+topics/Using+obsidian+U
 | Conceptual route | Query |
 |------------------|--------|
 | `/fulcrum/dashboard` | `screen=dashboard` |
-| `/fulcrum/areas` | `screen=areas` |
+| `/fulcrum/tasks` | `screen=tasks` |
 | `/fulcrum/kanban` | `screen=kanban` |
 | `/fulcrum/calendar` | `screen=calendar` |
 | `/fulcrum/time` | `screen=time` or `screen=time-tracked` |

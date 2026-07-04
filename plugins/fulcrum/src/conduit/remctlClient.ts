@@ -282,6 +282,7 @@ function parseReminderRow(row: unknown): RemctlReminderRow | null {
 	const lastModified = String(
 		r.lastModified ?? r.modified ?? r.updated ?? r.completionDate ?? "",
 	).trim();
+	const tags = parseTags(r);
 	return {
 		numericId,
 		title,
@@ -290,8 +291,20 @@ function parseReminderRow(row: unknown): RemctlReminderRow | null {
 		notes,
 		listId,
 		listName,
+		tags,
 		lastModified: lastModified || new Date(0).toISOString(),
 	};
+}
+
+function parseTags(r: Record<string, unknown>): string[] {
+	const raw = r.tags ?? r.tag;
+	if (Array.isArray(raw)) {
+		return raw.map((t) => String(t).trim()).filter(Boolean);
+	}
+	if (typeof raw === "string" && raw.trim()) {
+		return raw.split(/[,\s]+/).map((t) => t.trim()).filter(Boolean);
+	}
+	return [];
 }
 
 function pickDue(r: Record<string, unknown>): string | null {

@@ -22,7 +22,7 @@ export function resolveStatusFolderName(
 	return match ?? statusSlug.trim();
 }
 
-async function ensureFolderPath(vault: Vault, folderPath: string): Promise<void> {
+export async function ensureFolderPath(vault: Vault, folderPath: string): Promise<void> {
 	const norm = normalizePath(folderPath.trim());
 	if (!norm) throw new Error("Folder path is empty.");
 	const segments = norm.split("/").filter(Boolean);

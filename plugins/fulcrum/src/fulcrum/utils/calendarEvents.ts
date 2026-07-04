@@ -13,9 +13,13 @@ import type {
 	IndexedTask,
 } from "../types";
 import {meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
+import {parseDateTime, localDateIsoFromDate as localDateIso} from "./dateTimeParse";
 import {resolveProjectAccentCss} from "./projectVisual";
+import {occurrenceScheduledIso} from "../tasks/horizonRecurringOccurrences";
 
-export type CalendarEventKind = "task" | "meeting" | "logged" | "planned" | "planner" | "note";
+export {parseDateTime} from "./dateTimeParse";
+
+export type CalendarEventKind = "task" | "meeting" | "logged" | "planned" | "planner" | "note" | "external";
 
 export type CalendarEvent = {
 	kind: CalendarEventKind;
@@ -47,65 +51,13 @@ export type CalendarEvent = {
 	isActiveTimer?: boolean;
 	/** Planned block from timer day note */
 	planned?: {file: TFile; block: PlannedBlock; dateIso: string};
+	/** Recurring task: projected future occurrence (read-only preview). */
+	isGhostOccurrence?: boolean;
+	occurrenceDateIso?: string;
 };
 
 const DEFAULT_DURATION_MINUTES = 30;
 const MIN_SPAN_MINUTES = 15;
-
-function localDateIso(d: Date): string {
-	const y = d.getFullYear();
-	const mo = String(d.getMonth() + 1).padStart(2, "0");
-	const day = String(d.getDate()).padStart(2, "0");
-	return `${y}-${mo}-${day}`;
-}
-
-/**
- * After a YYYY-MM-DD prefix, parse HH:mm (optional :ss). Accepts `T`, `t`, or whitespace
- * between date and time (e.g. `2026-03-30 09:30`).
- */
-function parseMinutesAfterIsoDate(rest: string): number | null {
-	const tail = rest.trimStart();
-	// Optional T/t, optional space after T; or one-or-more spaces before time; then H:mm
-	const m = tail.match(/^(?:[Tt]\s*)?(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-	if (!m) return null;
-	const h = parseInt(m[1]!, 10);
-	const min = parseInt(m[2]!, 10);
-	if (h >= 0 && h < 24 && min >= 0 && min < 60) {
-		return h * 60 + min;
-	}
-	return null;
-}
-
-/** Parse ISO-like string to { dateIso, minutesFromMidnight }.
- * Supports: YYYY-MM-DD, YYYY-MM-DDTHH:mm, YYYY-MM-DDt09:30, YYYY-MM-DD HH:mm, with optional :ss and offsets.
- * Other shapes fall back to Date.parse (locale forms).
- */
-function parseDateTime(raw: string | undefined): {
-	dateIso: string;
-	minutesFromMidnight: number | null;
-} | null {
-	if (!raw?.trim()) return null;
-	const s = String(raw).trim();
-	const datePart = s.slice(0, 10);
-	if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-		const rest = s.slice(10);
-		const minutesFromMidnight =
-			rest.length > 0 ? parseMinutesAfterIsoDate(rest) : null;
-		return {dateIso: datePart, minutesFromMidnight};
-	}
-
-	const ms = Date.parse(s);
-	if (Number.isNaN(ms)) return null;
-	const d = new Date(ms);
-	const dateIso = localDateIso(d);
-	const minutesFromMidnight = d.getHours() * 60 + d.getMinutes();
-	const hasTime =
-		d.getHours() !== 0 || d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0;
-	return {
-		dateIso,
-		minutesFromMidnight: hasTime ? minutesFromMidnight : null,
-	};
-}
 
 /** Real work window: same local calendar day, end after start. */
 function parseActualTimeBlock(
@@ -246,6 +198,30 @@ export function taskToCalendarEvent(
 	return events;
 }
 
+/** Calendar events for one projected occurrence of a recurring task. */
+export function taskOccurrenceToCalendarEvents(
+	t: IndexedTask,
+	occurrenceDateIso: string,
+	isGhost: boolean,
+	open: () => void,
+	projectColorByPath: Map<string, string>,
+): CalendarEvent[] {
+	const scheduledForOcc = occurrenceScheduledIso(t, occurrenceDateIso);
+	const viewTask: IndexedTask = {
+		...t,
+		scheduledDate: scheduledForOcc,
+		dueDate: occurrenceDateIso,
+		startTime: undefined,
+		endTime: undefined,
+	};
+	const events = taskToCalendarEvent(viewTask, open, projectColorByPath);
+	for (const e of events) {
+		e.isGhostOccurrence = isGhost;
+		e.occurrenceDateIso = occurrenceDateIso;
+	}
+	return events;
+}
+
 /** Build calendar event from meeting.
  * date may include time. duration from meeting.duration. No time = all-day. Time but no duration = 30 min.
  */
@@ -280,11 +256,15 @@ export function plannerEventToCalendarEvent(
 	p: IndexedPlannerEvent,
 	open: () => void,
 	defaultDurationMinutes: number,
+	projectColorByPath: Map<string, string> = new Map(),
 ): CalendarEvent {
 	const isAllDay = p.startMinutes == null;
 	const duration = isAllDay
 		? null
 		: Math.max(1, p.durationMinutes ?? defaultDurationMinutes);
+	const accentCss = p.projectFile?.path
+		? resolveProjectAccentCss(projectColorByPath.get(p.projectFile.path) ?? undefined)
+		: null;
 
 	return {
 		kind: "planner",
@@ -292,26 +272,44 @@ export function plannerEventToCalendarEvent(
 		startMinutes: p.startMinutes,
 		durationMinutes: duration,
 		title: p.title,
-		accentCss: null,
+		accentCss,
 		open,
 		planner: p,
 	};
 }
 
-/** Build all-day calendar event from a project-linked atomic note. */
+/** Build calendar event from a project-linked atomic note (timed when start/end present). */
 export function atomicNoteToCalendarEvent(
 	n: AtomicNoteRow,
 	open: () => void,
 	accentCss: string | null,
 ): CalendarEvent | null {
-	const dateIso = n.dateSort?.trim().slice(0, 10);
-	if (!dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
+	const title = n.entryTitle?.trim() || n.file.basename;
+	const timeRaw = n.startTime?.trim() || n.dateSort?.trim();
+	if (!timeRaw) return null;
+
+	const actual = parseActualTimeBlock(n.startTime?.trim() || timeRaw, n.endTime);
+	if (actual) {
+		return {
+			kind: "note",
+			dateIso: actual.dateIso,
+			startMinutes: actual.startMinutes,
+			durationMinutes: actual.durationMinutes,
+			title,
+			accentCss,
+			open,
+		};
+	}
+
+	const parsed = parseDateTime(timeRaw);
+	if (!parsed) return null;
+	const isAllDay = parsed.minutesFromMidnight == null;
 	return {
 		kind: "note",
-		dateIso,
-		startMinutes: null,
-		durationMinutes: null,
-		title: n.entryTitle?.trim() || n.file.basename,
+		dateIso: parsed.dateIso,
+		startMinutes: parsed.minutesFromMidnight,
+		durationMinutes: isAllDay ? null : DEFAULT_DURATION_MINUTES,
+		title,
 		accentCss,
 		open,
 	};

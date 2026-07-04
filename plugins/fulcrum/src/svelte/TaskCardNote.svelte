@@ -3,22 +3,24 @@
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {IndexedTask} from "../fulcrum/types";
 	import {Platform, setIcon} from "obsidian";
-	import {dueChip, scheduledChip, priorityAccentCss} from "../fulcrum/utils/taskAgendaDisplay";
+	import {dueChip, scheduledChip, taskStatusRingCss} from "../fulcrum/utils/taskAgendaDisplay";
 	import {displayTagsForTask} from "../fulcrum/utils/taskDisplayTags";
 	import {taskProjectAccentCss} from "../fulcrum/utils/taskCardAccent";
 	import {showFulcrumTaskContextMenu} from "../fulcrum/taskContextMenu";
 	import {
 		handleTaskStatusClick,
 		handleTaskCardBlankClick,
+		handleTaskTimerToggleClick,
+		taskCardTimerActive,
 		openEditTaskDue,
-		openEditTaskProject,
 		openEditTaskScheduled,
 		openEditTaskTags,
-		openEditTaskTitle,
+		openTaskNoteFromCard,
+		openTaskProjectFromCard,
 		stopChipClick,
 	} from "../fulcrum/taskCardInteractions";
 	import {inlineTaskDisplayTitle} from "../fulcrum/utils/inlineTasks";
-	import {settingsRevision} from "../fulcrum/stores";
+	import {settingsRevision, timerRevision} from "../fulcrum/stores";
 	import TaskCardTimerSlot from "./TaskCardTimerSlot.svelte";
 
 	function bindSourceKindIcon(node: HTMLElement, source: IndexedTask["source"]) {
@@ -27,6 +29,16 @@
 			update(next: IndexedTask["source"]) {
 				node.empty();
 				setIcon(node, next === "inline" ? "list-todo" : "file-check");
+			},
+		};
+	}
+
+	function bindPlayStopIcon(node: HTMLElement, active: boolean) {
+		setIcon(node, active ? "square" : "play");
+		return {
+			update(next: boolean) {
+				node.empty();
+				setIcon(node, next ? "square" : "play");
 			},
 		};
 	}
@@ -43,7 +55,7 @@
 	$: rev = $settingsRevision;
 	$: due = dueChip(task.dueDate, done);
 	$: sched = scheduledChip(task.scheduledDate, done);
-	$: borderPri = priorityAccentCss(task.priority);
+	$: borderPri = taskStatusRingCss(task, done);
 	$: accentCss = taskProjectAccentCss(plugin, task);
 	$: showScheduled = (void rev, isInline ? s.inlineTaskShowScheduled : s.taskNoteCardShowScheduled);
 	$: showDue = (void rev, isInline ? s.inlineTaskShowDue : s.taskNoteCardShowDue);
@@ -55,6 +67,8 @@
 	$: tags = displayTagsForTask(task, s);
 	$: canToggle = Platform.isDesktop;
 	$: sourceKindTitle = isInline ? "Inline task" : "Task note";
+	$: void $timerRevision;
+	$: timerActive = taskCardTimerActive(plugin, task);
 
 	$: rowClass = [
 		"fulcrum-task-card",
@@ -75,13 +89,13 @@
 
 	function onTitleClick(ev: MouseEvent): void {
 		stopChipClick(ev);
-		openEditTaskTitle(plugin, task);
+		openTaskNoteFromCard(plugin, task, anchorLeaf);
 	}
 
 	function onTitleKeydown(ev: KeyboardEvent): void {
 		if (ev.key !== "Enter" && ev.key !== " ") return;
 		ev.preventDefault();
-		openEditTaskTitle(plugin, task);
+		openTaskNoteFromCard(plugin, task, anchorLeaf);
 	}
 
 	function onStatusClick(ev: MouseEvent): void {
@@ -104,6 +118,23 @@
 
 	function onCardBlankClick(ev: MouseEvent): void {
 		handleTaskCardBlankClick(ev, plugin, task, anchorLeaf);
+	}
+
+	function onProjectClick(ev: MouseEvent): void {
+		stopChipClick(ev);
+		openTaskProjectFromCard(plugin, task);
+	}
+
+	function onTimerClick(ev: MouseEvent): void {
+		handleTaskTimerToggleClick(ev, plugin, task);
+	}
+
+	function onTimerKeydown(ev: KeyboardEvent): void {
+		onMetaKeydown(ev, () => onTimerClick(ev as unknown as MouseEvent));
+	}
+
+	function onProjectKeydown(ev: KeyboardEvent): void {
+		onMetaKeydown(ev, () => onProjectClick(ev as unknown as MouseEvent));
 	}
 </script>
 
@@ -138,6 +169,7 @@
 				role="button"
 				tabindex="0"
 				class="fulcrum-task-card__title"
+				title="Open task note"
 				on:click={onTitleClick}
 				on:keydown={onTitleKeydown}
 			>
@@ -217,13 +249,9 @@
 								role="button"
 								tabindex="0"
 								class="fulcrum-task-card__meta-chip fulcrum-task-card__project"
-								title="Edit project"
-								on:click|stopPropagation={(e) => {
-									stopChipClick(e);
-									openEditTaskProject(plugin, task);
-								}}
-								on:keydown|stopPropagation={(e) =>
-									onMetaKeydown(e, () => openEditTaskProject(plugin, task))}
+								title={task.projectFile ? "Open project" : "No project"}
+								on:click|stopPropagation={onProjectClick}
+								on:keydown|stopPropagation={onProjectKeydown}
 							>
 								<span>{projectLabel(task)}</span>
 							</span>
@@ -262,11 +290,30 @@
 								</span>
 							{/if}
 						{/if}
+					<span
+						role="button"
+						tabindex="0"
+						class="fulcrum-task-card__meta-chip fulcrum-task-card__start-timer"
+						class:fulcrum-task-card__start-timer--active={timerActive}
+						title={timerActive ? "Stop timer" : "Start timer"}
+						aria-label={timerActive ? "Stop timer" : "Start timer"}
+						on:click|stopPropagation={onTimerClick}
+						on:keydown|stopPropagation={onTimerKeydown}
+					>
+						<span
+							class="fulcrum-task-card__start-timer-icon"
+							use:bindPlayStopIcon={timerActive}
+							aria-hidden="true"
+						></span>
+					</span>
 				</div>
 			</div>
 		</div>
-		{#if showInlineTimer}
-			<TaskCardTimerSlot {plugin} filePath={task.file.path} />
-		{/if}
 	</div>
+	<TaskCardTimerSlot
+		{plugin}
+		filePath={task.file.path}
+		showStop={showInlineTimer}
+		placement={showInlineTimer ? "row" : "footer"}
+	/>
 </div>
