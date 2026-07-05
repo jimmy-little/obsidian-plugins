@@ -1062,6 +1062,8 @@ export interface CreateTaskNoteModalOptions {
 	/** When set, modal edits an existing task note instead of creating one. */
 	task?: IndexedTask;
 	onCreated?: (path: string) => void | Promise<void>;
+	/** Pre-fill scheduled date/time when creating from a project calendar cell. */
+	calendarDatePreset?: {dateIso: string; hour: number | null};
 }
 
 /** Fulcrum-native task note creation (TaskNotes-compatible frontmatter). */
@@ -1132,6 +1134,13 @@ export class CreateTaskNoteModal extends Modal {
 			opts.projectPath ??
 			opts.parentTask?.projectFile?.path ??
 			null;
+		const preset = opts.calendarDatePreset;
+		if (preset) {
+			this.schedDateValue = preset.dateIso;
+			if (preset.hour != null) {
+				this.schedTimeValue = `${String(preset.hour).padStart(2, "0")}:00`;
+			}
+		}
 		this.recurrenceUiState = defaultRecurrenceUiState("weekly");
 	}
 

@@ -48,7 +48,7 @@ export function sortIndexedProjects(
 	const out = [...projects];
 	out.sort((a, b) => {
 		let c = 0;
-		if (sortBy === "launch") {
+		if (sortBy === "end") {
 			c = compareDates(a, b, "endDate", dir);
 		} else if (sortBy === "nextReview") {
 			c = compareDates(a, b, "nextReview", dir);

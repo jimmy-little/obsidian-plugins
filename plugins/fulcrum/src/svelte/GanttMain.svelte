@@ -2,7 +2,7 @@
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
-	import {parseDoneStatusSet, isProjectDone} from "../fulcrum/settingsDefaults";
+	import {parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
 	import {
 		buildGanttModel,
 		ganttBarStyle,
@@ -11,7 +11,6 @@
 		ganttRangeTitle,
 		ganttTodayMarkerLeft,
 		ganttZoomDayCount,
-		isOngoingProjectStatus,
 		shiftGanttRangeStart,
 		type GanttVariant,
 		type GanttZoom,
@@ -21,19 +20,11 @@
 		buildAreaLifeModeMap,
 		filterProjectsByAreaFocus,
 	} from "../fulcrum/utils/areaFocusFilter";
-	import {preferLightForegroundOnAccentCss} from "../fulcrum/utils/projectVisual";
-	import FulcrumDateNavToolbar from "./shared/FulcrumDateNavToolbar.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 	/** Single-project filter (project timeline tab). */
 	export let filterProjectPath: string | undefined = undefined;
-	/** Limit timeline rows to projects linked to this area note. */
-	export let filterAreaPath: string | undefined = undefined;
-	/** Limit timeline rows to projects with no area link. */
-	export let filterUnassignedProjects = false;
-	/** When set, bar clicks open the project in the host (e.g. Areas page). */
-	export let onSelectProject: ((path: string) => void) | undefined = undefined;
 	/** `full` = toolbar + navigation; `compact` = auto-fit range for embeds. */
 	export let variant: GanttVariant = "full";
 	export let embedded = false;
@@ -41,10 +32,6 @@
 	export let includeTasks = true;
 	/** Only show projects/milestones that have dates. */
 	export let onlyDatedItems = false;
-	/** Omit projects with status `ongoing`. */
-	export let excludeOngoingProjects = false;
-	/** Project bars require both startDate and endDate. */
-	export let requireBoundedProjectDates = false;
 
 	let snapshot = plugin.vaultIndex.getSnapshot();
 	$: rev = $indexRevision;
@@ -55,6 +42,7 @@
 
 	$: sRev = $settingsRevision;
 	$: doneTask = parseDoneStatusSet(plugin.settings.taskDoneStatuses);
+	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
 	$: areaFilter = $areaFilterState;
 
 	let zoom: GanttZoom = "4w";
@@ -65,26 +53,11 @@
 
 	$: weekStart = (void sRev, plugin.settings.calendarFirstDayOfWeek);
 
-	$: milestoneProjectPaths = (void sRev, ((): string[] => {
+	$: milestoneProjectPaths = ((): string[] => {
 		void rev;
 		void areaFilter;
 		void filterProjectPath;
-		void filterAreaPath;
-		void filterUnassignedProjects;
-		void excludeOngoingProjects;
 		if (filterProjectPath) return [filterProjectPath];
-		const active = snapshot.projects.filter((p) => !isProjectDone(p, plugin.settings));
-		const datedActive = excludeOngoingProjects
-			? active.filter((p) => !isOngoingProjectStatus(p.status))
-			: active;
-		if (filterAreaPath) {
-			return datedActive
-				.filter((p) => p.areaFiles.some((af) => af.path === filterAreaPath))
-				.map((p) => p.file.path);
-		}
-		if (filterUnassignedProjects) {
-			return datedActive.filter((p) => p.areaFiles.length === 0).map((p) => p.file.path);
-		}
 		const lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 			projects: snapshot.projects,
 			app: plugin.app,
@@ -92,8 +65,14 @@
 			areaTypeValue: plugin.settings.areaTypeValue,
 			settings: plugin.settings,
 		});
-		return filterProjectsByAreaFocus(datedActive, areaFilter, lifeModeMap).map((p) => p.file.path);
-	})());
+		return filterProjectsByAreaFocus(
+			snapshot.projects.filter(
+				(p) => !doneProject.has((p.status ?? "").trim().toLowerCase()),
+			),
+			areaFilter,
+			lifeModeMap,
+		).map((p) => p.file.path);
+	})();
 
 	$: {
 		void rev;
@@ -114,9 +93,8 @@
 		settings: plugin.settings,
 		areaFilter,
 		doneTask,
+		doneProject,
 		filterProjectPath,
-		filterAreaPath,
-		filterUnassignedProjects,
 		showDoneTasks,
 		variant,
 		zoom: variant === "full" ? zoom : "4w",
@@ -124,12 +102,8 @@
 		milestonesByProject,
 		includeTasks,
 		onlyDatedItems,
-		excludeOngoingProjects,
-		requireBoundedProjectDates,
 		openProject: (path) => {
-			if (onSelectProject) {
-				onSelectProject(path);
-			} else if (filterProjectPath) {
+			if (filterProjectPath) {
 				plugin.openLinkedNoteFromFulcrum(path, hoverParentLeaf);
 			} else {
 				void plugin.openProjectSummary(path);
@@ -168,38 +142,38 @@
 	data-fulcrum-gantt-root
 >
 	{#if variant === "full"}
-		<FulcrumDateNavToolbar
-			className="fulcrum-gantt__toolbar"
-			title={titleText}
-			onPrev={goPrev}
-			onNext={goNext}
-			onToday={goToday}
-		>
-			<svelte:fragment slot="trailing">
-				<label class="fulcrum-calendar__view-mode">
-					<span class="fulcrum-calendar__view-mode-label">Range</span>
-					<select
-						class="dropdown fulcrum-calendar__view-select"
-						aria-label="Gantt range"
-						value={zoom}
-						on:change={onZoomChange}
-					>
-						<option value="2w">2 weeks</option>
-						<option value="4w">4 weeks</option>
-						<option value="8w">8 weeks</option>
-						<option value="quarter">Quarter</option>
-					</select>
-				</label>
-				<button
-					type="button"
-					class="fulcrum-calendar__layer"
-					class:fulcrum-calendar__layer--on={showDoneTasks}
-					on:click={() => (showDoneTasks = !showDoneTasks)}
+		<div class="fulcrum-gantt__toolbar fulcrum-calendar__toolbar">
+			<button type="button" class="fulcrum-calendar__nav-btn" aria-label="Previous" on:click={goPrev}>
+				‹
+			</button>
+			<button type="button" class="fulcrum-calendar__nav-btn" aria-label="Next" on:click={goNext}>
+				›
+			</button>
+			<h2 class="fulcrum-gantt__title fulcrum-calendar__title">{titleText}</h2>
+			<button type="button" class="fulcrum-calendar__today" on:click={goToday}>Today</button>
+			<label class="fulcrum-calendar__view-mode">
+				<span class="fulcrum-calendar__view-mode-label">Range</span>
+				<select
+					class="dropdown fulcrum-calendar__view-select"
+					aria-label="Gantt range"
+					value={zoom}
+					on:change={onZoomChange}
 				>
-					Done tasks
-				</button>
-			</svelte:fragment>
-		</FulcrumDateNavToolbar>
+					<option value="2w">2 weeks</option>
+					<option value="4w">4 weeks</option>
+					<option value="8w">8 weeks</option>
+					<option value="quarter">Quarter</option>
+				</select>
+			</label>
+			<button
+				type="button"
+				class="fulcrum-calendar__layer"
+				class:fulcrum-calendar__layer--on={showDoneTasks}
+				on:click={() => (showDoneTasks = !showDoneTasks)}
+			>
+				Done tasks
+			</button>
+		</div>
 	{/if}
 
 	<div class="fulcrum-gantt__scroll">
@@ -225,17 +199,6 @@
 						{filterProjectPath ? "Tasks" : "Projects"}
 					</div>
 					<div class="fulcrum-gantt__timeline-head" role="rowgroup">
-						<div class="fulcrum-gantt__month-cols" role="row">
-							{#each model.monthBands as band, bandIdx (`${band.startIndex}-${band.span}-${bandIdx}`)}
-								<div
-									class="fulcrum-gantt__month-col"
-									style={`grid-column: ${band.startIndex + 1} / span ${band.span}`}
-									role="columnheader"
-								>
-									{band.label}
-								</div>
-							{/each}
-						</div>
 						<div class="fulcrum-gantt__day-cols" role="row">
 							{#each model.columns as col (col.iso)}
 								<div
@@ -281,32 +244,24 @@
 									)}
 									<button
 										type="button"
-										class="fulcrum-gantt__milestone-wrap"
+										class="fulcrum-gantt__milestone"
 										style={`--fulcrum-gantt-accent: ${row.accentCss}; left: ${markerLeft}`}
 										on:click={row.open}
 										title="{row.bar.startIso}: {row.label}"
 										aria-label="{row.label} on {row.bar.startIso}"
-									>
-										<span class="fulcrum-gantt__milestone" aria-hidden="true"></span>
-										<span class="fulcrum-gantt__milestone-label">{row.label}</span>
-									</button>
+									></button>
 								{:else if row.bar}
 									{@const style = ganttBarStyle(row.bar, model.rangeStartIso, model.dayCount)}
-									{@const lightBarLabel = preferLightForegroundOnAccentCss(row.accentCss)}
 									<button
 										type="button"
-										class="fulcrum-gantt__bar-shell"
-										class:fulcrum-gantt__bar-shell--project={row.kind === "project"}
-										class:fulcrum-gantt__bar-shell--task={row.kind === "task"}
+										class="fulcrum-gantt__bar"
+										class:fulcrum-gantt__bar--project={row.kind === "project"}
+										class:fulcrum-gantt__bar--task={row.kind === "task"}
 										style={`--fulcrum-gantt-accent: ${row.accentCss}; left: ${style.left}; width: ${style.width}`}
 										on:click={row.open}
 										title={row.label}
-										aria-label={row.label}
 									>
-										<span
-											class="fulcrum-gantt__bar-label"
-											class:fulcrum-gantt__bar-label--light={lightBarLabel}
-										>{row.label}</span>
+										<span class="fulcrum-gantt__bar-label">{row.label}</span>
 									</button>
 								{/if}
 							</div>

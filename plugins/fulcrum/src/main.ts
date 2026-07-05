@@ -1,5 +1,6 @@
 import {
 	MarkdownRenderer,
+	Menu,
 	Notice,
 	Platform,
 	Plugin,
@@ -67,6 +68,15 @@ import {DEFAULT_SETTINGS, DASHBOARD_ACTIVITY_MAX_DAYS, isDoneStatus, migrateTask
 import {migrateKanbanSettings} from "./fulcrum/kanban/settingsKey";
 import {postTaskNotesToggleStatus} from "./fulcrum/taskNotesApi";
 import {CreateTaskNoteModal} from "./fulcrum/modals";
+import {openProjectCalendarTaskPicker} from "./fulcrum/calendar/calendarProjectAddTask";
+import type {CalendarDropSlot} from "./fulcrum/calendar/calendarDropSlot";
+import {slotStartMinutes} from "./fulcrum/calendar/calendarDropSlot";
+import {formatSlotValue} from "./fulcrum/calendar/isoDateTime";
+import {
+	setInlineTaskDue,
+	setInlineTaskScheduled,
+} from "./fulcrum/utils/inlineTasks";
+import type {TaskScheduleDateField} from "./fulcrum/kanban/taskFieldUpdate";
 import {applyTaskStatusChange} from "./fulcrum/kanban/taskFieldUpdate";
 import {
 	handleRecurringTaskComplete,
@@ -696,19 +706,16 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			merged.dashboardActiveProjectsGroupBy = DEFAULT_SETTINGS.dashboardActiveProjectsGroupBy;
 		}
 		if (
-			merged.projectSidebarSortBy !== "launch" &&
+			merged.projectSidebarSortBy !== "end" &&
 			merged.projectSidebarSortBy !== "nextReview" &&
 			merged.projectSidebarSortBy !== "rank" &&
 			merged.projectSidebarSortBy !== "name"
 		) {
 			merged.projectSidebarSortBy = DEFAULT_SETTINGS.projectSidebarSortBy;
 		}
-		if (merged.projectSidebarSortDir !== "asc" && merged.projectSidebarSortDir !== "desc") {
-			merged.projectSidebarSortDir = DEFAULT_SETTINGS.projectSidebarSortDir;
-		}
 		const mergedRec = merged as Record<string, unknown>;
-		if (mergedRec.projectSidebarSortBy === "end") {
-			merged.projectSidebarSortBy = "launch";
+		if (mergedRec.projectSidebarSortBy === "launch") {
+			merged.projectSidebarSortBy = "end";
 		}
 		if (typeof merged.projectEndDateField !== "string") {
 			const legacyLaunch = mergedRec.projectLaunchDateField;
@@ -718,6 +725,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 					: DEFAULT_SETTINGS.projectEndDateField;
 		}
 		delete mergedRec.projectLaunchDateField;
+		if (merged.projectSidebarSortDir !== "asc" && merged.projectSidebarSortDir !== "desc") {
+			merged.projectSidebarSortDir = DEFAULT_SETTINGS.projectSidebarSortDir;
+		}
 		if (typeof merged.projectRankField !== "string") {
 			merged.projectRankField = DEFAULT_SETTINGS.projectRankField;
 		}
@@ -1412,6 +1422,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	}
 
 	openNewInlineTaskForProject(projectPath: string): void {
+		this.openNewInlineTaskForProjectOnDate(projectPath);
+	}
+
+	openNewInlineTaskForProjectOnDate(projectPath: string, slot?: CalendarDropSlot): void {
 		const f = this.app.vault.getAbstractFileByPath(projectPath);
 		if (!(f instanceof TFile)) {
 			new Notice("Project file not found.");
@@ -1419,7 +1433,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 		const tag = this.settings.taskTag.trim() || "task";
 		new NewInlineTaskModal(this.app, f, tag, (title) => {
-			void this.appendInlineTaskToProjectNote(f, title);
+			void this.appendInlineTaskToProjectNote(f, title, slot);
 		}).open();
 	}
 
@@ -1434,10 +1448,25 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}).open();
 	}
 
-	private async appendInlineTaskToProjectNote(projectFile: TFile, title: string): Promise<void> {
+	private async appendInlineTaskToProjectNote(
+		projectFile: TFile,
+		title: string,
+		slot?: CalendarDropSlot,
+		field: TaskScheduleDateField = "scheduled",
+	): Promise<void> {
 		const tag = this.settings.taskTag.trim() || "task";
-		const linktext = projectFile.basename.replace(/\.md$/i, "");
-		const line = `- [ ] ${title} #${tag} [[${linktext}]]`;
+		const linktext =
+			this.app.metadataCache.fileToLinktext(projectFile, projectFile.path, false) ??
+			projectFile.basename.replace(/\.md$/i, "");
+		let line = `- [ ] ${title} #${tag} [[${linktext}]]`;
+		if (slot) {
+			const value = formatSlotValue(slot.dateIso, slotStartMinutes(slot));
+			const withDate =
+				field === "due"
+					? setInlineTaskDue(line, value)
+					: setInlineTaskScheduled(line, value);
+			if (withDate) line = withDate;
+		}
 		try {
 			const body = await this.app.vault.read(projectFile);
 			const lines = body.split("\n");
@@ -1503,7 +1532,64 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	}
 
 	openCreateTaskNoteForProject(projectPath: string): void {
-		new CreateTaskNoteModal(this.app, this, {projectPath}).open();
+		this.openCreateTaskNoteForProjectOnDate(projectPath);
+	}
+
+	openCreateTaskNoteForProjectOnDate(projectPath: string, slot?: CalendarDropSlot): void {
+		new CreateTaskNoteModal(this.app, this, {
+			projectPath,
+			calendarDatePreset: slot,
+		}).open();
+	}
+
+	openProjectCalendarAddTask(
+		projectPath: string,
+		slot: CalendarDropSlot,
+		anchorEv?: MouseEvent,
+	): void {
+		const done = parseDoneStatusSet(this.settings.taskDoneStatuses);
+		const tasks = this.vaultIndex
+			.getSnapshot()
+			.tasks.filter(
+				(t) => t.projectFile?.path === projectPath && !isDoneStatus(t.status, done),
+			);
+		openProjectCalendarTaskPicker(this, projectPath, slot, tasks, anchorEv);
+	}
+
+	openNewTaskFromCalendarCell(
+		projectPath: string,
+		slot: CalendarDropSlot,
+		anchorEv?: MouseEvent,
+	): void {
+		const mode = this.settings.taskSourceMode;
+		const openInline = () => this.openNewInlineTaskForProjectOnDate(projectPath, slot);
+		const openNote = () => this.openCreateTaskNoteForProjectOnDate(projectPath, slot);
+
+		if (mode === "obsidianTasks") {
+			openInline();
+			return;
+		}
+		if (mode === "taskNotes") {
+			openNote();
+			return;
+		}
+
+		const menu = new Menu();
+		menu.addItem((item) => {
+			item.setTitle("New task");
+			item.setIcon("check");
+			item.onClick(openInline);
+		});
+		menu.addItem((item) => {
+			item.setTitle("New task note");
+			item.setIcon("file-check");
+			item.onClick(openNote);
+		});
+		if (anchorEv) {
+			menu.showAtMouseEvent(anchorEv);
+		} else {
+			menu.showAtPosition({x: window.innerWidth / 2, y: window.innerHeight / 2});
+		}
 	}
 
 	promptCreateTaskNoteForProject(): void {

@@ -1,7 +1,9 @@
-import type {ProjectSidebarSortDir, TaskSidebarSortBy} from "../settingsDefaults";
+import type {
+	ProjectTaskListSortBy,
+	ProjectSidebarSortDir,
+	TaskSidebarSortBy,
+} from "../settingsDefaults";
 import type {IndexedTask} from "../types";
-
-type ProjectTaskListSortBy = "due" | "scheduled";
 
 function taskDueSortKey(t: IndexedTask): string {
 	const d = t.dueDate?.slice(0, 10) ?? t.scheduledDate?.slice(0, 10);

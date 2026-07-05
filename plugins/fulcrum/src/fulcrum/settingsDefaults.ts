@@ -9,10 +9,12 @@ export type TaskSourceMode = "taskNotes" | "obsidianTasks" | "both";
 /** Inline / vault tasks indexed without a [[project]] link. */
 export type TaskIndexScope = "projectLinked" | "all";
 export type ProjectStatusIndication = "frontmatter" | "subfolder";
-export type ProjectSidebarSortBy = "launch" | "nextReview" | "rank" | "name";
+export type ProjectSidebarSortBy = "end" | "nextReview" | "rank" | "name";
 export type ProjectSidebarSortDir = "asc" | "desc";
 export type TaskSidebarGroupBy = "area" | "status" | "project" | "none";
 export type TaskSidebarSortBy = "due" | "name" | "project";
+export type ProjectTaskListGroupBy = "status" | "date" | "tag";
+export type ProjectTaskListSortBy = "due" | "scheduled";
 
 export type KanbanView = "projects" | "tasks";
 export type KanbanDimension = "area" | "project" | "status" | "date";
@@ -174,6 +176,10 @@ export interface FulcrumSettings {
 	taskSidebarFilterUncheckedStatus: string[];
 	/** Task sidebar filter: unchecked project file paths. Use __none__ for no project. */
 	taskSidebarFilterUncheckedProject: string[];
+	/** Project page → List tab: group tasks by status, date bucket, or tag. */
+	projectTaskListGroupBy: ProjectTaskListGroupBy;
+	/** Project page → List tab: sort grouped tasks by due or scheduled date. */
+	projectTaskListSortBy: ProjectTaskListSortBy;
 
 	/** Tasks view: center list grouping */
 	tasksViewGroupBy: TasksViewGroupBy;
@@ -419,7 +425,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	calendarTaskScheduleField: "ask",
 	showRibbonIcon: true,
 	dashboardActiveProjectsGroupBy: "area",
-	projectSidebarSortBy: "launch",
+	projectSidebarSortBy: "end",
 	projectSidebarSortDir: "asc",
 	projectSidebarFilterUncheckedStatus: [],
 	taskSidebarGroupBy: "area",
@@ -430,6 +436,8 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	tasksViewGroupBy: "day",
 	tasksViewColumns: ["title", "project", "scheduled", "due", "tags"],
 	tasksViewFutureDays: 14,
+	projectTaskListGroupBy: "status",
+	projectTaskListSortBy: "due",
 
 	projectStatusIndication: "frontmatter",
 	projectStatusField: "status",

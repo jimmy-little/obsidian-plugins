@@ -11,7 +11,7 @@ import {formatDayShort, getWeekStart, toISODate} from "./calendarGrid";
 import {projectColorMap} from "./calendarEvents";
 import {addDaysIso, todayLocalISODate} from "./dates";
 import {resolveProjectAccentCss} from "./projectVisual";
-import {isDoneStatus, isProjectDone} from "../settingsDefaults";
+import {isDoneStatus} from "../settingsDefaults";
 import {parseIsoDateOnly} from "./taskTimeline";
 import type {ProjectMilestone} from "./projectMilestones";
 
@@ -42,19 +42,12 @@ export type GanttDayColumn = {
 	isWeekStart: boolean;
 };
 
-export type GanttMonthBand = {
-	label: string;
-	startIndex: number;
-	span: number;
-};
-
 export type GanttModel = {
 	rows: GanttRow[];
 	rangeStartIso: string;
 	rangeEndIso: string;
 	dayCount: number;
 	columns: GanttDayColumn[];
-	monthBands: GanttMonthBand[];
 };
 
 
@@ -76,20 +69,6 @@ export function projectGanttSpan(p: IndexedProject): {startIso: string; endIso: 
 	if (start) return {startIso: start, endIso: start};
 	if (end) return {startIso: end, endIso: end};
 	return null;
-}
-
-/** Project bar only when both startDate and endDate are set (dashboard timeline). */
-export function projectGanttBoundedSpan(
-	p: IndexedProject,
-): {startIso: string; endIso: string} | null {
-	const start = parseIsoDateOnly(p.startDate);
-	const end = parseIsoDateOnly(p.endDate);
-	if (!start || !end) return null;
-	return {startIso: minIso(start, end), endIso: maxIso(start, end)};
-}
-
-export function isOngoingProjectStatus(status: string | undefined): boolean {
-	return status?.trim().toLowerCase() === "ongoing";
 }
 
 /** Task bar from timeEntries span, else a single ganttDate. */
@@ -155,41 +134,14 @@ function buildColumns(
 	return out;
 }
 
-export function buildMonthBands(columns: GanttDayColumn[]): GanttMonthBand[] {
-	const bands: GanttMonthBand[] = [];
-	let i = 0;
-	while (i < columns.length) {
-		const col = columns[i]!;
-		const d = new Date(`${col.iso}T12:00:00`);
-		const month = d.getMonth();
-		const year = d.getFullYear();
-		let span = 1;
-		while (i + span < columns.length) {
-			const next = new Date(`${columns[i + span]!.iso}T12:00:00`);
-			if (next.getMonth() !== month || next.getFullYear() !== year) break;
-			span++;
-		}
-		bands.push({
-			label: new Intl.DateTimeFormat(undefined, {month: "short"}).format(d),
-			startIndex: i,
-			span,
-		});
-		i += span;
-	}
-	return bands;
-}
-
 export type BuildGanttModelOpts = {
 	app: App;
 	snapshot: IndexSnapshot;
 	settings: FulcrumSettings;
 	areaFilter: AreaFilterState;
 	doneTask: Set<string>;
+	doneProject: Set<string>;
 	filterProjectPath?: string;
-	/** Limit to projects linked to this area note path. */
-	filterAreaPath?: string;
-	/** Limit to active projects with no area link. */
-	filterUnassignedProjects?: boolean;
 	showDoneTasks?: boolean;
 	variant: GanttVariant;
 	zoom?: GanttZoom;
@@ -200,10 +152,6 @@ export type BuildGanttModelOpts = {
 	includeTasks?: boolean;
 	/** When true, only projects with start/end dates and dated milestones are shown. */
 	onlyDatedItems?: boolean;
-	/** Omit projects whose status is `ongoing` (case-insensitive). */
-	excludeOngoingProjects?: boolean;
-	/** When true, project bars require both startDate and endDate. */
-	requireBoundedProjectDates?: boolean;
 	openProject: (path: string) => void;
 	openTask: (task: IndexedTask) => void;
 };
@@ -215,9 +163,8 @@ export function buildGanttModel(opts: BuildGanttModelOpts): GanttModel {
 		settings,
 		areaFilter,
 		doneTask,
+		doneProject,
 		filterProjectPath,
-		filterAreaPath,
-		filterUnassignedProjects = false,
 		showDoneTasks = false,
 		variant,
 		zoom = "4w",
@@ -226,8 +173,6 @@ export function buildGanttModel(opts: BuildGanttModelOpts): GanttModel {
 		milestonesByProject = new Map(),
 		includeTasks = true,
 		onlyDatedItems = false,
-		excludeOngoingProjects = false,
-		requireBoundedProjectDates = false,
 		openProject,
 		openTask,
 	} = opts;
@@ -241,16 +186,10 @@ export function buildGanttModel(opts: BuildGanttModelOpts): GanttModel {
 	});
 
 	const colors = projectColorMap(snapshot.projects);
-	let projects = snapshot.projects.filter((p) => !isProjectDone(p, settings));
+	let projects = snapshot.projects.filter((p) => !doneProject.has((p.status ?? "").trim().toLowerCase()));
 
 	if (filterProjectPath) {
 		projects = projects.filter((p) => p.file.path === filterProjectPath);
-	} else if (filterAreaPath) {
-		projects = projects.filter((p) =>
-			p.areaFiles.some((af) => af.path === filterAreaPath),
-		);
-	} else if (filterUnassignedProjects) {
-		projects = projects.filter((p) => p.areaFiles.length === 0);
 	} else {
 		projects = filterProjectsByAreaFocus(projects, areaFilter, lifeModeMap);
 	}
@@ -265,12 +204,8 @@ export function buildGanttModel(opts: BuildGanttModelOpts): GanttModel {
 	const rows: GanttRow[] = [];
 
 	for (const p of projects) {
-		if (excludeOngoingProjects && isOngoingProjectStatus(p.status)) continue;
-
 		const accentCss = resolveProjectAccentCss(colors.get(p.file.path) ?? p.color);
-		const projectBar = requireBoundedProjectDates
-			? projectGanttBoundedSpan(p)
-			: projectGanttSpan(p);
+		const projectBar = projectGanttSpan(p);
 		const projectTasks = includeTasks
 			? snapshot.tasks
 					.filter((t) => t.projectFile?.path === p.file.path)
@@ -373,9 +308,8 @@ export function buildGanttModel(opts: BuildGanttModelOpts): GanttModel {
 
 	const rangeEndIso = addDaysIso(rangeStartIso, dayCount - 1);
 	const columns = buildColumns(rangeStartIso, dayCount, weekStartDay);
-	const monthBands = buildMonthBands(columns);
 
-	return {rows, rangeStartIso, rangeEndIso, dayCount, columns, monthBands};
+	return {rows, rangeStartIso, rangeEndIso, dayCount, columns};
 }
 
 /** Bar geometry as percentage of the visible range (clamped). */
