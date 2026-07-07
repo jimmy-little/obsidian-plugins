@@ -1,6 +1,21 @@
 import {describe, expect, it} from "vitest";
-import {applyCompletedMemoryOverrides} from "../timerEntries";
+import {applyCompletedMemoryOverrides, resolveEntriesWriteKey} from "../timerEntries";
 import type {TimeEntry} from "../../../timer/types";
+import {DEFAULT_TIMER_SETTINGS} from "../../../timer/settings";
+
+describe("resolveEntriesWriteKey", () => {
+	it("always returns the primary entries key", () => {
+		expect(resolveEntriesWriteKey(DEFAULT_TIMER_SETTINGS)).toBe("timeEntries");
+	});
+
+	it("ignores legacy frontmatter when choosing write key", () => {
+		const timer = {
+			...DEFAULT_TIMER_SETTINGS,
+			entriesKey: "timeEntries",
+		};
+		expect(resolveEntriesWriteKey(timer)).toBe("timeEntries");
+	});
+});
 
 describe("applyCompletedMemoryOverrides", () => {
 	it("keeps completed in-memory entry when frontmatter still shows running", () => {

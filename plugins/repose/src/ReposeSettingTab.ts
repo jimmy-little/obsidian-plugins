@@ -167,7 +167,7 @@ export class ReposeSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Track watch time with Fulcrum")
 			.setDesc(
-				"When on, episode “Watch Now” writes Fulcrum timer frontmatter (startTime, fulcrumTimerEntries, totalTimeTracked) and adds a ```fulcrum-timer``` block to the note.",
+				"When on, episode “Watch Now” writes Fulcrum timer frontmatter (startTime, timeEntries, totalTimeTracked) and adds a ```fulcrum-timer``` block to the note.",
 			)
 			.addToggle((t) =>
 				t.setValue(this.plugin.settings.trackWatchTimeWithFulcrum).onChange(async (v) => {

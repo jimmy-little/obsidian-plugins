@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from "svelte";
-	import { setIcon, TFile } from "obsidian";
+	import { setIcon, TFile, type EventRef } from "obsidian";
 	import type ReposePlugin from "../main";
 	import { resolveListThumbnailFile } from "../media/banner";
 	import { collectMediaMarkdownFiles } from "../media/collectMediaFiles";
@@ -243,7 +243,7 @@
 		scheduleBump();
 	}
 
-	const vaultEvents: Array<() => void> = [];
+	const vaultEvents: EventRef[] = [];
 
 	onMount(() => {
 		if (mobileList) {
@@ -264,7 +264,7 @@
 
 	onDestroy(() => {
 		window.clearTimeout(bumpTimer);
-		for (const off of vaultEvents) off();
+		for (const ref of vaultEvents) ref.unregister();
 		vaultEvents.length = 0;
 	});
 

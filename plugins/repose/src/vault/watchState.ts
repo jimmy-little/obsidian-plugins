@@ -80,31 +80,45 @@ function clearWatchedFields(fm: Record<string, unknown>): void {
 	if (fm.reposeStatus === "watched") fm.reposeStatus = "watching";
 }
 
-type FulcrumTimerEntry = {
-	label: string;
-	start: string;
-	end: string;
-	duration: number;
+type TaskNotesTimerEntry = {
+	description: string;
+	startTime: string;
+	endTime: string;
 };
 
 function mergeFulcrumTimerFrontmatter(
 	fm: Record<string, unknown>,
-	entry: FulcrumTimerEntry,
+	entry: TaskNotesTimerEntry,
 ): void {
-	const prev = Array.isArray(fm.fulcrumTimerEntries) ? [...fm.fulcrumTimerEntries] : [];
+	const prev = Array.isArray(fm.timeEntries) ? [...fm.timeEntries] : [];
 	prev.push({
-		label: entry.label,
-		start: entry.start,
-		end: entry.end,
-		duration: entry.duration,
+		description: entry.description,
+		startTime: entry.startTime,
+		endTime: entry.endTime,
 	});
-	fm.fulcrumTimerEntries = prev;
+	fm.timeEntries = prev;
 
 	const starts = prev
-		.map((e) => (typeof e === "object" && e && "start" in e ? String((e as { start: unknown }).start) : ""))
+		.map((e) => {
+			if (typeof e !== "object" || !e) return "";
+			const o = e as { startTime?: unknown; start?: unknown };
+			return typeof o.startTime === "string"
+				? o.startTime
+				: typeof o.start === "string"
+					? o.start
+					: "";
+		})
 		.filter(Boolean);
 	const ends = prev
-		.map((e) => (typeof e === "object" && e && "end" in e ? String((e as { end: unknown }).end) : ""))
+		.map((e) => {
+			if (typeof e !== "object" || !e) return "";
+			const o = e as { endTime?: unknown; end?: unknown };
+			return typeof o.endTime === "string"
+				? o.endTime
+				: typeof o.end === "string"
+					? o.end
+					: "";
+		})
 		.filter(Boolean);
 	if (starts.length > 0) {
 		fm.startTime = starts.sort()[0];
@@ -113,12 +127,30 @@ function mergeFulcrumTimerFrontmatter(
 		fm.endTime = ends.sort().at(-1);
 	}
 
-	const totalSec = prev.reduce((sum, e) => {
+	const totalMs = prev.reduce((sum, e) => {
 		if (typeof e !== "object" || !e) return sum;
-		const d = (e as { duration?: unknown }).duration;
-		return sum + (typeof d === "number" && Number.isFinite(d) ? d : 0);
+		const o = e as {
+			startTime?: unknown;
+			endTime?: unknown;
+			start?: unknown;
+			end?: unknown;
+			duration?: unknown;
+		};
+		const startRaw = o.startTime ?? o.start;
+		const endRaw = o.endTime ?? o.end;
+		if (typeof startRaw === "string" && typeof endRaw === "string") {
+			const startMs = Date.parse(startRaw);
+			const endMs = Date.parse(endRaw);
+			if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs) {
+				return sum + (endMs - startMs);
+			}
+		}
+		if (typeof o.duration === "number" && Number.isFinite(o.duration)) {
+			return sum + o.duration * 1000;
+		}
+		return sum;
 	}, 0);
-	fm.totalTimeTracked = formatTimeHhMmSs(totalSec * 1000);
+	fm.totalTimeTracked = formatTimeHhMmSs(totalMs);
 }
 
 async function ensureFulcrumTimerBlock(app: App, file: TFile): Promise<void> {
@@ -244,7 +276,7 @@ export async function markEpisodeWatched(
 
 	let calendarDate: string;
 	let isoPlay: string;
-	let timerEntry: FulcrumTimerEntry | null = null;
+	let timerEntry: TaskNotesTimerEntry | null = null;
 
 	if (mode === "airdate") {
 		const air = episodeAirDateCalendar(fmBefore);
@@ -265,10 +297,9 @@ export async function markEpisodeWatched(
 			const startStr = formatDatetimeLocal(now);
 			const endStr = formatDatetimeLocal(end);
 			timerEntry = {
-				label,
-				start: startStr,
-				end: endStr,
-				duration: Math.floor(durationMs / 1000),
+				description: label,
+				startTime: startStr,
+				endTime: endStr,
 			};
 		}
 	}

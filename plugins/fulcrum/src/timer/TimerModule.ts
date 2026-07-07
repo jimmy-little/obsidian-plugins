@@ -4038,12 +4038,9 @@ export class TimerModule {
 
 		const startTimeKey = this.settings.startTimeKey;
 		const endTimeKey = this.settings.endTimeKey;
-		const entriesKey = resolveEntriesWriteKey(
-			this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined,
-			this.settings,
-		);
+		const entriesKey = resolveEntriesWriteKey(this.settings);
+		const entriesStripKeys = new Set(allEntriesReadKeys(this.settings));
 		const totalTimeKey = this.settings.totalTimeKey;
-		const useTaskNotesFormat = entriesKey === this.settings.entriesKey.trim();
 
 		// Build the Lapse frontmatter section as a string
 		let lapseFrontmatter = '';
@@ -4057,39 +4054,22 @@ export class TimerModule {
 			lapseFrontmatter += `${endTimeKey}: ${formattedEndTime}\n`;
 		}
 		
-		// Add entries as YAML array
+		// TaskNotes-compatible timeEntries (description, startTime, endTime)
 		if (pageData.entries.length > 0) {
 			lapseFrontmatter += `${entriesKey}:\n`;
 			for (const entry of pageData.entries) {
-				if (useTaskNotesFormat) {
-					const escapedLabel = entry.label.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-					lapseFrontmatter += `  - description: "${escapedLabel}"\n`;
-					const start = this.formatTimestampForFrontmatter(entry.startTime);
-					const end = this.formatTimestampForFrontmatter(entry.endTime);
-					if (start) {
-						lapseFrontmatter += `    startTime: ${start}\n`;
-					}
-					if (end) {
-						lapseFrontmatter += `    endTime: ${end}\n`;
-					}
-					if (entry.tags?.length) {
-						lapseFrontmatter += `    tags: [${entry.tags.map((t: string) => `"${t}"`).join(", ")}]\n`;
-					}
-				} else {
-					const escapedLabel = entry.label.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-					lapseFrontmatter += `  - label: "${escapedLabel}"\n`;
-					const start = this.formatTimestampForFrontmatter(entry.startTime);
-					const end = this.formatTimestampForFrontmatter(entry.endTime);
-					if (start) {
-						lapseFrontmatter += `    start: ${start}\n`;
-					}
-					if (end) {
-						lapseFrontmatter += `    end: ${end}\n`;
-					}
-					lapseFrontmatter += `    duration: ${Math.floor(entry.duration / 1000)}\n`;
-					if (entry.tags?.length) {
-						lapseFrontmatter += `    tags: [${entry.tags.map((t: string) => `"${t}"`).join(", ")}]\n`;
-					}
+				const escapedLabel = entry.label.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+				lapseFrontmatter += `  - description: "${escapedLabel}"\n`;
+				const start = this.formatTimestampForFrontmatter(entry.startTime);
+				const end = this.formatTimestampForFrontmatter(entry.endTime);
+				if (start) {
+					lapseFrontmatter += `    startTime: ${start}\n`;
+				}
+				if (end) {
+					lapseFrontmatter += `    endTime: ${end}\n`;
+				}
+				if (entry.tags?.length) {
+					lapseFrontmatter += `    tags: [${entry.tags.map((t: string) => `"${t}"`).join(", ")}]\n`;
 				}
 			}
 		} else {
@@ -4105,27 +4085,29 @@ export class TimerModule {
 			const existingFM = frontmatterMatch[1];
 			const lines = existingFM.split('\n');
 			
-			// Remove old Lapse entries by filtering out matching lines and their sub-items
-			let inLapseArray = false;
+			// Remove timer entry arrays (primary + legacy keys) and summary fields
+			let inEntriesArray = false;
 			const filteredLines = lines.filter(line => {
 				const trimmed = line.trim();
 				const lineIndent = line.length - line.trimStart().length;
 
-				// Check if entering lapse entries array
-				if (trimmed.startsWith(`${entriesKey}:`)) {
-					inLapseArray = true;
-					return false;
+				if (!inEntriesArray) {
+					for (const key of entriesStripKeys) {
+						if (trimmed.startsWith(`${key}:`)) {
+							inEntriesArray = true;
+							return false;
+						}
+					}
 				}
 
-				// Skip lines inside lapse entries array
-				if (inLapseArray) {
+				if (inEntriesArray) {
 					if (trimmed === '') {
 						return false;
 					}
 					if (lineIndent > 0) {
 						return false;
 					}
-					inLapseArray = false;
+					inEntriesArray = false;
 				}
 				
 				// Skip other Lapse fields

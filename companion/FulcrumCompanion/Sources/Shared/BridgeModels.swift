@@ -77,8 +77,8 @@ struct WidgetBridgeFile: Codable {
 			activeTimers: [],
 			quickStartItems: [],
 			timerSettings: WidgetBridgeTimerSettingsSnapshot(
-				entriesKey: "fulcrumTimerEntries",
-				legacyEntriesKeys: ["timeEntries", "lapseEntries"],
+				entriesKey: "timeEntries",
+				legacyEntriesKeys: ["fulcrumTimerEntries", "lapseEntries"],
 				startTimeKey: "startTime",
 				endTimeKey: "endTime",
 				totalTimeKey: "totalTimeTracked",

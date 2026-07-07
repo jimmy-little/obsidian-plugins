@@ -189,19 +189,7 @@ export function sumEntryMinutes(entries: TimeEntry[]): number {
 	return Math.round(ms / 60000);
 }
 
-/** Pick write key: legacy-only notes write back to legacy; else primary. */
-export function resolveEntriesWriteKey(
-	fm: Record<string, unknown> | undefined,
-	timer: TimerSettings,
-): string {
-	if (!fm) return timer.entriesKey;
-	const primary = timer.entriesKey.trim();
-	if (primary && Array.isArray(fm[primary]) && fm[primary]!.length > 0) {
-		return primary;
-	}
-	for (const legacy of timer.legacyEntriesKeys) {
-		const k = legacy.trim();
-		if (k && Array.isArray(fm[k]) && fm[k]!.length > 0) return k;
-	}
-	return primary || "timeEntries";
+/** Canonical write key — always the primary TaskNotes-compatible field. */
+export function resolveEntriesWriteKey(timer: TimerSettings): string {
+	return timer.entriesKey.trim() || "timeEntries";
 }

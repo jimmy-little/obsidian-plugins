@@ -119,12 +119,14 @@
 		};
 	}
 
-	function seasonRefreshGlyph(node: HTMLElement): void {
+	function seasonRefreshGlyph(node: HTMLElement): { destroy(): void } {
 		setIcon(node, "refresh-ccw");
+		return { destroy() {} };
 	}
 
-	function seasonWatchGlyph(node: HTMLElement): void {
+	function seasonWatchGlyph(node: HTMLElement): { destroy(): void } {
 		setIcon(node, "check-check");
+		return { destroy() {} };
 	}
 
 	/** Which season is currently running a Trakt refresh (null = idle). */
