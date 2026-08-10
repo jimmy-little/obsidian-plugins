@@ -1,5 +1,6 @@
 import type {App, EventRef} from "obsidian";
 import type {OrbitSettings} from "./settings";
+import type {PersonWorksWithEntry} from "../../fulcrum/types";
 
 /** Narrow surface passed into Svelte (avoids circular imports with `main.ts`). */
 export type OrbitHost = {
@@ -21,4 +22,6 @@ export type OrbitHost = {
 	openPersonProperties: (personFile: import("obsidian").TFile) => void;
 	/** Create a person note from a ghost wikilink and open the Orbit profile. */
 	createPersonNote: (linkText: string, displayName: string) => Promise<void>;
+	/** Top collaborators from shared meeting notes (from vault index). */
+	getPersonWorksWith: (personPath: string) => PersonWorksWithEntry[];
 };

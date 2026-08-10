@@ -542,15 +542,124 @@
 	overflow-wrap: anywhere;
 }
 
-/* Fulcrum companion chrome: horizontal strip */
+/* Fulcrum companion chrome: overlapping avatar stack below title/project */
 .fulcrum-companion-people-row {
 	display: flex;
-	flex-wrap: wrap;
-	align-items: stretch;
-	gap: 0.5rem 0.6rem;
-	margin-top: 0.65rem;
-	padding-top: 0.65rem;
-	border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
+	align-items: center;
+	justify-content: flex-start;
+	margin-top: 0.55rem;
+	padding-top: 0;
+	border-top: none;
+}
+
+.fulcrum-companion-people-stack {
+	display: inline-flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-start;
+	max-width: 100%;
+}
+
+.fulcrum-companion-people-stack__avatar {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 2rem;
+	height: 2rem;
+	margin: 0;
+	margin-left: -0.5rem;
+	padding: 0;
+	border: 2px solid var(--background-primary);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--background-modifier-border) 35%, var(--background-primary));
+	cursor: pointer;
+	overflow: visible;
+	box-sizing: border-box;
+}
+
+.fulcrum-companion-people-stack__avatar:first-child {
+	margin-left: 0;
+}
+
+.fulcrum-companion-people-stack__avatar:hover,
+.fulcrum-companion-people-stack__avatar:focus-visible {
+	z-index: 2;
+}
+
+.fulcrum-companion-people-stack__avatar--ghost {
+	border-style: dashed;
+	opacity: 0.88;
+}
+
+.fulcrum-companion-people-stack__face {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+	border-radius: inherit;
+	overflow: hidden;
+	background: color-mix(in srgb, var(--background-modifier-border) 35%, var(--background-primary));
+}
+
+.fulcrum-companion-people-stack__face img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.fulcrum-companion-people-stack__face svg {
+	width: 58%;
+	height: 58%;
+	opacity: 0.55;
+	color: var(--text-muted);
+}
+
+.fulcrum-companion-people-stack__tooltip {
+	position: absolute;
+	left: 50%;
+	bottom: calc(100% + 0.35rem);
+	transform: translateX(-50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.1rem;
+	min-width: 6.5rem;
+	max-width: 14rem;
+	padding: 0.35rem 0.5rem;
+	border-radius: var(--radius-s, 6px);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+	pointer-events: none;
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 0.12s ease, visibility 0.12s ease;
+	z-index: 5;
+	white-space: normal;
+	text-align: center;
+}
+
+.fulcrum-companion-people-stack__avatar:hover .fulcrum-companion-people-stack__tooltip,
+.fulcrum-companion-people-stack__avatar:focus-visible .fulcrum-companion-people-stack__tooltip {
+	opacity: 1;
+	visibility: visible;
+}
+
+.fulcrum-companion-people-stack__tooltip-name {
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	line-height: 1.25;
+}
+
+.fulcrum-companion-people-stack__tooltip-position {
+	font-size: calc(var(--font-ui-smaller) - 1px);
+	color: var(--text-muted);
+	line-height: 1.25;
 }
 
 /* Companion person cards intentionally inherit the exact same look as grid cards. */

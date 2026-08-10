@@ -2,19 +2,19 @@
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import {indexRevision, settingsRevision, areaFilterState} from "../fulcrum/stores";
 	import {isDoneStatus, parseDoneStatusSet} from "../fulcrum/settingsDefaults";
-	import {buildAreaLifeModeMap, taskPassesAreaFilter} from "../fulcrum/utils/areaFocusFilter";
+	import {buildAreaLifeModeMap} from "../fulcrum/utils/areaFocusFilter";
+	import {weekdayLabelsOrdered} from "../fulcrum/recurrence/recurrenceRuleBuilder";
 	import {
 		buildTaskDueCountsByDay,
-		filterOpenTasksForTasksView,
 		maxCountInMap,
 	} from "../fulcrum/tasks/tasksViewModel";
+	import {collectHorizonTasks} from "../fulcrum/tasks/horizonTasks";
 	import {tasksViewFocusedIso} from "../fulcrum/tasks/tasksViewStore";
 	import {handleTasksViewDateDrop, tasksViewDragOver} from "../fulcrum/tasks/tasksViewDnD";
+	import {todayLocalISODate} from "../fulcrum/utils/dates";
 	import FulcrumDateNavToolbar from "./shared/FulcrumDateNavToolbar.svelte";
 
 	export let plugin: FulcrumHost;
-
-	const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 	let monthStart = startOfMonth(new Date());
 	let dropIso: string | null = null;
@@ -32,6 +32,7 @@
 	$: sRev = $settingsRevision;
 	$: doneTask = (void sRev, parseDoneStatusSet(plugin.settings.taskDoneStatuses));
 	$: areaFilter = $areaFilterState;
+	$: weekStart = (void sRev, plugin.settings.calendarFirstDayOfWeek);
 	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
@@ -39,25 +40,46 @@
 		areaTypeValue: plugin.settings.areaTypeValue,
 		settings: plugin.settings,
 	});
-	$: openTasks = snapshot.tasks.filter(
-		(t) =>
-			!isDoneStatus(t.status, doneTask) &&
-			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
+	$: filteredTasks = collectHorizonTasks(
+		snapshot,
+		plugin.settings,
+		areaFilter,
+		lifeModeMap,
+		doneTask,
 	);
-	$: filteredTasks = filterOpenTasksForTasksView(openTasks, plugin.settings);
 	$: counts = buildTaskDueCountsByDay(filteredTasks, monthStart);
 	$: maxCount = maxCountInMap(counts);
+	$: focusedIso = $tasksViewFocusedIso;
+	$: todayIso = todayLocalISODate();
+
+	$: if (focusedIso) {
+		const d = new Date(`${focusedIso}T12:00:00`);
+		if (!Number.isNaN(d.getTime())) {
+			const target = startOfMonth(d);
+			if (
+				target.getFullYear() !== monthStart.getFullYear() ||
+				target.getMonth() !== monthStart.getMonth()
+			) {
+				monthStart = target;
+			}
+		}
+	}
 
 	$: monthLabel = monthStart.toLocaleDateString(undefined, {month: "long", year: "numeric"});
-	$: gridCells = buildMonthCells(monthStart);
+	$: weekdayLabels = weekdayLabelsOrdered(weekStart).map((w) => w.label.slice(0, 3));
+	$: gridCells = buildMonthCells(monthStart, weekStart);
 
-	function buildMonthCells(start: Date): {iso: string | null; dayNum: number}[] {
+	function buildMonthCells(
+		start: Date,
+		firstDayOfWeek: number,
+	): {iso: string | null; dayNum: number}[] {
 		const y = start.getFullYear();
 		const m = start.getMonth();
 		const firstDow = new Date(y, m, 1).getDay();
+		const pad = (firstDow - firstDayOfWeek + 7) % 7;
 		const lastDay = new Date(y, m + 1, 0).getDate();
 		const cells: {iso: string | null; dayNum: number}[] = [];
-		for (let i = 0; i < firstDow; i++) cells.push({iso: null, dayNum: 0});
+		for (let i = 0; i < pad; i++) cells.push({iso: null, dayNum: 0});
 		for (let d = 1; d <= lastDay; d++) {
 			const iso = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 			cells.push({iso, dayNum: d});
@@ -118,7 +140,7 @@
 		className="fulcrum-tasks-month__nav"
 	/>
 	<div class="fulcrum-tasks-month__weekdays" aria-hidden="true">
-		{#each WEEKDAYS as wd}
+		{#each weekdayLabels as wd}
 			<span class="fulcrum-tasks-month__weekday">{wd}</span>
 		{/each}
 	</div>
@@ -129,6 +151,8 @@
 				<button
 					type="button"
 					class="fulcrum-tasks-month__day"
+					class:fulcrum-tasks-month__day--today={iso === todayIso}
+					class:fulcrum-tasks-month__day--focused={iso === focusedIso}
 					class:fulcrum-tasks-month__day--drop={dropIso === iso}
 					style="--fulcrum-tasks-heat: {heatLevel(counts.get(iso) ?? 0)}"
 					role="gridcell"

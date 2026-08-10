@@ -10,6 +10,7 @@ import {
 	applyTaskDueChangeToIso,
 	applyTaskProjectChange,
 	applyTaskTagAdd,
+	dueDateOnDayPreservingTime,
 } from "../kanban/taskFieldUpdate";
 import {NO_PROJECT} from "../kanban/buildBoard";
 import type {IndexedTask} from "../types";
@@ -24,8 +25,12 @@ export async function handleTasksViewTaskDrop(
 	try {
 		if (groupBy === "day") {
 			if (section.dropDateIso) {
+				host.vaultIndex.patchIndexedTask(task, {
+					dueDate: dueDateOnDayPreservingTime(task.dueDate, section.dropDateIso),
+				});
 				await applyTaskDueChangeToIso(host.app, task, host.settings, section.dropDateIso);
 			} else if (section.key === "__unscheduled__") {
+				host.vaultIndex.patchIndexedTask(task, {dueDate: undefined});
 				await applyTaskDueChange(host.app, task, host.settings, null);
 			}
 		} else if (groupBy === "project") {
@@ -42,7 +47,7 @@ export async function handleTasksViewTaskDrop(
 		}
 	} finally {
 		await resolved;
-		await host.refreshIndex();
+		host.vaultIndex.scheduleRebuild();
 	}
 }
 
@@ -55,12 +60,14 @@ export async function handleTasksViewDateDrop(
 	if (!raw) return false;
 	const task = findTaskByDragKey(host.vaultIndex.getSnapshot().tasks, raw);
 	if (!task) return false;
+	const nextDue = dueDateOnDayPreservingTime(task.dueDate, dateIso);
+	host.vaultIndex.patchIndexedTask(task, {dueDate: nextDue});
 	const resolved = waitForNextFileResolved(host.app, task.file);
 	try {
 		await applyTaskDueChangeToIso(host.app, task, host.settings, dateIso);
 	} finally {
 		await resolved;
-		await host.refreshIndex();
+		host.vaultIndex.scheduleRebuild();
 	}
 	return true;
 }

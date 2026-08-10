@@ -13,7 +13,7 @@
 
 	async function syncActiveTimers(): Promise<void> {
 		const serial = ++syncSerial;
-		const rows = await plugin.timer.getActiveTimers();
+		const rows = plugin.timer.listActiveTimersInMemory();
 		if (serial !== syncSerial) return;
 
 		const nextCount = rows.length;

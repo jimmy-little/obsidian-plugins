@@ -10,6 +10,10 @@
 	export let anchorLeaf: WorkspaceLeaf | undefined = undefined;
 	/** Project / area views: show count-up + stop when a timer is running on this note. */
 	export let showInlineTimer = false;
+	/** Tighter padding / wrapping for multi-column dashboard grids. */
+	export let compact = false;
+	/** Enable HTML5 drag for calendar / week-grid drops (due date). */
+	export let enableDrag = false;
 </script>
 
-<TaskCardNote {plugin} {task} {done} {anchorLeaf} {showInlineTimer} />
+<TaskCardNote {plugin} {task} {done} {anchorLeaf} {showInlineTimer} {compact} {enableDrag} />

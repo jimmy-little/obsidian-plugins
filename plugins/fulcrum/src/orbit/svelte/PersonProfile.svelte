@@ -36,7 +36,8 @@
 	import {buildPeopleDirsMatchIndex, resolvePersonLink} from "../orbit/peopleResolve";
 	import {VIEW_ORBIT_PERSON} from "../orbit/constants";
 	import OrbitActivityRow from "./OrbitActivityRow.svelte";
-	import OrbitPersonPill from "./OrbitPersonPill.svelte";
+	import OrbitPersonCard from "./OrbitPersonCard.svelte";
+	import {indexRevision} from "../../fulcrum/stores";
 
 	const ACTIVITY_PAGE_SIZE = 25;
 
@@ -85,9 +86,12 @@
 		linkText: string;
 		label: string;
 		displayName: string;
+		position: string;
 		avatarSrc: string | null;
 		isGhost: boolean;
 	};
+
+	let commonlyWorksWith: OrgPersonPill[] = [];
 
 	export let plugin: OrbitHost;
 	export let filePath: string;
@@ -122,12 +126,14 @@
 			const pf = resolved.file;
 			const c = plugin.app.metadataCache.getFileCache(pf);
 			const fm = readPersonFrontmatter(c);
+			const position = stripWikiLinkDisplay(fm.position?.trim() ?? "").trim();
 			return {
 				key: pf.path,
 				path: pf.path,
 				linkText: resolved.linkText,
 				label: linkLabel,
 				displayName: displayNameForPerson(fm, pf.basename),
+				position,
 				avatarSrc: resolvePersonAvatarSrc(plugin.app, pf, plugin.settings.avatarFrontmatterField),
 				isGhost: false,
 			};
@@ -138,9 +144,48 @@
 			linkText: resolved.linkText,
 			label: linkLabel,
 			displayName: resolved.displayName,
+			position: "",
 			avatarSrc: null,
 			isGhost: true,
 		};
+	}
+
+	function buildWorksWithPill(entry: ReturnType<OrbitHost["getPersonWorksWith"]>[number]): OrgPersonPill {
+		if (entry.file) {
+			const pf = entry.file;
+			const c = plugin.app.metadataCache.getFileCache(pf);
+			const fm = readPersonFrontmatter(c);
+			return {
+				key: entry.key,
+				path: pf.path,
+				linkText: entry.linkText,
+				label: entry.linkText,
+				displayName: displayNameForPerson(fm, pf.basename),
+				position: stripWikiLinkDisplay(fm.position?.trim() ?? "").trim(),
+				avatarSrc: resolvePersonAvatarSrc(plugin.app, pf, plugin.settings.avatarFrontmatterField),
+				isGhost: false,
+			};
+		}
+		return {
+			key: entry.key,
+			path: null,
+			linkText: entry.linkText,
+			label: entry.linkText,
+			displayName: entry.linkText,
+			position: "",
+			avatarSrc: null,
+			isGhost: true,
+		};
+	}
+
+	function refreshWorksWith(): void {
+		if (!personFile) {
+			commonlyWorksWith = [];
+			return;
+		}
+		commonlyWorksWith = plugin
+			.getPersonWorksWith(personFile.path)
+			.map((entry) => buildWorksWithPill(entry));
 	}
 
 	function rebuild(): void {
@@ -209,6 +254,8 @@
 			orgDownPaths.push(buildOrgPersonPill(resolved, ref.linkText));
 		}
 
+		refreshWorksWith();
+
 		void plugin.app.vault.read(f).then(async (body) => {
 			const back = await collectInteractions(plugin.app, f, plugin.settings);
 			const quick = quickNoteEntriesFromPersonBody(f, body);
@@ -218,6 +265,7 @@
 	}
 
 	$: filePath, void rebuild();
+	$: void $indexRevision, refreshWorksWith();
 
 	function fmtDate(ms: number | null): string {
 		if (ms == null) return "—";
@@ -539,40 +587,65 @@
 	{/if}
 
 	{#if orgUpPaths.length > 0 || orgDownPaths.length > 0}
-		<section class="orbit-section">
+		<section class="orbit-section orbit-org">
 			<h2 class="orbit-section__title">Org</h2>
-			{#if orgUpPaths.length > 0}
-				<div class="orbit-org-row orbit-org-row--pills">
-					<span class="orbit-org-row__label">Reports to</span>
-					<div class="orbit-org-pills">
-						{#each orgUpPaths as o (o.key)}
-							<OrbitPersonPill
-								displayName={o.displayName}
-								avatarSrc={o.avatarSrc}
-								isGhost={o.isGhost}
-								title={o.isGhost ? "Create person note" : undefined}
-								on:click={() => void onOrgPillClick(o)}
-							/>
-						{/each}
+			<div class="orbit-org__grid">
+				{#if orgUpPaths.length > 0}
+					<div class="orbit-org__col orbit-org__col--up">
+						<span class="orbit-org__label">Reports to</span>
+						<div class="orbit-org__up-cards">
+							{#each orgUpPaths as o (o.key)}
+								<OrbitPersonCard
+									displayName={o.displayName}
+									position={o.position}
+									avatarSrc={o.avatarSrc}
+									isGhost={o.isGhost}
+									layout="vertical"
+									title={o.isGhost ? "Create person note" : undefined}
+									on:click={() => void onOrgPillClick(o)}
+								/>
+							{/each}
+						</div>
 					</div>
-				</div>
-			{/if}
-			{#if orgDownPaths.length > 0}
-				<div class="orbit-org-row orbit-org-row--pills">
-					<span class="orbit-org-row__label">Direct reports</span>
-					<div class="orbit-org-pills">
-						{#each orgDownPaths as o (o.key)}
-							<OrbitPersonPill
-								displayName={o.displayName}
-								avatarSrc={o.avatarSrc}
-								isGhost={o.isGhost}
-								title={o.isGhost ? "Create person note" : undefined}
-								on:click={() => void onOrgPillClick(o)}
-							/>
-						{/each}
+				{/if}
+				{#if orgDownPaths.length > 0}
+					<div class="orbit-org__col orbit-org__col--down">
+						<span class="orbit-org__label">Direct reports</span>
+						<div class="orbit-org__card-grid">
+							{#each orgDownPaths as o (o.key)}
+								<OrbitPersonCard
+									displayName={o.displayName}
+									position={o.position}
+									avatarSrc={o.avatarSrc}
+									isGhost={o.isGhost}
+									layout="horizontal"
+									title={o.isGhost ? "Create person note" : undefined}
+									on:click={() => void onOrgPillClick(o)}
+								/>
+							{/each}
+						</div>
 					</div>
-				</div>
-			{/if}
+				{/if}
+			</div>
+		</section>
+	{/if}
+
+	{#if commonlyWorksWith.length > 0}
+		<section class="orbit-section orbit-works-with" aria-label="Commonly works with">
+			<h2 class="orbit-section__title">Commonly works with</h2>
+			<div class="orbit-org__card-grid">
+				{#each commonlyWorksWith as o (o.key)}
+					<OrbitPersonCard
+						displayName={o.displayName}
+						position={o.position}
+						avatarSrc={o.avatarSrc}
+						isGhost={o.isGhost}
+						layout="horizontal"
+						title={o.isGhost ? "Create person note" : undefined}
+						on:click={() => void onOrgPillClick(o)}
+					/>
+				{/each}
+			</div>
 		</section>
 	{/if}
 
@@ -917,32 +990,51 @@
 		font-weight: 600;
 		font-size: var(--font-ui-small);
 	}
-	.orbit-org-row--pills {
-		display: flex;
-		flex-direction: row;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.4rem 0.55rem;
-		margin-bottom: 0.45rem;
+	.orbit-org__grid {
+		display: grid;
+		grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr);
+		gap: 1rem 1.25rem;
+		align-items: start;
 	}
-	.orbit-org-row__label {
-		flex: 0 0 auto;
-		font-size: var(--font-ui-smaller);
-		color: var(--text-muted);
-		min-width: 5.5rem;
-	}
-	.orbit-org-pills {
+	.orbit-org__col {
 		display: flex;
-		flex-flow: row wrap;
-		align-items: center;
-		gap: 0.35rem 0.4rem;
-		flex: 1 1 auto;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.45rem;
 		min-width: 0;
 	}
-	.orbit-org-pills :global(.fulcrum-person-inline-pill) {
-		font: inherit;
-		cursor: pointer;
-		max-width: 100%;
+	.orbit-org__col--up {
+		padding-right: 1rem;
+		border-right: 1px solid color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+	}
+	.orbit-org__label {
+		font-size: var(--font-ui-smaller);
+		color: var(--text-muted);
+	}
+	.orbit-org__up-cards {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.orbit-org__card-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+		gap: 0.35rem 0.75rem;
+		align-items: start;
+	}
+	@media (max-width: 540px) {
+		.orbit-org__grid {
+			grid-template-columns: 1fr;
+		}
+		.orbit-org__col--up {
+			padding-right: 0;
+			border-right: none;
+			padding-bottom: 0.75rem;
+			border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+		}
+	}
+	.orbit-works-with {
+		margin-top: 1.25rem;
 	}
 	.orbit-activity-feed__count {
 		margin: 0 0 0.5rem;

@@ -20,6 +20,7 @@
 		buildAreaLifeModeMap,
 		filterProjectsByAreaFocus,
 	} from "../fulcrum/utils/areaFocusFilter";
+	import {preferLightForegroundOnAccentCss} from "../fulcrum/utils/projectVisual";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -244,24 +245,32 @@
 									)}
 									<button
 										type="button"
-										class="fulcrum-gantt__milestone"
+										class="fulcrum-gantt__milestone-wrap"
 										style={`--fulcrum-gantt-accent: ${row.accentCss}; left: ${markerLeft}`}
 										on:click={row.open}
 										title="{row.bar.startIso}: {row.label}"
 										aria-label="{row.label} on {row.bar.startIso}"
-									></button>
+									>
+										<span class="fulcrum-gantt__milestone" aria-hidden="true"></span>
+										<span class="fulcrum-gantt__milestone-label">{row.label}</span>
+									</button>
 								{:else if row.bar}
 									{@const style = ganttBarStyle(row.bar, model.rangeStartIso, model.dayCount)}
+									{@const lightBarLabel = preferLightForegroundOnAccentCss(row.accentCss)}
 									<button
 										type="button"
-										class="fulcrum-gantt__bar"
-										class:fulcrum-gantt__bar--project={row.kind === "project"}
-										class:fulcrum-gantt__bar--task={row.kind === "task"}
+										class="fulcrum-gantt__bar-shell"
+										class:fulcrum-gantt__bar-shell--project={row.kind === "project"}
+										class:fulcrum-gantt__bar-shell--task={row.kind === "task"}
 										style={`--fulcrum-gantt-accent: ${row.accentCss}; left: ${style.left}; width: ${style.width}`}
 										on:click={row.open}
 										title={row.label}
+										aria-label={row.label}
 									>
-										<span class="fulcrum-gantt__bar-label">{row.label}</span>
+										<span
+											class="fulcrum-gantt__bar-label"
+											class:fulcrum-gantt__bar-label--light={lightBarLabel}
+										>{row.label}</span>
 									</button>
 								{/if}
 							</div>

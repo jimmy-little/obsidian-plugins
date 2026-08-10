@@ -2,12 +2,12 @@
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import {indexRevision, settingsRevision, areaFilterState} from "../fulcrum/stores";
 	import {isDoneStatus, parseDoneStatusSet} from "../fulcrum/settingsDefaults";
-	import {buildAreaLifeModeMap, taskPassesAreaFilter} from "../fulcrum/utils/areaFocusFilter";
+	import {buildAreaLifeModeMap} from "../fulcrum/utils/areaFocusFilter";
 	import {
 		buildWeekStripBlocks,
-		filterOpenTasksForTasksView,
 		weekStripDropDateIso,
 	} from "../fulcrum/tasks/tasksViewModel";
+	import {collectHorizonTasks} from "../fulcrum/tasks/horizonTasks";
 	import {tasksViewFocusedIso} from "../fulcrum/tasks/tasksViewStore";
 	import {handleTasksViewDateDrop, tasksViewDragOver} from "../fulcrum/tasks/tasksViewDnD";
 
@@ -31,13 +31,15 @@
 		areaTypeValue: plugin.settings.areaTypeValue,
 		settings: plugin.settings,
 	});
-	$: openTasks = snapshot.tasks.filter(
-		(t) =>
-			!isDoneStatus(t.status, doneTask) &&
-			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
+	$: filteredTasks = collectHorizonTasks(
+		snapshot,
+		plugin.settings,
+		areaFilter,
+		lifeModeMap,
+		doneTask,
 	);
-	$: filteredTasks = filterOpenTasksForTasksView(openTasks, plugin.settings);
 	$: blocks = buildWeekStripBlocks(filteredTasks);
+	$: focusedIso = $tasksViewFocusedIso;
 
 	function onBlockClick(block: (typeof blocks)[0]): void {
 		if (block.dateIso) tasksViewFocusedIso.set(block.dateIso);
@@ -68,6 +70,7 @@
 			<span
 				class="fulcrum-tasks-week-strip__name"
 				class:fulcrum-tasks-week-strip__name--today={block.isToday}
+				class:fulcrum-tasks-week-strip__name--focused={block.dateIso === focusedIso}
 			>
 				{block.dayName}
 			</span>
@@ -79,6 +82,7 @@
 				type="button"
 				class="fulcrum-tasks-week-strip__block"
 				class:fulcrum-tasks-week-strip__block--today={block.isToday}
+				class:fulcrum-tasks-week-strip__block--focused={block.dateIso === focusedIso}
 				class:fulcrum-tasks-week-strip__block--past={block.isPast}
 				class:fulcrum-tasks-week-strip__block--future={block.isFuture}
 				class:fulcrum-tasks-week-strip__block--drop={dropTargetKey === block.key}

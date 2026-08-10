@@ -88,6 +88,7 @@
 	class="fulcrum-tasks-row"
 	class:fulcrum-tasks-row--selected={selected}
 	class:fulcrum-tasks-row--ghost={isGhostOccurrence}
+	class:fulcrum-tasks-row--inline={task.source === "inline"}
 	style={rowGridStyle}
 	on:click={selectRow}
 	on:dblclick={onRowDblClick}
@@ -107,6 +108,9 @@
 	{#each columns as col (col)}
 		{#if col === "title"}
 			<span class="fulcrum-tasks-row__title" title={task.title}>
+				{#if task.source === "inline"}
+					<span class="fulcrum-tasks-row__inline-mark" aria-hidden="true">▸</span>
+				{/if}
 				{task.title}
 				{#if showRecur}
 					<span class="fulcrum-tasks-row__recur" title="Recurring">↻</span>

@@ -10,6 +10,7 @@
 	import {addDaysIso, todayLocalISODate} from "../fulcrum/utils/dates";
 	import TasksCenterList from "./TasksCenterList.svelte";
 	import TaskInspectorPanel from "./TaskInspectorPanel.svelte";
+	import TasksWeekStrip from "./TasksWeekStrip.svelte";
 	import FulcrumLeafToolbar from "./FulcrumLeafToolbar.svelte";
 
 	export let plugin: FulcrumHost;
@@ -167,6 +168,9 @@
 
 	<div class="fulcrum-tasks-main__body" style={inspectorStyle}>
 		<div class="fulcrum-tasks-main__center">
+			<div class="fulcrum-tasks-main__center-top">
+				<TasksWeekStrip {plugin} />
+			</div>
 			<TasksCenterList
 				{plugin}
 				{groupBy}

@@ -115,12 +115,21 @@
 				const doneSet = parseDoneStatusSet(plugin.settings.taskDoneStatuses);
 				const yamlDone = plugin.settings.taskNoteYamlStatusDone.trim().toLowerCase();
 				void (async () => {
-					await applyTaskStatusChange(plugin.app, task, plugin.settings, next);
 					const isDone =
 						isDoneStatus(next, doneSet) ||
 						(yamlDone.length > 0 && normalizeStatusKey(next) === yamlDone);
-					await syncEmbedHostCheckbox(isDone);
-					await plugin.refreshIndex();
+					plugin.vaultIndex.patchIndexedTask(task, {
+						status: next,
+						completedDate: isDone ? new Date().toISOString().slice(0, 10) : undefined,
+					});
+					try {
+						await applyTaskStatusChange(plugin.app, task, plugin.settings, next);
+						await syncEmbedHostCheckbox(isDone);
+						plugin.vaultIndex.scheduleRebuild();
+					} catch (e) {
+						plugin.vaultIndex.scheduleRebuild();
+						throw e;
+					}
 				})().catch(console.error);
 				return;
 			}

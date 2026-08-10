@@ -346,6 +346,14 @@ export async function applyTaskDueChangeToIso(
 	await applyTaskDueChange(app, task, settings, value);
 }
 
+/** Merge a YYYY-MM-DD onto an existing due/scheduled value, keeping any `T HH:mm`. */
+export function dueDateOnDayPreservingTime(
+	existing: string | undefined,
+	dateIso: string,
+): string {
+	return mergeDatePreserveTime(existing, dateIso);
+}
+
 export async function applyTaskDateChange(
 	app: App,
 	task: IndexedTask,

@@ -502,17 +502,18 @@ export function registerLivePreviewLinkPillScan(
 			scheduleScan();
 		}),
 	);
+	// Metadata fires on every keystroke; link pills refresh from editor-change and on save.
 	plugin.registerEvent(
-		plugin.app.metadataCache.on("changed", (file) => {
+		plugin.app.vault.on("modify", (file) => {
 			if (!(file instanceof TFile && file.extension === "md")) return;
-			invalidateFolderCacheIfNeeded(file);
 			if (!shouldScheduleLinkPillScanForFileChange(plugin.app, file)) return;
 			scheduleScan();
 		}),
 	);
 	plugin.registerEvent(
-		plugin.app.vault.on("create", () => {
-			invalidateInlineLinkFolderIndexCache();
+		plugin.app.vault.on("create", (file) => {
+			if (file instanceof TFile) invalidateFolderCacheIfNeeded(file);
+			else invalidateInlineLinkFolderIndexCache();
 		}),
 	);
 	plugin.registerEvent(
@@ -521,8 +522,9 @@ export function registerLivePreviewLinkPillScan(
 		}),
 	);
 	plugin.registerEvent(
-		plugin.app.vault.on("rename", () => {
-			invalidateInlineLinkFolderIndexCache();
+		plugin.app.vault.on("rename", (file) => {
+			if (file instanceof TFile) invalidateFolderCacheIfNeeded(file);
+			else invalidateInlineLinkFolderIndexCache();
 		}),
 	);
 

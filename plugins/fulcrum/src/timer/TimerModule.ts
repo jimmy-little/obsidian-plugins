@@ -21,9 +21,11 @@ import type {IndexedProject} from "../fulcrum/types";
 import {isUnderFolder} from "../fulcrum/utils/paths";
 import {
 	applyCompletedMemoryOverrides,
+	entryTimestampNow,
 	normalizeTimerEntries,
 	readTimerEntriesFromFm,
 	resolveEntriesWriteKey,
+	sameEntryTimestamp,
 } from "../fulcrum/utils/timerEntries";
 import {allPlannedReadKeys, allEntriesReadKeys} from "./settings";
 import type {
@@ -140,6 +142,14 @@ export class TimerModule {
 	private timerEntryReloadHandles = new Map<string, number>();
 	/** Per-note refresh callbacks for inline ```fulcrum-timer widgets. */
 	private timerWidgetRefreshCallbacks = new Map<string, Set<() => void>>();
+	/**
+	 * Paths whose frontmatter currently has timer keys — lets `getActiveTimers()` skip
+	 * a full vault scan on every call. Built once, then kept current incrementally by
+	 * the metadataCache 'changed' / vault 'delete' / 'rename' handlers below.
+	 */
+	private timerFrontmatterCandidates = new Set<string>();
+	private timerCandidateIndexReady = false;
+	private timerCandidateIndexBuilding: Promise<void> | null = null;
 	colorMeasurementEl: HTMLElement | null = null; // Hidden element for measuring computed colors
 	/** Planner note path → cached planned blocks (mtime-validated). */
 	plannedDayCache: Map<string, { mtime: number; blocks: PlannedBlock[] }> = new Map();
@@ -214,6 +224,7 @@ export class TimerModule {
 
 	unmountActiveTimersView(): void {
 		this.activeTimersPanel?.unmount();
+		this.activeTimersPanel = null;
 	}
 
 	async mountDashboardActiveTimers(container: HTMLElement): Promise<void> {
@@ -400,6 +411,9 @@ export class TimerModule {
 	async onload() {
 		const pluginStartTime = Date.now();
 		await this.loadTimerCache();
+		// Warm the candidate index in the background so the first Active Timers
+		// render doesn't pay for a full vault scan.
+		void this.ensureTimerCandidateIndex();
 
 		console.log(`Fulcrum timer: Plugin loading... (${Date.now() - pluginStartTime}ms)`);
 
@@ -418,7 +432,13 @@ export class TimerModule {
 				const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
 					| Record<string, unknown>
 					| undefined;
-				if (!this.fileHasTimerFrontmatter(fm) && !this.timeData.has(file.path)) {
+				const hasTimerFm = this.fileHasTimerFrontmatter(fm);
+				if (hasTimerFm) {
+					this.timerFrontmatterCandidates.add(file.path);
+				} else {
+					this.timerFrontmatterCandidates.delete(file.path);
+				}
+				if (!hasTimerFm && !this.timeData.has(file.path)) {
 					return;
 				}
 				// Active editor notes update metadata on every keystroke — reload on save instead.
@@ -431,6 +451,8 @@ export class TimerModule {
 			this.app.vault.on('modify', (file) => {
 				if (!(file instanceof TFile) || file.extension !== 'md') return;
 				if (this.isFrontmatterReloadSuppressed(file.path)) return;
+				// Active editor notes save on every keystroke — reload on close/save via metadata instead.
+				if (this.isFileOpenInMarkdownEditor(file.path)) return;
 				const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
 					| Record<string, unknown>
 					| undefined;
@@ -445,6 +467,7 @@ export class TimerModule {
 				this.invalidateCacheForFile(file.path);
 				// Also remove from in-memory timeData
 				this.timeData.delete(file.path);
+				this.timerFrontmatterCandidates.delete(file.path);
 			})
 		);
 
@@ -452,6 +475,7 @@ export class TimerModule {
 			this.app.vault.on('rename', (file, oldPath) => {
 				this.invalidateCacheForFile(oldPath);
 				this.timeData.delete(oldPath);
+				this.timerFrontmatterCandidates.delete(oldPath);
 			})
 		);
 
@@ -524,7 +548,7 @@ export class TimerModule {
 				if (!hasActiveTimer) {
 					// Get default label
 					const label = await this.getDefaultLabel(filePath);
-					const now = Date.now();
+					const now = entryTimestampNow();
 					const entryIndex = pageData?.entries.length || 0;
 					
 					// Create new timer entry with stable ID matching loaded format
@@ -581,7 +605,7 @@ export class TimerModule {
 				} else {
 					// Start a new timer
 					const label = await this.getDefaultLabel(filePath);
-					const now = Date.now();
+					const now = entryTimestampNow();
 					const entryIndex = pageData?.entries.length || 0;
 					const newEntry: TimeEntry = {
 						id: `${filePath}-${entryIndex}-${now}`,
@@ -774,7 +798,7 @@ export class TimerModule {
 		const titleHint = options?.noteTitle?.trim();
 		const label =
 			titleHint && titleHint.length > 0 ? titleHint : await this.getDefaultLabel(notePath);
-		const now = Date.now();
+		const now = entryTimestampNow();
 		const entryIndex = pageData.entries.length;
 		const newEntry: TimeEntry = {
 			id: `${notePath}-${entryIndex}-${now}`,
@@ -826,9 +850,9 @@ export class TimerModule {
 		const id = window.setTimeout(() => {
 			this.timerEntryReloadHandles.delete(filePath);
 			void this.loadEntriesFromFrontmatter(filePath).then(() => {
-				this.refreshActivityPanel();
 				this.updateStatusBar();
 				this.refreshTimerWidgetsForFile(filePath);
+				this.host.bumpTimerRevision?.();
 			});
 		}, delayMs);
 		this.timerEntryReloadHandles.set(filePath, id);
@@ -992,14 +1016,22 @@ export class TimerModule {
 			entries = applyCompletedMemoryOverrides(entries, completedInMemory);
 			for (const active of activeInMemory) {
 				if (active.startTime == null) continue;
-				const byIdIdx = active.id
+				// Frontmatter never round-trips entry ids or millisecond precision, so
+				// match by id first, then by second-precision startTime.
+				const matchIdx = active.id
 					? entries.findIndex((e) => e.id === active.id)
 					: -1;
-				if (byIdIdx >= 0) {
-					const fmEntry = entries[byIdIdx]!;
+				const idx =
+					matchIdx >= 0
+						? matchIdx
+						: entries.findIndex((e) =>
+								sameEntryTimestamp(e.startTime, active.startTime),
+							);
+				if (idx >= 0) {
+					const fmEntry = entries[idx]!;
 					if (fmEntry.endTime == null) {
 						// In-memory running entry wins over metadata cache (± adjustments, cache lag).
-						entries[byIdIdx] = {
+						entries[idx] = {
 							...fmEntry,
 							startTime: active.startTime,
 							duration: active.duration,
@@ -1008,23 +1040,13 @@ export class TimerModule {
 							tags: active.tags,
 						};
 					}
+					// endTime set: the note says this session was stopped (other device,
+					// widget, manual edit) — drop the stale in-memory active copy.
 					continue;
 				}
-				const stillPresent = entries.some(
-					(e) => e.startTime === active.startTime && e.endTime == null,
-				);
-				if (!stillPresent) {
-					entries.push(active);
-				}
+				entries.push(active);
 			}
-			const beforeNorm = entries.length;
-			const activeBefore = entries.filter(
-				(e) => e.startTime != null && e.endTime == null,
-			).length;
 			entries = normalizeTimerEntries(entries);
-			const activeAfter = entries.filter(
-				(e) => e.startTime != null && e.endTime == null,
-			).length;
 			const projectRaw = fm[this.settings.projectKey];
 			const project = typeof projectRaw === 'string' ? projectRaw : null;
 			const totalTimeTracked = entries
@@ -1037,14 +1059,9 @@ export class TimerModule {
 				project,
 				totalTime: totalTimeTracked,
 			};
-			if (
-				beforeNorm !== entries.length ||
-				activeBefore > activeAfter
-			) {
-				void this.updateFrontmatter(filePath).catch((err) =>
-					console.error("Error persisting normalized timer entries:", err),
-				);
-			}
+			// Never write the note from the reload path: a reload-triggered write fires
+			// another metadata change and can loop. Normalized entries are persisted by
+			// the next user-initiated start/stop/adjust write instead.
 		} catch (error) {
 			console.error('Error loading entries from frontmatter:', error);
 		}
@@ -1974,10 +1991,11 @@ export class TimerModule {
 			
 			if (currentActiveTimer) {
 				// Stop the active timer
+				const stopAt = entryTimestampNow();
 				if (!currentActiveTimer.isPaused && currentActiveTimer.startTime) {
-					currentActiveTimer.duration += (Date.now() - currentActiveTimer.startTime);
+					currentActiveTimer.duration += (stopAt - currentActiveTimer.startTime);
 				}
-				currentActiveTimer.endTime = Date.now();
+				currentActiveTimer.endTime = stopAt;
 				// Keep startTime for the record
 				currentActiveTimer.isPaused = false;
 
@@ -2027,7 +2045,7 @@ export class TimerModule {
 				// Get default label based on settings
 				label = await this.getDefaultLabel(filePath);
 			}
-			const now = Date.now();
+			const now = entryTimestampNow();
 			const entryIndex = pageData.entries.length;
 			const newEntry: TimeEntry = {
 				id: `${filePath}-${entryIndex}-${now}`,
@@ -2104,11 +2122,18 @@ export class TimerModule {
 			this.renderEntryCards(cardsContainer, pageData.entries, filePath, labelDisplay, labelInput);
 		};
 
+		let lastEntrySignature = pageData.entries
+			.map((e) => `${e.id}:${e.startTime ?? ""}:${e.endTime ?? ""}`)
+			.join("|");
+
 		const syncWidgetFromPageData = () => {
 			const fresh = this.timeData.get(filePath);
 			if (fresh) {
 				pageData = fresh;
 			}
+			const entrySignature = pageData.entries
+				.map((e) => `${e.id}:${e.startTime ?? ""}:${e.endTime ?? ""}`)
+				.join("|");
 			const currentActiveTimer = pageData.entries.find(
 				(e) => e.startTime !== null && e.endTime === null,
 			);
@@ -2158,10 +2183,24 @@ export class TimerModule {
 			}
 
 			updateDisplays();
-			this.renderEntryCards(cardsContainer, pageData.entries, filePath, labelDisplay, labelInput);
+			if (entrySignature !== lastEntrySignature) {
+				lastEntrySignature = entrySignature;
+				this.renderEntryCards(cardsContainer, pageData.entries, filePath, labelDisplay, labelInput);
+			}
 		};
 
 		this.registerTimerWidgetRefresh(filePath, syncWidgetFromPageData, ctx, el);
+
+		ctx.addChild(
+			new (class extends MarkdownRenderChild {
+				onunload(): void {
+					if (updateInterval != null) {
+						window.clearInterval(updateInterval);
+						updateInterval = null;
+					}
+				}
+			})(el),
+		);
 	}
 
 
@@ -3699,7 +3738,7 @@ export class TimerModule {
 			pageData = { entries: [], totalTimeTracked: 0 };
 			this.timeData.set(file.path, pageData);
 		}
-		const now = Date.now();
+		const now = entryTimestampNow();
 		const tags = this.getDefaultTags();
 		const idx = pageData.entries.length;
 		const entry: TimeEntry = {
@@ -4159,11 +4198,12 @@ export class TimerModule {
 	}
 
 	async getActiveTimers(): Promise<Array<{ filePath: string; entry: TimeEntry }>> {
+		await this.ensureTimerCandidateIndex();
 		const activeTimers: Array<{ filePath: string; entry: TimeEntry }> = [];
 
-		// Entries already loaded in memory
+		// Entries already loaded in memory (normalized at every write, so no need to
+		// re-normalize on this read — see loadEntriesFromFrontmatter / mutation sites).
 		this.timeData.forEach((pageData, filePath) => {
-			pageData.entries = normalizeTimerEntries(pageData.entries);
 			for (const entry of pageData.entries) {
 				if (entry.startTime && !entry.endTime) {
 					activeTimers.push({filePath, entry});
@@ -4171,13 +4211,15 @@ export class TimerModule {
 			}
 		});
 
-		// Discover active timers in notes not yet loaded (metadata-only scan; read on match)
-		const markdownFiles = this.app.vault.getMarkdownFiles();
-		for (const file of markdownFiles) {
-			const filePath = file.path;
+		// Discover active timers in notes not yet loaded, limited to files whose
+		// frontmatter is known (via the candidate index) to carry timer keys —
+		// avoids a full vault scan on every call.
+		for (const filePath of this.timerFrontmatterCandidates) {
 			if (this.isFileExcluded(filePath) || this.timeData.has(filePath)) {
 				continue;
 			}
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (!(file instanceof TFile)) continue;
 			const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
 				| Record<string, unknown>
 				| undefined;
@@ -4195,6 +4237,40 @@ export class TimerModule {
 		}
 
 		return this.dedupeActiveTimerRows(activeTimers);
+	}
+
+	/** Build the timer-frontmatter candidate index once; safe to call repeatedly. */
+	private async ensureTimerCandidateIndex(): Promise<void> {
+		if (this.timerCandidateIndexReady) return;
+		if (this.timerCandidateIndexBuilding) {
+			await this.timerCandidateIndexBuilding;
+			return;
+		}
+		this.timerCandidateIndexBuilding = this.buildTimerCandidateIndex();
+		await this.timerCandidateIndexBuilding;
+	}
+
+	private async buildTimerCandidateIndex(): Promise<void> {
+		try {
+			const files = this.app.vault.getMarkdownFiles();
+			let scanned = 0;
+			for (const file of files) {
+				if (this.isFileExcluded(file.path)) continue;
+				const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
+					| Record<string, unknown>
+					| undefined;
+				if (this.fileHasTimerFrontmatter(fm)) {
+					this.timerFrontmatterCandidates.add(file.path);
+				}
+				scanned += 1;
+				if (scanned % 200 === 0) {
+					await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+				}
+			}
+		} finally {
+			this.timerCandidateIndexReady = true;
+			this.timerCandidateIndexBuilding = null;
+		}
 	}
 
 	/** Active timers whose note is this project or whose frontmatter project links here. */
@@ -4219,6 +4295,37 @@ export class TimerModule {
 		return filtered;
 	}
 
+	/** Fast project filter using in-memory timer state + metadata cache (no vault scan). */
+	listActiveTimersForProjectInMemory(
+		projectPath: string,
+	): Array<{filePath: string; entry: TimeEntry}> {
+		const normalized = normalizePath(projectPath);
+		const rows: Array<{filePath: string; entry: TimeEntry}> = [];
+
+		for (const row of this.listActiveTimersInMemory()) {
+			if (normalizePath(row.filePath) === normalized) {
+				rows.push(row);
+				continue;
+			}
+			const file = this.app.vault.getAbstractFileByPath(row.filePath);
+			if (!(file instanceof TFile)) continue;
+			const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
+				| Record<string, unknown>
+				| undefined;
+			const projectRaw = fm?.[this.settings.projectKey];
+			if (typeof projectRaw !== "string" || !projectRaw.trim()) continue;
+			const link = projectRaw.replace(/\[\[|\]\]/g, "").trim();
+			const dest =
+				this.app.metadataCache.getFirstLinkpathDest(link, row.filePath) ??
+				this.app.metadataCache.getFirstLinkpathDest(link, "");
+			if (dest instanceof TFile && normalizePath(dest.path) === normalized) {
+				rows.push(row);
+			}
+		}
+
+		return rows;
+	}
+
 	/** Active timers from in-memory `timeData` only (normalized, one row per note). */
 	findActiveEntryForFile(filePath: string): TimeEntry | null {
 		for (const row of this.listActiveTimersInMemory()) {
@@ -4227,10 +4334,15 @@ export class TimerModule {
 		return null;
 	}
 
+	/**
+	 * Entries are normalized at every write into `timeData` (loadEntriesFromFrontmatter,
+	 * plus guarded single-entry pushes/mutations elsewhere), so this read path doesn't
+	 * re-normalize — it's called on a 1s tick by every mounted Active Timers panel and
+	 * used to iterate every note the plugin has ever touched this session.
+	 */
 	listActiveTimersInMemory(): Array<{filePath: string; entry: TimeEntry}> {
 		const rows: Array<{filePath: string; entry: TimeEntry}> = [];
 		this.timeData.forEach((pageData, filePath) => {
-			pageData.entries = normalizeTimerEntries(pageData.entries);
 			for (const entry of pageData.entries) {
 				if (entry.startTime && !entry.endTime) {
 					rows.push({filePath, entry});
@@ -4268,7 +4380,7 @@ export class TimerModule {
 			(e) => e.startTime !== null && e.endTime === null,
 		);
 		if (actives.length === 0) return false;
-		const now = Date.now();
+		const now = entryTimestampNow();
 		for (const entry of actives) {
 			entry.endTime = now;
 			entry.duration += now - entry.startTime!;

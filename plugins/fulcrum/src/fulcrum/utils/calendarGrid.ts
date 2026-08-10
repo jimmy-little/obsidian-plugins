@@ -117,11 +117,101 @@ export function timeGridNowLineTopPercent(d: Date = new Date()): number {
 	return (localMinutesSinceMidnight(d) / (24 * 60)) * 100;
 }
 
+/** Parse `HH:MM` (24-hour). Returns null if invalid. */
+export function parseTime24h(raw: string): {hour: number; minute: number} | null {
+	const m = /^(\d{1,2}):(\d{2})$/.exec(raw.trim());
+	if (!m) return null;
+	const hour = Number.parseInt(m[1], 10);
+	const minute = Number.parseInt(m[2], 10);
+	if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+	return {hour, minute};
+}
+
+export type TimelineDisplayWindow = {
+	/** Minutes from local midnight where the grid starts. */
+	startMinutes: number;
+	/** Number of hour rows shown. */
+	hourCount: number;
+	/** Visible span in minutes (`hourCount * 60`, capped to end of day). */
+	totalMinutes: number;
+	/** Minute offset for each hour row label (`startMinutes + i * 60`). */
+	rowStartMinutes: number[];
+};
+
+/** Resolve timeline visible range from settings (e.g. 05:00 + 16h → 5:00–21:00). */
+export function resolveTimelineDisplayWindow(
+	startOfDay: string,
+	hoursToDisplay: number,
+): TimelineDisplayWindow {
+	const parsed = parseTime24h(startOfDay);
+	const startMinutes = parsed ? parsed.hour * 60 + parsed.minute : 0;
+	let hourCount = Math.min(24, Math.max(1, Math.round(hoursToDisplay) || 24));
+	let totalMinutes = hourCount * 60;
+	if (startMinutes + totalMinutes > 24 * 60) {
+		totalMinutes = 24 * 60 - startMinutes;
+		hourCount = Math.max(1, Math.floor(totalMinutes / 60));
+		totalMinutes = hourCount * 60;
+	}
+	const rowStartMinutes: number[] = [];
+	for (let i = 0; i < hourCount; i++) {
+		rowStartMinutes.push(startMinutes + i * 60);
+	}
+	return {startMinutes, hourCount, totalMinutes, rowStartMinutes};
+}
+
+export function formatTimelineHourLabel(minutesFromMidnight: number): string {
+	const h = Math.floor(minutesFromMidnight / 60) % 24;
+	const m = minutesFromMidnight % 60;
+	if (m === 0) {
+		if (h === 0) return "12 AM";
+		if (h < 12) return `${h} AM`;
+		if (h === 12) return "12 PM";
+		return `${h - 12} PM`;
+	}
+	const ampm = h < 12 ? "AM" : "PM";
+	const h12 = h % 12 === 0 ? 12 : h % 12;
+	return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+export type TimedBlockLayout = {
+	topPct: number;
+	heightPct: number;
+};
+
+/** Position a timed block inside a timeline window; null if no overlap. */
+export function layoutTimedBlockInWindow(
+	startMinutes: number,
+	durationMinutes: number,
+	window: Pick<TimelineDisplayWindow, "startMinutes" | "totalMinutes">,
+): TimedBlockLayout | null {
+	const endMinutes = startMinutes + durationMinutes;
+	const windowEnd = window.startMinutes + window.totalMinutes;
+	if (endMinutes <= window.startMinutes || startMinutes >= windowEnd) return null;
+	const visibleStart = Math.max(startMinutes, window.startMinutes);
+	const visibleEnd = Math.min(endMinutes, windowEnd);
+	const topPct = ((visibleStart - window.startMinutes) / window.totalMinutes) * 100;
+	const heightPct = ((visibleEnd - visibleStart) / window.totalMinutes) * 100;
+	return {topPct, heightPct};
+}
+
+/** Top % for “now” line inside a timeline window; null if outside range. */
+export function timeGridNowLineTopPercentInWindow(
+	window: Pick<TimelineDisplayWindow, "startMinutes" | "totalMinutes">,
+	d: Date = new Date(),
+): number | null {
+	const now = localMinutesSinceMidnight(d);
+	if (now < window.startMinutes || now >= window.startMinutes + window.totalMinutes) {
+		return null;
+	}
+	return ((now - window.startMinutes) / window.totalMinutes) * 100;
+}
+
 export type DashboardWeekSpan = "fullWeek" | "workWeek";
 export type DashboardWeekAnchor = "startMonday" | "startToday";
 
 const DASHBOARD_WEEK_SPAN_LS = "fulcrum-dashboard-week-span";
 const DASHBOARD_WEEK_ANCHOR_LS = "fulcrum-dashboard-week-anchor";
+const DASHBOARD_WEEK_SHOW_TASKS_LS = "fulcrum-dashboard-week-show-tasks";
 
 export function loadDashboardWeekSpan(): DashboardWeekSpan {
 	if (typeof localStorage === "undefined") return "fullWeek";
@@ -143,6 +233,19 @@ export function loadDashboardWeekAnchor(): DashboardWeekAnchor {
 export function saveDashboardWeekAnchor(anchor: DashboardWeekAnchor): void {
 	if (typeof localStorage === "undefined") return;
 	localStorage.setItem(DASHBOARD_WEEK_ANCHOR_LS, anchor);
+}
+
+/** Whether the dashboard week grid shows due-dated tasks. Default on. */
+export function loadDashboardWeekShowTasks(): boolean {
+	if (typeof localStorage === "undefined") return true;
+	const raw = localStorage.getItem(DASHBOARD_WEEK_SHOW_TASKS_LS);
+	if (raw === null) return true;
+	return raw !== "0";
+}
+
+export function saveDashboardWeekShowTasks(show: boolean): void {
+	if (typeof localStorage === "undefined") return;
+	localStorage.setItem(DASHBOARD_WEEK_SHOW_TASKS_LS, show ? "1" : "0");
 }
 
 /** Advance `d` by `n` calendar weekdays (Mon–Fri); skips Sat/Sun. */

@@ -29,19 +29,52 @@ function formatStatusLabel(statusId: string): string {
 	return statusId.trim();
 }
 
-async function afterTaskMutation(host: FulcrumHost): Promise<void> {
-	await host.refreshIndex();
+function optimisticStatusPatch(
+	settings: FulcrumSettings,
+	targetStatusId: string,
+): Pick<IndexedTask, "status" | "completedDate"> {
+	const doneSet = parseDoneStatusSet(settings.taskDoneStatuses);
+	const yamlDone = settings.taskNoteYamlStatusDone.trim().toLowerCase();
+	const isDone =
+		isDoneStatus(targetStatusId, doneSet) ||
+		(yamlDone.length > 0 && normalizeStatusKey(targetStatusId) === yamlDone);
+	return {
+		status: targetStatusId,
+		completedDate: isDone ? new Date().toISOString().slice(0, 10) : undefined,
+	};
 }
 
+/** Write the file, paint the index immediately when possible, then debounce a full rebuild. */
 async function withFileResolved(
 	host: FulcrumHost,
 	task: IndexedTask,
 	fn: () => Promise<void>,
+	optimistic?: Partial<
+		Pick<
+			IndexedTask,
+			| "status"
+			| "completedDate"
+			| "title"
+			| "priority"
+			| "dueDate"
+			| "scheduledDate"
+			| "tags"
+			| "inlineTags"
+		>
+	>,
 ): Promise<void> {
+	if (optimistic) {
+		host.vaultIndex.patchIndexedTask(task, optimistic);
+	}
 	const resolved = waitForNextFileResolved(host.app, task.file);
-	await fn();
+	try {
+		await fn();
+	} catch (e) {
+		host.vaultIndex.scheduleRebuild();
+		throw e;
+	}
 	await resolved;
-	await afterTaskMutation(host);
+	host.vaultIndex.scheduleRebuild();
 }
 
 function handleError(e: unknown): void {
@@ -67,8 +100,11 @@ export function handleTaskStatusClick(
 			}).catch(handleError);
 		} else {
 			const openStatus = statuses[0] ?? parseList(host.settings.taskStatuses)[0] ?? "todo";
-			void withFileResolved(host, task, () =>
-				applyTaskStatusChange(host.app, task, host.settings, openStatus),
+			void withFileResolved(
+				host,
+				task,
+				() => applyTaskStatusChange(host.app, task, host.settings, openStatus),
+				optimisticStatusPatch(host.settings, openStatus),
 			).catch(handleError);
 		}
 		return;
@@ -77,8 +113,11 @@ export function handleTaskStatusClick(
 	if (statuses.length === 2) {
 		const current = (task.status ?? "").trim().toLowerCase();
 		const next = statuses.find((s) => s.trim().toLowerCase() !== current) ?? statuses[0];
-		void withFileResolved(host, task, () =>
-			applyTaskStatusChange(host.app, task, host.settings, next),
+		void withFileResolved(
+			host,
+			task,
+			() => applyTaskStatusChange(host.app, task, host.settings, next),
+			optimisticStatusPatch(host.settings, next),
 		).catch(handleError);
 		return;
 	}
@@ -93,8 +132,11 @@ export function handleTaskStatusClick(
 			if (isCurrent) item.setDisabled(true);
 			item.onClick(() => {
 				if (isCurrent) return;
-				void withFileResolved(host, task, () =>
-					applyTaskStatusChange(host.app, task, host.settings, st),
+				void withFileResolved(
+					host,
+					task,
+					() => applyTaskStatusChange(host.app, task, host.settings, st),
+					optimisticStatusPatch(host.settings, st),
 				).catch(handleError);
 			});
 		});

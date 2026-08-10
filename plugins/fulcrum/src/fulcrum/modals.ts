@@ -345,7 +345,8 @@ export class MarkReviewedModal extends Modal {
 				this.host.settings.projectLogSectionHeading,
 				logBody,
 			);
-			await this.host.vaultIndex.rebuild();
+			this.host.vaultIndex.cancelScheduledRebuild();
+			this.host.vaultIndex.scheduleRebuild();
 			new Notice("Review dates updated and log entry added.");
 			this.close();
 			await this.onComplete?.();

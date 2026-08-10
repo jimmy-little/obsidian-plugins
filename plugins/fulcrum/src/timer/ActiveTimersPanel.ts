@@ -19,6 +19,7 @@ export class ActiveTimersPanel {
 	private readonly timeDisplays = new Map<string, HTMLElement>();
 	private refreshInterval: number | null = null;
 	private tickCount = 0;
+	private rendering = false;
 	private lastRenderOptions: ActiveTimersRenderOptions = {};
 	private renderInFlight: Promise<void> | null = null;
 
@@ -65,10 +66,23 @@ export class ActiveTimersPanel {
 		container: HTMLElement,
 		options: ActiveTimersRenderOptions = {},
 	): Promise<void> {
+		this.rendering = true;
+		try {
+			await this.renderInnerBody(container, options);
+		} finally {
+			this.rendering = false;
+		}
+	}
+
+	private async renderInnerBody(
+		container: HTMLElement,
+		options: ActiveTimersRenderOptions = {},
+	): Promise<void> {
 		this.lastRenderOptions = {...options};
 		const showHeader = options.showHeader ?? true;
 		const listLayout = options.listLayout ?? "stack";
 		this.container = container;
+		this.timeDisplays.clear();
 		container.empty();
 		container.addClass("fulcrum-active-timers");
 
@@ -258,20 +272,27 @@ export class ActiveTimersPanel {
 	}
 
 	private async tick(): Promise<void> {
-		if (!this.container) return;
+		if (!this.container || this.rendering) return;
 
 		this.tickCount++;
-		const shouldRescan =
-			this.timeDisplays.size === 0 || this.tickCount % 30 === 0;
+		const shouldRescan = this.tickCount % 30 === 0;
 		const activeTimers = shouldRescan
 			? await this.plugin.getActiveTimers()
 			: this.collectActiveTimersFromMemory();
 
-		const displayedIds = new Set(this.timeDisplays.keys());
-		const activeIds = new Set(activeTimers.map(({entry}) => entry.id));
+		const activeById = new Map(activeTimers.map((row) => [row.entry.id, row]));
+		let prunedStale = false;
+		for (const id of [...this.timeDisplays.keys()]) {
+			if (!activeById.has(id)) {
+				this.timeDisplays.delete(id);
+				prunedStale = true;
+			}
+		}
+
 		const needsFullRefresh =
-			activeTimers.length !== displayedIds.size ||
-			![...displayedIds].every((id) => activeIds.has(id));
+			prunedStale ||
+			activeTimers.length !== this.timeDisplays.size ||
+			activeTimers.some(({entry}) => !this.timeDisplays.has(entry.id));
 
 		if (needsFullRefresh) {
 			await this.render(this.container, this.lastRenderOptions);
@@ -279,21 +300,9 @@ export class ActiveTimersPanel {
 		}
 
 		for (const [entryId, timeEl] of this.timeDisplays) {
-			let found: TimeEntry | null = null;
-			for (const [, pageData] of this.plugin.timeData) {
-				for (const entry of pageData.entries) {
-					if (entry.id === entryId && entry.startTime && !entry.endTime) {
-						found = entry;
-						break;
-					}
-				}
-				if (found) break;
-			}
-			if (!found?.startTime) {
-				await this.render(this.container, this.lastRenderOptions);
-				return;
-			}
-			const elapsed = this.plugin.getActiveEntryElapsedMs(found);
+			const row = activeById.get(entryId);
+			if (!row?.entry.startTime) continue;
+			const elapsed = this.plugin.getActiveEntryElapsedMs(row.entry);
 			timeEl.setText(this.plugin.formatTimeAsHHMMSS(elapsed));
 		}
 	}

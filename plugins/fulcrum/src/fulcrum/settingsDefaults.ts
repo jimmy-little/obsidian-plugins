@@ -176,6 +176,8 @@ export interface FulcrumSettings {
 	taskSidebarFilterUncheckedStatus: string[];
 	/** Task sidebar filter: unchecked project file paths. Use __none__ for no project. */
 	taskSidebarFilterUncheckedProject: string[];
+	/** Task sidebar filter: unchecked source keys (`inline`, `taskNote`). Empty = both visible. */
+	taskSidebarFilterUncheckedSource: string[];
 	/** Project page → List tab: group tasks by status, date bucket, or tag. */
 	projectTaskListGroupBy: ProjectTaskListGroupBy;
 	/** Project page → List tab: sort grouped tasks by due or scheduled date. */
@@ -280,6 +282,10 @@ export interface FulcrumSettings {
 
 	/** Timeline: show time blocks from daily notes under planner heading. */
 	timelineDailyPlannerEnabled: boolean;
+	/** Timeline day grid start (24-hour `HH:MM`, local). */
+	timelineStartOfDay: string;
+	/** Timeline: number of hour rows to show from start of day (max to midnight). */
+	timelineHoursToDisplay: number;
 	/** Heading text (exact match) for planner section; empty = whole daily note. */
 	plannerHeading: string;
 	/** Default block height (minutes) for timed planner lines without an end time. */
@@ -433,6 +439,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	taskSidebarSortDir: "asc",
 	taskSidebarFilterUncheckedStatus: [],
 	taskSidebarFilterUncheckedProject: [],
+	taskSidebarFilterUncheckedSource: [],
 	tasksViewGroupBy: "day",
 	tasksViewColumns: ["title", "project", "scheduled", "due", "tags"],
 	tasksViewFutureDays: 14,
@@ -496,6 +503,8 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	widgetBridgeDeviceId: "",
 
 	timelineDailyPlannerEnabled: true,
+	timelineStartOfDay: "00:00",
+	timelineHoursToDisplay: 24,
 	plannerHeading: "Day planner",
 	plannerDefaultDurationMinutes: 30,
 

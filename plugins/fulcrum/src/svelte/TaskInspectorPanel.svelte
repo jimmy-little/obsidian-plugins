@@ -18,7 +18,6 @@
 	import {taskFromViewItemKey} from "../fulcrum/tasks/tasksViewModel";
 	import {tasksViewSelectedKey} from "../fulcrum/tasks/tasksViewStore";
 	import {indexRevision} from "../fulcrum/stores";
-	import TasksMonthHeatmap from "./TasksMonthHeatmap.svelte";
 	import {ProjectPickerModal} from "../fulcrum/modals";
 
 	export let plugin: FulcrumHost;
@@ -228,9 +227,5 @@
 			</label>
 			</div>
 		{/if}
-	</div>
-
-	<div class="fulcrum-tasks-inspector__calendar">
-		<TasksMonthHeatmap {plugin} />
 	</div>
 </aside>

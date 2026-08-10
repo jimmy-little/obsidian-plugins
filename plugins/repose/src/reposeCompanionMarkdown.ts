@@ -280,6 +280,15 @@ function syncChromeForMarkdownView(plugin: ReposePlugin, view: MarkdownView): vo
 	chromeByView.set(view, comp);
 }
 
+function isFileOpenInMarkdownEditor(app: App, path: string): boolean {
+	let open = false;
+	app.workspace.iterateAllLeaves((leaf) => {
+		const view = leaf.view;
+		if (view instanceof MarkdownView && view.file?.path === path) open = true;
+	});
+	return open;
+}
+
 export function registerReposeCompanionMarkdown(plugin: ReposePlugin): void {
 	if (reposeMobile()) return;
 
@@ -287,9 +296,18 @@ export function registerReposeCompanionMarkdown(plugin: ReposePlugin): void {
 	plugin.registerEvent(plugin.app.workspace.on("layout-change", run));
 	plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", run));
 	plugin.registerEvent(plugin.app.workspace.on("file-open", run));
+	// Metadata updates on every keystroke; refresh media chrome on save instead.
 	plugin.registerEvent(
 		plugin.app.metadataCache.on("changed", (f) => {
 			if (!(f instanceof TFile)) return;
+			if (!pathUnderMediaRoot(f.path, plugin.settings.mediaRoot)) return;
+			if (isFileOpenInMarkdownEditor(plugin.app, f.path)) return;
+			run();
+		}),
+	);
+	plugin.registerEvent(
+		plugin.app.vault.on("modify", (f) => {
+			if (!(f instanceof TFile) || f.extension !== "md") return;
 			if (!pathUnderMediaRoot(f.path, plugin.settings.mediaRoot)) return;
 			run();
 		}),

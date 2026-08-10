@@ -37,6 +37,7 @@
 		meetingToCalendarEvent,
 		atomicNoteToCalendarEvent,
 		projectColorMap,
+		calendarEventKey,
 		type CalendarEvent,
 	} from "../fulcrum/utils/calendarEvents";
 	import {isRecurringParentTask, horizonRecurringOccurrenceDates} from "../fulcrum/tasks/horizonRecurringOccurrences";
@@ -65,6 +66,7 @@
 	import GanttMain from "./GanttMain.svelte";
 	import FulcrumDateNavToolbar from "./shared/FulcrumDateNavToolbar.svelte";
 	import FulcrumViewToolbar from "./shared/FulcrumViewToolbar.svelte";
+	import CalendarEventChip from "./CalendarEventChip.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -365,16 +367,6 @@
 
 	function eventsForDate(iso: string): {allDay: CalendarEvent[]; timed: CalendarEvent[]} {
 		return eventsByDate.get(iso) ?? {allDay: [], timed: []};
-	}
-
-	function calendarEventKey(e: CalendarEvent): string {
-		if (e.task) {
-			const occ = e.occurrenceDateIso ?? e.dateIso;
-			return `task:${e.task.file.path}:${e.task.line ?? ""}:${occ}:${e.isGhostOccurrence ? "ghost" : "live"}`;
-		}
-		if (e.meeting) return `meeting:${e.meeting.file.path}:${e.dateIso}`;
-		if (e.planner) return `planner:${e.planner.file.path}:${e.planner.line}`;
-		return `${e.kind}:${e.title}:${e.dateIso}:${e.startMinutes ?? "a"}`;
 	}
 
 	function onDropZoneDragOver(ev: DragEvent, iso: string, hour: number | null = null): void {
@@ -699,31 +691,12 @@
 									<span class="fulcrum-calendar__day-num">{formatDayNum(cell.date)}</span>
 									<div class="fulcrum-calendar__day-events">
 										{#each dayEvents.slice(0, 5) as e (calendarEventKey(e))}
-											<button
-												type="button"
-												class="fulcrum-calendar__event fulcrum-calendar__event--{e.kind}"
-												class:fulcrum-calendar__event--ghost={e.isGhostOccurrence}
-												style={e.accentCss ? `--fulcrum-event-accent: ${e.accentCss}` : undefined}
-												data-fulcrum-calendar-event
-												draggable="true"
-												on:dragstart={(ev) => { ev.stopPropagation(); onCalendarEventDragStart(ev, e); }}
-												on:dragend={onCalendarEventDragEnd}
-												on:click={(ev) => { ev.preventDefault(); e.open(); }}
-												on:contextmenu={(ev) => onTaskEventContextMenu(ev, e)}
-											>
-												<span class="fulcrum-calendar__event-icon" aria-hidden="true">
-													{#if e.kind === "task" || e.kind === "logged"}
-														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-													{:else if e.kind === "planned" || e.kind === "planner"}
-														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-													{:else if e.kind === "note"}
-														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-													{:else}
-														<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-													{/if}
-												</span>
-												<span class="fulcrum-calendar__event-title">{e.title}</span>
-											</button>
+											<CalendarEventChip
+												event={e}
+												onDragStart={onCalendarEventDragStart}
+												onDragEnd={onCalendarEventDragEnd}
+												onContextMenu={onTaskEventContextMenu}
+											/>
 										{/each}
 										{#if dayEvents.length > 5}
 											<span class="fulcrum-calendar__more">
@@ -767,29 +740,12 @@
 						on:drop={(e) => void onDropZoneDrop(e, iso)}
 					>
 						{#each allDay as e (calendarEventKey(e))}
-							<button
-								type="button"
-								class="fulcrum-calendar__event fulcrum-calendar__event--{e.kind}"
-								class:fulcrum-calendar__event--ghost={e.isGhostOccurrence}
-								style={e.accentCss ? `--fulcrum-event-accent: ${e.accentCss}` : undefined}
-								data-fulcrum-calendar-event
-								draggable="true"
-								on:dragstart={(ev) => { ev.stopPropagation(); onCalendarEventDragStart(ev, e); }}
-								on:dragend={onCalendarEventDragEnd}
-								on:click={(ev) => { ev.preventDefault(); e.open(); }}
-								on:contextmenu={(ev) => onTaskEventContextMenu(ev, e)}
-							>
-								<span class="fulcrum-calendar__event-icon" aria-hidden="true">
-									{#if e.kind === "task"}
-										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-									{:else if e.kind === "note"}
-										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-									{:else}
-										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-									{/if}
-								</span>
-								<span class="fulcrum-calendar__event-title">{e.title}</span>
-							</button>
+							<CalendarEventChip
+								event={e}
+								onDragStart={onCalendarEventDragStart}
+								onDragEnd={onCalendarEventDragEnd}
+								onContextMenu={onTaskEventContextMenu}
+							/>
 						{/each}
 					</div>
 				{/each}

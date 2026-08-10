@@ -45,10 +45,9 @@
 	import ProjectActiveTimers from "./ProjectActiveTimers.svelte";
 	import ProjectHeaderActiveTimers from "./ProjectHeaderActiveTimers.svelte";
 
-	type ProjectSummaryTab = "overview" | "list" | "board" | "timeline" | "calendar" | "files";
+	type ProjectSummaryTab = "overview" | "board" | "timeline" | "calendar" | "files";
 	const PROJECT_TABS: {id: ProjectSummaryTab; label: string}[] = [
 		{id: "overview", label: "Overview"},
-		{id: "list", label: "List"},
 		{id: "board", label: "Board"},
 		{id: "timeline", label: "Timeline"},
 		{id: "calendar", label: "Calendar"},
@@ -611,8 +610,7 @@
 
 		<div
 			class="fulcrum-project-tab-panel"
-			class:fulcrum-project-tab-panel--fill={activeTab === "list" ||
-				activeTab === "board" ||
+			class:fulcrum-project-tab-panel--fill={activeTab === "board" ||
 				activeTab === "calendar" ||
 				activeTab === "timeline"}
 			class:fulcrum-project-tab-panel--scroll={activeTab === "overview" ||
@@ -742,6 +740,19 @@
 			{/if}
 		</section>
 
+		<section class="fulcrum-section fulcrum-section--project-task-list" aria-label="Tasks">
+			<div class="fulcrum-section-head">
+				<h2 class="fulcrum-section-head__title">Tasks</h2>
+			</div>
+			<TaskListPanel
+				{plugin}
+				{hoverParentLeaf}
+				filterProjectPath={projectPath}
+				embedded={true}
+				scheduleDragContext={false}
+			/>
+		</section>
+
 		<ProjectPageSections {plugin} {projectPath} />
 
 		<section class="fulcrum-section">
@@ -789,14 +800,6 @@
 			</section>
 		{/if}
 
-		{:else if activeTab === "list"}
-			<TaskListPanel
-				{plugin}
-				{hoverParentLeaf}
-				filterProjectPath={projectPath}
-				embedded={true}
-				scheduleDragContext={false}
-			/>
 		{:else if activeTab === "board"}
 			<KanbanMain {plugin} {hoverParentLeaf} filterProjectPath={projectPath} embedded={true} />
 		{:else if activeTab === "timeline"}

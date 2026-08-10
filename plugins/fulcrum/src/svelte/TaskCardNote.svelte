@@ -20,7 +20,11 @@
 		stopChipClick,
 	} from "../fulcrum/taskCardInteractions";
 	import {inlineTaskDisplayTitle} from "../fulcrum/utils/inlineTasks";
-	import {settingsRevision, timerRevision} from "../fulcrum/stores";
+	import {settingsRevision, timerRevision, setCalendarTaskDragActive} from "../fulcrum/stores";
+	import {
+		FULCRUM_CALENDAR_TASK_MIME,
+		calendarTaskDragKey,
+	} from "../fulcrum/calendar/calendarTaskSchedule";
 	import TaskCardTimerSlot from "./TaskCardTimerSlot.svelte";
 
 	function bindSourceKindIcon(node: HTMLElement, source: IndexedTask["source"]) {
@@ -48,6 +52,8 @@
 	export let done: boolean;
 	export let anchorLeaf: WorkspaceLeaf | undefined = undefined;
 	export let showInlineTimer = false;
+	export let compact = false;
+	export let enableDrag = false;
 
 	$: s = plugin.settings;
 	$: isInline = task.source === "inline";
@@ -74,6 +80,7 @@
 		"fulcrum-task-card",
 		isInline ? "fulcrum-task-card--inline" : "fulcrum-task-card--task-note",
 		done ? "fulcrum-task-card--completed" : "",
+		compact ? "fulcrum-task-card--compact" : "",
 	]
 		.filter(Boolean)
 		.join(" ");
@@ -136,6 +143,21 @@
 	function onProjectKeydown(ev: KeyboardEvent): void {
 		onMetaKeydown(ev, () => onProjectClick(ev as unknown as MouseEvent));
 	}
+
+	function onCardDragStart(ev: DragEvent): void {
+		if (!enableDrag || !canToggle) {
+			ev.preventDefault();
+			return;
+		}
+		const key = calendarTaskDragKey(task);
+		ev.dataTransfer?.setData(FULCRUM_CALENDAR_TASK_MIME, key);
+		if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+		setCalendarTaskDragActive(true);
+	}
+
+	function onCardDragEnd(): void {
+		setCalendarTaskDragActive(false);
+	}
 </script>
 
 <div
@@ -144,6 +166,9 @@
 	class={rowClass}
 	data-source={task.source}
 	style={`--fulcrum-task-border: ${accentCss};`}
+	draggable={enableDrag && canToggle ? "true" : undefined}
+	on:dragstart={onCardDragStart}
+	on:dragend={onCardDragEnd}
 	on:contextmenu={onContextMenu}
 	on:click={onCardBlankClick}
 >

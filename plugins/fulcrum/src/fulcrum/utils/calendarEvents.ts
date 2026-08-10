@@ -84,6 +84,45 @@ function timedDurationForTask(t: IndexedTask): number {
 	return DEFAULT_DURATION_MINUTES;
 }
 
+/**
+ * Calendar event for a task's due date only (dashboard week grid).
+ * Untimed due → all-day (`startMinutes: null`); timed due → timed chip.
+ */
+export function taskDueDateToCalendarEvent(
+	t: IndexedTask,
+	open: () => void,
+	projectColorByPath: Map<string, string>,
+): CalendarEvent | null {
+	const due = parseDateTime(t.dueDate);
+	if (!due) return null;
+	const isAllDay = due.minutesFromMidnight == null;
+	const accentCss = t.projectFile?.path
+		? resolveProjectAccentCss(projectColorByPath.get(t.projectFile.path) ?? undefined)
+		: null;
+	return {
+		kind: "task",
+		dateIso: due.dateIso,
+		startMinutes: due.minutesFromMidnight,
+		durationMinutes: isAllDay ? null : timedDurationForTask(t),
+		title: t.title,
+		accentCss,
+		open,
+		task: t,
+	};
+}
+
+/** Stable key for Svelte `{#each}` / DnD identity. */
+export function calendarEventKey(e: CalendarEvent): string {
+	if (e.task) {
+		const occ = e.occurrenceDateIso ?? e.dateIso;
+		return `task:${e.task.file.path}:${e.task.line ?? ""}:${occ}:${e.isGhostOccurrence ? "ghost" : "live"}`;
+	}
+	if (e.meeting) return `meeting:${e.meeting.file.path}:${e.dateIso}`;
+	if (e.planner) return `planner:${e.planner.file.path}:${e.planner.line}`;
+	if (e.timerEntryId) return `timer:${e.timerEntryId}:${e.dateIso}`;
+	return `${e.kind}:${e.title}:${e.dateIso}:${e.startMinutes ?? "a"}`;
+}
+
 function pushTaskEvent(
 	events: CalendarEvent[],
 	opts: {

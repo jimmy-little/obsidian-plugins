@@ -1,5 +1,6 @@
 import {Setting} from "obsidian";
 import type {FulcrumSettings} from "../../fulcrum/settingsDefaults";
+import {DEFAULT_SETTINGS} from "../../fulcrum/settingsDefaults";
 import type {SettingsContext} from "../settingsContext";
 import {heading, settingsLead, textSetting, toggleSetting} from "../settingsHelpers";
 
@@ -173,6 +174,38 @@ export function renderViewsTab(ctx: SettingsContext): void {
 				plugin.vaultIndex.scheduleRebuild();
 			}),
 		);
+
+	new Setting(containerEl)
+		.setName("Start of day")
+		.setDesc("Timeline grid begins at this time (24-hour, e.g. 05:00).")
+		.addText((tx) =>
+			tx
+				.setPlaceholder("00:00")
+				.setValue(plugin.settings.timelineStartOfDay)
+				.onChange(async (v) => {
+					const trimmed = v.trim();
+					plugin.settings.timelineStartOfDay = trimmed || DEFAULT_SETTINGS.timelineStartOfDay;
+					await plugin.saveSettings();
+				}),
+		);
+
+	new Setting(containerEl)
+		.setName("Hours to display")
+		.setDesc(
+			"Number of hours shown on the Timeline (e.g. 05:00 start + 16 hours → 5:00 AM through 9:00 PM).",
+		)
+		.addText((tx) =>
+			tx
+				.setPlaceholder("24")
+				.setValue(String(plugin.settings.timelineHoursToDisplay))
+				.onChange(async (v) => {
+					const n = Number.parseInt(v, 10);
+					plugin.settings.timelineHoursToDisplay =
+						Number.isFinite(n) && n > 0 ? Math.min(24, n) : 24;
+					await plugin.saveSettings();
+				}),
+		);
+
 	textSetting(
 		ctx,
 		"plannerHeading",

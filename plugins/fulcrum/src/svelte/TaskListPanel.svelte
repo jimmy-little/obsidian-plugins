@@ -45,6 +45,8 @@
 	export let scheduleDragContext = false;
 	/** Tasks view: week strip with task counts above the card list. */
 	export let showWeekStrip = false;
+	/** Horizon sidebar: facets/filter controls only (no task card list). */
+	export let facetsOnly = false;
 
 	let facetsCollapsed = false;
 	let filterOpen = false;
@@ -97,12 +99,16 @@
 		.filter(
 			(t) =>
 				!isDoneStatus(t.status, doneTask) &&
-				taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
+				taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, {
+					includeUnlinked: true,
+				}),
 		)
 		.filter((t) => !filterProjectPath || t.projectFile?.path === filterProjectPath);
 
 	$: uncheckedStatus = (void sRev, new Set(plugin.settings.taskSidebarFilterUncheckedStatus ?? []));
 	$: uncheckedProject = (void sRev, new Set(plugin.settings.taskSidebarFilterUncheckedProject ?? []));
+	$: uncheckedSource = (void sRev, new Set(plugin.settings.taskSidebarFilterUncheckedSource ?? []));
+	$: taskSourceMode = (void sRev, plugin.settings.taskSourceMode);
 
 	function taskAreaKey(t: IndexedTask, snap: IndexSnapshot): string {
 		if (t.areaFile) return t.areaFile.path;
@@ -325,6 +331,19 @@
 						onToggle: toggleProjectFilter,
 					},
 				]),
+		...(taskSourceMode === "both"
+			? [
+					{
+						title: "Task source",
+						options: [
+							{key: "inline", label: "Inline"},
+							{key: "taskNote", label: "Notes"},
+						],
+						isChecked: isSourceChecked,
+						onToggle: toggleSourceFilter,
+					},
+				]
+			: []),
 	];
 
 	async function toggleStatusFilter(key: string): Promise<void> {
@@ -344,6 +363,14 @@
 		await plugin.patchSettings({taskSidebarFilterUncheckedProject: arr});
 	}
 
+	async function toggleSourceFilter(key: string): Promise<void> {
+		const arr = [...(plugin.settings.taskSidebarFilterUncheckedSource ?? [])];
+		const i = arr.indexOf(key);
+		if (i >= 0) arr.splice(i, 1);
+		else arr.push(key);
+		await plugin.patchSettings({taskSidebarFilterUncheckedSource: arr});
+	}
+
 	$: uncheckedStatusLc = new Set([...uncheckedStatus].map((s) => s.toLowerCase()));
 
 	function isStatusChecked(key: string): boolean {
@@ -353,6 +380,13 @@
 	function isProjectChecked(key: string): boolean {
 		return !uncheckedProject.has(key);
 	}
+
+	function isSourceChecked(key: string): boolean {
+		return !uncheckedSource.has(key);
+	}
+
+	$: filterActive =
+		uncheckedStatus.size > 0 || uncheckedProject.size > 0 || uncheckedSource.size > 0;
 
 	function openFilterPanel(): void {
 		filterOpen = !filterOpen;
@@ -410,7 +444,11 @@
 
 <svelte:window on:click={handleFilterClickOutside} />
 
-<div class="fulcrum-task-list-panel fulcrum-project-list-panel" class:fulcrum-task-list-panel--tasks-view={showWeekStrip}>
+<div
+	class="fulcrum-task-list-panel fulcrum-project-list-panel"
+	class:fulcrum-task-list-panel--tasks-view={showWeekStrip}
+	class:fulcrum-task-list-panel--facets-only={facetsOnly}
+>
 	<div
 		class="fulcrum-task-list-panel__top"
 		class:fulcrum-task-list-panel__sticky-head={showWeekStrip}
@@ -476,7 +514,7 @@
 					aria-expanded={filterOpen}
 					on:click|stopPropagation={() => openFilterPanel()}
 				>
-					{uncheckedStatus.size > 0 || uncheckedProject.size > 0 ? "Filtered" : "All"}
+					{filterActive ? "Filtered" : "All"}
 				</button>
 				<button
 					type="button"
@@ -512,6 +550,7 @@
 	{/if}
 	</div>
 
+	{#if !facetsOnly}
 	<div class:fulcrum-task-list-panel__scroll-body={showWeekStrip || embedded}>
 
 	{#if scheduleDragContext}
@@ -655,4 +694,5 @@
 		{/if}
 	{/if}
 	</div>
+	{/if}
 </div>

@@ -54,6 +54,24 @@ function isActiveEntry(e: TimeEntry): boolean {
 }
 
 /**
+ * Frontmatter stores timestamps at second precision (`YYYY-MM-DDTHH:mm:ss`),
+ * so entry timestamps must be created and compared at second precision or
+ * in-memory entries stop matching their own round-tripped frontmatter rows.
+ */
+export function entryTimestampNow(): number {
+	const now = Date.now();
+	return now - (now % 1000);
+}
+
+export function sameEntryTimestamp(
+	a: number | null | undefined,
+	b: number | null | undefined,
+): boolean {
+	if (a == null || b == null) return false;
+	return Math.floor(a / 1000) === Math.floor(b / 1000);
+}
+
+/**
  * Prefer in-memory completed entries over stale frontmatter rows still marked running.
  * Metadata cache can lag behind disk after a stop (especially when the note is open).
  */
@@ -68,7 +86,7 @@ export function applyCompletedMemoryOverrides(
 		let idx = completed.id ? out.findIndex((e) => e.id === completed.id) : -1;
 		if (idx < 0) {
 			idx = out.findIndex(
-				(e) => e.startTime === completed.startTime && e.endTime == null,
+				(e) => sameEntryTimestamp(e.startTime, completed.startTime) && e.endTime == null,
 			);
 		}
 		if (idx >= 0 && out[idx]!.endTime == null) {

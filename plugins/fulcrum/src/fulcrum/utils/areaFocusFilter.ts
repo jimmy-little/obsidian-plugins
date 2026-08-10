@@ -232,6 +232,7 @@ export function meetingPassesAreaFilter(
 }
 
 export type QuickStartAreaFilterInput = {
+	kind?: "template" | "project";
 	projectSourcePath?: string | null;
 	area?: string | null;
 };
@@ -258,6 +259,9 @@ export function quickStartPassesAreaFilter(
 	lifeModeMap: Map<string, string>,
 ): boolean {
 	if (isAreaFilterWideOpen(state)) return true;
+
+	// Manual template buttons are user-curated; don't hide them behind area focus.
+	if (item.kind === "template") return true;
 
 	if (item.projectSourcePath) {
 		const proj = snapshot.projects.find((p) => p.file.path === item.projectSourcePath);
@@ -315,4 +319,34 @@ export function buildAreaFilterPanelGroups(
 			areas: byMode.get(lifeModeKey) ?? [],
 		};
 	});
+}
+
+/** Area names currently visible given the filter panel groups. */
+export function listEnabledAreaNames(groups: AreaFilterPanelGroup[]): string[] {
+	const names: string[] = [];
+	for (const g of groups) {
+		if (!g.sectionEnabled) continue;
+		for (const a of g.areas) {
+			if (a.enabled) names.push(a.name);
+		}
+	}
+	return names;
+}
+
+/** Oxford-comma list: "A", "A and B", "A, B, and C". Truncates with "and N more". */
+export function formatNameList(names: string[], maxVisible = 4): string {
+	if (names.length === 0) return "no areas";
+	if (names.length <= maxVisible) {
+		if (names.length === 1) return names[0]!;
+		if (names.length === 2) return `${names[0]} and ${names[1]}`;
+		return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+	}
+	const head = names.slice(0, Math.max(1, maxVisible - 1));
+	const rest = names.length - head.length;
+	return `${head.join(", ")}, and ${rest} more`;
+}
+
+/** Subtext under Dashboard when area filters hide something, e.g. "Showing Core Library, …". */
+export function formatShowingAreaFilterSubtext(groups: AreaFilterPanelGroup[]): string {
+	return `Showing ${formatNameList(listEnabledAreaNames(groups))}`;
 }

@@ -1,5 +1,5 @@
 import type {FulcrumSettings} from "../settingsDefaults";
-import type {IndexedMeeting, IndexedTask, IndexSnapshot} from "../types";
+import type {IndexedMeeting, IndexedPlannerEvent, IndexedTask, IndexSnapshot} from "../types";
 import {parseDateTime} from "../utils/dateTimeParse";
 import {filterForecastCalendarsAgainstMeetings} from "../utils/calendarOccurrenceDedupe";
 import {addDaysIso, todayLocalISODate} from "../utils/dates";
@@ -590,7 +590,7 @@ export function buildDaySections(
 			tasks: futureTasks,
 			items: futureItems,
 			dropDateIso: addDaysIso(today, futureDays + 1),
-			defaultExpanded: false,
+			defaultExpanded: sectionDefaultExpandedForInline(futureTasks),
 		});
 	}
 
@@ -602,7 +602,7 @@ export function buildDaySections(
 			tasks: sorted,
 			items: tasksToItems(sorted),
 			dropDateIso: null,
-			defaultExpanded: false,
+			defaultExpanded: unscheduledSectionDefaultExpanded(sorted, settings),
 		});
 	}
 
@@ -751,12 +751,59 @@ function projectLabel(path: string, snapshot: IndexSnapshot): string {
 	return p?.name ?? path.split("/").pop()?.replace(/\.md$/i, "") ?? path;
 }
 
+export function taskSourceFilterKey(task: IndexedTask): "inline" | "taskNote" {
+	return task.source === "inline" ? "inline" : "taskNote";
+}
+
+export function horizonTaskDedupeKey(task: IndexedTask): string {
+	return `${task.file.path}:${task.line ?? ""}`;
+}
+
+function plannerScheduledIso(ev: IndexedPlannerEvent): string {
+	if (ev.startMinutes == null) return ev.dateIso;
+	const h = Math.floor(ev.startMinutes / 60);
+	const m = ev.startMinutes % 60;
+	return `${ev.dateIso}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+export function indexedTaskFromPlannerEvent(ev: IndexedPlannerEvent): IndexedTask {
+	return {
+		file: ev.file,
+		line: ev.line,
+		title: ev.title,
+		status: ev.status,
+		dueDate: undefined,
+		scheduledDate: plannerScheduledIso(ev),
+		projectFile: ev.projectFile,
+		areaFile: null,
+		tags: [],
+		inlineTags: [],
+		createdAtMs: ev.file.stat.ctime,
+		source: "inline",
+		trackedMinutes: ev.trackedMinutes,
+	};
+}
+
+function sectionDefaultExpandedForInline(tasks: IndexedTask[]): boolean {
+	return tasks.some((t) => t.source === "inline");
+}
+
+export function unscheduledSectionDefaultExpanded(
+	unscheduled: IndexedTask[],
+	settings: FulcrumSettings,
+): boolean {
+	const uncheckedSource = new Set(settings.taskSidebarFilterUncheckedSource ?? []);
+	if (uncheckedSource.has("inline")) return false;
+	return sectionDefaultExpandedForInline(unscheduled);
+}
+
 export function filterOpenTasksForTasksView(
 	tasks: IndexedTask[],
 	settings: FulcrumSettings,
 ): IndexedTask[] {
 	const uncheckedStatus = new Set(settings.taskSidebarFilterUncheckedStatus ?? []);
 	const uncheckedProject = new Set(settings.taskSidebarFilterUncheckedProject ?? []);
+	const uncheckedSource = new Set(settings.taskSidebarFilterUncheckedSource ?? []);
 	const statusSetLc = new Set([...uncheckedStatus].map((s) => s.toLowerCase()));
 
 	return tasks.filter((t) => {
@@ -764,6 +811,7 @@ export function filterOpenTasksForTasksView(
 		const projectKey = t.projectFile?.path ?? NONE_KEY;
 		if (uncheckedStatus.size > 0 && statusSetLc.has(statusKey.toLowerCase())) return false;
 		if (uncheckedProject.size > 0 && uncheckedProject.has(projectKey)) return false;
+		if (uncheckedSource.size > 0 && uncheckedSource.has(taskSourceFilterKey(t))) return false;
 		return true;
 	});
 }

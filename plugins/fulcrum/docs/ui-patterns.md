@@ -4,8 +4,8 @@ Guidelines for toolbars, filters, inputs, menus, and modals across Fulcrum views
 
 ## Shell layout (Project Manager)
 
-- **Left sidebar:** mode glyph bar, project/task list (with local facets), **Areas** global filter footer.
-- **Main pane:** mode-specific content only (no duplicated global filters).
+- **Left sidebar:** mode glyph bar; **Horizon** shows facets/filter panel + month calendar; Calendar/Kanban show task list with facets; other modes show project list; **Areas** global filter footer on non-Orbit modes.
+- **Horizon main pane:** week strip + day-grouped forecast list; right inspector for selected task properties.
 - **Main header:** page title + `FulcrumLeafToolbar` (index refresh).
 
 ## Global vs local filters
@@ -13,7 +13,7 @@ Guidelines for toolbars, filters, inputs, menus, and modals across Fulcrum views
 | Control | Scope | Location |
 |---------|--------|----------|
 | **Areas** (`AreaFilterPanel`) | Entire plugin (`areaFilterState`) | PM left sidebar footer |
-| List **Filters** facet | Current sidebar list only | `ProjectListPanel` / `TaskListPanel` |
+| List **Filters** facet | Task sidebar + Horizon (status, project, task source when Both) | `ProjectListPanel` / `TaskListPanel` |
 | Calendar **layers** | Calendar visibility | Calendar main pane |
 | Time **Areas** toggles | Time overview rollup | Time overview (per-view area inclusion) |
 

@@ -5,14 +5,14 @@
 	import type {TasksViewGroupBy, TasksViewColumnId} from "../fulcrum/settingsDefaults";
 	import {indexRevision, settingsRevision, areaFilterState} from "../fulcrum/stores";
 	import {isDoneStatus, parseDoneStatusSet} from "../fulcrum/settingsDefaults";
-	import {buildAreaLifeModeMap, meetingPassesAreaFilter, taskPassesAreaFilter} from "../fulcrum/utils/areaFocusFilter";
+	import {buildAreaLifeModeMap, meetingPassesAreaFilter} from "../fulcrum/utils/areaFocusFilter";
 	import {
 		TASKS_VIEW_COLUMN_LABELS,
 		buildTasksViewSections,
-		filterOpenTasksForTasksView,
 		gridTemplateForColumns,
 		tasksViewItemKey,
 	} from "../fulcrum/tasks/tasksViewModel";
+	import {collectHorizonTasks} from "../fulcrum/tasks/horizonTasks";
 	import type {TasksViewSection} from "../fulcrum/tasks/tasksViewModel";
 	import {tasksViewFocusedIso, tasksViewSelectedKey} from "../fulcrum/tasks/tasksViewStore";
 	import {calendarTaskDragKey} from "../fulcrum/calendar/calendarTaskSchedule";
@@ -53,12 +53,13 @@
 		settings: plugin.settings,
 	});
 
-	$: openTasks = snapshot.tasks.filter(
-		(t) =>
-			!isDoneStatus(t.status, doneTask) &&
-			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
+	$: filteredTasks = collectHorizonTasks(
+		snapshot,
+		plugin.settings,
+		areaFilter,
+		lifeModeMap,
+		doneTask,
 	);
-	$: filteredTasks = filterOpenTasksForTasksView(openTasks, plugin.settings);
 	$: filteredMeetings =
 		groupBy === "day" && plugin.settings.forecastShowVaultMeetings
 			? snapshot.meetings.filter((m) =>
@@ -184,7 +185,7 @@
 					>▾</span>
 					<span class="fulcrum-tasks-center__section-title">
 						{section.label}
-						<span class="fulcrum-muted"> ({section.tasks.length})</span>
+						<span class="fulcrum-muted"> ({section.items.length})</span>
 					</span>
 				</button>
 				{#if !collapsed}

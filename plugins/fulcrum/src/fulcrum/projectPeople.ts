@@ -344,11 +344,12 @@ export function collectPeopleRefsFromNoteFrontmatter(
 	sourcePath: string,
 	fm: Record<string, unknown>,
 	s: FulcrumSettings,
+	matchIndex?: Map<string, TFile>,
 ): IndexedPerson[] {
 	const peopleDirs = effectivePeopleDirs(s);
-	const matchIndex = peopleDirs.length
-		? buildPeopleDirsMatchIndex(app, peopleDirs)
-		: new Map<string, TFile>();
+	const index =
+		matchIndex ??
+		(peopleDirs.length ? buildPeopleDirsMatchIndex(app, peopleDirs) : new Map<string, TFile>());
 
 	const organizerKey = (s.meetingOrganizerField ?? "organizer").trim();
 	const relatedKey = s.projectRelatedPeopleField.trim() || "relatedPeople";
@@ -372,7 +373,16 @@ export function collectPeopleRefsFromNoteFrontmatter(
 		pushPeopleEntriesFromFmValue(fmValueForKey(fm, fieldName), pushEntry);
 	}
 
-	return collectPeopleRefsFromLinkEntries(app, orderedEntries, sourcePath, s, matchIndex, {
+	return collectPeopleRefsFromLinkEntries(app, orderedEntries, sourcePath, s, index, {
 		skipResolvedOutsidePeopleFolder: true,
 	});
+}
+
+/** Stable key for comparing person card sets across frontmatter edits. */
+export function personRefsFingerprint(people: IndexedPerson[]): string {
+	return people
+		.map((p) =>
+			p.file ? p.file.path : `ghost:${normalizePersonMatchKey(p.linkText)}`,
+		)
+		.join("\0");
 }

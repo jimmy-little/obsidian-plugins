@@ -410,7 +410,7 @@ If your plugin does not need CSS, delete this file.
 	margin: 0.5rem 0 0;
 	padding: 0.5rem 0.65rem;
 	max-width: 42rem;
-	border-radius: var(--radius-s);
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
 	border-left: 3px solid color-mix(in srgb, var(--interactive-accent) 35%, transparent);
 	background: color-mix(in srgb, var(--background-modifier-hover) 55%, transparent);
 }
@@ -939,6 +939,17 @@ button.fulcrum-project-related-pill {
 	flex: 1 1 0;
 	min-height: 0;
 	overflow: hidden;
+}
+
+.fulcrum-section--project-task-list .fulcrum-task-list-panel {
+	min-height: 0;
+	max-height: none;
+	overflow: visible;
+}
+
+.fulcrum-section--project-task-list .fulcrum-task-list-panel__scroll-body {
+	flex: 0 1 auto;
+	overflow: visible;
 }
 
 .fulcrum-project-tab-placeholder {
@@ -1645,10 +1656,14 @@ button.fulcrum-project-related-pill {
 /* Note excerpt under chips: markdown-rendered via MarkdownRenderer */
 .fulcrum-activity-row__preview {
 	margin-top: 0.5rem;
-	padding: 0.55rem 0.65rem 0.6rem 0.7rem;
+	padding: 0.55rem 0.65rem 0.6rem calc(var(--fulcrum-accent-stripe-w, 3px) + 0.7rem);
 	border-radius: 0 var(--radius-s) var(--radius-s) 0;
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
-	border-left: 3px solid var(--fulcrum-preview-accent, var(--interactive-accent));
+	border-left: none;
+	--fulcrum-accent-stripe-w: 3px;
+	--fulcrum-accent-stripe: var(--fulcrum-preview-accent, var(--interactive-accent));
+	position: relative;
+	isolation: isolate;
 	background: color-mix(in srgb, var(--background-secondary) 38%, var(--background-primary));
 	font-size: var(--font-ui-smaller);
 	line-height: 1.45;
@@ -1656,6 +1671,18 @@ button.fulcrum-project-related-pill {
 	word-break: break-word;
 	overflow-wrap: anywhere;
 	text-align: left;
+}
+
+.fulcrum-activity-row__preview::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: var(--fulcrum-accent-stripe-w, 3px);
+	background: var(--fulcrum-accent-stripe);
+	border-radius: 0;
+	pointer-events: none;
 }
 
 .fulcrum-activity-row__preview.markdown-preview-view,
@@ -3107,6 +3134,30 @@ button.fulcrum-task-card__note-type:focus-visible {
 	padding-bottom: 0;
 }
 
+.fulcrum-pm__horizon-sidebar {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.fulcrum-pm__horizon-sidebar > .fulcrum-tasks-month {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	padding: 0 0.35rem 0.5rem;
+}
+
+.fulcrum-task-list-panel--facets-only .fulcrum-task-list-panel__top {
+	flex-shrink: 0;
+}
+
+.fulcrum-task-list-panel--facets-only {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
 .fulcrum-pm__left-scroll {
 	flex: 1;
 	min-width: 0;
@@ -3153,6 +3204,17 @@ button.fulcrum-task-card__note-type:focus-visible {
 	padding: 0.75rem 1rem 1.25rem;
 }
 
+/* Keep-alive tab panels: visible panels pass children through to flex layout. */
+.fulcrum-pm__panel:not([hidden]),
+.fulcrum-pm__sidebar-panel:not([hidden]) {
+	display: contents;
+}
+
+.fulcrum-pm__panel[hidden],
+.fulcrum-pm__sidebar-panel[hidden] {
+	display: none;
+}
+
 /* Kanban: fill main pane; board scrolls inside viewport (sticky headers) */
 .fulcrum-pm__main--kanban-fill {
 	display: flex;
@@ -3178,15 +3240,28 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-pm__main-head {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: space-between;
 	gap: 0.75rem 1rem;
 	margin-bottom: 0.65rem;
 }
 
+.fulcrum-pm__main-title-block {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+	min-width: 0;
+}
+
 .fulcrum-pm__main-title {
 	margin: 0;
 	font-size: var(--font-ui-large);
+}
+
+.fulcrum-pm__main-subtext {
+	margin: 0;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35;
 }
 
 .fulcrum-pm__right-placeholder {
@@ -4221,6 +4296,32 @@ button.fulcrum-task-card__note-type:focus-visible {
 	padding: 0.4rem 0;
 }
 
+.fulcrum-dashboard-meetings-nav__trailing {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.fulcrum-dashboard-meetings-nav__tasks-toggle {
+	margin: 0;
+}
+
+.fulcrum-dashboard-meetings--task-drag-active .fulcrum-dashboard-meetings__day-col {
+	outline: 1px dashed color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+	outline-offset: -2px;
+	border-radius: var(--radius-s);
+}
+
+.fulcrum-dashboard-meetings__day-col.fulcrum-calendar__drop-target--active {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+	background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+}
+
+.fulcrum-dashboard-meetings__day-events .fulcrum-calendar__event {
+	flex-shrink: 0;
+}
+
 .fulcrum-dashboard-meetings__event {
 	display: flex;
 	flex-direction: column;
@@ -4230,13 +4331,13 @@ button.fulcrum-task-card__note-type:focus-visible {
 	min-width: 0;
 	flex-shrink: 0;
 	margin: 0;
-	padding: 0.45rem 0.55rem 0.5rem 0.6rem;
+	padding: 0.45rem 0.55rem 0.5rem calc(var(--fulcrum-accent-stripe-w, 6px) + 0.6rem);
 	box-sizing: border-box;
 	text-align: left;
 	cursor: pointer;
 	font: inherit;
 	color: var(--text-normal);
-	border-left-color: var(--fulcrum-cal-event-accent, var(--interactive-accent));
+	--fulcrum-accent-stripe: var(--fulcrum-cal-event-accent, var(--interactive-accent));
 	white-space: normal;
 	overflow: visible;
 	word-break: break-word;
@@ -4249,7 +4350,6 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-dashboard-meetings__event:hover {
 	background: var(--background-modifier-hover);
 	border-color: color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
-	border-left-color: var(--fulcrum-cal-event-accent, var(--interactive-accent));
 	box-shadow: 0 2px 8px color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
 }
 
@@ -4329,7 +4429,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 .fulcrum-pl-row--tile .fulcrum-pl-row__inner {
-	padding: 0.6rem 0.65rem 0.65rem;
+	padding: 0.6rem 0.65rem 0.65rem calc(var(--fulcrum-accent-stripe-w, 6px) + 0.6rem);
 }
 
 .fulcrum-stat-grid {
@@ -4418,6 +4518,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 /* —— Shared left-accent card shell (project tile pattern) —— */
+/* Flat left edge + rounded right. Stripe is a ::before bar (border-left angles with radius). */
 .fulcrum-accent-left-card,
 .fulcrum-task-card,
 .fulcrum-pl-row--tile,
@@ -4425,20 +4526,40 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-calendar__event,
 .fulcrum-calendar__timed-event,
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event {
+	--fulcrum-accent-stripe-w: 6px;
+	position: relative;
+	isolation: isolate;
 	box-sizing: border-box;
-	border-radius: var(--radius-m);
-	/* Top/right/bottom only — `border` shorthand would reset per-component border-left-color */
+	border-radius: 0 var(--radius-m) var(--radius-m) 0;
 	border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
 	border-right: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
 	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
-	border-left-width: 6px;
-	border-left-style: solid;
+	border-left: none;
 	background: color-mix(in srgb, var(--background-secondary) 55%, var(--background-primary));
 	box-shadow: 0 1px 3px color-mix(in srgb, var(--background-modifier-border) 65%, transparent);
 }
 
+.fulcrum-accent-left-card::before,
+.fulcrum-task-card::before,
+.fulcrum-pl-row--tile::before,
+.fulcrum-dashboard-meetings__event::before,
+.fulcrum-calendar__event::before,
+.fulcrum-calendar__timed-event::before,
+.fulcrum-calendar__allday-cell .fulcrum-calendar__event::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: var(--fulcrum-accent-stripe-w);
+	background: var(--fulcrum-accent-stripe, var(--interactive-accent));
+	border-radius: 0;
+	pointer-events: none;
+	z-index: 0;
+}
+
 .fulcrum-pl-row--tile {
-	border-left-color: var(--fulcrum-pl-accent);
+	--fulcrum-accent-stripe: var(--fulcrum-pl-accent);
 }
 
 /* —— Task agenda cards —— */
@@ -4455,19 +4576,46 @@ button.fulcrum-task-card__note-type:focus-visible {
 	gap: 0.6rem;
 }
 
+.fulcrum-task-agenda-list--compact {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+	gap: 0.5rem;
+	align-items: stretch;
+}
+
 .fulcrum-task-agenda-list > li {
 	list-style: none;
 	margin: 0;
 	padding: 0;
 	border-bottom: none;
+	min-width: 0;
 }
 
 .fulcrum-task-card {
-	border-left-color: var(--fulcrum-task-border, var(--interactive-accent));
-	padding: 0.45rem 0.55rem 0.5rem 0.6rem;
+	--fulcrum-accent-stripe: var(--fulcrum-task-border, var(--interactive-accent));
+	padding: 0.45rem 0.55rem 0.5rem calc(var(--fulcrum-accent-stripe-w, 6px) + 0.6rem);
 	margin: 0;
 	display: flex;
 	flex-direction: column;
+}
+
+.fulcrum-task-card--compact {
+	--fulcrum-accent-stripe-w: 4px;
+	padding: 0.3rem 0.4rem 0.35rem calc(var(--fulcrum-accent-stripe-w, 4px) + 0.4rem);
+	height: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+.fulcrum-task-card--compact .fulcrum-task-card__title {
+	white-space: normal;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.fulcrum-task-card--compact .fulcrum-task-card__meta {
+	flex-wrap: wrap;
+	gap: 0.2rem 0.35rem;
 }
 
 .fulcrum-task-card__main-row {
@@ -4761,22 +4909,38 @@ button.fulcrum-task-card__note-type:focus-visible {
 
 /* Inline task chip in prose (single-line, round-rect like task cards) */
 .fulcrum-task-inline-pill {
+	--fulcrum-accent-stripe-w: 3px;
+	--fulcrum-accent-stripe: var(--fulcrum-task-pill-accent, var(--interactive-accent));
+	position: relative;
+	isolation: isolate;
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
 	width: fit-content;
 	max-width: 100%;
 	margin: 0.1rem 0;
-	padding: 0.12rem 0.45rem 0.12rem 0.35rem;
+	padding: 0.12rem 0.45rem 0.12rem calc(var(--fulcrum-accent-stripe-w) + 0.35rem);
 	border: 1px solid color-mix(in srgb, var(--fulcrum-task-pill-accent, var(--background-modifier-border)) 35%, var(--background-modifier-border));
-	border-left: 3px solid var(--fulcrum-task-pill-accent, var(--interactive-accent));
-	border-radius: var(--radius-s);
+	border-left: none;
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
 	background: color-mix(in srgb, var(--background-secondary) 80%, var(--background-primary));
 	color: var(--text-normal);
 	font-size: inherit;
 	line-height: 1.35;
 	box-sizing: border-box;
 	vertical-align: baseline;
+}
+
+.fulcrum-task-inline-pill::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: var(--fulcrum-accent-stripe-w);
+	background: var(--fulcrum-accent-stripe);
+	border-radius: 0;
+	pointer-events: none;
 }
 
 .fulcrum-task-inline-pill--prose {
@@ -4818,7 +4982,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	max-width: none;
 	margin: 0;
 	padding: 0.45rem 0.55rem 0.5rem 0.6rem;
-	border-radius: var(--radius-s);
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
 	box-sizing: border-box;
 }
 
@@ -5067,6 +5231,10 @@ li.task-list-item[data-fulcrum-inline-task-pill="reading"] > div {
 
 /* Live Preview: native checkbox line styled as pill (editable) */
 li.task-list-item.fulcrum-task-inline-pill--live {
+	--fulcrum-accent-stripe-w: 3px;
+	--fulcrum-accent-stripe: var(--fulcrum-task-pill-accent, var(--interactive-accent));
+	position: relative;
+	isolation: isolate;
 	display: inline-flex;
 	flex-wrap: nowrap;
 	align-items: center;
@@ -5077,12 +5245,24 @@ li.task-list-item.fulcrum-task-inline-pill--live {
 	overflow: hidden;
 	list-style: none;
 	margin: 0.1rem 0;
-	padding: 0.12rem 0.55rem 0.12rem 0.35rem;
+	padding: 0.12rem 0.55rem 0.12rem calc(var(--fulcrum-accent-stripe-w) + 0.35rem);
 	border: 1px solid color-mix(in srgb, var(--fulcrum-task-pill-accent, var(--background-modifier-border)) 35%, var(--background-modifier-border));
-	border-left: 3px solid var(--fulcrum-task-pill-accent, var(--interactive-accent));
-	border-radius: var(--radius-s);
+	border-left: none;
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
 	background: color-mix(in srgb, var(--background-secondary) 80%, var(--background-primary));
 	vertical-align: baseline;
+}
+
+li.task-list-item.fulcrum-task-inline-pill--live::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: var(--fulcrum-accent-stripe-w);
+	background: var(--fulcrum-accent-stripe);
+	border-radius: 0;
+	pointer-events: none;
 }
 
 li.task-list-item.fulcrum-task-inline-pill--live.fulcrum-task-inline-pill--completed {
@@ -5221,12 +5401,14 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 }
 
 .fulcrum-kanban__grid {
-	--kanban-col-width: 16rem;
+	--kanban-col-min: 16rem;
+	--kanban-col-width: minmax(var(--kanban-col-min), 1fr);
 	display: grid;
 	grid-template-columns: repeat(var(--kanban-col-count, 1), var(--kanban-col-width));
 	column-gap: 0.75rem;
 	row-gap: 0;
-	min-width: max-content;
+	width: 100%;
+	min-width: 0;
 	padding: 0 0 1rem;
 	box-sizing: border-box;
 }
@@ -6089,8 +6271,8 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 	gap: 0.35rem;
 	width: 100%;
 	margin: 0;
-	padding: 0.4rem 0.55rem 0.4rem 0.5rem;
-	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
+	padding: 0.4rem 0.55rem 0.4rem calc(var(--fulcrum-accent-stripe-w, 6px) + 0.5rem);
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--text-faint));
 	font-size: var(--font-ui-smaller);
 	line-height: 1.35;
 	white-space: normal;
@@ -6100,28 +6282,27 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event:hover {
 	filter: brightness(0.98);
-	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
 	box-shadow: 0 2px 8px color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
 }
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event--task {
-	border-left-color: var(--fulcrum-event-accent, var(--text-accent));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--text-accent));
 }
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event--meeting {
-	border-left-color: var(--fulcrum-event-accent, var(--color-purple, #a855f7));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--color-purple, #a855f7));
 }
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event--logged {
-	border-left-color: var(--fulcrum-event-accent, var(--color-green));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--color-green));
 }
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event--planned {
-	border-left-color: var(--fulcrum-event-accent, var(--color-orange, #d97706));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--color-orange, #d97706));
 }
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event--planner {
-	border-left-color: var(--fulcrum-event-accent, var(--text-muted));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--text-muted));
 }
 
 .fulcrum-calendar__allday-cell .fulcrum-calendar__event-icon {
@@ -6197,8 +6378,8 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 	left: 3px;
 	right: 3px;
 	min-height: 1.35rem;
-	padding: 3px 6px 3px 5px;
-	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
+	padding: 3px 6px 3px calc(var(--fulcrum-accent-stripe-w, 6px) + 5px);
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--text-faint));
 	cursor: pointer;
 	overflow: hidden;
 	display: flex;
@@ -6215,38 +6396,38 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 .fulcrum-calendar__timed-event--task {
 	background: color-mix(in srgb, var(--fulcrum-event-accent, var(--text-accent)) 14%, var(--background-primary));
 	color: var(--text-normal);
-	border-left-color: var(--fulcrum-event-accent, var(--text-accent));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--text-accent));
 }
 
 .fulcrum-calendar__timed-event--meeting {
 	background: color-mix(in srgb, var(--fulcrum-event-accent, var(--color-purple, #a855f7)) 14%, var(--background-primary));
 	color: var(--text-normal);
-	border-left-color: var(--fulcrum-event-accent, var(--color-purple, #a855f7));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--color-purple, #a855f7));
 }
 
 .fulcrum-calendar__event--planner,
 .fulcrum-calendar__timed-event--planner {
 	background: color-mix(in srgb, var(--text-muted) 12%, var(--background-primary));
 	color: var(--text-normal);
-	border-left-color: var(--fulcrum-event-accent, var(--text-muted));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--text-muted));
 }
 
 .fulcrum-calendar__timed-event--note {
 	background: var(--background-modifier-hover);
 	color: var(--text-muted);
-	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--text-faint));
 }
 
 .fulcrum-calendar__timed-event--logged {
 	background: color-mix(in srgb, var(--fulcrum-event-accent, var(--color-green)) 14%, var(--background-primary));
 	color: var(--text-normal);
-	border-left-color: var(--fulcrum-event-accent, var(--color-green));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--color-green));
 }
 
 .fulcrum-calendar__timed-event--planned {
 	background: color-mix(in srgb, var(--fulcrum-event-accent, var(--color-orange)) 14%, var(--background-primary));
 	color: var(--text-normal);
-	border-left-color: var(--fulcrum-event-accent, var(--color-orange));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--color-orange));
 }
 
 .fulcrum-calendar__timed-event--active {
@@ -6426,12 +6607,18 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 	min-width: 0;
 }
 
+.fulcrum-timeline .fulcrum-calendar__time-slots,
+.fulcrum-timeline .fulcrum-calendar__day-events-overlay {
+	min-height: calc(var(--fulcrum-cal-hours, 24) * var(--fulcrum-cal-hour-h));
+	height: calc(var(--fulcrum-cal-hours, 24) * var(--fulcrum-cal-hour-h));
+}
+
 .fulcrum-timeline .fulcrum-calendar__timed-event {
 	left: 1px;
 	right: 1px;
 	min-width: 0;
 	max-width: 100%;
-	padding: 2px 5px 2px 4px;
+	padding: 2px 6px 2px calc(var(--fulcrum-accent-stripe-w, 6px) + 6px);
 	align-items: center;
 }
 
@@ -6453,7 +6640,7 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 .fulcrum-timeline .fulcrum-calendar__allday-cell .fulcrum-calendar__event {
 	min-width: 0;
 	font-size: calc(var(--font-ui-smaller) - 0.5px);
-	padding: 0.35rem 0.45rem;
+	padding: 0.35rem 0.45rem 0.35rem calc(var(--fulcrum-accent-stripe-w, 6px) + 0.45rem);
 }
 
 /* ── Toolbar (legacy nav row) ── */
@@ -6600,8 +6787,8 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 	gap: 0.3rem;
 	width: 100%;
 	margin: 0;
-	padding: 0.28rem 0.4rem 0.28rem 0.35rem;
-	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
+	padding: 0.28rem 0.4rem 0.28rem calc(var(--fulcrum-accent-stripe-w, 6px) + 0.35rem);
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--text-faint));
 	cursor: pointer;
 	text-align: left;
 	font-size: 11px;
@@ -6613,29 +6800,28 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 
 .fulcrum-calendar__event:hover {
 	background: var(--background-modifier-hover);
-	border-left-color: var(--fulcrum-event-accent, var(--text-faint));
 	box-shadow: 0 2px 8px color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
 }
 
 .fulcrum-calendar__event--task {
-	border-left-color: var(--fulcrum-event-accent, var(--text-accent));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--text-accent));
 }
 
 .fulcrum-calendar__event--meeting {
-	border-left-color: var(--fulcrum-event-accent, var(--color-purple, #a855f7));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--color-purple, #a855f7));
 }
 
 .fulcrum-calendar__event--logged {
-	border-left-color: var(--fulcrum-event-accent, var(--color-green));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--color-green));
 }
 
 .fulcrum-calendar__event--planned {
-	border-left-color: var(--fulcrum-event-accent, var(--color-orange, #d97706));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--color-orange, #d97706));
 }
 
 .fulcrum-calendar__event--planner,
 .fulcrum-calendar__event--note {
-	border-left-color: var(--fulcrum-event-accent, var(--text-muted));
+	--fulcrum-accent-stripe: var(--fulcrum-event-accent, var(--text-muted));
 }
 
 .fulcrum-calendar__event-icon {
@@ -7284,7 +7470,7 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 
 .fulcrum-cal-tg__ev {
 	position: absolute;
-	border-radius: var(--radius-s);
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
 	padding: 2px 4px;
 	font-size: 11px;
 	line-height: 1.25;
@@ -8385,8 +8571,21 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 .fulcrum-tasks-main__center {
 	min-width: 0;
 	min-height: 0;
-	overflow: auto;
+	overflow: hidden;
 	border-right: 1px solid var(--background-modifier-border);
+	display: flex;
+	flex-direction: column;
+}
+
+.fulcrum-tasks-main__center-top {
+	flex-shrink: 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.fulcrum-tasks-main__center > .fulcrum-tasks-center {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: auto;
 }
 
 .fulcrum-tasks-main__split {
@@ -8439,6 +8638,11 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 	color: var(--color-yellow-rgb, #b8860b);
 }
 
+.fulcrum-tasks-week-strip__name--focused {
+	color: var(--text-normal);
+	font-weight: 700;
+}
+
 .fulcrum-tasks-week-strip__blocks {
 	display: grid;
 	grid-template-columns: repeat(9, minmax(0, 1fr));
@@ -8462,6 +8666,11 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 .fulcrum-tasks-week-strip__block--today {
 	border-color: color-mix(in srgb, var(--color-yellow-rgb, #e5a700) 55%, var(--background-modifier-border));
 	background: color-mix(in srgb, var(--color-yellow-rgb, #e5a700) 12%, transparent);
+}
+
+.fulcrum-tasks-week-strip__block--focused {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -1px;
 }
 
 .fulcrum-tasks-week-strip__block--past .fulcrum-tasks-week-strip__count {
@@ -8587,6 +8796,16 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
 }
 
+.fulcrum-tasks-row--inline .fulcrum-tasks-row__title {
+	font-weight: 500;
+}
+
+.fulcrum-tasks-row__inline-mark {
+	color: var(--text-muted);
+	margin-right: 0.2rem;
+	font-size: 0.85em;
+}
+
 .fulcrum-tasks-row--ghost {
 	opacity: 0.72;
 	border-bottom-style: dashed;
@@ -8655,29 +8874,44 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 }
 
 .fulcrum-tasks-info-row {
+	--fulcrum-accent-stripe-w: 3px;
+	--fulcrum-accent-stripe: color-mix(in srgb, var(--text-muted) 35%, transparent);
+	position: relative;
+	isolation: isolate;
 	display: grid;
 	align-items: center;
 	gap: 0.35rem 0.5rem;
 	width: 100%;
 	box-sizing: border-box;
-	padding: 0.28rem 0.45rem;
+	padding: 0.28rem 0.45rem 0.28rem calc(var(--fulcrum-accent-stripe-w) + 0.45rem);
 	margin: 0;
 	border: none;
-	border-radius: var(--radius-s);
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
 	background: color-mix(in srgb, var(--background-secondary) 55%, transparent);
-	border-left: 3px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
 	cursor: default;
 	text-align: left;
 	font: inherit;
 	color: inherit;
 }
 
+.fulcrum-tasks-info-row::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: var(--fulcrum-accent-stripe-w);
+	background: var(--fulcrum-accent-stripe);
+	border-radius: 0;
+	pointer-events: none;
+}
+
 .fulcrum-tasks-info-row--meeting {
-	border-left-color: color-mix(in srgb, var(--color-blue) 55%, var(--text-muted));
+	--fulcrum-accent-stripe: color-mix(in srgb, var(--color-blue) 55%, var(--text-muted));
 }
 
 .fulcrum-tasks-info-row--calendar {
-	border-left-color: color-mix(in srgb, var(--color-orange) 55%, var(--text-muted));
+	--fulcrum-accent-stripe: color-mix(in srgb, var(--color-orange) 55%, var(--text-muted));
 }
 
 .fulcrum-tasks-info-row__icon {
@@ -8814,6 +9048,15 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 .fulcrum-tasks-month__day--pad {
 	background: transparent;
 	cursor: default;
+}
+
+.fulcrum-tasks-month__day--today {
+	border-color: color-mix(in srgb, var(--color-yellow-rgb, #e5a700) 55%, var(--background-modifier-border));
+}
+
+.fulcrum-tasks-month__day--focused {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -1px;
 }
 
 .fulcrum-tasks-month__day--drop {
@@ -9370,15 +9613,124 @@ button.orbit-heatmap-day-modal__link:hover {
 	overflow-wrap: anywhere;
 }
 
-/* Fulcrum companion chrome: horizontal strip */
+/* Fulcrum companion chrome: overlapping avatar stack below title/project */
 .fulcrum-companion-people-row {
 	display: flex;
-	flex-wrap: wrap;
-	align-items: stretch;
-	gap: 0.5rem 0.6rem;
-	margin-top: 0.65rem;
-	padding-top: 0.65rem;
-	border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
+	align-items: center;
+	justify-content: flex-start;
+	margin-top: 0.55rem;
+	padding-top: 0;
+	border-top: none;
+}
+
+.fulcrum-companion-people-stack {
+	display: inline-flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-start;
+	max-width: 100%;
+}
+
+.fulcrum-companion-people-stack__avatar {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 2rem;
+	height: 2rem;
+	margin: 0;
+	margin-left: -0.5rem;
+	padding: 0;
+	border: 2px solid var(--background-primary);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--background-modifier-border) 35%, var(--background-primary));
+	cursor: pointer;
+	overflow: visible;
+	box-sizing: border-box;
+}
+
+.fulcrum-companion-people-stack__avatar:first-child {
+	margin-left: 0;
+}
+
+.fulcrum-companion-people-stack__avatar:hover,
+.fulcrum-companion-people-stack__avatar:focus-visible {
+	z-index: 2;
+}
+
+.fulcrum-companion-people-stack__avatar--ghost {
+	border-style: dashed;
+	opacity: 0.88;
+}
+
+.fulcrum-companion-people-stack__face {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+	border-radius: inherit;
+	overflow: hidden;
+	background: color-mix(in srgb, var(--background-modifier-border) 35%, var(--background-primary));
+}
+
+.fulcrum-companion-people-stack__face img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.fulcrum-companion-people-stack__face svg {
+	width: 58%;
+	height: 58%;
+	opacity: 0.55;
+	color: var(--text-muted);
+}
+
+.fulcrum-companion-people-stack__tooltip {
+	position: absolute;
+	left: 50%;
+	bottom: calc(100% + 0.35rem);
+	transform: translateX(-50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.1rem;
+	min-width: 6.5rem;
+	max-width: 14rem;
+	padding: 0.35rem 0.5rem;
+	border-radius: var(--radius-s, 6px);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+	pointer-events: none;
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 0.12s ease, visibility 0.12s ease;
+	z-index: 5;
+	white-space: normal;
+	text-align: center;
+}
+
+.fulcrum-companion-people-stack__avatar:hover .fulcrum-companion-people-stack__tooltip,
+.fulcrum-companion-people-stack__avatar:focus-visible .fulcrum-companion-people-stack__tooltip {
+	opacity: 1;
+	visibility: visible;
+}
+
+.fulcrum-companion-people-stack__tooltip-name {
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	line-height: 1.25;
+}
+
+.fulcrum-companion-people-stack__tooltip-position {
+	font-size: calc(var(--font-ui-smaller) - 1px);
+	color: var(--text-muted);
+	line-height: 1.25;
 }
 
 /* Companion person cards intentionally inherit the exact same look as grid cards. */
@@ -10405,20 +10757,36 @@ span.cm-hmd-internal-link.fulcrum-product-inline-pill {
 
 /* Active Timers leaf — restyled rows to match Timery card layout */
 .fulcrum-active-timers__row {
+	--fulcrum-accent-stripe-w: 4px;
+	--fulcrum-accent-stripe: var(--fulcrum-pl-accent, var(--interactive-accent));
+	position: relative;
+	isolation: isolate;
 	display: grid;
 	grid-template-columns: auto 1fr auto;
 	grid-template-rows: auto auto auto;
 	align-items: center;
 	gap: 2px 10px;
-	padding: 8px 10px 8px 8px;
+	padding: 8px 10px 8px calc(var(--fulcrum-accent-stripe-w) + 8px);
 	border: 1px solid var(--background-modifier-border);
-	border-left: 4px solid var(--fulcrum-pl-accent, var(--interactive-accent));
-	border-radius: var(--radius-m, 6px);
+	border-left: none;
+	border-radius: 0 var(--radius-m, 6px) var(--radius-m, 6px) 0;
 	background: var(--background-secondary);
 }
 
+.fulcrum-active-timers__row::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: var(--fulcrum-accent-stripe-w);
+	background: var(--fulcrum-accent-stripe);
+	border-radius: 0;
+	pointer-events: none;
+}
+
 .fulcrum-active-timers__row[data-fulcrum-accent] {
-	border-left-color: var(--fulcrum-pl-accent);
+	--fulcrum-accent-stripe: var(--fulcrum-pl-accent);
 }
 
 .fulcrum-active-timers__timer-col {
@@ -11206,13 +11574,18 @@ span.cm-hmd-internal-link.fulcrum-product-inline-pill {
 /* Lapse Button Styles */
 
 .fulcrum-timer-button {
+    --fulcrum-accent-stripe-w: 4px;
+    --fulcrum-accent-stripe: var(--fulcrum-pl-accent, var(--background-modifier-border));
+    position: relative;
+    isolation: isolate;
     display: inline-flex;
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
-    border-radius: 8px;
+    border-radius: 0 8px 8px 0;
     border: 2px solid var(--background-modifier-border);
-    border-left-width: 4px;
+    border-left: none;
+    padding-left: calc(var(--fulcrum-accent-stripe-w) + 10px);
     background-color: var(--background-secondary);
     color: var(--text-normal);
     font-weight: 500;
@@ -11225,9 +11598,22 @@ span.cm-hmd-internal-link.fulcrum-product-inline-pill {
     vertical-align: top;
 }
 
+.fulcrum-timer-button::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--fulcrum-accent-stripe-w);
+    background: var(--fulcrum-accent-stripe);
+    border-radius: 0;
+    pointer-events: none;
+}
+
 /* Quick Start / Timery-style cards — accent uses same token as .fulcrum-pl-row */
 .fulcrum-timer-button--timery {
     --fulcrum-pl-accent: var(--background-modifier-border);
+    --fulcrum-accent-stripe: var(--fulcrum-pl-accent);
     --fulcrum-timer-play-bg: var(--text-muted);
     --fulcrum-timer-play-fg: var(--background-primary);
 
@@ -11237,11 +11623,11 @@ span.cm-hmd-internal-link.fulcrum-product-inline-pill {
     gap: 8px;
     height: auto;
     min-height: 56px;
-    padding: 6px 10px 6px 8px;
+    padding: 6px 10px 6px calc(var(--fulcrum-accent-stripe-w) + 8px);
 }
 
 .fulcrum-timer-button--timery[data-fulcrum-accent] {
-    border-left-color: var(--fulcrum-pl-accent);
+    --fulcrum-accent-stripe: var(--fulcrum-pl-accent);
     --fulcrum-timer-play-bg: var(--fulcrum-pl-accent);
 }
 

@@ -4,10 +4,14 @@ import type {IndexedMeeting, IndexedTask} from "../../types";
 import {
 	buildDaySections,
 	buildWeekStripBlocks,
+	filterOpenTasksForTasksView,
+	indexedTaskFromPlannerEvent,
 	mergeDayItems,
 	taskPrimaryDateIso,
 	tasksViewItemKey,
+	unscheduledSectionDefaultExpanded,
 } from "../tasksViewModel";
+import type {IndexedPlannerEvent} from "../../types";
 
 function task(partial: Partial<IndexedTask> & {dueDate?: string; scheduledDate?: string}): IndexedTask {
 	return {
@@ -177,5 +181,95 @@ describe("tasksViewItemKey", () => {
 		expect(tasksViewItemKey({kind: "meeting", meeting: m, dateIso: "2026-06-29", startMinutes: null})).toBe(
 			"meeting:m.md",
 		);
+	});
+});
+
+describe("filterOpenTasksForTasksView", () => {
+	const baseSettings = {
+		taskSidebarFilterUncheckedStatus: [],
+		taskSidebarFilterUncheckedProject: [],
+		taskSidebarFilterUncheckedSource: [],
+	} as unknown as FulcrumSettings;
+
+	it("filters by unchecked task source", () => {
+		const tasks = [
+			task({title: "Note"}),
+			task({title: "Inline", source: "inline", line: 1}),
+		];
+		const onlyNotes = filterOpenTasksForTasksView(tasks, {
+			...baseSettings,
+			taskSidebarFilterUncheckedSource: ["inline"],
+		});
+		expect(onlyNotes).toHaveLength(1);
+		expect(onlyNotes[0]?.source).toBe("taskNote");
+
+		const onlyInline = filterOpenTasksForTasksView(tasks, {
+			...baseSettings,
+			taskSidebarFilterUncheckedSource: ["taskNote"],
+		});
+		expect(onlyInline).toHaveLength(1);
+		expect(onlyInline[0]?.source).toBe("inline");
+	});
+
+	it("composes source filter with status filter", () => {
+		const tasks = [
+			task({title: "Note todo", status: "todo"}),
+			task({title: "Note done", status: "done"}),
+			task({title: "Inline", source: "inline", line: 1, status: "todo"}),
+		];
+		const filtered = filterOpenTasksForTasksView(tasks, {
+			...baseSettings,
+			taskSidebarFilterUncheckedStatus: ["done"],
+			taskSidebarFilterUncheckedSource: ["inline"],
+		});
+		expect(filtered.map((t) => t.title)).toEqual(["Note todo"]);
+	});
+});
+
+describe("unscheduledSectionDefaultExpanded", () => {
+	const settings = {
+		taskSidebarFilterUncheckedSource: [],
+	} as unknown as FulcrumSettings;
+
+	it("expands when unscheduled includes inline tasks", () => {
+		expect(
+			unscheduledSectionDefaultExpanded(
+				[task({source: "inline", line: 2})],
+				settings,
+			),
+		).toBe(true);
+	});
+
+	it("stays collapsed for task notes only", () => {
+		expect(unscheduledSectionDefaultExpanded([task({})], settings)).toBe(false);
+	});
+
+	it("stays collapsed when inline is filtered out", () => {
+		expect(
+			unscheduledSectionDefaultExpanded(
+				[task({source: "inline", line: 2})],
+				{...settings, taskSidebarFilterUncheckedSource: ["inline"]},
+			),
+		).toBe(false);
+	});
+});
+
+describe("indexedTaskFromPlannerEvent", () => {
+	it("maps start minutes to scheduled datetime", () => {
+		const file = {path: "d.md", basename: "d.md", stat: {ctime: 0}} as IndexedTask["file"];
+		const ev: IndexedPlannerEvent = {
+			file,
+			line: 1,
+			dateIso: "2026-08-10",
+			title: "Block",
+			status: "todo",
+			startMinutes: 14 * 60 + 30,
+			durationMinutes: 30,
+			projectFile: null,
+			trackedMinutes: 0,
+		};
+		const t = indexedTaskFromPlannerEvent(ev);
+		expect(t.source).toBe("inline");
+		expect(t.scheduledDate).toBe("2026-08-10T14:30");
 	});
 });

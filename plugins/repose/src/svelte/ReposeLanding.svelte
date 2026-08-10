@@ -29,6 +29,7 @@
 		showEpisodeWatchProgress,
 	} from "../media/showEpisodes";
 	import ReposeConsumptionHeatmap from "./ReposeConsumptionHeatmap.svelte";
+	import { bindVaultRefresh } from "./bindVaultRefresh";
 
 	export let plugin: ReposePlugin;
 	export let onSelectPath: (path: string) => void;
@@ -288,10 +289,7 @@
 	}
 
 	onMount(() => {
-		plugin.registerEvent(plugin.app.metadataCache.on("changed", () => listRev++));
-		plugin.registerEvent(plugin.app.vault.on("create", () => listRev++));
-		plugin.registerEvent(plugin.app.vault.on("delete", () => listRev++));
-		plugin.registerEvent(plugin.app.vault.on("rename", () => listRev++));
+		return bindVaultRefresh(plugin, () => listRev++, { debounceMs: 200 });
 	});
 </script>
 

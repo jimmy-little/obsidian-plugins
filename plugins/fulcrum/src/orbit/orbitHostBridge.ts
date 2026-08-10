@@ -24,5 +24,6 @@ export function createOrbitHost(plugin: FulcrumPlugin): OrbitHost {
 		capturePersonSnapshot: (personFile) => plugin.capturePersonSnapshot(personFile),
 		openPersonProperties: (personFile) => plugin.openPersonProperties(personFile),
 		createPersonNote: (linkText, displayName) => plugin.createPersonNote(linkText, displayName),
+		getPersonWorksWith: (personPath) => plugin.vaultIndex.getPersonWorksWith(personPath),
 	};
 }

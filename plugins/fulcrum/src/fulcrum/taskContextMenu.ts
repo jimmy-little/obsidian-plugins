@@ -28,7 +28,13 @@ import {convertInlineTaskToNote} from "./convertInlineTaskToNote";
 import {startTaskTimerForCard} from "./taskCardInteractions";
 import type {FulcrumHost} from "./pluginBridge";
 import {waitForNextFileResolved} from "./calendar/calendarTaskSchedule";
-import {parseList, parseTaskStatusChoices} from "./settingsDefaults";
+import {
+	isDoneStatus,
+	normalizeStatusKey,
+	parseDoneStatusSet,
+	parseList,
+	parseTaskStatusChoices,
+} from "./settingsDefaults";
 import type {IndexedTask} from "./types";
 import {
 	scheduleNextWeekIso,
@@ -57,19 +63,52 @@ function formatStatusLabel(statusId: string): string {
 	return statusId.trim();
 }
 
-async function afterTaskMutation(host: FulcrumHost, task: IndexedTask): Promise<void> {
-	await host.refreshIndex();
+function optimisticStatusPatch(
+	settings: FulcrumHost["settings"],
+	targetStatusId: string,
+): Pick<IndexedTask, "status" | "completedDate"> {
+	const doneSet = parseDoneStatusSet(settings.taskDoneStatuses);
+	const yamlDone = settings.taskNoteYamlStatusDone.trim().toLowerCase();
+	const isDone =
+		isDoneStatus(targetStatusId, doneSet) ||
+		(yamlDone.length > 0 && normalizeStatusKey(targetStatusId) === yamlDone);
+	return {
+		status: targetStatusId,
+		completedDate: isDone ? new Date().toISOString().slice(0, 10) : undefined,
+	};
 }
 
+/** Write the file, paint the index immediately when possible, then debounce a full rebuild. */
 async function withFileResolved(
 	host: FulcrumHost,
 	task: IndexedTask,
 	fn: () => Promise<void>,
+	optimistic?: Partial<
+		Pick<
+			IndexedTask,
+			| "status"
+			| "completedDate"
+			| "title"
+			| "priority"
+			| "dueDate"
+			| "scheduledDate"
+			| "tags"
+			| "inlineTags"
+		>
+	>,
 ): Promise<void> {
+	if (optimistic) {
+		host.vaultIndex.patchIndexedTask(task, optimistic);
+	}
 	const resolved = waitForNextFileResolved(host.app, task.file);
-	await fn();
+	try {
+		await fn();
+	} catch (e) {
+		host.vaultIndex.scheduleRebuild();
+		throw e;
+	}
 	await resolved;
-	await afterTaskMutation(host, task);
+	host.vaultIndex.scheduleRebuild();
 }
 
 function addDatePresetSubmenu(
@@ -139,8 +178,11 @@ function addStatusSubmenu(menu: Menu, host: FulcrumHost, task: IndexedTask): voi
 				if (isCurrent) row.setDisabled(true);
 				row.onClick(() => {
 					if (isCurrent) return;
-					void withFileResolved(host, task, () =>
-						applyTaskStatusChange(host.app, task, host.settings, st),
+					void withFileResolved(
+						host,
+						task,
+						() => applyTaskStatusChange(host.app, task, host.settings, st),
+						optimisticStatusPatch(host.settings, st),
 					).catch(handleMenuError);
 				});
 			});

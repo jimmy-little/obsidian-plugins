@@ -10,6 +10,7 @@ import type {
 	IndexedProject,
 	IndexedTask,
 	IndexSnapshot,
+	PersonWorksWithEntry,
 	ProjectRollup,
 } from "./types";
 import {isUnderFolder, projectStatusFromSubfolderLayout} from "./utils/paths";
@@ -42,6 +43,7 @@ import {
 } from "./utils/inlineTasks";
 import {applyTimeRangeToTaskDates, parseTimeRangeFromLine} from "./utils/dayPlannerTime";
 import {indexDailyPlannerEvents, plannerTrackedMinutesForProject} from "./utils/dailyPlannerEvents";
+import {buildPersonWorksWithIndex} from "../orbit/orbit/personWorksWith";
 import {
 	buildNoteBodyPreview,
 	parseTagsFromFm,
@@ -210,6 +212,12 @@ function augmentTaskRelationships(
 	}
 }
 
+function sameIndexedTask(a: IndexedTask, b: IndexedTask): boolean {
+	if (a.file.path !== b.file.path || a.source !== b.source) return false;
+	if (a.source === "inline") return a.line === b.line;
+	return true;
+}
+
 export class VaultIndex {
 	private app: App;
 	private getSettings: () => FulcrumSettings;
@@ -219,11 +227,15 @@ export class VaultIndex {
 		tasks: [],
 		meetings: [],
 		plannerEvents: [],
+		personWorksWith: new Map(),
 		rebuiltAt: 0,
 	};
 	private debounceHandle: number | null = null;
 	private maxWaitHandle: number | null = null;
 	private idleDebounceHandle: number | null = null;
+	private rebuildGeneration = 0;
+	private rebuildInflight = false;
+	private rebuildPending = false;
 	private rollupAtomicNotesByProject: Map<string, AtomicNoteRow[]> | null = null;
 	private rollupAtomicNotesIndexAt = 0;
 	private rollupAtomicNotesInflight: Promise<Map<string, AtomicNoteRow[]>> | null = null;
@@ -241,6 +253,8 @@ export class VaultIndex {
 	static readonly REBUILD_MAX_WAIT_MS = 2000;
 	/** While a note is open in an editor, wait for a typing pause before re-indexing. */
 	static readonly IDLE_REBUILD_MS = 2500;
+	/** Yield to the main thread while scanning large vaults. */
+	static readonly REBUILD_YIELD_EVERY = 32;
 
 	constructor(app: App, getSettings: () => FulcrumSettings) {
 		this.app = app;
@@ -251,7 +265,40 @@ export class VaultIndex {
 		return this.snapshot;
 	}
 
+	/**
+	 * Apply a local patch to one indexed task and bump the view revision so UI
+	 * updates immediately. Pair with `scheduleRebuild()` so the vault scan catches up.
+	 */
+	patchIndexedTask(
+		task: IndexedTask,
+		patch: Partial<
+			Pick<
+				IndexedTask,
+				| "status"
+				| "completedDate"
+				| "title"
+				| "priority"
+				| "dueDate"
+				| "scheduledDate"
+				| "tags"
+				| "inlineTags"
+			>
+		>,
+	): void {
+		const tasks = this.snapshot.tasks;
+		const idx = tasks.findIndex((t) => sameIndexedTask(t, task));
+		if (idx < 0) return;
+		const next = [...tasks];
+		next[idx] = {...tasks[idx]!, ...patch};
+		this.snapshot = {...this.snapshot, tasks: next};
+		bumpIndexRevision();
+	}
+
 	scheduleRebuild(): void {
+		if (this.rebuildInflight) {
+			this.rebuildPending = true;
+			return;
+		}
 		if (this.debounceHandle != null) {
 			window.clearTimeout(this.debounceHandle);
 		}
@@ -275,13 +322,10 @@ export class VaultIndex {
 	/**
 	 * Metadata cache updates for the note being edited fire on every keystroke.
 	 * While typing, only re-index checkbox lines (inline tasks, planner blocks).
-	 * Saved files and background notes use normal debounced rebuild.
+	 * Background notes use normal debounced rebuild. Persisted modifies of an
+	 * open editor file use the same idle path so autosave does not thrash the index.
 	 */
-	scheduleRebuildFromMetadataChange(file: TFile, options?: {persisted?: boolean}): void {
-		if (options?.persisted) {
-			this.scheduleRebuild();
-			return;
-		}
+	scheduleRebuildFromMetadataChange(file: TFile, _options?: {persisted?: boolean}): void {
 		if (this.isFileOpenInMarkdownEditor(file.path)) {
 			if (!this.fileNeedsIndexWhileEditing(file)) return;
 			this.scheduleIdleRebuild();
@@ -345,10 +389,38 @@ export class VaultIndex {
 			window.clearTimeout(this.idleDebounceHandle);
 			this.idleDebounceHandle = null;
 		}
+		this.rebuildPending = false;
+	}
+
+	private yieldToMain(): Promise<void> {
+		return new Promise((resolve) => window.setTimeout(resolve, 0));
+	}
+
+	private isRebuildStale(generation: number): boolean {
+		return generation !== this.rebuildGeneration;
 	}
 
 	async rebuild(): Promise<void> {
+		this.rebuildGeneration += 1;
+		const generation = this.rebuildGeneration;
 		this.cancelScheduledRebuild();
+		if (this.rebuildInflight) {
+			this.rebuildPending = true;
+			return;
+		}
+		this.rebuildInflight = true;
+		try {
+			await this.rebuildCore(generation);
+		} finally {
+			this.rebuildInflight = false;
+			if (this.rebuildPending) {
+				this.rebuildPending = false;
+				this.scheduleRebuild();
+			}
+		}
+	}
+
+	private async rebuildCore(generation: number): Promise<void> {
 		const s = this.getSettings();
 		const areas: IndexedArea[] = [];
 		const projects: IndexedProject[] = [];
@@ -360,7 +432,13 @@ export class VaultIndex {
 		const projectsRoot = resolveProjectsRoot(s);
 		const statusKey = s.projectStatusField.trim().replace(/:+$/u, "") || "status";
 
+		let scannedNotes = 0;
 		for (const file of this.app.vault.getMarkdownFiles()) {
+			scannedNotes += 1;
+			if (scannedNotes % VaultIndex.REBUILD_YIELD_EVERY === 0) {
+				await this.yieldToMain();
+				if (this.isRebuildStale(generation)) return;
+			}
 			const cache = this.app.metadataCache.getFileCache(file);
 			const fm = cache?.frontmatter as Record<string, unknown> | undefined;
 			const path = file.path;
@@ -511,8 +589,14 @@ export class VaultIndex {
 		const inlineIncludeTag = s.inlineTaskIncludeTag.trim();
 
 		if (useTaskNotes) {
+			let scannedTaskNotes = 0;
 			for (const file of this.app.vault.getMarkdownFiles()) {
 				if (!fileMatchesFolderScope(file.path, taskNoteRoots)) continue;
+				scannedTaskNotes += 1;
+				if (scannedTaskNotes % VaultIndex.REBUILD_YIELD_EVERY === 0) {
+					await this.yieldToMain();
+					if (this.isRebuildStale(generation)) return;
+				}
 				const cache = this.app.metadataCache.getFileCache(file);
 				const fm = cache?.frontmatter as Record<string, unknown> | undefined;
 				if (!fm) continue;
@@ -575,7 +659,9 @@ export class VaultIndex {
 		}
 
 		if (useInline) {
+			let scanned = 0;
 			for (const file of this.app.vault.getMarkdownFiles()) {
+				if (this.isRebuildStale(generation)) return;
 				if (
 					!projectPaths.has(file.path) &&
 					!fileMatchesFolderScopeWithExcludes(
@@ -590,6 +676,12 @@ export class VaultIndex {
 				const cache = this.app.metadataCache.getFileCache(file);
 				const listItems = cache?.listItems;
 				if (!listItems?.length) continue;
+
+				scanned += 1;
+				if (scanned % VaultIndex.REBUILD_YIELD_EVERY === 0) {
+					await this.yieldToMain();
+					if (this.isRebuildStale(generation)) return;
+				}
 
 				const lines = (await this.app.vault.cachedRead(file)).split(/\n/);
 				const fm = cache?.frontmatter as Record<string, unknown> | undefined;
@@ -621,11 +713,13 @@ export class VaultIndex {
 					if (!proj && projectPaths.has(file.path)) {
 						proj = file;
 					}
-					const indexAllTasks = s.taskIndexScope === "all";
-					if (!proj && !indexAllTasks) continue;
+					const indexBroadInline =
+						s.taskIndexScope === "all" || s.taskSourceMode === "both";
+					if (!proj && !indexBroadInline) continue;
 					if (
 						!proj &&
-						indexAllTasks &&
+						indexBroadInline &&
+						s.taskSourceMode !== "both" &&
 						!schedEm &&
 						!dueEm &&
 						!parseTimeRangeFromLine(titleEmoji)
@@ -684,21 +778,46 @@ export class VaultIndex {
 		augmentTaskRelationships(tasks, taskNotePaths, this.app, s);
 
 		const plannerEvents = await indexDailyPlannerEvents(this.app, s, projects);
+		if (this.isRebuildStale(generation)) return;
 
+		// Publish the main snapshot first so status/title edits feel instant.
+		// Collaborator indexing is heavy (reads meeting bodies) — refresh in background.
 		this.snapshot = {
 			areas,
 			projects,
 			tasks,
 			meetings,
 			plannerEvents,
+			personWorksWith: this.snapshot.personWorksWith,
 			rebuiltAt: Date.now(),
 		};
 		this.clearRollupCaches();
 		bumpIndexRevision();
+
+		void this.refreshPersonWorksWithInBackground(meetings, s, generation);
+	}
+
+	private async refreshPersonWorksWithInBackground(
+		meetings: IndexedMeeting[],
+		s: FulcrumSettings,
+		generation: number,
+	): Promise<void> {
+		try {
+			const personWorksWith = await buildPersonWorksWithIndex(this.app, meetings, s);
+			if (this.isRebuildStale(generation)) return;
+			this.snapshot = {...this.snapshot, personWorksWith};
+			bumpIndexRevision();
+		} catch (e) {
+			console.error("Fulcrum: person works-with index failed", e);
+		}
 	}
 
 	resolveProjectByPath(path: string): IndexedProject | undefined {
 		return this.snapshot.projects.find((p) => p.file.path === path);
+	}
+
+	getPersonWorksWith(personPath: string): PersonWorksWithEntry[] {
+		return this.snapshot.personWorksWith.get(personPath) ?? [];
 	}
 
 	async getProjectRollup(

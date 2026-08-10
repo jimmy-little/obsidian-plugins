@@ -1,13 +1,15 @@
 <script lang="ts">
 	import {onMount} from "svelte";
+	import {layoutTimedBlockInWindow} from "../fulcrum/utils/calendarGrid";
 
 	export let startMinutes: number;
 	export let startTimeMs: number;
 	export let title: string;
 	export let accentCss: string | null = null;
+	export let windowStartMinutes: number;
+	export let windowTotalMinutes: number;
 	export let onOpen: () => void;
 
-	const TOTAL_MINUTES = 24 * 60;
 	const TICK_MS = 60_000;
 
 	let blockEl: HTMLButtonElement | undefined;
@@ -15,10 +17,17 @@
 	function applySize(): void {
 		if (!blockEl) return;
 		const durationMinutes = Math.max(1, Math.round((Date.now() - startTimeMs) / 60_000));
-		const topPct = (startMinutes / TOTAL_MINUTES) * 100;
-		const heightPct = (durationMinutes / TOTAL_MINUTES) * 100;
-		blockEl.style.top = `${topPct}%`;
-		blockEl.style.height = `${heightPct}%`;
+		const layout = layoutTimedBlockInWindow(startMinutes, durationMinutes, {
+			startMinutes: windowStartMinutes,
+			totalMinutes: windowTotalMinutes,
+		});
+		if (!layout) {
+			blockEl.style.display = "none";
+			return;
+		}
+		blockEl.style.display = "";
+		blockEl.style.top = `${layout.topPct}%`;
+		blockEl.style.height = `${layout.heightPct}%`;
 	}
 
 	onMount(() => {

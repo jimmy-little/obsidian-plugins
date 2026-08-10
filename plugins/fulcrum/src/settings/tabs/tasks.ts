@@ -67,7 +67,7 @@ export function renderTasksTab(ctx: SettingsContext): void {
 	new Setting(containerEl)
 		.setName("Task index scope")
 		.setDesc(
-			"Project-linked only: inline tasks need a +[[project]] link (or live on a project note). Plain [[links]] are page references only. All tasks: also index checkbox lines with a scheduled/due date or inline time range, for the Timeline and vault-wide Obsidian Tasks (⏳).",
+			"Project-linked only: inline tasks need a +[[project]] link (or live on a project note). Plain [[links]] are page references only. All tasks: also index unlinked checkbox lines with a scheduled/due date or inline time range. When Task sources is Both, all checkbox lines in inline task folders are indexed for Horizon.",
 		)
 		.addDropdown((d) =>
 			d

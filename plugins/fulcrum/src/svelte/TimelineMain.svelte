@@ -4,7 +4,7 @@
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import FulcrumDateNavToolbar from "./shared/FulcrumDateNavToolbar.svelte";
 	import FulcrumGlobalFilterStrip from "./shared/FulcrumGlobalFilterStrip.svelte";
-	import {areaFilterState, indexRevision, settingsRevision, timerRevision} from "../fulcrum/stores";
+	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
 	import {
 		buildAreaLifeModeMap,
 		meetingPassesAreaFilter,
@@ -15,7 +15,10 @@
 	import {
 		formatDayNum,
 		formatDayShort,
-		timeGridNowLineTopPercent,
+		formatTimelineHourLabel,
+		layoutTimedBlockInWindow,
+		resolveTimelineDisplayWindow,
+		timeGridNowLineTopPercentInWindow,
 	} from "../fulcrum/utils/calendarGrid";
 	import {
 		taskToCalendarEvent,
@@ -42,7 +45,12 @@
 		return () => window.clearInterval(id);
 	});
 
-	$: nowLineTopPct = (void nowLineTick, timeGridNowLineTopPercent());
+	$: timelineWindow = (void $settingsRevision, resolveTimelineDisplayWindow(
+		plugin.settings.timelineStartOfDay,
+		plugin.settings.timelineHoursToDisplay,
+	));
+
+	$: nowLineTopPct = (void nowLineTick, timeGridNowLineTopPercentInWindow(timelineWindow));
 
 	let snapshot = plugin.vaultIndex.getSnapshot();
 	$: rev = $indexRevision;
@@ -101,7 +109,6 @@
 	$: {
 		void rev;
 		void iso;
-		void $timerRevision;
 		void timerLayers.calendarShowLogged;
 		void timerLayers.calendarShowPlanned;
 		const id = ++timerOverlayLoadId;
@@ -282,7 +289,7 @@
 		class="fulcrum-calendar__time-grid"
 		role="grid"
 		aria-label="Day timeline"
-		style="--fulcrum-cal-cols: 1"
+		style="--fulcrum-cal-cols: 1; --fulcrum-cal-hours: {timelineWindow.hourCount}"
 	>
 		<div class="fulcrum-calendar__time-grid-header">
 			<div class="fulcrum-calendar__time-grid-spacer"></div>
@@ -323,23 +330,33 @@
 		</div>
 		<div class="fulcrum-calendar__time-grid-body">
 			<div class="fulcrum-calendar__time-grid-hour-col">
-				{#each Array(24) as _, hour}
+				{#each timelineWindow.rowStartMinutes as rowStart}
 					<div class="fulcrum-calendar__time-grid-hour">
-						{hour === 0 ? "12 AM" : hour < 12 ? `${hour} AM` : hour === 12 ? "12 PM" : `${hour - 12} PM`}
+						{formatTimelineHourLabel(rowStart)}
 					</div>
 				{/each}
 			</div>
 			<div class="fulcrum-calendar__time-grid-day-col">
 				<div class="fulcrum-calendar__time-slots">
-					{#each Array(24) as _, hour}
-						<div class="fulcrum-calendar__time-slot" data-date={iso} data-hour={hour}></div>
+					{#each timelineWindow.rowStartMinutes as rowStart}
+						<div
+							class="fulcrum-calendar__time-slot"
+							data-date={iso}
+							data-hour={Math.floor(rowStart / 60)}
+						></div>
 					{/each}
 				</div>
 				<div class="fulcrum-calendar__day-events-overlay">
 					{#each timed as e (timedEventKey(e))}
-						{@const totalMinutes = 24 * 60}
-						{@const topPct = ((e.startMinutes ?? 0) / totalMinutes) * 100}
-						{@const heightPct = ((e.durationMinutes ?? 30) / totalMinutes) * 100}
+						{@const layout =
+							e.startMinutes != null
+								? layoutTimedBlockInWindow(
+										e.startMinutes,
+										e.durationMinutes ?? 30,
+										timelineWindow,
+									)
+								: null}
+						{#if layout}
 						<button
 							type="button"
 							class="fulcrum-calendar__timed-event fulcrum-calendar__timed-event--{e.kind}"
@@ -347,7 +364,7 @@
 								e.task &&
 								isDoneStatus(e.task.status, doneTask)) ||
 								(e.kind === "planner" && e.planner?.status === "done")}
-							style="top: {topPct}%; height: {heightPct}%;{e.accentCss ? ` --fulcrum-event-accent: ${e.accentCss};` : ""}"
+							style="top: {layout.topPct}%; height: {layout.heightPct}%;{e.accentCss ? ` --fulcrum-event-accent: ${e.accentCss};` : ""}"
 							data-fulcrum-calendar-event
 							on:click={(ev) => {
 								ev.preventDefault();
@@ -368,6 +385,7 @@
 							</span>
 							<span class="fulcrum-calendar__timed-event-title">{e.title}</span>
 						</button>
+						{/if}
 					{/each}
 					{#each activeTimerEvents as e (e.timerEntryId)}
 						{#if e.startMinutes != null && e.timerStartMs != null}
@@ -376,11 +394,13 @@
 								startTimeMs={e.timerStartMs}
 								title={e.title}
 								accentCss={e.accentCss}
+								windowStartMinutes={timelineWindow.startMinutes}
+								windowTotalMinutes={timelineWindow.totalMinutes}
 								onOpen={e.open}
 							/>
 						{/if}
 					{/each}
-					{#if isToday}
+					{#if isToday && nowLineTopPct != null}
 						<div
 							class="fulcrum-calendar__now-line"
 							style="top: {nowLineTopPct}%"

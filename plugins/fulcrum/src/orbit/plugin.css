@@ -60,7 +60,7 @@
 	background: color-mix(in srgb, var(--orbit-accent) 35%, var(--background-modifier-border));
 }
 
-.orbit-profile.orbit-profile--accent .orbit-org-row__label {
+.orbit-profile.orbit-profile--accent .orbit-org__label {
 	color: color-mix(in srgb, var(--orbit-accent) 45%, var(--text-muted));
 }
 

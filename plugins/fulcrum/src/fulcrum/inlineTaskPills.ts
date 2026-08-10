@@ -482,21 +482,6 @@ export function registerInlineTaskPills(
 	void getSettings;
 }
 
-function shouldScheduleInlineTaskScanForFileChange(
-	app: Plugin["app"],
-	file: TFile,
-): boolean {
-	const view = app.workspace.activeLeaf?.view;
-	if (
-		view instanceof MarkdownView &&
-		view.file?.path === file.path &&
-		view.getMode() !== "preview"
-	) {
-		return isCheckboxLine(view.editor.getLine(view.editor.getCursor().line));
-	}
-	return fileHasTaskCheckboxContent(app, file);
-}
-
 export function registerLivePreviewInlineTaskScan(plugin: Plugin & FulcrumHost): void {
 	let debounceTimer: number | undefined;
 
@@ -533,13 +518,7 @@ export function registerLivePreviewInlineTaskScan(plugin: Plugin & FulcrumHost):
 			scheduleScan();
 		}),
 	);
-	plugin.registerEvent(
-		plugin.app.metadataCache.on("changed", (file) => {
-			if (!(file instanceof TFile && file.extension === "md")) return;
-			if (!shouldScheduleInlineTaskScanForFileChange(plugin.app, file)) return;
-			scheduleScan();
-		}),
-	);
+	// Metadata fires on every keystroke; inline task pills refresh from editor-change and on save.
 	plugin.registerEvent(
 		plugin.app.vault.on("modify", (file) => {
 			if (!(file instanceof TFile && file.extension === "md")) return;

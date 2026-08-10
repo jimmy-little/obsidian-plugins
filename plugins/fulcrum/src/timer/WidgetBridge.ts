@@ -11,6 +11,7 @@ import {
 	type WidgetBridgeFile,
 } from "./widgetBridgeTypes";
 import {quickStartBridgeId, quickStartBridgeLabel} from "./widgetBridgeIds";
+import {sameEntryTimestamp} from "../fulcrum/utils/timerEntries";
 
 const PUBLISH_DEBOUNCE_MS = 600;
 const RECONCILE_DEBOUNCE_MS = 400;
@@ -423,11 +424,16 @@ export class WidgetBridge {
 					if (cmd.startMs != null) {
 						const active = await this.plugin.timer.getActiveTimers();
 						const match = active.find(
-							(t) => t.filePath === notePath && t.entry.startTime === cmd.startMs,
+							(t) =>
+								t.filePath === notePath &&
+								sameEntryTimestamp(t.entry.startTime, cmd.startMs),
 						);
 						if (!match) return;
 					}
-					await this.plugin.timer.runStartTimerInNoteFromApi(notePath);
+					// Stop explicitly — never toggle, so a late/replayed stop command
+					// cannot start a fresh timer on an already-stopped note.
+					await this.plugin.timer.stopAllActiveEntriesInFile(notePath);
+					this.plugin.timer.refreshActivityPanel();
 					return;
 				}
 				throw new Error("stop command requires notePath");
@@ -435,8 +441,9 @@ export class WidgetBridge {
 			case "stop_all": {
 				const paths = (await this.plugin.timer.getActiveTimers()).map((t) => t.filePath);
 				for (const filePath of paths) {
-					await this.plugin.timer.runStartTimerInNoteFromApi(filePath);
+					await this.plugin.timer.stopAllActiveEntriesInFile(filePath);
 				}
+				this.plugin.timer.refreshActivityPanel();
 				return;
 			}
 			default:

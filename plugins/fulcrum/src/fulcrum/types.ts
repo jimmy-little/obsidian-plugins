@@ -170,6 +170,14 @@ export interface IndexedPerson {
 	isGhost: boolean;
 }
 
+export interface PersonWorksWithEntry {
+	/** Stable key: file path or ghost:normalizedLink */
+	key: string;
+	file: TFile | null;
+	linkText: string;
+	meetingCount: number;
+}
+
 /** Generic linked note from project frontmatter (e.g. related products). */
 export interface IndexedRelatedNote {
 	file: TFile;
@@ -225,5 +233,7 @@ export interface IndexSnapshot {
 	tasks: IndexedTask[];
 	meetings: IndexedMeeting[];
 	plannerEvents: IndexedPlannerEvent[];
+	/** Person path → top collaborators from shared meeting notes (≤6). */
+	personWorksWith: Map<string, PersonWorksWithEntry[]>;
 	rebuiltAt: number;
 }

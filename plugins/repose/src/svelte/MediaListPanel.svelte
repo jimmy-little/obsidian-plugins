@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onDestroy, onMount } from "svelte";
-	import { setIcon, TFile, type EventRef } from "obsidian";
+	import { setIcon, TFile } from "obsidian";
 	import type ReposePlugin from "../main";
 	import { resolveListThumbnailFile } from "../media/banner";
 	import { collectMediaMarkdownFiles } from "../media/collectMediaFiles";
 	import { resolveMediaTypeForFile } from "../media/mediaDetect";
 	import { readMediaItem, type MediaItem, type ReposeMediaType } from "../media/mediaModel";
-	import { pathUnderMediaRoot, reposeMobile } from "../platform";
+	import { reposeMobile } from "../platform";
 	import {
 		countShowSeasonsAndEpisodes,
 		formatSeasonEpisodeCode,
@@ -19,6 +19,7 @@
 		REPOSE_CALENDAR_EPISODE_MIME,
 		episodeDragPayload,
 	} from "../calendar/calendarEpisodeDrag";
+	import { bindVaultRefresh } from "./bindVaultRefresh";
 
 	export let plugin: ReposePlugin;
 	export let selectedPath: string | null;
@@ -233,17 +234,7 @@
 		}, mobileList ? 600 : 120);
 	}
 
-	function onVaultMetadataChanged(f: TFile): void {
-		if (!pathUnderMediaRoot(f.path, plugin.settings.mediaRoot)) return;
-		scheduleBump();
-	}
-
-	function onVaultFileChanged(f: TFile): void {
-		if (!pathUnderMediaRoot(f.path, plugin.settings.mediaRoot)) return;
-		scheduleBump();
-	}
-
-	const vaultEvents: EventRef[] = [];
+	let unbindVaultRefresh: (() => void) | undefined;
 
 	onMount(() => {
 		if (mobileList) {
@@ -252,20 +243,15 @@
 				listRev++;
 			}, 0);
 		}
-		vaultEvents.push(plugin.app.metadataCache.on("changed", onVaultMetadataChanged));
-		vaultEvents.push(plugin.app.vault.on("create", onVaultFileChanged));
-		vaultEvents.push(plugin.app.vault.on("delete", onVaultFileChanged));
-		vaultEvents.push(
-			plugin.app.vault.on("rename", (f) => {
-				if (f instanceof TFile) onVaultFileChanged(f);
-			}),
-		);
+		unbindVaultRefresh = bindVaultRefresh(plugin, () => scheduleBump(), {
+			debounceMs: mobileList ? 600 : 120,
+		});
 	});
 
 	onDestroy(() => {
 		window.clearTimeout(bumpTimer);
-		for (const ref of vaultEvents) ref.unregister();
-		vaultEvents.length = 0;
+		unbindVaultRefresh?.();
+		unbindVaultRefresh = undefined;
 	});
 
 	function activateRow(path: string): void {

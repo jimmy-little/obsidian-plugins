@@ -47,11 +47,13 @@ describe("applyCompletedMemoryOverrides", () => {
 	});
 
 	it("does not override a still-running frontmatter entry without a completed memory match", () => {
+		// Start times a full second apart: matching is second-precision because
+		// frontmatter timestamps round-trip at second precision.
 		const fm: TimeEntry[] = [
 			{
 				id: "other",
 				label: "Other",
-				startTime: 200,
+				startTime: 200_000,
 				endTime: null,
 				duration: 0,
 				isPaused: false,
@@ -60,16 +62,45 @@ describe("applyCompletedMemoryOverrides", () => {
 		];
 		const completed: TimeEntry[] = [
 			{
-				id: "note-0-100",
+				id: "note-0-100000",
 				label: "Day Planning",
-				startTime: 100,
-				endTime: 500,
-				duration: 400,
+				startTime: 100_000,
+				endTime: 500_000,
+				duration: 400_000,
 				isPaused: false,
 				tags: [],
 			},
 		];
 		const merged = applyCompletedMemoryOverrides(fm, completed);
 		expect(merged[0]!.endTime).toBeNull();
+	});
+
+	it("closes a stale running frontmatter row whose start matches at second precision", () => {
+		// In-memory start keeps ms precision; frontmatter dropped them.
+		const fm: TimeEntry[] = [
+			{
+				id: "note-0-100000",
+				label: "Day Planning",
+				startTime: 100_000,
+				endTime: null,
+				duration: 0,
+				isPaused: false,
+				tags: [],
+			},
+		];
+		const completed: TimeEntry[] = [
+			{
+				id: "note-0-100647",
+				label: "Day Planning",
+				startTime: 100_647,
+				endTime: 500_647,
+				duration: 400_000,
+				isPaused: false,
+				tags: [],
+			},
+		];
+		const merged = applyCompletedMemoryOverrides(fm, completed);
+		expect(merged).toHaveLength(1);
+		expect(merged[0]!.endTime).toBe(500_647);
 	});
 });

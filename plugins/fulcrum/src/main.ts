@@ -790,6 +790,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			merged.taskSidebarFilterUncheckedProject =
 				DEFAULT_SETTINGS.taskSidebarFilterUncheckedProject;
 		}
+		if (!Array.isArray(merged.taskSidebarFilterUncheckedSource)) {
+			merged.taskSidebarFilterUncheckedSource =
+				DEFAULT_SETTINGS.taskSidebarFilterUncheckedSource;
+		}
 		if (typeof merged.conduitEnabled !== "boolean") {
 			merged.conduitEnabled = DEFAULT_SETTINGS.conduitEnabled;
 		}

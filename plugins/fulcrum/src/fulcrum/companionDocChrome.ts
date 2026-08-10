@@ -2,8 +2,13 @@ import {MarkdownView, normalizePath, setIcon, TFile, type App, type EventRef} fr
 import type {FulcrumSettings} from "./settingsDefaults";
 import {timerRevision} from "./stores";
 import type {TimeEntry} from "../timer/types";
-import {collectPeopleRefsFromNoteFrontmatter, extractWikilinksFromText} from "./projectPeople";
-import {buildPersonCardButton} from "./personCardDom";
+import {
+	collectPeopleRefsFromNoteFrontmatter,
+	extractWikilinksFromText,
+	personRefsFingerprint,
+} from "./projectPeople";
+import {getInlineLinkFolderIndexes} from "./inlineLinkPills";
+import {buildCompanionPeopleAvatarStack, readPersonPositionFromFile} from "./personCardDom";
 import {readTrackedMinutesFromFm} from "./utils/trackedMinutes";
 import {parseWikiLink} from "./utils/wikilinks";
 import {resolveBannerImageSrc, resolveProjectAccentCss} from "./utils/projectVisual";
@@ -36,6 +41,79 @@ export type CompanionChromeHost = {
 };
 
 const trackedTickers = new WeakMap<HTMLElement, () => void>();
+const PEOPLE_ROW_ATTR = "data-fulcrum-companion-people-fp";
+
+function buildCompanionPeopleRow(
+	hostCtx: CompanionChromeHost,
+	file: TFile,
+	fm: Record<string, unknown>,
+): HTMLElement {
+	const app = hostCtx.app;
+	const s = hostCtx.getSettings();
+	const folderIndexes = getInlineLinkFolderIndexes(app, s);
+	const peopleRefs = collectPeopleRefsFromNoteFrontmatter(
+		app,
+		file.path,
+		fm,
+		s,
+		folderIndexes.people,
+	);
+	const peopleRow = el("div", "fulcrum-companion-people-row");
+	peopleRow.setAttribute(PEOPLE_ROW_ATTR, personRefsFingerprint(peopleRefs));
+	if (peopleRefs.length === 0) return peopleRow;
+
+	const items = peopleRefs.map((person) => ({
+		person,
+		position: person.file ? readPersonPositionFromFile(app, person.file) : "",
+	}));
+	peopleRow.append(
+		buildCompanionPeopleAvatarStack(
+			items,
+			(path) => {
+				const pf = app.vault.getAbstractFileByPath(path);
+				if (pf instanceof TFile) void hostCtx.openPersonFile(pf);
+			},
+			(linkText, displayName) => void hostCtx.createPersonNote(linkText, displayName),
+		),
+	);
+	return peopleRow;
+}
+
+function syncCompanionPeopleRow(
+	hostCtx: CompanionChromeHost,
+	file: TFile,
+	fm: Record<string, unknown>,
+	chromeHost: HTMLElement,
+): boolean {
+	const s = hostCtx.getSettings();
+	const folderIndexes = getInlineLinkFolderIndexes(hostCtx.app, s);
+	const peopleRefs = collectPeopleRefsFromNoteFrontmatter(
+		hostCtx.app,
+		file.path,
+		fm,
+		s,
+		folderIndexes.people,
+	);
+	const nextFp = personRefsFingerprint(peopleRefs);
+	const surface = chromeHost.querySelector(":scope > .fulcrum-companion-chrome-surface");
+	if (!(surface instanceof HTMLElement)) return false;
+
+	const prevRow = surface.querySelector(":scope .fulcrum-companion-people-row");
+	const prevFp = prevRow?.getAttribute(PEOPLE_ROW_ATTR) ?? "";
+	if (prevFp === nextFp) return true;
+
+	prevRow?.remove();
+	const peopleRow = buildCompanionPeopleRow(hostCtx, file, fm);
+	const main = surface.querySelector(":scope .fulcrum-companion-banner__main");
+	if (main instanceof HTMLElement) {
+		if (peopleRow.childNodes.length > 0) {
+			main.append(peopleRow);
+		}
+	} else if (peopleRow.childNodes.length > 0) {
+		surface.append(peopleRow);
+	}
+	return true;
+}
 
 function clearTrackedTicker(host: HTMLElement): void {
 	trackedTickers.get(host)?.();
@@ -237,6 +315,11 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 	}
 	main.append(h1, proj);
 
+	const peopleRow = buildCompanionPeopleRow(hostCtx, file, fm);
+	if (peopleRow.childNodes.length > 0) {
+		main.append(peopleRow);
+	}
+
 	const dates = el("div", "fulcrum-companion-banner__dates fulcrum-companion-banner__dates--props-trigger");
 	dates.setAttribute("role", "button");
 	dates.tabIndex = 0;
@@ -299,27 +382,7 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 	}
 	top.append(main, dates);
 
-	const peopleRow = el("div", "fulcrum-companion-people-row");
-
-	const peopleRefs = collectPeopleRefsFromNoteFrontmatter(app, file.path, fm, s);
-	for (const person of peopleRefs) {
-		peopleRow.append(
-			buildPersonCardButton(
-				person,
-				(path) => {
-					const pf = app.vault.getAbstractFileByPath(path);
-					if (pf instanceof TFile) void hostCtx.openPersonFile(pf);
-				},
-				(linkText, displayName) => void hostCtx.createPersonNote(linkText, displayName),
-				"fulcrum-companion-person-card",
-			),
-		);
-	}
-
 	surface.append(top);
-	if (peopleRow.childNodes.length > 0) {
-		surface.append(peopleRow);
-	}
 	host.append(surface);
 
 	return host;
@@ -354,9 +417,23 @@ function syncCompanionChrome(host: CompanionChromeHost, companion: FulcrumCompan
 
 	view.contentEl.classList.add("fulcrum-companion-doc");
 	const prev = view.contentEl.querySelector(":scope > .fulcrum-companion-chrome-host");
-	if (prev instanceof HTMLElement) clearTrackedTicker(prev);
+	if (prev instanceof HTMLElement) {
+		if (syncCompanionPeopleRow(host, file, fm, prev)) return;
+		clearTrackedTicker(prev);
+	}
 	prev?.remove();
 	view.contentEl.prepend(buildChromeDom(host, file, fm));
+}
+
+function companionFileForSync(
+	host: CompanionChromeHost,
+	companion: FulcrumCompanionLeaf,
+): TFile | null {
+	const leaf = companion.current;
+	if (!leaf || !leafIsInWorkspace(host.app, leaf)) return null;
+	const view = leaf.view;
+	if (!(view instanceof MarkdownView) || !view.file || view.file.extension !== "md") return null;
+	return view.file;
 }
 
 /** Debounced refresh when metadata / files change. */
@@ -376,7 +453,42 @@ export function registerCompanionDocChrome(
 	host.registerEvent(host.app.workspace.on("file-open", schedule));
 	host.registerEvent(host.app.workspace.on("layout-change", schedule));
 	host.registerEvent(host.app.workspace.on("active-leaf-change", schedule));
-	// Metadata fires on every keystroke; companion chrome only needs frontmatter updates on save.
+	// Frontmatter edits update metadata on every keystroke; refresh people cards live, full chrome on save.
+	let peopleTimer: number | undefined;
+	function schedulePeopleRowSync(): void {
+		window.clearTimeout(peopleTimer);
+		peopleTimer = window.setTimeout(() => {
+			const open = companionFileForSync(host, companion);
+			if (!open) return;
+			const cache = host.app.metadataCache.getFileCache(open);
+			const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
+			if (isTaskNoteFile(fm, host.getSettings())) {
+				schedule();
+				return;
+			}
+			const leaf = companion.current;
+			const view = leaf?.view;
+			if (!(view instanceof MarkdownView)) return;
+			const chromeHost = view.contentEl.querySelector(
+				":scope > .fulcrum-companion-chrome-host",
+			);
+			if (chromeHost instanceof HTMLElement && syncCompanionPeopleRow(host, open, fm, chromeHost)) {
+				return;
+			}
+			schedule();
+		}, 80);
+	}
+	host.registerEvent(
+		host.app.metadataCache.on("changed", (f) => {
+			if (!(f instanceof TFile) || f.extension !== "md") return;
+			const open = companionFileForSync(host, companion);
+			if (!open || open.path !== f.path) return;
+			schedulePeopleRowSync();
+		}),
+	);
+	host.registerCleanup?.(() => {
+		window.clearTimeout(peopleTimer);
+	});
 	host.registerEvent(
 		host.app.vault.on("modify", (f) => {
 			const leaf = companion.current;
@@ -387,7 +499,34 @@ export function registerCompanionDocChrome(
 		}),
 	);
 
-	const unsubTimer = timerRevision.subscribe(() => schedule());
+	const unsubTimer = timerRevision.subscribe(() => {
+		const open = companionFileForSync(host, companion);
+		if (!open || !host.timer) return;
+		const leaf = companion.current;
+		const view = leaf?.view;
+		if (!(view instanceof MarkdownView)) return;
+		const chromeHost = view.contentEl.querySelector(
+			":scope > .fulcrum-companion-chrome-host",
+		);
+		if (!(chromeHost instanceof HTMLElement)) return;
+		const timeVal = chromeHost.querySelector(
+			".fulcrum-companion-time-card__value",
+		);
+		if (!(timeVal instanceof HTMLElement)) return;
+		const active = host.timer.findActiveEntryForFile(open.path);
+		if (active?.startTime) {
+			timeVal.textContent = host.timer.formatTimeAsHHMMSS(
+				host.timer.getActiveEntryElapsedMs(active),
+			);
+			timeVal.classList.add("fulcrum-companion-time-card__value--live");
+			return;
+		}
+		timeVal.classList.remove("fulcrum-companion-time-card__value--live");
+		const fm = (host.app.metadataCache.getFileCache(open)?.frontmatter ??
+			{}) as Record<string, unknown>;
+		const tracked = readTrackedMinutesFromFm(fm, host.getSettings().taskTrackedMinutesField);
+		timeVal.textContent = tracked > 0 ? formatTrackedMinutesShort(tracked) : "—";
+	});
 	host.registerCleanup?.(unsubTimer);
 
 	schedule();

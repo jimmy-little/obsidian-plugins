@@ -746,20 +746,36 @@
 
 /* Active Timers leaf — restyled rows to match Timery card layout */
 .fulcrum-active-timers__row {
+	--fulcrum-accent-stripe-w: 4px;
+	--fulcrum-accent-stripe: var(--fulcrum-pl-accent, var(--interactive-accent));
+	position: relative;
+	isolation: isolate;
 	display: grid;
 	grid-template-columns: auto 1fr auto;
 	grid-template-rows: auto auto auto;
 	align-items: center;
 	gap: 2px 10px;
-	padding: 8px 10px 8px 8px;
+	padding: 8px 10px 8px calc(var(--fulcrum-accent-stripe-w) + 8px);
 	border: 1px solid var(--background-modifier-border);
-	border-left: 4px solid var(--fulcrum-pl-accent, var(--interactive-accent));
-	border-radius: var(--radius-m, 6px);
+	border-left: none;
+	border-radius: 0 var(--radius-m, 6px) var(--radius-m, 6px) 0;
 	background: var(--background-secondary);
 }
 
+.fulcrum-active-timers__row::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: var(--fulcrum-accent-stripe-w);
+	background: var(--fulcrum-accent-stripe);
+	border-radius: 0;
+	pointer-events: none;
+}
+
 .fulcrum-active-timers__row[data-fulcrum-accent] {
-	border-left-color: var(--fulcrum-pl-accent);
+	--fulcrum-accent-stripe: var(--fulcrum-pl-accent);
 }
 
 .fulcrum-active-timers__timer-col {
@@ -1547,13 +1563,18 @@
 /* Lapse Button Styles */
 
 .fulcrum-timer-button {
+    --fulcrum-accent-stripe-w: 4px;
+    --fulcrum-accent-stripe: var(--fulcrum-pl-accent, var(--background-modifier-border));
+    position: relative;
+    isolation: isolate;
     display: inline-flex;
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
-    border-radius: 8px;
+    border-radius: 0 8px 8px 0;
     border: 2px solid var(--background-modifier-border);
-    border-left-width: 4px;
+    border-left: none;
+    padding-left: calc(var(--fulcrum-accent-stripe-w) + 10px);
     background-color: var(--background-secondary);
     color: var(--text-normal);
     font-weight: 500;
@@ -1566,9 +1587,22 @@
     vertical-align: top;
 }
 
+.fulcrum-timer-button::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--fulcrum-accent-stripe-w);
+    background: var(--fulcrum-accent-stripe);
+    border-radius: 0;
+    pointer-events: none;
+}
+
 /* Quick Start / Timery-style cards — accent uses same token as .fulcrum-pl-row */
 .fulcrum-timer-button--timery {
     --fulcrum-pl-accent: var(--background-modifier-border);
+    --fulcrum-accent-stripe: var(--fulcrum-pl-accent);
     --fulcrum-timer-play-bg: var(--text-muted);
     --fulcrum-timer-play-fg: var(--background-primary);
 
@@ -1578,11 +1612,11 @@
     gap: 8px;
     height: auto;
     min-height: 56px;
-    padding: 6px 10px 6px 8px;
+    padding: 6px 10px 6px calc(var(--fulcrum-accent-stripe-w) + 8px);
 }
 
 .fulcrum-timer-button--timery[data-fulcrum-accent] {
-    border-left-color: var(--fulcrum-pl-accent);
+    --fulcrum-accent-stripe: var(--fulcrum-pl-accent);
     --fulcrum-timer-play-bg: var(--fulcrum-pl-accent);
 }
 

@@ -11,7 +11,7 @@
 
 	async function syncActiveTimers(): Promise<void> {
 		const serial = ++syncSerial;
-		const rows = await plugin.timer.getActiveTimersForProject(projectPath);
+		const rows = plugin.timer.listActiveTimersForProjectInMemory(projectPath);
 		if (serial !== syncSerial) return;
 		timerFilePaths = rows.map((row) => row.filePath);
 	}
