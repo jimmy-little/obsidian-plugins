@@ -1,0 +1,11 @@
+{
+	"mcpServers": {
+		"fulcrum-omnifocus": {
+			"command": "node",
+			"args": ["/Users/Jimmy.Little/Documents/GitHub/obsidian-plugins/plugins/fulcrum-bridge/mcp/omnifocus-mcp.mjs"],
+			"env": {
+				"FULCRUM_BRIDGE_URL": "http://127.0.0.1:9247"
+			}
+		}
+	}
+}

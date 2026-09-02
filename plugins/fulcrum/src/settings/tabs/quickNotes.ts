@@ -1,4 +1,4 @@
-import {Setting} from "obsidian";
+import {Setting, setIcon} from "obsidian";
 import type {QuickNoteTheme} from "../../fulcrum/settingsDefaults";
 import {DEFAULT_QUICK_NOTE_THEMES} from "../../fulcrum/settingsDefaults";
 import {bumpSettingsRevision} from "../../fulcrum/stores";
@@ -24,6 +24,14 @@ function uniqueThemeId(themes: QuickNoteTheme[], base: string): string {
 	return id;
 }
 
+function reorderThemes(themes: QuickNoteTheme[], from: number, to: number): QuickNoteTheme[] {
+	if (from === to) return themes;
+	const next = [...themes];
+	const [item] = next.splice(from, 1);
+	next.splice(to, 0, item!);
+	return next;
+}
+
 export function renderQuickNotesTab(ctx: SettingsContext): void {
 	const {containerEl, plugin, refresh} = ctx;
 	settingsLead(
@@ -33,6 +41,7 @@ export function renderQuickNotesTab(ctx: SettingsContext): void {
 	heading(containerEl, "Quick note themes");
 
 	const listEl = containerEl.createDiv({cls: "fulcrum-quick-note-themes-list"});
+	let dragFromIndex: number | null = null;
 
 	const renderThemes = (): void => {
 		listEl.empty();
@@ -40,66 +49,106 @@ export function renderQuickNotesTab(ctx: SettingsContext): void {
 
 		for (let i = 0; i < themes.length; i++) {
 			const theme = themes[i]!;
-			const card = listEl.createDiv({cls: "fulcrum-quick-note-theme-card"});
-			const titleEl = card.createEl("h4", {
-				text: `${theme.emoji} ${theme.label}`.trim() || theme.id,
+			const row = listEl.createDiv({cls: "fulcrum-quick-note-theme-row"});
+
+			const grip = row.createSpan({
+				cls: "fulcrum-quick-note-theme-row__grip",
+				attr: {
+					draggable: "true",
+					role: "button",
+					tabindex: "0",
+					"aria-label": "Drag to reorder",
+				},
+			});
+			grip.setText("⋮⋮");
+
+			const fields = row.createDiv({cls: "fulcrum-quick-note-theme-row__fields"});
+
+			const emojiInput = fields.createEl("input", {
+				type: "text",
+				cls: "fulcrum-quick-note-theme-row__emoji",
+				attr: {placeholder: "Emoji", "aria-label": "Emoji"},
+			});
+			emojiInput.value = theme.emoji;
+			emojiInput.addEventListener("input", () => {
+				theme.emoji = emojiInput.value;
+				void plugin.saveSettings().then(() => bumpSettingsRevision());
 			});
 
-			const updateCardTitle = (): void => {
-				titleEl.setText(`${theme.emoji} ${theme.label}`.trim() || theme.id);
-			};
+			const labelInput = fields.createEl("input", {
+				type: "text",
+				cls: "fulcrum-quick-note-theme-row__label",
+				attr: {placeholder: "Label", "aria-label": "Label"},
+			});
+			labelInput.value = theme.label;
+			labelInput.addEventListener("input", () => {
+				theme.label = labelInput.value;
+				void plugin.saveSettings().then(() => bumpSettingsRevision());
+			});
 
-			new Setting(card).setName("Emoji").addText((t) =>
-				t.setValue(theme.emoji).onChange(async (v) => {
-					theme.emoji = v;
-					updateCardTitle();
-					await plugin.saveSettings();
-					bumpSettingsRevision();
-				}),
-			);
+			const journalInput = fields.createEl("input", {
+				type: "text",
+				cls: "fulcrum-quick-note-theme-row__journal",
+				attr: {placeholder: "Journal", "aria-label": "Journal"},
+			});
+			journalInput.value = theme.journal ?? "";
+			journalInput.addEventListener("input", () => {
+				theme.journal = journalInput.value.trim() || undefined;
+				void plugin.saveSettings().then(() => bumpSettingsRevision());
+			});
 
-			new Setting(card).setName("Label").addText((t) =>
-				t.setValue(theme.label).onChange(async (v) => {
-					theme.label = v;
-					updateCardTitle();
-					await plugin.saveSettings();
-					bumpSettingsRevision();
-				}),
-			);
+			const deleteBtn = row.createEl("button", {
+				type: "button",
+				cls: "fulcrum-quick-note-theme-row__delete clickable-icon",
+				attr: {"aria-label": "Remove theme"},
+			});
+			setIcon(deleteBtn, "trash");
+			deleteBtn.addEventListener("click", async () => {
+				plugin.settings.quickNoteThemes = themes.filter((_, j) => j !== i);
+				await plugin.saveSettings();
+				bumpSettingsRevision();
+				renderThemes();
+			});
 
-			new Setting(card)
-				.setName("Type value")
-				.setDesc("Inline type:: value (leave empty to use emoji + label).")
-				.addText((t) =>
-					t.setValue(theme.type).onChange(async (v) => {
-						theme.type = v;
-						await plugin.saveSettings();
-						bumpSettingsRevision();
-					}),
-				);
+			grip.addEventListener("dragstart", (e) => {
+				dragFromIndex = i;
+				row.addClass("fulcrum-quick-note-theme-row--dragging");
+				e.dataTransfer?.setData("text/plain", String(i));
+				if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+			});
 
-			new Setting(card)
-				.setName("Journal")
-				.setDesc("Optional journal:: value (e.g. Work).")
-				.addText((t) =>
-					t.setValue(theme.journal ?? "").onChange(async (v) => {
-						theme.journal = v.trim() || undefined;
-						await plugin.saveSettings();
-						bumpSettingsRevision();
-					}),
-				);
+			grip.addEventListener("dragend", () => {
+				dragFromIndex = null;
+				row.removeClass("fulcrum-quick-note-theme-row--dragging");
+				listEl
+					.querySelectorAll(".fulcrum-quick-note-theme-row--drag-over")
+					.forEach((el) => el.removeClass("fulcrum-quick-note-theme-row--drag-over"));
+			});
 
-			new Setting(card).addButton((btn) =>
-				btn
-					.setButtonText("Remove")
-					.setWarning()
-					.onClick(async () => {
-						plugin.settings.quickNoteThemes = themes.filter((_, j) => j !== i);
-						await plugin.saveSettings();
-						bumpSettingsRevision();
-						renderThemes();
-					}),
-			);
+			row.addEventListener("dragover", (e) => {
+				e.preventDefault();
+				if (dragFromIndex === null || dragFromIndex === i) return;
+				if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+				row.addClass("fulcrum-quick-note-theme-row--drag-over");
+			});
+
+			row.addEventListener("dragleave", (e) => {
+				if (e.currentTarget === e.target || !row.contains(e.relatedTarget as Node)) {
+					row.removeClass("fulcrum-quick-note-theme-row--drag-over");
+				}
+			});
+
+			row.addEventListener("drop", async (e) => {
+				e.preventDefault();
+				row.removeClass("fulcrum-quick-note-theme-row--drag-over");
+				const from = dragFromIndex;
+				dragFromIndex = null;
+				if (from === null || from === i) return;
+				plugin.settings.quickNoteThemes = reorderThemes(themes, from, i);
+				await plugin.saveSettings();
+				bumpSettingsRevision();
+				renderThemes();
+			});
 		}
 
 		if (themes.length === 0) {
@@ -121,7 +170,6 @@ export function renderQuickNotesTab(ctx: SettingsContext): void {
 				id: uniqueThemeId(themes, base),
 				label,
 				emoji: "📝",
-				type: "",
 			});
 			plugin.settings.quickNoteThemes = themes;
 			await plugin.saveSettings();

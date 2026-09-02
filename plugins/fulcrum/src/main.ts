@@ -137,6 +137,11 @@ import {
 	convertTaskNoteToReminder,
 } from "./conduit/convertToReminder";
 import type {RemindersBridge} from "./conduit/remindersBridge";
+import {registerOmniFocusCommands} from "./omnifocus/commands";
+import {openConnectOmniFocusProjectModal} from "./omnifocus/connectProjectModal";
+import {OmniFocusClient} from "./omnifocus/client";
+import {readProjectOmniId} from "./omnifocus/mapping";
+import {clearProjectOmniFocusLink, OmniFocusSyncService} from "./omnifocus/syncService";
 import type {OrbitHost} from "./orbit/orbit/pluginHost";
 import {
 	appendPersonQuickNote as appendPersonQuickNoteImpl,
@@ -161,6 +166,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	vaultIndex!: VaultIndex;
 	timer!: TimerModule;
 	conduit: ConduitService | null = null;
+	omnifocus: OmniFocusSyncService | null = null;
 	conduitConvertNoticeShown = false;
 	orbitHost!: OrbitHost;
 	/** Paths opened via Orbit "Open note" — skip auto profile routing until reopened. */
@@ -426,6 +432,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		registerConduitCommands(this);
 		registerConduitMigrationCommands(this);
 		registerReminderQueryBlock(this);
+		registerOmniFocusCommands(this);
 
 		this.registerObsidianProtocolHandler(this.manifest.id, (params) => {
 			this.handleFulcrumOpenUri(params);
@@ -440,6 +447,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		this.app.workspace.onLayoutReady(() => {
 			void maybeShowConduitConvertNotice(this, data);
 			void this.restartConduit();
+			void this.restartOmniFocus();
 		});
 	}
 
@@ -447,7 +455,73 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		this.vaultIndex.cancelScheduledRebuild();
 		this.conduit?.stop();
 		this.conduit = null;
+		this.omnifocus?.stop();
+		this.omnifocus = null;
 		void this.timer?.onunload();
+	}
+
+	async restartOmniFocus(): Promise<void> {
+		this.omnifocus?.stop();
+		this.omnifocus = null;
+		if (!OmniFocusSyncService.canRun(this.settings)) return;
+		this.omnifocus = new OmniFocusSyncService(this);
+		await this.omnifocus.start();
+	}
+
+	omnifocusCanSync(): boolean {
+		return OmniFocusSyncService.canRun(this.settings);
+	}
+
+	omnifocusIsProjectConnected(projectPath: string): boolean {
+		if (this.omnifocus?.isProjectLinked(projectPath)) return true;
+		const project = this.vaultIndex.resolveProjectByPath(projectPath);
+		if (!project) return false;
+		return !!readProjectOmniId(this.app, project, this.settings);
+	}
+
+	async omnifocusConnectProject(projectPath: string): Promise<void> {
+		if (!OmniFocusSyncService.canRun(this.settings)) {
+			new Notice("Enable OmniFocus sync in Fulcrum settings (macOS only).");
+			return;
+		}
+		const project = this.vaultIndex.resolveProjectByPath(projectPath);
+		if (!project) {
+			new Notice("Project not found.");
+			return;
+		}
+		try {
+			const client = OmniFocusClient.fromSettings(this.settings);
+			const projects = await client.projects();
+			openConnectOmniFocusProjectModal(this, project, client, projects);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			new Notice(`Could not load OmniFocus projects: ${msg}`);
+		}
+	}
+
+	async omnifocusClearProject(projectPath: string): Promise<void> {
+		if (!OmniFocusSyncService.canRun(this.settings)) return;
+		try {
+			await clearProjectOmniFocusLink(this, projectPath);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			new Notice(`Could not clear OmniFocus project: ${msg}`);
+		}
+	}
+
+	async omnifocusSyncNow(opts?: {projectPath?: string; projectOmniId?: string}): Promise<void> {
+		if (!OmniFocusSyncService.canRun(this.settings)) {
+			new Notice("Enable OmniFocus sync in Fulcrum settings (macOS only).");
+			return;
+		}
+		const svc = this.omnifocus ?? new OmniFocusSyncService(this);
+		this.omnifocus = svc;
+		await svc.tick({force: true, notify: true, ...opts});
+	}
+
+	async omnifocusRunDoctor(): Promise<void> {
+		const svc = this.omnifocus ?? new OmniFocusSyncService(this);
+		await svc.runDoctor();
 	}
 
 	async restartConduit(): Promise<void> {
@@ -586,8 +660,8 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		const timerTabByScreen: Record<string, TimeModeTab> = {
 			reports: "sessions",
 			sessions: "sessions",
-			grid: "entryGrid",
-			entry_grid: "entryGrid",
+			grid: "sessions",
+			entry_grid: "sessions",
 		};
 		if (screen === "activity" || screen === "sidebar") {
 			await this.openActiveTimers();
@@ -824,6 +898,33 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (typeof merged.forecastShowSystemCalendars !== "boolean") {
 			merged.forecastShowSystemCalendars = DEFAULT_SETTINGS.forecastShowSystemCalendars;
 		}
+		if (typeof merged.omnifocusEnabled !== "boolean") {
+			merged.omnifocusEnabled = DEFAULT_SETTINGS.omnifocusEnabled;
+		}
+		if (typeof merged.omnifocusBridgeUrl !== "string") {
+			merged.omnifocusBridgeUrl = DEFAULT_SETTINGS.omnifocusBridgeUrl;
+		}
+		if (typeof merged.omnifocusProjectIdField !== "string" || !merged.omnifocusProjectIdField.trim()) {
+			merged.omnifocusProjectIdField = DEFAULT_SETTINGS.omnifocusProjectIdField;
+		}
+		if (typeof merged.omnifocusTaskIdField !== "string" || !merged.omnifocusTaskIdField.trim()) {
+			merged.omnifocusTaskIdField = DEFAULT_SETTINGS.omnifocusTaskIdField;
+		}
+		if (typeof merged.omnifocusSyncedAtField !== "string" || !merged.omnifocusSyncedAtField.trim()) {
+			merged.omnifocusSyncedAtField = DEFAULT_SETTINGS.omnifocusSyncedAtField;
+		}
+		if (typeof merged.omnifocusSyncHashField !== "string" || !merged.omnifocusSyncHashField.trim()) {
+			merged.omnifocusSyncHashField = DEFAULT_SETTINGS.omnifocusSyncHashField;
+		}
+		if (typeof merged.omnifocusPollSeconds !== "number") {
+			merged.omnifocusPollSeconds = DEFAULT_SETTINGS.omnifocusPollSeconds;
+		}
+		if (typeof merged.omnifocusSyncInbox !== "boolean") {
+			merged.omnifocusSyncInbox = DEFAULT_SETTINGS.omnifocusSyncInbox;
+		}
+		if (merged.omnifocusEnabled && merged.conduitEnabled) {
+			merged.conduitEnabled = false;
+		}
 		delete (merged as Record<string, unknown>).conduitSyncOverrides;
 		if (
 			merged.calendarViewMode !== "month" &&
@@ -873,6 +974,11 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		}
 
 		migrateTaskCardDisplaySettings(merged as FulcrumSettings & Record<string, unknown>);
+
+		const legacyProjectActive = "planning, active, on-hold";
+		if (merged.projectActiveStatuses?.trim() === legacyProjectActive) {
+			merged.projectActiveStatuses = DEFAULT_SETTINGS.projectActiveStatuses;
+		}
 
 		if (!Array.isArray(merged.quickNoteThemes) || merged.quickNoteThemes.length === 0) {
 			merged.quickNoteThemes = [...DEFAULT_SETTINGS.quickNoteThemes];
@@ -927,11 +1033,15 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		);
 		if (
 			this.settings.timeModeTab !== "overview" &&
-			this.settings.timeModeTab !== "activity" &&
-			this.settings.timeModeTab !== "sessions" &&
-			this.settings.timeModeTab !== "entryGrid"
+			this.settings.timeModeTab !== "sessions"
 		) {
 			this.settings.timeModeTab = DEFAULT_SETTINGS.timeModeTab;
+		}
+		if ((this.settings.timeModeTab as string) === "activity") {
+			this.settings.timeModeTab = "overview";
+		}
+		if ((this.settings.timeModeTab as string) === "entryGrid") {
+			this.settings.timeModeTab = "overview";
 		}
 		if ((this.settings.timeModeTab as string) === "quickStart") {
 			this.settings.timeModeTab = "overview";
@@ -988,9 +1098,13 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	}
 
 	async openTimeTracked(tab: TimeModeTab = this.settings.timeModeTab): Promise<void> {
-		this.settings.timeModeTab = tab;
+		const normalized: TimeModeTab =
+			(tab as string) === "entryGrid" || (tab as string) === "quickStart"
+				? "overview"
+				: tab;
+		this.settings.timeModeTab = normalized;
 		await this.saveSettings();
-		await revealOrCreateTimeTracked(this.app, this.settings, tab);
+		await revealOrCreateTimeTracked(this.app, this.settings, normalized);
 	}
 
 	async openActiveTimers(): Promise<void> {

@@ -105,3 +105,63 @@ export const calendarTaskDragActive = writable(false);
 export function setCalendarTaskDragActive(active: boolean): void {
 	calendarTaskDragActive.set(active);
 }
+
+const VIEW_PROJECT_FILTER_LS = "fulcrum-view-project-filter-paths";
+const VIEW_PROJECT_FILTER_MULTI_LS = "fulcrum-view-project-filter-multiselect";
+
+function readViewProjectFilterPaths(): Set<string> {
+	return new Set(readJsonArray(VIEW_PROJECT_FILTER_LS));
+}
+
+function persistViewProjectFilterPaths(paths: Set<string>): void {
+	try {
+		localStorage.setItem(VIEW_PROJECT_FILTER_LS, JSON.stringify([...paths]));
+	} catch {
+		/* private mode / quota */
+	}
+}
+
+/** Selected project paths for Horizon / Kanban main-view filtering. Empty = show all. */
+export const viewProjectFilterPaths = writable<Set<string>>(readViewProjectFilterPaths());
+
+export function setViewProjectFilterPaths(paths: Set<string>): void {
+	viewProjectFilterPaths.set(paths);
+	persistViewProjectFilterPaths(paths);
+}
+
+export function toggleViewProjectFilterPath(path: string, additive: boolean): void {
+	viewProjectFilterPaths.update((cur) => {
+		const next = new Set(cur);
+		if (additive) {
+			if (next.has(path)) next.delete(path);
+			else next.add(path);
+		} else if (next.size === 1 && next.has(path)) {
+			next.clear();
+		} else {
+			next.clear();
+			next.add(path);
+		}
+		persistViewProjectFilterPaths(next);
+		return next;
+	});
+}
+
+export function clearViewProjectFilterPaths(): void {
+	setViewProjectFilterPaths(new Set());
+}
+
+export function readViewProjectFilterMultiselect(): boolean {
+	try {
+		return localStorage.getItem(VIEW_PROJECT_FILTER_MULTI_LS) === "1";
+	} catch {
+		return false;
+	}
+}
+
+export function setViewProjectFilterMultiselect(enabled: boolean): void {
+	try {
+		localStorage.setItem(VIEW_PROJECT_FILTER_MULTI_LS, enabled ? "1" : "0");
+	} catch {
+		/* ignore */
+	}
+}

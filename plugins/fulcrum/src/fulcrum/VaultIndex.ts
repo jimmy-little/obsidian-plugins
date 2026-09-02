@@ -18,7 +18,7 @@ import {formatShortMonthDay, isOverdue, parseFrontmatterDateToMs} from "./utils/
 import {parseAreaLinkPaths, parseWikiLink} from "./utils/wikilinks";
 import {parseFolderPrefixList, isUnderAtomicPrefixes} from "./utils/atomicFolders";
 import {
-	firstLinkedProjectFileInLine,
+	resolveInlineTaskProjectFile,
 	resolveProjectFileFromFm,
 } from "./utils/projectLink";
 import {readTrackedMinutesFromFm} from "./utils/trackedMinutes";
@@ -40,6 +40,7 @@ import {
 	parseInlineTags,
 	parseObsidianTasksEmojiDates,
 	lineIncludesTag,
+	stripHtmlComments,
 } from "./utils/inlineTasks";
 import {applyTimeRangeToTaskDates, parseTimeRangeFromLine} from "./utils/dayPlannerTime";
 import {indexDailyPlannerEvents, plannerTrackedMinutesForProject} from "./utils/dailyPlannerEvents";
@@ -290,6 +291,16 @@ export class VaultIndex {
 		if (idx < 0) return;
 		const next = [...tasks];
 		next[idx] = {...tasks[idx]!, ...patch};
+		this.snapshot = {...this.snapshot, tasks: next};
+		bumpIndexRevision();
+	}
+
+	/** Remove one task from the in-memory index and bump revision (pair with scheduleRebuild). */
+	removeIndexedTask(task: IndexedTask): void {
+		const tasks = this.snapshot.tasks;
+		const idx = tasks.findIndex((t) => sameIndexedTask(t, task));
+		if (idx < 0) return;
+		const next = tasks.filter((_, i) => i !== idx);
 		this.snapshot = {...this.snapshot, tasks: next};
 		bumpIndexRevision();
 	}
@@ -703,16 +714,15 @@ export class VaultIndex {
 						parseObsidianTasksEmojiDates(titleBare);
 					if (inlineIncludeTag && !lineIncludesTag(titleBare, inlineIncludeTag)) continue;
 					if (inlineRegex && !inlineRegex.test(titleEmoji)) continue;
-					let proj = firstLinkedProjectFileInLine(
+					const proj = resolveInlineTaskProjectFile(
 						this.app,
 						rawLine,
-						file.path,
+						file,
+						fm,
 						projectPaths,
 						projects,
+						s.projectLinkField,
 					);
-					if (!proj && projectPaths.has(file.path)) {
-						proj = file;
-					}
 					const indexBroadInline =
 						s.taskIndexScope === "all" || s.taskSourceMode === "both";
 					if (!proj && !indexBroadInline) continue;
@@ -749,7 +759,7 @@ export class VaultIndex {
 					);
 					tasks.push({
 						file,
-						title: enriched.title,
+						title: stripHtmlComments(enriched.title).replace(/\s+/g, " ").trim() || enriched.title,
 						status: isChecked ? doneStatus : openStatus,
 						priority: inlinePri,
 						dueDate: enriched.dueDate,

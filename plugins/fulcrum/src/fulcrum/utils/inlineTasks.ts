@@ -1,6 +1,7 @@
 import type {App, TFile} from "obsidian";
 import {MarkdownView} from "obsidian";
 import type {FulcrumSettings} from "../settingsDefaults";
+import type {IndexedTask} from "../types";
 import {normalizeIsoDateTime} from "../calendar/isoDateTime";
 import {
 	fileMatchesFolderScopeWithExcludes,
@@ -60,11 +61,23 @@ export function isInlineTaskLineInScope(filePath: string, settings: FulcrumSetti
 	);
 }
 
+/** Remove HTML comments (e.g. OmniFocus `<!-- omnifocus-id: … -->`) from visible text. */
+export function stripHtmlComments(text: string): string {
+	return text.replace(/<!--[\s\S]*?-->/g, " ");
+}
+
+/** Human-readable title for any indexed task (lists, cards, calendar chips). */
+export function taskDisplayTitle(task: Pick<IndexedTask, "source" | "title">): string {
+	if (task.source === "inline") return inlineTaskDisplayTitle(task.title);
+	const cleaned = stripHtmlComments(task.title).replace(/\s+/g, " ").trim();
+	return cleaned || task.title.trim() || "Task";
+}
+
 /** Plain title text from a checkbox line (no tags, links, dates, or priority emoji). */
 export function inlineTaskPlainTitle(rawLine: string): string {
 	const titleBare = parseCheckboxLineTitle(rawLine);
 	if (titleBare === null) return "";
-	const parsed = parseObsidianTasksEmojiDates(titleBare);
+	const parsed = parseObsidianTasksEmojiDates(stripHtmlComments(titleBare));
 	const withoutProject = stripInlineProjectLinks(parsed.title);
 	return stripInlineTagsForTitle(withoutProject.replace(/\[\[[^\]]+\]\]/g, " "))
 		.replace(/\s+/g, " ")
@@ -139,7 +152,7 @@ export function wikilinksToDisplayText(text: string): string {
 
 /** Human-readable title for inline task cards (strip project link + tags; keep page link text). */
 export function inlineTaskDisplayTitle(title: string): string {
-	const parsed = parseObsidianTasksEmojiDates(title);
+	const parsed = parseObsidianTasksEmojiDates(stripHtmlComments(title));
 	const withoutProject = stripInlineProjectLinks(parsed.title);
 	const withLinkText = wikilinksToDisplayText(withoutProject);
 	const cleaned = stripInlineTagsForTitle(withLinkText);

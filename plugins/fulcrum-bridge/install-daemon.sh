@@ -70,6 +70,27 @@ codesign --force --sign - "$INSTALL_APP" 2>/dev/null || true
 
 mkdir -p "$LOG_DIR" "$HOME/Library/LaunchAgents"
 EXEC="$INSTALL_APP/Contents/MacOS/FulcrumBridge"
+WATCHDOG="$LOG_DIR/launch-fulcrum-bridge.sh"
+
+# Launch via `open` so macOS TCC (Calendar/Reminders) attaches to the .app bundle.
+# Running the Mach-O directly from launchd often leaves authorization as notDetermined.
+mkdir -p "$LOG_DIR"
+cat >"$WATCHDOG" <<'WATCH'
+#!/bin/bash
+APP=__APP__
+if ! pgrep -xq FulcrumBridge; then
+	/usr/bin/open -ga "$APP"
+	sleep 2
+fi
+# Stay alive while the app runs so launchd KeepAlive can restart us if it exits.
+while pgrep -xq FulcrumBridge; do
+	sleep 5
+done
+exit 0
+WATCH
+# shellcheck disable=SC2016
+sed -i '' "s|__APP__|${INSTALL_APP}|g" "$WATCHDOG"
+chmod +x "$WATCHDOG"
 
 cat >"$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -80,7 +101,7 @@ cat >"$PLIST" <<EOF
 	<string>${LABEL}</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>${EXEC}</string>
+		<string>${WATCHDOG}</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
@@ -88,8 +109,8 @@ cat >"$PLIST" <<EOF
 	<true/>
 	<key>ThrottleInterval</key>
 	<integer>10</integer>
-	<key>ProcessType</key>
-	<string>Background</string>
+	<key>LimitLoadToSessionType</key>
+	<string>Aqua</string>
 	<key>StandardOutPath</key>
 	<string>${LOG_DIR}/stdout.log</string>
 	<key>StandardErrorPath</key>

@@ -34,12 +34,15 @@ export function displayConduitSettings(
 
 	new Setting(containerEl)
 		.setName("Enable Reminders bridge")
-		.setDesc("Query blocks and convert actions for Apple Reminders.")
+		.setDesc("Query blocks and convert actions for Apple Reminders. Disables OmniFocus two-way sync.")
 		.addToggle((tg) =>
 			tg.setValue(plugin.settings.conduitEnabled).onChange(async (v) => {
 				plugin.settings.conduitEnabled = v;
+				if (v) plugin.settings.omnifocusEnabled = false;
 				await plugin.saveSettings();
 				await plugin.restartConduit();
+				await plugin.restartOmniFocus();
+				refresh?.();
 			}),
 		);
 

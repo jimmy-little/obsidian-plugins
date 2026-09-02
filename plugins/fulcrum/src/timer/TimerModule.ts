@@ -22,10 +22,13 @@ import {isUnderFolder} from "../fulcrum/utils/paths";
 import {
 	applyCompletedMemoryOverrides,
 	entryTimestampNow,
+	isRunningTimerEntry,
 	normalizeTimerEntries,
+	parseTimerTimestampMs,
 	readTimerEntriesFromFm,
 	resolveEntriesWriteKey,
 	sameEntryTimestamp,
+	shiftRunningTimerStart,
 } from "../fulcrum/utils/timerEntries";
 import {allPlannedReadKeys, allEntriesReadKeys} from "./settings";
 import type {
@@ -45,6 +48,10 @@ import type {
 } from "./types";
 import {FULCRUM_PLANNED_DRAG_MIME} from "./types";
 import {ActiveTimersPanel} from "./ActiveTimersPanel";
+import {applyTaskStatusChange} from "../fulcrum/kanban/taskFieldUpdate";
+import {taskIsDone} from "../fulcrum/taskCardInteractions";
+import {normalizeStatusKey} from "../fulcrum/settingsDefaults";
+import {resolveInProgressStatus} from "../fulcrum/utils/taskStatusDisplay";
 import {openMarkdownInMainWorkspaceTab} from "../fulcrum/openBesideFulcrum";
 import {
 	applyFulcrumProjectAccent,
@@ -672,15 +679,6 @@ export class TimerModule {
 			}
 		});
 
-		// Add command to show entry grid view
-		this.addCommand({
-			id: 'fulcrum-timer-show-entry-grid',
-			name: 'Show entry grid',
-			callback: () => {
-				this.activateGridView();
-			}
-		});
-
 		// Add command to insert lapse button
 		this.addCommand({
 			id: 'insert-fulcrum-timer-button',
@@ -821,6 +819,28 @@ export class TimerModule {
 		});
 		this.refreshActivityPanel();
 		this.refreshTimerWidgetsForFile(notePath);
+		await this.maybeSetTaskInProgressOnTimerStart(notePath);
+	}
+
+	/** When a timer starts on a task note, move open tasks to the in-progress status. */
+	private async maybeSetTaskInProgressOnTimerStart(notePath: string): Promise<void> {
+		const settings = this.host.settings;
+		const inProgress = resolveInProgressStatus(settings);
+		if (!inProgress) return;
+
+		const task = this.host.vaultIndex
+			.getSnapshot()
+			.tasks.find((t) => t.source === "taskNote" && t.file.path === notePath);
+		if (!task || taskIsDone(task, settings)) return;
+		if (normalizeStatusKey(task.status ?? "") === normalizeStatusKey(inProgress)) return;
+
+		try {
+			await applyTaskStatusChange(this.app, task, settings, inProgress);
+			this.host.vaultIndex.patchIndexedTask(task, {status: inProgress, completedDate: undefined});
+			this.host.vaultIndex.scheduleRebuild();
+		} catch (e) {
+			console.error("Fulcrum: could not set in-progress on timer start", e);
+		}
 	}
 
 	/** Write running timer to note YAML without metadata-cache reload clobbering in-memory state. */
@@ -1928,32 +1948,23 @@ export class TimerModule {
 		}
 
 		// Adjust start time backward (<<)
-		adjustBackBtn.onclick = async () => {
-			const currentActiveTimer = pageData.entries.find(e => e.startTime !== null && e.endTime === null);
-			if (currentActiveTimer && currentActiveTimer.startTime) {
-				const adjustMinutes = this.settings.timeAdjustMinutes;
-				const adjustMs = adjustMinutes * 60 * 1000;
-				currentActiveTimer.startTime = currentActiveTimer.startTime - adjustMs;
-				// Update frontmatter
-				await this.updateFrontmatter(filePath);
+		const bindAdjustButton = (btn: HTMLButtonElement, offsetMinutes: number) => {
+			const stop = (ev: Event) => {
+				ev.preventDefault();
+				ev.stopPropagation();
+			};
+			btn.addEventListener("pointerdown", stop);
+			btn.addEventListener("mousedown", stop);
+			btn.onclick = async (ev) => {
+				stop(ev);
+				await this.adjustActiveTimerStart(filePath, offsetMinutes);
 				updateDisplays();
 				this.refreshActivityPanel();
-			}
+			};
 		};
-
-		// Adjust start time forward (>>)
-		adjustForwardBtn.onclick = async () => {
-			const currentActiveTimer = pageData.entries.find(e => e.startTime !== null && e.endTime === null);
-			if (currentActiveTimer && currentActiveTimer.startTime) {
-				const adjustMinutes = this.settings.timeAdjustMinutes;
-				const adjustMs = adjustMinutes * 60 * 1000;
-				currentActiveTimer.startTime = currentActiveTimer.startTime + adjustMs;
-				// Update frontmatter
-				await this.updateFrontmatter(filePath);
-				updateDisplays();
-				this.refreshActivityPanel();
-			}
-		};
+		const adjustMinutes = Math.max(1, Number(this.settings.timeAdjustMinutes) || 5);
+		bindAdjustButton(adjustBackBtn, -adjustMinutes);
+		bindAdjustButton(adjustForwardBtn, adjustMinutes);
 
 		// Collapsible panel for entries cards
 		const panel = container.createDiv({ cls: 'fulcrum-timer-panel' });
@@ -3512,8 +3523,9 @@ export class TimerModule {
 
 	/** Elapsed ms for a running entry (respects pause and start-time adjustments). */
 	getActiveEntryElapsedMs(entry: TimeEntry): number {
-		if (!entry.startTime) return entry.duration;
-		return entry.duration + (entry.isPaused ? 0 : Date.now() - entry.startTime);
+		const start = parseTimerTimestampMs(entry.startTime);
+		if (start == null) return entry.duration;
+		return entry.duration + (entry.isPaused ? 0 : Date.now() - start);
 	}
 
 	formatTimeForButton(milliseconds: number): string {
@@ -4049,12 +4061,17 @@ export class TimerModule {
 	}
 
 	async updateFrontmatter(filePath: string) {
-		return this.runWithFrontmatterReloadSuppressed(filePath, async () => {
-			const file = this.app.vault.getAbstractFileByPath(filePath);
-			if (!file || !(file instanceof TFile)) return;
+		const dataPath = this.resolveTimeDataPath(filePath) ?? filePath;
+		const file =
+			this.app.vault.getAbstractFileByPath(filePath) ??
+			this.app.vault.getAbstractFileByPath(dataPath);
+		if (!file || !(file instanceof TFile)) return;
 
-			const pageData = this.timeData.get(filePath);
+		return this.runWithFrontmatterReloadSuppressed(file.path, async () => {
+			const pageData = this.timeData.get(dataPath) ?? this.timeData.get(file.path);
 			if (!pageData) return;
+
+			for (const entry of pageData.entries) this.coerceEntryTimestamps(entry);
 
 			const content = await this.app.vault.read(file);
 		
@@ -4087,10 +4104,11 @@ export class TimerModule {
 		const formattedStartTime = this.formatTimestampForFrontmatter(startTime);
 		const formattedEndTime = this.formatTimestampForFrontmatter(endTime);
 		if (formattedStartTime) {
-			lapseFrontmatter += `${startTimeKey}: ${formattedStartTime}\n`;
+			// Quote so Obsidian keeps these as strings instead of YAML Date objects.
+			lapseFrontmatter += `${startTimeKey}: "${formattedStartTime}"\n`;
 		}
 		if (formattedEndTime) {
-			lapseFrontmatter += `${endTimeKey}: ${formattedEndTime}\n`;
+			lapseFrontmatter += `${endTimeKey}: "${formattedEndTime}"\n`;
 		}
 		
 		// TaskNotes-compatible timeEntries (description, startTime, endTime)
@@ -4099,13 +4117,13 @@ export class TimerModule {
 			for (const entry of pageData.entries) {
 				const escapedLabel = entry.label.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 				lapseFrontmatter += `  - description: "${escapedLabel}"\n`;
-				const start = this.formatTimestampForFrontmatter(entry.startTime);
-				const end = this.formatTimestampForFrontmatter(entry.endTime);
+				const start = this.formatTimestampForFrontmatter(parseTimerTimestampMs(entry.startTime));
+				const end = this.formatTimestampForFrontmatter(parseTimerTimestampMs(entry.endTime));
 				if (start) {
-					lapseFrontmatter += `    startTime: ${start}\n`;
+					lapseFrontmatter += `    startTime: "${start}"\n`;
 				}
 				if (end) {
-					lapseFrontmatter += `    endTime: ${end}\n`;
+					lapseFrontmatter += `    endTime: "${end}"\n`;
 				}
 				if (entry.tags?.length) {
 					lapseFrontmatter += `    tags: [${entry.tags.map((t: string) => `"${t}"`).join(", ")}]\n`;
@@ -4194,7 +4212,7 @@ export class TimerModule {
 	}
 
 	async activateGridView(): Promise<void> {
-		await this.host.openTimeTracked("entryGrid");
+		await this.host.openTimeTracked("sessions");
 	}
 
 	async getActiveTimers(): Promise<Array<{ filePath: string; entry: TimeEntry }>> {
@@ -4205,7 +4223,7 @@ export class TimerModule {
 		// re-normalize on this read — see loadEntriesFromFrontmatter / mutation sites).
 		this.timeData.forEach((pageData, filePath) => {
 			for (const entry of pageData.entries) {
-				if (entry.startTime && !entry.endTime) {
+				if (isRunningTimerEntry(entry)) {
 					activeTimers.push({filePath, entry});
 				}
 			}
@@ -4230,7 +4248,7 @@ export class TimerModule {
 			const pageData = this.timeData.get(filePath);
 			if (!pageData) continue;
 			pageData.entries.forEach((entry) => {
-				if (entry.startTime && !entry.endTime) {
+				if (isRunningTimerEntry(entry)) {
 					activeTimers.push({filePath, entry});
 				}
 			});
@@ -4326,12 +4344,78 @@ export class TimerModule {
 		return rows;
 	}
 
+	/** Resolve the `timeData` map key for a note path (handles normalizePath drift). */
+	private resolveTimeDataPath(filePath: string): string | undefined {
+		if (this.timeData.has(filePath)) return filePath;
+		const normalized = normalizePath(filePath);
+		if (this.timeData.has(normalized)) return normalized;
+		for (const key of this.timeData.keys()) {
+			if (normalizePath(key) === normalized) return key;
+		}
+		return undefined;
+	}
+
+	private coerceEntryTimestamps(entry: TimeEntry): void {
+		const start = parseTimerTimestampMs(entry.startTime);
+		const end = parseTimerTimestampMs(entry.endTime);
+		entry.startTime = start;
+		entry.endTime = end;
+	}
+
 	/** Active timers from in-memory `timeData` only (normalized, one row per note). */
 	findActiveEntryForFile(filePath: string): TimeEntry | null {
+		const wanted = normalizePath(filePath);
 		for (const row of this.listActiveTimersInMemory()) {
-			if (row.filePath === filePath) return row.entry;
+			if (normalizePath(row.filePath) === wanted) return row.entry;
 		}
 		return null;
+	}
+
+	/**
+	 * Shift the active timer start time by `offsetMinutes` (-5 = started earlier / more elapsed).
+	 * Persists to the note frontmatter. Returns false when no active timer or guard rejects.
+	 */
+	async adjustActiveTimerStart(
+		filePath: string,
+		offsetMinutes: number,
+		entryId?: string,
+	): Promise<boolean> {
+		const minutes = Number(offsetMinutes);
+		if (!Number.isFinite(minutes) || minutes === 0) return false;
+
+		let dataPath = this.resolveTimeDataPath(filePath);
+		if (!dataPath) {
+			await this.loadEntriesFromFrontmatter(filePath);
+			dataPath = this.resolveTimeDataPath(filePath) ?? filePath;
+		}
+		let pageData = dataPath ? this.timeData.get(dataPath) : undefined;
+		if (!pageData) return false;
+
+		for (const entry of pageData.entries) this.coerceEntryTimestamps(entry);
+
+		const running = pageData.entries.filter(isRunningTimerEntry);
+		const active =
+			(entryId ? running.find((e) => e.id === entryId) : undefined) ??
+			running[0];
+		const startMs = active ? parseTimerTimestampMs(active.startTime) : null;
+		if (!active || startMs == null) return false;
+
+		const newStartTime = shiftRunningTimerStart(startMs, minutes);
+		if (newStartTime == null) {
+			if (minutes < 0) {
+				new Notice("Can't subtract more time than has elapsed.");
+			}
+			return false;
+		}
+
+		active.startTime = newStartTime;
+		await this.updateFrontmatter(dataPath);
+		this.refreshTimerWidgetsForFile(dataPath);
+		if (dataPath !== filePath) this.refreshTimerWidgetsForFile(filePath);
+		this.refreshActivityPanel();
+		this.host.bumpTimerRevision?.();
+		this.updateStatusBar();
+		return true;
 	}
 
 	/**
@@ -4344,7 +4428,7 @@ export class TimerModule {
 		const rows: Array<{filePath: string; entry: TimeEntry}> = [];
 		this.timeData.forEach((pageData, filePath) => {
 			for (const entry of pageData.entries) {
-				if (entry.startTime && !entry.endTime) {
+				if (isRunningTimerEntry(entry)) {
 					rows.push({filePath, entry});
 				}
 			}

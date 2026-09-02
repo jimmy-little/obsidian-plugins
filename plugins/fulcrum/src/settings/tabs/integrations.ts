@@ -1,6 +1,7 @@
 import {Notice, Setting} from "obsidian";
 import {getTaskNotesHealth} from "../../fulcrum/taskNotesApi";
 import {displayConduitSettings} from "../../conduit/settingsTab";
+import {displayOmniFocusSettings} from "../../omnifocus/settingsTab";
 import {renderCalendarIntegrationSection} from "./calendarIntegration";
 import type {SettingsContext} from "../settingsContext";
 import {heading, metadataGroup, settingsLead, textSetting} from "../settingsHelpers";
@@ -53,7 +54,7 @@ export function renderIntegrationsTab(ctx: SettingsContext): void {
 
 	settingsLead(
 		containerEl,
-		"External services: TaskNotes HTTP API, macOS Calendar bridge, and Apple Reminders.",
+		"External services: TaskNotes HTTP API, macOS Calendar bridge, Apple Reminders, and OmniFocus.",
 	);
 
 	heading(containerEl, "TaskNotes HTTP API");
@@ -102,5 +103,6 @@ export function renderIntegrationsTab(ctx: SettingsContext): void {
 	renderCalendarIntegrationSection(ctx, plugin, refresh);
 
 	displayConduitSettings(containerEl, plugin, refresh);
+	displayOmniFocusSettings(containerEl, plugin, refresh);
 	renderReferenceSection(containerEl);
 }

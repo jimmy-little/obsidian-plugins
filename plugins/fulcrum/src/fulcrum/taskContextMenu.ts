@@ -459,7 +459,7 @@ function addNoteActionsSubmenu(
 					new MoveTaskNoteModal(host.app, (folder) => {
 						void (async () => {
 							const ok = await moveTaskNoteFile(host.app, task, folder);
-							if (ok) await host.refreshIndex();
+							if (ok) host.vaultIndex.scheduleRebuild();
 						})().catch(handleMenuError);
 					}).open();
 				});
@@ -471,7 +471,10 @@ function addNoteActionsSubmenu(
 					new MergeTaskNoteTargetModal(host.app, task.file.path, (targetPath) => {
 						void (async () => {
 							const ok = await mergeTaskNoteInto(host.app, task, targetPath);
-							if (ok) await host.refreshIndex();
+							if (ok) {
+								host.vaultIndex.removeIndexedTask(task);
+								host.vaultIndex.scheduleRebuild();
+							}
 						})().catch(handleMenuError);
 					}).open();
 				});
@@ -485,8 +488,9 @@ function addNoteActionsSubmenu(
 				void (async () => {
 					const ok = await promptDeleteIndexedTask(host.app, task);
 					if (!ok) return;
+					host.vaultIndex.removeIndexedTask(task);
 					await deleteIndexedTask(host.app, task);
-					await host.refreshIndex();
+					host.vaultIndex.scheduleRebuild();
 					new Notice("Task deleted.");
 				})().catch(handleMenuError);
 			});

@@ -23,7 +23,6 @@ describe("formatQuickNoteLogBlock", () => {
 		id: "communication",
 		label: "Communication",
 		emoji: "☎️",
-		type: "☎️ Communication",
 		journal: "Work",
 	};
 
@@ -64,7 +63,6 @@ describe("parseProjectLogLines", () => {
 				id: "communication",
 				label: "Communication",
 				emoji: "☎️",
-				type: "☎️ Communication",
 			},
 			now: new Date("2026-07-01T15:02:31"),
 		});

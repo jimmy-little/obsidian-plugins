@@ -166,6 +166,21 @@ export async function applyTaskScheduledOnlyChange(
 	await updateInlineLine(app, task, (line) => setInlineTaskScheduled(line, schedIso));
 }
 
+export async function applyTaskCompletedDateChange(
+	app: App,
+	task: IndexedTask,
+	settings: FulcrumSettings,
+	completedIso: string | null,
+): Promise<void> {
+	if (task.source !== "taskNote") {
+		new Notice("Completed date is supported for task notes only.");
+		return;
+	}
+	await updateTaskNoteField(app, task, settings, {
+		[settings.taskCompletedDateField]: completedIso,
+	});
+}
+
 export async function applyTaskRemindersChange(
 	app: App,
 	task: IndexedTask,

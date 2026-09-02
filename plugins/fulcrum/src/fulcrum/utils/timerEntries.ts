@@ -10,8 +10,20 @@ function parseEntryTags(raw: unknown): string[] {
 	return [];
 }
 
-function parseTimeMs(raw: unknown): number | null {
-	if (raw == null) return null;
+/**
+ * Coerce a frontmatter timestamp (number, ISO string, or YAML Date) to epoch ms.
+ * Unquoted YAML datetimes become Date objects in Obsidian's metadata cache.
+ */
+export function parseTimerTimestampMs(raw: unknown): number | null {
+	if (raw == null || raw === "") return null;
+	if (raw instanceof Date) {
+		const t = raw.getTime();
+		return Number.isFinite(t) ? t : null;
+	}
+	if (typeof raw === "object" && typeof (raw as {getTime?: unknown}).getTime === "function") {
+		const t = (raw as Date).getTime();
+		if (Number.isFinite(t)) return t;
+	}
 	if (typeof raw === "number" && Number.isFinite(raw)) {
 		return raw < 1e12 ? raw * 1000 : raw;
 	}
@@ -20,6 +32,33 @@ function parseTimeMs(raw: unknown): number | null {
 		return Number.isFinite(n) ? n : null;
 	}
 	return null;
+}
+
+function parseTimeMs(raw: unknown): number | null {
+	return parseTimerTimestampMs(raw);
+}
+
+/** True when this entry is the running session (started, not ended). */
+export function isRunningTimerEntry(e: TimeEntry): boolean {
+	return parseTimerTimestampMs(e.startTime) != null && parseTimerTimestampMs(e.endTime) == null;
+}
+
+/**
+ * Shift a running timer's startTime. Positive offsetMinutes = more elapsed
+ * (start moves earlier). Returns null when the result would be in the future
+ * or the inputs are not finite.
+ */
+export function shiftRunningTimerStart(
+	startTime: number,
+	offsetMinutes: number,
+	nowMs: number = Date.now(),
+): number | null {
+	if (!Number.isFinite(startTime) || !Number.isFinite(offsetMinutes) || offsetMinutes === 0) {
+		return null;
+	}
+	const newStartTime = startTime - offsetMinutes * 60 * 1000;
+	if (newStartTime > nowMs) return null;
+	return newStartTime;
 }
 
 function parseDurationMs(raw: unknown): number {
@@ -50,7 +89,7 @@ export function dedupeEntries(entries: TimeEntry[]): TimeEntry[] {
 }
 
 function isActiveEntry(e: TimeEntry): boolean {
-	return e.startTime != null && e.endTime == null;
+	return isRunningTimerEntry(e);
 }
 
 /**

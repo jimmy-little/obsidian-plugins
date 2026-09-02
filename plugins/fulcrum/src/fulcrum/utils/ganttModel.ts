@@ -11,8 +11,9 @@ import {formatDayShort, getWeekStart, toISODate} from "./calendarGrid";
 import {projectColorMap} from "./calendarEvents";
 import {addDaysIso, todayLocalISODate} from "./dates";
 import {resolveProjectAccentCss} from "./projectVisual";
-import {isDoneStatus} from "../settingsDefaults";
+import {isDoneStatus, isProjectDone} from "../settingsDefaults";
 import {parseIsoDateOnly} from "./taskTimeline";
+import {taskDisplayTitle} from "./inlineTasks";
 import type {ProjectMilestone} from "./projectMilestones";
 
 export type GanttVariant = "full" | "compact";
@@ -186,7 +187,7 @@ export function buildGanttModel(opts: BuildGanttModelOpts): GanttModel {
 	});
 
 	const colors = projectColorMap(snapshot.projects);
-	let projects = snapshot.projects.filter((p) => !doneProject.has((p.status ?? "").trim().toLowerCase()));
+	let projects = snapshot.projects.filter((p) => !isProjectDone(p, settings));
 
 	if (filterProjectPath) {
 		projects = projects.filter((p) => p.file.path === filterProjectPath);
@@ -263,7 +264,7 @@ export function buildGanttModel(opts: BuildGanttModelOpts): GanttModel {
 				rows.push({
 					id: `task:${t.file.path}`,
 					kind: "task",
-					label: t.title,
+					label: taskDisplayTitle(t),
 					bar: taskGanttSpan(t),
 					accentCss,
 					open: () => openTask(t),

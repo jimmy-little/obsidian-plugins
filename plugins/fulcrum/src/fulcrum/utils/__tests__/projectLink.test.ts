@@ -16,6 +16,7 @@ import {
 	firstPlusLinkedProjectFileInLine,
 	formatInlineProjectLink,
 	resolveIndexedProjectByDisplay,
+	resolveInlineTaskProjectFile,
 	stripInlineProjectLinks,
 } from "../projectLink";
 
@@ -185,5 +186,65 @@ describe("firstLegacyLinkedProjectFileInLine", () => {
 				indexedProjects,
 			),
 		).toBeNull();
+	});
+});
+
+describe("resolveInlineTaskProjectFile", () => {
+	const project = makeProject("projects/CARL.md", "CARL Taxonomy Browser");
+	const projectPaths = new Set([project.file.path]);
+	const indexedProjects = [project];
+	const app = mockApp({
+		CARL: {path: "projects/CARL.md"},
+		"CARL Taxonomy Browser": {path: "projects/CARL.md"},
+	});
+
+	function hostNote(path: string): TFile {
+		const file = new TFile();
+		file.path = path;
+		file.basename = path.split("/").pop() ?? path;
+		return file;
+	}
+
+	it("inherits project: from the host note when the line has no project marker", () => {
+		const dest = resolveInlineTaskProjectFile(
+			app as never,
+			"- [ ] inventory needed API updates #task",
+			hostNote("notes/meeting.md"),
+			{project: "[[CARL Taxonomy Browser]]"},
+			projectPaths,
+			indexedProjects,
+			"project",
+		);
+		expect(dest?.path).toBe("projects/CARL.md");
+	});
+
+	it("keeps +[[project]] on the line over host-note frontmatter", () => {
+		const other = makeProject("projects/OIDC.md", "OIDC");
+		const dest = resolveInlineTaskProjectFile(
+			mockApp({
+				OIDC: {path: "projects/OIDC.md"},
+				"CARL Taxonomy Browser": {path: "projects/CARL.md"},
+			}) as never,
+			"- [ ] inventory +[[OIDC]] #task",
+			hostNote("notes/meeting.md"),
+			{project: "[[CARL Taxonomy Browser]]"},
+			new Set([project.file.path, other.file.path]),
+			[project, other],
+			"project",
+		);
+		expect(dest?.path).toBe("projects/OIDC.md");
+	});
+
+	it("uses the host file when it is the project note", () => {
+		const dest = resolveInlineTaskProjectFile(
+			app as never,
+			"- [ ] inventory needed API updates #task",
+			project.file,
+			{},
+			projectPaths,
+			indexedProjects,
+			"project",
+		);
+		expect(dest?.path).toBe(project.file.path);
 	});
 });

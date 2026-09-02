@@ -2,42 +2,29 @@
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {ProjectRollup} from "../fulcrum/types";
-	import {areaFilterState, indexRevision} from "../fulcrum/stores";
+	import {areaFilterState, indexRevision, viewProjectFilterPaths} from "../fulcrum/stores";
 	import {buildAreaLifeModeMap, filterProjectsByAreaFocus} from "../fulcrum/utils/areaFocusFilter";
 	import {
 		buildTimeTrackedModel,
 		fmtHours,
 		pieConicGradient,
-		TIME_TRACKER_NO_AREA_PATH,
 		type TimeHorizonId,
 		type TimeTrackedModel,
 	} from "../fulcrum/utils/timeTrackedAnalytics";
-	import FulcrumSegmentGroup from "./shared/FulcrumSegmentGroup.svelte";
+	import {projectMatchesViewProjectFilter} from "../fulcrum/utils/viewProjectFilter";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
-
-	const horizonOptions: {id: TimeHorizonId; label: string}[] = [
-		{id: "7d", label: "7 days"},
-		{id: "30d", label: "30 days"},
-		{id: "90d", label: "90 days"},
-		{id: "all", label: "All time"},
-	];
-
-	function normalizeHorizon(h: string | undefined): TimeHorizonId {
-		if (h === "7d" || h === "30d" || h === "90d" || h === "all") return h;
-		return "30d";
-	}
+	export let horizon: TimeHorizonId = "30d";
 
 	let model: TimeTrackedModel | null = null;
 	let loadError: string | null = null;
 	let loading = true;
-	let horizon: TimeHorizonId = normalizeHorizon(plugin.settings.timeTrackerHorizon);
-	let excludedAreaPaths = new Set<string>(plugin.settings.timeTrackerExcludedAreaPaths ?? []);
 	let loadId = 0;
 
 	$: rev = $indexRevision;
 	$: areaFilter = $areaFilterState;
+	$: selectedProjectPaths = $viewProjectFilterPaths;
 
 	$: snapshot = plugin.vaultIndex.getSnapshot();
 	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
@@ -47,64 +34,13 @@
 		areaTypeValue: plugin.settings.areaTypeValue,
 		settings: plugin.settings,
 	});
-	$: activeProjects = filterProjectsByAreaFocus(
-		plugin.vaultIndex.getActiveProjects(plugin.settings),
-		areaFilter,
-		lifeModeMap,
-	);
-	$: hasNoAreaProjects = activeProjects.some((p) => !p.areaFile);
-	/** Areas from index + any area linked on active projects (vaults often skip typed “area” notes). */
-	$: areaTiles = (() => {
-		const byPath = new Map<string, {path: string; label: string}>();
-		for (const a of snapshot.areas) {
-			byPath.set(a.file.path, {path: a.file.path, label: a.name});
-		}
-		for (const p of activeProjects) {
-			const af = p.areaFile;
-			if (!af) continue;
-			if (!byPath.has(af.path)) {
-				const label =
-					p.areaName?.trim() ||
-					af.basename.replace(/\.md$/i, "");
-				byPath.set(af.path, {path: af.path, label});
-			}
-		}
-		const rows = [...byPath.values()].sort((a, b) =>
-			a.label.localeCompare(b.label, undefined, {sensitivity: "base"}),
-		);
-		if (hasNoAreaProjects) {
-			rows.push({path: TIME_TRACKER_NO_AREA_PATH, label: "No area"});
-		}
-		return rows;
-	})();
-
-	function setHorizon(id: TimeHorizonId): void {
-		horizon = id;
-		void plugin.patchSettings({timeTrackerHorizon: id});
-	}
-
-	function onHorizonSelect(id: string): void {
-		if (id === "7d" || id === "30d" || id === "90d" || id === "all") setHorizon(id);
-	}
-
-	function toggleArea(path: string): void {
-		const next = new Set(excludedAreaPaths);
-		if (next.has(path)) next.delete(path);
-		else next.add(path);
-		excludedAreaPaths = next;
-		void plugin.patchSettings({timeTrackerExcludedAreaPaths: [...next]});
-	}
-
-	function areaIncluded(path: string): boolean {
-		return !excludedAreaPaths.has(path);
-	}
 
 	$: {
 		void rev;
 		void horizon;
-		void excludedAreaPaths;
 		void areaFilter;
 		void lifeModeMap;
+		void selectedProjectPaths;
 		const id = ++loadId;
 		loading = true;
 		loadError = null;
@@ -112,7 +48,7 @@
 			plugin.vaultIndex.getActiveProjects(plugin.settings),
 			areaFilter,
 			lifeModeMap,
-		);
+		).filter((p) => projectMatchesViewProjectFilter(p, selectedProjectPaths));
 		void (async (): Promise<void> => {
 			try {
 				const rollups: ProjectRollup[] = [];
@@ -126,7 +62,7 @@
 					plugin.settings,
 					rollups,
 					horizon,
-					excludedAreaPaths,
+					new Set(),
 					plugin.vaultIndex.getSnapshot().plannerEvents,
 				);
 			} catch (e) {
@@ -156,62 +92,28 @@
 </script>
 
 <div class="fulcrum-time-dashboard">
-	<p class="fulcrum-time-dashboard__disclaimer fulcrum-muted">
-		Task minutes use merged timer entries (<code>timeEntries</code>, legacy
-		<code>fulcrumTimerEntries</code>/<code>lapseEntries</code>) when present, then your configured tracked field.
-		Horizons prefer entry end timestamps; otherwise file modification dates apply.
-		Meetings use your total-minutes field when it’s set and positive; otherwise the scheduled
-		<code>duration</code> (minutes) from the meeting note.
-	</p>
-
-	{#if areaTiles.length > 0}
-		<div class="fulcrum-time-dashboard__toolbar">
-			<span class="fulcrum-time-dashboard__toolbar-label">Areas</span>
-			<div class="fulcrum-time-dashboard__segments" role="group" aria-label="Include or exclude areas">
-				{#each areaTiles as tile}
-					<button
-						type="button"
-						class="fulcrum-time-dashboard__seg fulcrum-time-dashboard__seg--toggle"
-						class:fulcrum-time-dashboard__seg--active={areaIncluded(tile.path)}
-						aria-pressed={areaIncluded(tile.path)}
-						title={tile.label}
-						on:click={() => toggleArea(tile.path)}
-					>
-						{tile.label}
-					</button>
-				{/each}
-			</div>
-		</div>
-	{/if}
-
-		<div class="fulcrum-time-dashboard__toolbar">
-			<span class="fulcrum-time-dashboard__toolbar-label">Range</span>
-			<FulcrumSegmentGroup
-				ariaLabel="Time range"
-				role="tablist"
-				options={horizonOptions}
-				value={horizon}
-				buttonClass="fulcrum-time-dashboard__seg"
-				activeModifier="active"
-				wrapperClass="fulcrum-time-dashboard__segments"
-				onSelect={onHorizonSelect}
-			/>
-		</div>
-
 	{#if loading}
 		<p class="fulcrum-muted">Loading project rollups…</p>
 	{:else if loadError}
 		<p class="fulcrum-muted">{loadError}</p>
 	{:else if !model || model.totalMinutes <= 0}
 		<p class="fulcrum-muted">
-			No time found for active projects in this range (with current area filters). Add tracked minutes on
-			tasks and notes, or <code>duration</code> / logged minutes on meetings.
+			No time found for active projects in this range (with current sidebar filters). Add tracked minutes on
+			tasks and notes, or meeting start/end times / duration.
 		</p>
 	{:else}
 		<section class="fulcrum-time-dashboard__kpis">
 			<div class="fulcrum-time-kpi">
 				<div class="fulcrum-time-kpi__value">{fmtHours(model.totalMinutes)}</div>
 				<div class="fulcrum-time-kpi__label">Total tracked</div>
+			</div>
+			<div class="fulcrum-time-kpi">
+				<div class="fulcrum-time-kpi__value">{fmtHours(model.totalMeetingMinutes)}</div>
+				<div class="fulcrum-time-kpi__label">Meeting time</div>
+			</div>
+			<div class="fulcrum-time-kpi">
+				<div class="fulcrum-time-kpi__value">{model.totalMeetingsWithTime}</div>
+				<div class="fulcrum-time-kpi__label">Meetings</div>
 			</div>
 			<div class="fulcrum-time-kpi">
 				<div class="fulcrum-time-kpi__value">{model.totalProjectsWithTime}</div>
@@ -240,7 +142,17 @@
 					{#each model.insights as ins}
 						<li class="fulcrum-time-insight">
 							<span class="fulcrum-time-insight__label">{ins.label}</span>
-							<span class="fulcrum-time-insight__value">{ins.value}</span>
+							{#if ins.openPath}
+								<button
+									type="button"
+									class="fulcrum-time-insight__value fulcrum-linklike"
+									on:click={() => openFile(ins.openPath ?? "")}
+								>
+									{ins.value}
+								</button>
+							{:else}
+								<span class="fulcrum-time-insight__value">{ins.value}</span>
+							{/if}
 							{#if ins.hint}
 								<span class="fulcrum-time-insight__hint fulcrum-muted">{ins.hint}</span>
 							{/if}
@@ -275,7 +187,7 @@
 			<section class="fulcrum-time-dashboard__section fulcrum-time-dashboard__section--chart">
 				<h2>Top projects</h2>
 				<div class="fulcrum-time-bars" role="list">
-					{#each model.projects.slice(0, 10) as p, i}
+					{#each model.projects.slice(0, 10) as p}
 						<div class="fulcrum-time-bar" role="listitem">
 							<span class="fulcrum-time-bar__name" title={p.name}>{p.name}</span>
 							<div class="fulcrum-time-bar__track">
@@ -388,6 +300,36 @@
 					— {fmtHours(model.topSingleTask.minutes)} on «{model.topSingleTask.title.slice(0, 60)}»
 					{#if model.topSingleTask.title.length > 60}…{/if}
 					<span class="fulcrum-muted"> ({model.topSingleTask.projectName})</span>
+				</p>
+				{#if model.topSingleMeeting}
+					<p class="fulcrum-time-deepcut">
+						<button
+							type="button"
+							class="fulcrum-linklike"
+							on:click={() => openFile(model.topSingleMeeting.path)}
+						>
+							Open longest meeting
+						</button>
+						— {fmtHours(model.topSingleMeeting.minutes)} «{model.topSingleMeeting.title.slice(0, 60)}»
+						{#if model.topSingleMeeting.title.length > 60}…{/if}
+						<span class="fulcrum-muted"> ({model.topSingleMeeting.projectName})</span>
+					</p>
+				{/if}
+			</section>
+		{:else if model.topSingleMeeting}
+			<section class="fulcrum-time-dashboard__section">
+				<h2>Deep cut</h2>
+				<p class="fulcrum-time-deepcut">
+					<button
+						type="button"
+						class="fulcrum-linklike"
+						on:click={() => openFile(model.topSingleMeeting.path)}
+					>
+						Open longest meeting
+					</button>
+					— {fmtHours(model.topSingleMeeting.minutes)} «{model.topSingleMeeting.title.slice(0, 60)}»
+					{#if model.topSingleMeeting.title.length > 60}…{/if}
+					<span class="fulcrum-muted"> ({model.topSingleMeeting.projectName})</span>
 				</p>
 			</section>
 		{/if}

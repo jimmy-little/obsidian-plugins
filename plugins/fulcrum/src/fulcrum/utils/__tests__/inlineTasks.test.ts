@@ -14,4 +14,11 @@ describe("inlineTaskDisplayTitle", () => {
 			),
 		).toBe("Read up on OIDC and populate document");
 	});
+	it("strips HTML comments such as omnifocus-id metadata", () => {
+		expect(
+			inlineTaskDisplayTitle(
+				"Follow up with team <!-- omnifocus-id: abc123 --> +[[My Project]]",
+			),
+		).toBe("Follow up with team");
+	});
 });

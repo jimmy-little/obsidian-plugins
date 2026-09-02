@@ -4,7 +4,7 @@ import type {IndexedPlannerEvent, ProjectRollup} from "../types";
 import {plannerTrackedMinutesForProject} from "./plannerBlockParse";
 import {readTimerEntriesFromFm, sumEntryMinutes} from "./timerEntries";
 import {readTrackedMinutesFromFm} from "./trackedMinutes";
-import {meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
+import {meetingActivityMs, meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
 
 export type TimeHorizonId = TimeTrackerHorizon;
 
@@ -91,6 +91,8 @@ export type TimeTrackedInsight = {
 	label: string;
 	value: string;
 	hint?: string;
+	/** When set, the value opens this vault path in a Fulcrum split leaf. */
+	openPath?: string;
 };
 
 export type TimeTrackedModel = {
@@ -99,8 +101,11 @@ export type TimeTrackedModel = {
 	projects: ProjectTimeBreakdown[];
 	totalMinutes: number;
 	totalProjectsWithTime: number;
+	totalMeetingMinutes: number;
+	totalMeetingsWithTime: number;
 	topProject: ProjectTimeBreakdown | null;
 	topSingleTask: {title: string; minutes: number; projectName: string; path: string} | null;
+	topSingleMeeting: {title: string; minutes: number; projectName: string; path: string} | null;
 	mostTasksTrackedProject: {name: string; path: string; count: number} | null;
 	meetingHeaviestProject: {name: string; path: string; pct: number} | null;
 	avgMinutesPerTrackedTask: number | null;
@@ -138,6 +143,8 @@ export function buildTimeTrackedModel(
 	const projects: ProjectTimeBreakdown[] = [];
 
 	let globalTopTask: {title: string; minutes: number; projectName: string; path: string} | null =
+		null;
+	let globalTopMeeting: {title: string; minutes: number; projectName: string; path: string} | null =
 		null;
 	let mostTasks: {name: string; path: string; count: number} | null = null;
 	let meetingHeaviest: {name: string; path: string; pct: number} | null = null;
@@ -200,10 +207,18 @@ export function buildTimeTrackedModel(
 		for (const m of r.meetings) {
 			const mm = meetingEffectiveMinutes(m);
 			if (mm <= 0) continue;
-			const mActivity = noteActivityMs(app, settings, m.file.path, m.file.stat.mtime);
-			if (!inWindow(mActivity, cutoff)) continue;
+			if (!inWindow(meetingActivityMs(m), cutoff)) continue;
 			fromMeetings += mm;
 			meetingsWithTime++;
+			const title = m.title?.trim() || m.file.basename.replace(/\.md$/i, "");
+			if (!globalTopMeeting || mm > globalTopMeeting.minutes) {
+				globalTopMeeting = {
+					title,
+					minutes: mm,
+					projectName: name,
+					path: m.file.path,
+				};
+			}
 		}
 
 		for (const n of r.atomicNotes) {
@@ -260,6 +275,8 @@ export function buildTimeTrackedModel(
 	projects.sort((a, b) => b.totalMinutes - a.totalMinutes);
 
 	const totalMinutes = projects.reduce((s, x) => s + x.totalMinutes, 0);
+	const totalMeetingMinutes = projects.reduce((s, x) => s + x.fromMeetings, 0);
+	const totalMeetingsWithTime = projects.reduce((s, x) => s + x.meetingsWithTime, 0);
 	const topProject = projects[0] ?? null;
 
 	const topN = 6;
@@ -291,6 +308,25 @@ export function buildTimeTrackedModel(
 			label: "Heaviest single task",
 			value: `${globalTopTask.title.slice(0, 42)}${globalTopTask.title.length > 42 ? "…" : ""}`,
 			hint: `${fmtHours(globalTopTask.minutes)} · ${globalTopTask.projectName}`,
+			openPath: globalTopTask.path,
+		});
+	}
+	if (globalTopMeeting) {
+		insights.push({
+			label: "Longest meeting",
+			value: `${globalTopMeeting.title.slice(0, 42)}${globalTopMeeting.title.length > 42 ? "…" : ""}`,
+			hint: `${fmtHours(globalTopMeeting.minutes)} · ${globalTopMeeting.projectName}`,
+			openPath: globalTopMeeting.path,
+		});
+	}
+	if (totalMeetingsWithTime > 0) {
+		insights.push({
+			label: "Meetings with time",
+			value: String(totalMeetingsWithTime),
+			hint:
+				totalMeetingMinutes > 0
+					? `${fmtHours(totalMeetingMinutes)} total meeting time`
+					: undefined,
 		});
 	}
 	if (mostTasks && mostTasks.count > 0) {
@@ -334,8 +370,11 @@ export function buildTimeTrackedModel(
 		projects,
 		totalMinutes,
 		totalProjectsWithTime: projects.length,
+		totalMeetingMinutes,
+		totalMeetingsWithTime,
 		topProject,
 		topSingleTask: globalTopTask,
+		topSingleMeeting: globalTopMeeting,
 		mostTasksTrackedProject: mostTasks,
 		meetingHeaviestProject: meetingHeaviest,
 		avgMinutesPerTrackedTask: avgMin,

@@ -39,10 +39,8 @@
 			return;
 		}
 
-		if (nextCount !== lastRenderedCount) {
-			await plugin.timer.refreshDashboardActiveTimers();
-			lastRenderedCount = nextCount;
-		}
+		await plugin.timer.refreshDashboardActiveTimers();
+		lastRenderedCount = nextCount;
 	}
 
 	$: void $timerRevision, void syncActiveTimers();

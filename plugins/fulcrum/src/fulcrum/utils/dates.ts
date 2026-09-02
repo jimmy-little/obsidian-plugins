@@ -33,6 +33,36 @@ export function isDueToday(due: string | undefined, done: boolean): boolean {
 	return norm === todayLocalISODate();
 }
 
+/** YYYY-MM-DD prefix when the value is at least a calendar day. */
+export function isoDatePrefix(raw: string | undefined): string | null {
+	if (!raw?.trim()) return null;
+	const norm = raw.trim().slice(0, 10);
+	return norm.length >= 10 ? norm : null;
+}
+
+/** True when due or scheduled falls on `iso` (YYYY-MM-DD). */
+export function taskHasDateOn(
+	task: {dueDate?: string; scheduledDate?: string},
+	iso: string,
+): boolean {
+	return isoDatePrefix(task.dueDate) === iso || isoDatePrefix(task.scheduledDate) === iso;
+}
+
+/**
+ * Open task is past its planning date: due before today, or no due and scheduled before today.
+ * Tasks due/scheduled today are not past.
+ */
+export function taskIsPastOpen(
+	task: {dueDate?: string; scheduledDate?: string},
+	today = todayLocalISODate(),
+): boolean {
+	if (taskHasDateOn(task, today)) return false;
+	const due = isoDatePrefix(task.dueDate);
+	if (due) return due < today;
+	const sched = isoDatePrefix(task.scheduledDate);
+	return sched != null && sched < today;
+}
+
 /** True if `iso` is a calendar day on or after today (local), YYYY-MM-DD prefix. */
 export function isISODateTodayOrFuture(iso: string | undefined): boolean {
 	if (!iso?.trim()) return false;
@@ -83,6 +113,15 @@ export function isDateInUpcomingDays(isoDate: string | undefined, days: number):
 export function addDaysIso(isoDate: string, days: number): string {
 	const d = new Date(isoDate.slice(0, 10) + "T12:00:00");
 	d.setDate(d.getDate() + days);
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${y}-${m}-${day}`;
+}
+
+export function addMonthsIso(isoDate: string, months: number): string {
+	const d = new Date(isoDate.slice(0, 10) + "T12:00:00");
+	d.setMonth(d.getMonth() + months);
 	const y = d.getFullYear();
 	const m = String(d.getMonth() + 1).padStart(2, "0");
 	const day = String(d.getDate()).padStart(2, "0");

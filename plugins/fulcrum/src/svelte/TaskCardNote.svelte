@@ -19,7 +19,8 @@
 		openTaskProjectFromCard,
 		stopChipClick,
 	} from "../fulcrum/taskCardInteractions";
-	import {inlineTaskDisplayTitle} from "../fulcrum/utils/inlineTasks";
+	import {taskDisplayTitle} from "../fulcrum/utils/inlineTasks";
+	import {taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
 	import {settingsRevision, timerRevision, setCalendarTaskDragActive} from "../fulcrum/stores";
 	import {
 		FULCRUM_CALENDAR_TASK_MIME,
@@ -33,6 +34,15 @@
 			update(next: IndexedTask["source"]) {
 				node.empty();
 				setIcon(node, next === "inline" ? "list-todo" : "file-check");
+			},
+		};
+	}
+
+	function bindInProgressIcon(node: HTMLElement) {
+		setIcon(node, "circle-arrow-right");
+		return {
+			destroy() {
+				node.empty();
 			},
 		};
 	}
@@ -57,7 +67,7 @@
 
 	$: s = plugin.settings;
 	$: isInline = task.source === "inline";
-	$: displayTitle = isInline ? inlineTaskDisplayTitle(task.title) : task.title;
+	$: displayTitle = taskDisplayTitle(task);
 	$: rev = $settingsRevision;
 	$: due = dueChip(task.dueDate, done);
 	$: sched = scheduledChip(task.scheduledDate, done);
@@ -75,6 +85,7 @@
 	$: sourceKindTitle = isInline ? "Inline task" : "Task note";
 	$: void $timerRevision;
 	$: timerActive = taskCardTimerActive(plugin, task);
+	$: inProgress = !done && taskIsInProgress(task, s);
 
 	$: rowClass = [
 		"fulcrum-task-card",
@@ -162,7 +173,7 @@
 
 <div
 	role="group"
-	aria-label={`Task: ${task.title}`}
+	aria-label={`Task: ${displayTitle}`}
 	class={rowClass}
 	data-source={task.source}
 	style={`--fulcrum-task-border: ${accentCss};`}
@@ -179,14 +190,21 @@
 			aria-label="Change status"
 			class="fulcrum-task-card__status-dot"
 			class:fulcrum-task-card__status-dot--done={done}
+			class:fulcrum-task-card__status-dot--in-progress={inProgress}
 			class:fulcrum-task-card__status-dot--readonly={!canToggle}
-			style={done ? undefined : `border-color: ${borderPri}`}
+			style={done || inProgress ? undefined : `border-color: ${borderPri}`}
 			title={canToggle ? "Change status" : "Open the note to edit (mobile)"}
 			on:click|stopPropagation={onStatusClick}
 			on:keydown|stopPropagation={onStatusKeydown}
 		>
 			{#if done}
 				<span class="fulcrum-task-card__check-icon" aria-hidden="true">✓</span>
+			{:else if inProgress}
+				<span
+					class="fulcrum-task-card__in-progress-icon"
+					use:bindInProgressIcon
+					aria-hidden="true"
+				></span>
 			{/if}
 		</div>
 		<div class="fulcrum-task-card__content">
@@ -210,14 +228,22 @@
 				<div class="fulcrum-task-card__metadata-chips">
 					<span
 						class="fulcrum-task-card__source-kind"
-						title={sourceKindTitle}
-						aria-label={sourceKindTitle}
+						title={inProgress ? "In progress" : sourceKindTitle}
+						aria-label={inProgress ? "In progress" : sourceKindTitle}
 					>
-						<span
-							class="fulcrum-task-card__source-kind-icon"
-							use:bindSourceKindIcon={task.source}
-							aria-hidden="true"
-						></span>
+						{#if inProgress}
+							<span
+								class="fulcrum-task-card__source-kind-icon"
+								use:bindInProgressIcon
+								aria-hidden="true"
+							></span>
+						{:else}
+							<span
+								class="fulcrum-task-card__source-kind-icon"
+								use:bindSourceKindIcon={task.source}
+								aria-hidden="true"
+							></span>
+						{/if}
 					</span>
 					{#if showDue}
 							<span
@@ -334,11 +360,14 @@
 				</div>
 			</div>
 		</div>
+		{#if timerActive}
+			<TaskCardTimerSlot
+				{plugin}
+				filePath={task.file.path}
+				showStop={showInlineTimer}
+				showAdjustControls={true}
+				placement="row"
+			/>
+		{/if}
 	</div>
-	<TaskCardTimerSlot
-		{plugin}
-		filePath={task.file.path}
-		showStop={showInlineTimer}
-		placement={showInlineTimer ? "row" : "footer"}
-	/>
 </div>

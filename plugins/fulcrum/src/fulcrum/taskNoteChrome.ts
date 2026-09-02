@@ -4,7 +4,7 @@ import type {FulcrumHost} from "./pluginBridge";
 import {parseList, parseTaskStatusChoices} from "./settingsDefaults";
 import type {IndexedTask} from "./types";
 import {isTaskNoteFile} from "./utils/taskNoteFile";
-import {taskIsDone} from "./taskCardInteractions";
+	import {taskIsDone} from "./taskCardInteractions";
 import TaskCard from "../svelte/TaskCard.svelte";
 
 type MountState = {

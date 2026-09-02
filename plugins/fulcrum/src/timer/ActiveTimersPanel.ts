@@ -149,15 +149,22 @@ export class ActiveTimersPanel {
 		});
 		this.timeDisplays.set(entry.id, timeEl);
 
-		const adjustMinutes = this.plugin.settings.timeAdjustMinutes;
+		const adjustMinutes = Math.max(1, Number(this.plugin.settings.timeAdjustMinutes) || 5);
 		const adjustRow = timerCol.createDiv({cls: "fulcrum-timer-adjust-buttons"});
 		for (const offset of [-adjustMinutes, adjustMinutes]) {
 			const btn = adjustRow.createEl("button", {
 				cls: "fulcrum-timer-btn-adjust",
 				text: offset > 0 ? `+${offset}` : `${offset}`,
+				attr: {type: "button"},
 			});
-			btn.onclick = (ev) => {
+			const stop = (ev: Event) => {
+				ev.preventDefault();
 				ev.stopPropagation();
+			};
+			btn.addEventListener("pointerdown", stop);
+			btn.addEventListener("mousedown", stop);
+			btn.onclick = (ev) => {
+				stop(ev);
 				void this.adjustStartTime(filePath, entry, offset);
 			};
 		}
@@ -225,20 +232,13 @@ export class ActiveTimersPanel {
 	}
 
 	private async adjustStartTime(filePath: string, entry: TimeEntry, offsetMinutes: number): Promise<void> {
-		if (!entry.startTime) return;
+		const ok = await this.plugin.adjustActiveTimerStart(filePath, offsetMinutes, entry.id);
+		if (!ok) return;
 
-		const offsetMs = offsetMinutes * 60 * 1000;
-		const newStartTime = entry.startTime - offsetMs;
-
-		if (newStartTime > Date.now()) return;
-
-		entry.startTime = newStartTime;
-
-		await this.plugin.updateFrontmatter(filePath);
-
-		const timeEl = this.timeDisplays.get(entry.id);
-		if (timeEl) {
-			const elapsed = this.plugin.getActiveEntryElapsedMs(entry);
+		const live = this.plugin.findActiveEntryForFile(filePath) ?? entry;
+		const timeEl = this.timeDisplays.get(live.id) ?? this.timeDisplays.get(entry.id);
+		if (timeEl && live) {
+			const elapsed = this.plugin.getActiveEntryElapsedMs(live);
 			timeEl.setText(this.plugin.formatTimeAsHHMMSS(elapsed));
 		}
 

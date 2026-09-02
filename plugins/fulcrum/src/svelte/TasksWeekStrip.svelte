@@ -1,11 +1,14 @@
 <script lang="ts">
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
-	import {indexRevision, settingsRevision, areaFilterState} from "../fulcrum/stores";
+	import {indexRevision, settingsRevision, areaFilterState, viewProjectFilterPaths} from "../fulcrum/stores";
 	import {isDoneStatus, parseDoneStatusSet} from "../fulcrum/settingsDefaults";
 	import {buildAreaLifeModeMap} from "../fulcrum/utils/areaFocusFilter";
 	import {
 		buildWeekStripBlocks,
 		weekStripDropDateIso,
+		PAST_DUE_KEY,
+		FUTURE_STRIP_KEY,
+		UNSCHEDULED_STRIP_KEY,
 	} from "../fulcrum/tasks/tasksViewModel";
 	import {collectHorizonTasks} from "../fulcrum/tasks/horizonTasks";
 	import {tasksViewFocusedIso} from "../fulcrum/tasks/tasksViewStore";
@@ -31,18 +34,23 @@
 		areaTypeValue: plugin.settings.areaTypeValue,
 		settings: plugin.settings,
 	});
+	$: selectedProjectPaths = $viewProjectFilterPaths;
 	$: filteredTasks = collectHorizonTasks(
 		snapshot,
 		plugin.settings,
 		areaFilter,
 		lifeModeMap,
 		doneTask,
+		selectedProjectPaths,
 	);
 	$: blocks = buildWeekStripBlocks(filteredTasks);
 	$: focusedIso = $tasksViewFocusedIso;
 
 	function onBlockClick(block: (typeof blocks)[0]): void {
 		if (block.dateIso) tasksViewFocusedIso.set(block.dateIso);
+		else if (block.isUnscheduled) tasksViewFocusedIso.set(UNSCHEDULED_STRIP_KEY);
+		else if (block.isPast) tasksViewFocusedIso.set(PAST_DUE_KEY);
+		else if (block.isFuture) tasksViewFocusedIso.set(FUTURE_STRIP_KEY);
 	}
 
 	function onDragOver(ev: DragEvent, key: string): void {
@@ -85,6 +93,7 @@
 				class:fulcrum-tasks-week-strip__block--focused={block.dateIso === focusedIso}
 				class:fulcrum-tasks-week-strip__block--past={block.isPast}
 				class:fulcrum-tasks-week-strip__block--future={block.isFuture}
+				class:fulcrum-tasks-week-strip__block--unscheduled={block.isUnscheduled}
 				class:fulcrum-tasks-week-strip__block--drop={dropTargetKey === block.key}
 				on:click={() => onBlockClick(block)}
 				on:dragover={(e) => onDragOver(e, block.key)}

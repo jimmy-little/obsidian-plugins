@@ -47,6 +47,8 @@
 	export let showWeekStrip = false;
 	/** Horizon sidebar: facets/filter controls only (no task card list). */
 	export let facetsOnly = false;
+	/** Hide project checkboxes in the filter popover (when sidebar lists projects). */
+	export let hideProjectFilter = false;
 
 	let facetsCollapsed = false;
 	let filterOpen = false;
@@ -321,7 +323,7 @@
 			isChecked: isStatusChecked,
 			onToggle: toggleStatusFilter,
 		},
-		...(filterProjectPath
+		...(filterProjectPath || hideProjectFilter
 			? []
 			: [
 					{

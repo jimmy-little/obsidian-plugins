@@ -27,10 +27,10 @@
 	} from "../fulcrum/utils/projectSidebarCounts";
 	import {
 		todayLocalISODate,
-		isDueToday,
-		isOverdue,
 		dayStartMs,
 		formatTrackedMinutesShort,
+		taskHasDateOn,
+		taskIsPastOpen,
 	} from "../fulcrum/utils/dates";
 	import {
 		toISODate,
@@ -53,7 +53,7 @@
 	import {
 		calendarEventKey,
 		projectColorMap,
-		taskDueDateToCalendarEvent,
+		taskToCalendarEvent,
 		type CalendarEvent,
 	} from "../fulcrum/utils/calendarEvents";
 	import {handleTasksViewDateDrop, tasksViewDragOver} from "../fulcrum/tasks/tasksViewDnD";
@@ -121,17 +121,15 @@
 
 	$: tasksDueToday = snapshot.tasks.filter(
 		(t) =>
-			t.projectFile &&
 			!isDoneStatus(t.status, doneTask) &&
-			isDueToday(t.dueDate, false) &&
-			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
+			taskHasDateOn(t, todayLocalISODate()) &&
+			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, {includeUnlinked: true}),
 	);
 	$: overdueTasks = snapshot.tasks.filter(
 		(t) =>
-			t.projectFile &&
 			!isDoneStatus(t.status, doneTask) &&
-			isOverdue(t.dueDate, false) &&
-			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
+			taskIsPastOpen(t) &&
+			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, {includeUnlinked: true}),
 	);
 	$: meetingsToday = snapshot.meetings.filter(
 		(m) =>
@@ -193,7 +191,7 @@
 
 	$: projectColors = projectColorMap(snapshot.projects);
 
-	/** Due-dated open tasks for the visible week, untimed first then by time. */
+	/** Open tasks for the visible week (due or scheduled), untimed first then by time. */
 	$: dueTasksByDate = ((): Map<string, {untimed: CalendarEvent[]; timed: CalendarEvent[]}> => {
 		const out = new Map<string, {untimed: CalendarEvent[]; timed: CalendarEvent[]}>();
 		if (!weekShowTasks || meetingGridDays.length === 0) return out;
@@ -201,20 +199,15 @@
 		const endIso = meetingGridDays[meetingGridDays.length - 1]!.iso;
 		for (const t of snapshot.tasks) {
 			if (isDoneStatus(t.status, doneTask)) continue;
-			if (!taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap)) continue;
-			const dueKey = t.dueDate?.slice(0, 10) ?? "";
-			if (!dueKey || dueKey.length < 10) continue;
-			if (dueKey < startIso || dueKey > endIso) continue;
-			const ev = taskDueDateToCalendarEvent(
-				t,
-				() => plugin.openIndexedTask(t, hoverParentLeaf),
-				projectColors,
-			);
-			if (!ev) continue;
-			const bucket = out.get(dueKey) ?? {untimed: [], timed: []};
-			if (ev.startMinutes == null) bucket.untimed.push(ev);
-			else bucket.timed.push(ev);
-			out.set(dueKey, bucket);
+			if (!taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, {includeUnlinked: true})) continue;
+			const open = () => plugin.openIndexedTask(t, hoverParentLeaf);
+			for (const ev of taskToCalendarEvent(t, open, projectColors)) {
+				if (ev.dateIso < startIso || ev.dateIso > endIso) continue;
+				const bucket = out.get(ev.dateIso) ?? {untimed: [], timed: []};
+				if (ev.startMinutes == null) bucket.untimed.push(ev);
+				else bucket.timed.push(ev);
+				out.set(ev.dateIso, bucket);
+			}
 		}
 		for (const bucket of out.values()) {
 			bucket.timed.sort((a, b) => (a.startMinutes ?? 0) - (b.startMinutes ?? 0));
@@ -226,17 +219,9 @@
 		return dueTasksByDate.get(iso) ?? {untimed: [], timed: []};
 	}
 
-	$: todayTasks = snapshot.tasks
-		.filter(
-			(t) =>
-				t.projectFile &&
-				!isDoneStatus(t.status, doneTask) &&
-				isDueToday(t.dueDate, false) &&
-				taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap),
-		)
-		.slice(0, 20);
+	$: todayTasks = tasksDueToday;
 
-	$: pastDueTasks = overdueTasks.slice(0, 30);
+	$: pastDueTasks = overdueTasks;
 
 	let aggregatedActivity: ActivityRowModel[] = [];
 	let aggregatedActivityLoadId = 0;
@@ -436,7 +421,7 @@
 	<div class="fulcrum-hero-row fulcrum-hero-row--quad">
 		<div class="fulcrum-mega-stat fulcrum-mega-stat--neutral">
 			<div class="fulcrum-mega-stat__value">{tasksDueToday.length}</div>
-			<div class="fulcrum-mega-stat__label">Tasks due</div>
+			<div class="fulcrum-mega-stat__label">Today</div>
 		</div>
 		<div class="fulcrum-mega-stat fulcrum-mega-stat--neutral">
 			<div class="fulcrum-mega-stat__value">{overdueTasks.length}</div>
@@ -581,7 +566,7 @@
 <section class="fulcrum-section">
 	<TaskSectionHead title="Today's Tasks" {plugin} />
 	{#if todayTasks.length === 0}
-		<p class="fulcrum-muted">Nothing due today in indexed tasks.</p>
+		<p class="fulcrum-muted">Nothing scheduled or due today in indexed tasks.</p>
 	{:else}
 		<ul class="fulcrum-task-list fulcrum-task-agenda-list fulcrum-task-agenda-list--compact">
 			{#each todayTasks as t}

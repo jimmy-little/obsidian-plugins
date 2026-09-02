@@ -16,19 +16,10 @@ import * as fc from "fast-check";
  * This mirrors the logic in ActiveTimersPanel.adjustStartTime() without
  * DOM or persistence side effects.
  */
+import {shiftRunningTimerStart} from "../fulcrum/utils/timerEntries";
+
 function applyAdjustment(startTime: number, offsetMinutes: number): number {
-	const offsetMs = offsetMinutes * 60 * 1000;
-	// For positive offset (+N), subtract from startTime to increase elapsed
-	// For negative offset (-N), add to startTime to decrease elapsed
-	const newStartTime = startTime - offsetMs;
-
-	// Guard: new startTime must not be in the future
-	if (newStartTime > Date.now()) {
-		// Rejected — return original startTime unchanged
-		return startTime;
-	}
-
-	return newStartTime;
+	return shiftRunningTimerStart(startTime, offsetMinutes, Date.now()) ?? startTime;
 }
 
 describe("Property 4: Adjustment never produces a future startTime", () => {

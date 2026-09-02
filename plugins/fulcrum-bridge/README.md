@@ -1,6 +1,6 @@
 # Fulcrum Bridge
 
-Companion macOS app that exposes Apple **Reminders** and **Calendar** to the Fulcrum Obsidian plugin over a local HTTP API.
+Companion macOS app that exposes Apple **Reminders**, **Calendar**, and **OmniFocus** to the Fulcrum Obsidian plugin over a local HTTP API.
 
 Default URL: `http://127.0.0.1:9247`
 
@@ -128,14 +128,37 @@ Re-install after code changes: `./install-daemon.sh` (rebuilds and replaces the 
 | System calendars in **Forecast** | Tasks view → gear icon → calendar picker (`forecastCalendarIds`) |
 | Calendar overlay in **Calendar** view | Settings → Integrations → Reminders bridge → Calendar overlay IDs |
 | Reminders live views / convert | Settings → Integrations → Reminders bridge |
+| OmniFocus two-way sync | Settings → Integrations → OmniFocus sync |
 
 Forecast calendar IDs and Calendar view overlay IDs are **independent**.
+
+### OmniFocus
+
+OmniFocus has no public REST API. The bridge drives the Mac app with Omni Automation (`evaluateJavascript` via `osascript`). OmniFocus must be **running**. Typical requirements: OmniFocus Pro, and **System Settings → Privacy & Security → Automation** allowing Fulcrum Bridge to control OmniFocus.
+
+Probe without mutating data:
+
+```bash
+osascript -l JavaScript plugins/fulcrum-bridge/scripts/omnifocus-spike.js
+curl -s http://127.0.0.1:9247/omnifocus/health | python3 -m json.tool
+```
+
+Cursor agents should use the bundled MCP (`plugins/fulcrum-bridge/mcp/omnifocus-mcp.mjs`), configured in `.cursor/mcp.json`. It talks to this HTTP API only — do not attach a second OmniFocus MCP while Fulcrum sync owns IDs.
 
 ## API
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | `{ ok, status, authorization, calendarCount }` |
+| GET | `/health` | `{ ok, status, authorization, calendarCount, omnifocus }` |
+| GET | `/omnifocus/health` | OmniFocus installed/running/OmniJS probe |
+| GET | `/omnifocus/projects` | `{ "projects": [{ "id", "name", "status", "folder", "sequential" }] }` |
+| POST | `/omnifocus/projects` | Create project `{ "name" }` → `{ "id" }` |
+| GET | `/omnifocus/tasks?projectId=&projectIds=&inbox=&completed=` | `{ "tasks": [...] }` (`projectIds` is comma-separated) |
+| POST | `/omnifocus/tasks` | Create task `{ "name", "due", "defer", "projectId", "note", "flagged", "tags" }` → `{ "id" }` |
+| PATCH | `/omnifocus/tasks/:id` | Update name/due/defer/completed/projectId/note/flagged |
+| POST | `/omnifocus/tasks/:id/complete` | Mark complete |
+| POST | `/omnifocus/tasks/:id/reopen` | Mark incomplete |
+| POST | `/omnifocus/sync` | JXA `Application("OmniFocus").synchronize()` |
 | GET | `/lists` | `{ "lists": [{ "id", "name" }] }` |
 | POST | `/lists` | Create list `{ "name": "..." }` → `{ "listId" }` |
 | GET | `/reminders` | `{ "reminders": [...] }` |

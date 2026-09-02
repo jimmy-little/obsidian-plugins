@@ -42,6 +42,8 @@ export interface TimerSettings {
 	calendarShowMeetings: boolean;
 	calendarShowLogged: boolean;
 	calendarShowPlanned: boolean;
+	/** Imported Bridge / system calendar events on the Fulcrum calendar. */
+	calendarShowEvents: boolean;
 	/** One-time import from lapse-tracker completed. */
 	lapseDataMigrated: boolean;
 }
@@ -84,6 +86,7 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
 	calendarShowMeetings: true,
 	calendarShowLogged: true,
 	calendarShowPlanned: true,
+	calendarShowEvents: true,
 	lapseDataMigrated: false,
 };
 

@@ -8,6 +8,7 @@ import {
 	DATE_BUCKET_LABELS,
 	dateBucketFor,
 } from "./dateBuckets";
+import {taskPrimaryDateIso} from "../tasks/tasksViewModel";
 import {
 	getKanbanColumnOrder,
 	getKanbanHiddenColumns,
@@ -197,7 +198,7 @@ function laneIdForDimension(
 					? card.project.deadline
 					: card.project.nextReview;
 		} else {
-			iso = card.task.dueDate;
+			iso = taskPrimaryDateIso(card.task) ?? card.task.dueDate;
 		}
 		return dateBucketFor(iso, settings.calendarFirstDayOfWeek);
 	}

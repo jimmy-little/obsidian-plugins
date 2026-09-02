@@ -105,10 +105,10 @@
 	$: void $indexRevision;
 	$: areaFilter = $areaFilterState;
 	$: kanbanView = (void sRev, plugin.settings.kanbanView);
-	$: sidebarShowsTaskList =
-		mainMode === "calendar" || (mainMode === "kanban" && kanbanView === "tasks");
+	$: sidebarShowsTaskList = mainMode === "calendar";
 	$: sidebarShowsHorizonSidebar = mainMode === "tasks";
 	$: sidebarShowsPeople = mainMode === "orbit";
+	$: sidebarShowsProjectFilter = mainMode === "kanban" || mainMode === "time";
 	$: sidebarProjectDraggable = mainMode === "kanban" && kanbanView === "projects";
 	$: dashboardAreaSubtext = (() => {
 		if (mainMode !== "dashboard") return "";
@@ -311,39 +311,51 @@
 					class="fulcrum-pm__left-scroll"
 					class:fulcrum-pm__left-scroll--tasks-fill={mainMode === "tasks"}
 				>
-					<div class="fulcrum-pm__sidebar-panel" hidden={!sidebarShowsPeople}>
-						<PeopleListPanel
-							plugin={orbitHost}
-							selectedPath={selectedPersonPath}
-							onSelectPerson={onPersonSelected}
-						/>
-					</div>
-					<div class="fulcrum-pm__sidebar-panel" hidden={!sidebarShowsHorizonSidebar}>
-						<div class="fulcrum-pm__horizon-sidebar">
-							<TaskListPanel {plugin} {hoverParentLeaf} facetsOnly />
-							<TasksMonthHeatmap {plugin} />
+					{#if sidebarShowsPeople}
+						<div class="fulcrum-pm__sidebar-panel">
+							<PeopleListPanel
+								plugin={orbitHost}
+								selectedPath={selectedPersonPath}
+								onSelectPerson={onPersonSelected}
+							/>
 						</div>
-					</div>
-					<div class="fulcrum-pm__sidebar-panel" hidden={!sidebarShowsTaskList}>
-						<TaskListPanel
-							{plugin}
-							{hoverParentLeaf}
-							scheduleDragContext={mainMode === "calendar" ||
-								(mainMode === "kanban" && kanbanView === "tasks")}
-						/>
-					</div>
-					<div
-						class="fulcrum-pm__sidebar-panel"
-						hidden={sidebarShowsPeople || sidebarShowsHorizonSidebar || sidebarShowsTaskList}
-					>
-						<ProjectListPanel
-							{plugin}
-							{hoverParentLeaf}
-							selectedPath={selectedProjectPath}
-							onSelectProject={onProjectSelected}
-							sidebarDraggable={sidebarProjectDraggable}
-						/>
-					</div>
+					{:else if sidebarShowsHorizonSidebar}
+						<div class="fulcrum-pm__sidebar-panel">
+							<div class="fulcrum-pm__horizon-sidebar">
+								<TasksMonthHeatmap {plugin} />
+								<TaskListPanel {plugin} {hoverParentLeaf} facetsOnly hideProjectFilter />
+								<div class="fulcrum-pm__horizon-projects">
+									<ProjectListPanel
+										{plugin}
+										{hoverParentLeaf}
+										selectedPath={null}
+										onSelectProject={onProjectSelected}
+										projectFilterMode
+										showFacets={false}
+									/>
+								</div>
+							</div>
+						</div>
+					{:else if sidebarShowsTaskList}
+						<div class="fulcrum-pm__sidebar-panel">
+							<TaskListPanel
+								{plugin}
+								{hoverParentLeaf}
+								scheduleDragContext={mainMode === "calendar"}
+							/>
+						</div>
+					{:else}
+						<div class="fulcrum-pm__sidebar-panel">
+							<ProjectListPanel
+								{plugin}
+								{hoverParentLeaf}
+								selectedPath={selectedProjectPath}
+								onSelectProject={onProjectSelected}
+								sidebarDraggable={sidebarProjectDraggable}
+								projectFilterMode={sidebarShowsProjectFilter}
+							/>
+						</div>
+					{/if}
 				</div>
 				{#if !sidebarShowsPeople}
 					<div class="fulcrum-pm__left-footer">
@@ -369,76 +381,85 @@
 		class:fulcrum-pm__main--project-fill={mainMode === "project" && !!projectPath}
 		class:fulcrum-pm__main--tasks-fill={mainMode === "tasks"}
 	>
-		<div class="fulcrum-pm__panel" hidden={mainMode !== "dashboard"}>
-			<header class="fulcrum-pm__main-head">
-				<div class="fulcrum-pm__main-title-block">
-					<h1 class="fulcrum-pm__main-title">Dashboard</h1>
-					{#if dashboardAreaSubtext}
-						<p class="fulcrum-muted fulcrum-pm__main-subtext">{dashboardAreaSubtext}</p>
-					{/if}
-				</div>
-				<FulcrumLeafToolbar {plugin} />
-			</header>
-			<DashboardMain {plugin} hoverParentLeaf={hoverParentLeaf} />
-		</div>
-		<div class="fulcrum-pm__panel" hidden={mainMode !== "review"}>
-			<header class="fulcrum-pm__main-head">
-				<h1 class="fulcrum-pm__main-title">Review</h1>
-				<FulcrumLeafToolbar {plugin} />
-			</header>
-			<WeeklyReviewMain {plugin} hoverParentLeaf={hoverParentLeaf} />
-		</div>
-		<div class="fulcrum-pm__panel" hidden={mainMode !== "tasks"}>
-			<TasksMain {plugin} {hoverParentLeaf} />
-		</div>
-		<div class="fulcrum-pm__panel" hidden={mainMode !== "kanban"}>
-			<header class="fulcrum-pm__main-head">
-				<h1 class="fulcrum-pm__main-title">Kanban</h1>
-				<FulcrumLeafToolbar {plugin} />
-			</header>
-			<KanbanMain {plugin} {hoverParentLeaf} />
-		</div>
-		<div class="fulcrum-pm__panel" hidden={mainMode !== "calendar"}>
-			<header class="fulcrum-pm__main-head">
-				<h1 class="fulcrum-pm__main-title">Calendar</h1>
-				<FulcrumLeafToolbar {plugin} />
-			</header>
-			<CalendarMain {plugin} {hoverParentLeaf} />
-		</div>
-		<div class="fulcrum-pm__panel" hidden={mainMode !== "time"}>
-			<header class="fulcrum-pm__main-head">
-				<h1 class="fulcrum-pm__main-title">Time</h1>
-				<FulcrumLeafToolbar {plugin} />
-			</header>
-			<TimeMain {plugin} {hoverParentLeaf} activeTab={plugin.settings.timeModeTab} />
-		</div>
-		<div class="fulcrum-pm__panel" hidden={mainMode !== "orbit"}>
-			<header class="fulcrum-pm__main-head">
-				<h1 class="fulcrum-pm__main-title">Orbit</h1>
-				<FulcrumLeafToolbar {plugin} />
-			</header>
-			{#if personPath}
-				{#key personPath}
-					<PersonProfile plugin={orbitHost} filePath={personPath} />
-				{/key}
-			{:else}
-				<p class="fulcrum-muted">Pick a person from the list.</p>
-			{/if}
-		</div>
-		<div class="fulcrum-pm__panel" hidden={mainMode !== "project"}>
-			{#if projectPath}
-				{#key projectPath}
-					<ProjectSummary
-						{plugin}
-						{projectPath}
-						{hoverParentLeaf}
-						onBackFromProject={onBackFromProject}
-						backTargetLabel={projectBackTargetLabel}
-					/>
-				{/key}
-			{:else}
-				<p class="fulcrum-muted">Pick a project from the list.</p>
-			{/if}
-		</div>
+		{#if mainMode === "dashboard"}
+			<div class="fulcrum-pm__panel">
+				<header class="fulcrum-pm__main-head">
+					<div class="fulcrum-pm__main-title-block">
+						<h1 class="fulcrum-pm__main-title">Dashboard</h1>
+						{#if dashboardAreaSubtext}
+							<p class="fulcrum-muted fulcrum-pm__main-subtext">{dashboardAreaSubtext}</p>
+						{/if}
+					</div>
+					<FulcrumLeafToolbar {plugin} />
+				</header>
+				<DashboardMain {plugin} hoverParentLeaf={hoverParentLeaf} />
+			</div>
+		{:else if mainMode === "review"}
+			<div class="fulcrum-pm__panel">
+				<header class="fulcrum-pm__main-head">
+					<h1 class="fulcrum-pm__main-title">Review</h1>
+					<FulcrumLeafToolbar {plugin} />
+				</header>
+				<WeeklyReviewMain {plugin} hoverParentLeaf={hoverParentLeaf} />
+			</div>
+		{:else if mainMode === "tasks"}
+			<div class="fulcrum-pm__panel">
+				<TasksMain {plugin} {hoverParentLeaf} />
+			</div>
+		{:else if mainMode === "kanban"}
+			<div class="fulcrum-pm__panel">
+				<header class="fulcrum-pm__main-head">
+					<h1 class="fulcrum-pm__main-title">Kanban</h1>
+					<FulcrumLeafToolbar {plugin} />
+				</header>
+				<KanbanMain {plugin} {hoverParentLeaf} />
+			</div>
+		{:else if mainMode === "calendar"}
+			<div class="fulcrum-pm__panel">
+				<header class="fulcrum-pm__main-head">
+					<h1 class="fulcrum-pm__main-title">Calendar</h1>
+					<FulcrumLeafToolbar {plugin} />
+				</header>
+				<CalendarMain {plugin} {hoverParentLeaf} />
+			</div>
+		{:else if mainMode === "time"}
+			<div class="fulcrum-pm__panel">
+				<header class="fulcrum-pm__main-head">
+					<h1 class="fulcrum-pm__main-title">Time</h1>
+					<FulcrumLeafToolbar {plugin} />
+				</header>
+				<TimeMain {plugin} {hoverParentLeaf} activeTab={plugin.settings.timeModeTab} />
+			</div>
+		{:else if mainMode === "orbit"}
+			<div class="fulcrum-pm__panel">
+				<header class="fulcrum-pm__main-head">
+					<h1 class="fulcrum-pm__main-title">Orbit</h1>
+					<FulcrumLeafToolbar {plugin} />
+				</header>
+				{#if personPath}
+					{#key personPath}
+						<PersonProfile plugin={orbitHost} filePath={personPath} />
+					{/key}
+				{:else}
+					<p class="fulcrum-muted">Pick a person from the list.</p>
+				{/if}
+			</div>
+		{:else if mainMode === "project"}
+			<div class="fulcrum-pm__panel">
+				{#if projectPath}
+					{#key projectPath}
+						<ProjectSummary
+							{plugin}
+							{projectPath}
+							{hoverParentLeaf}
+							onBackFromProject={onBackFromProject}
+							backTargetLabel={projectBackTargetLabel}
+						/>
+					{/key}
+				{:else}
+					<p class="fulcrum-muted">Pick a project from the list.</p>
+				{/if}
+			</div>
+		{/if}
 	</main>
 </div>

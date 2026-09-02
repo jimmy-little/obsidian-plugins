@@ -3,9 +3,18 @@
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {FulcrumSettings} from "../fulcrum/settingsDefaults";
-	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
+	import {
+		areaFilterState,
+		indexRevision,
+		settingsRevision,
+		viewProjectFilterPaths,
+		clearViewProjectFilterPaths,
+		readViewProjectFilterMultiselect,
+		setViewProjectFilterMultiselect,
+		toggleViewProjectFilterPath,
+	} from "../fulcrum/stores";
 	import {buildAreaLifeModeMap, filterProjectsByAreaFocus} from "../fulcrum/utils/areaFocusFilter";
-	import {parseDoneStatusSet, isProjectDone, parseList} from "../fulcrum/settingsDefaults";
+	import {parseDoneStatusSet, isProjectDone, isProjectActive, parseList} from "../fulcrum/settingsDefaults";
 	import type {IndexedArea, IndexedProject} from "../fulcrum/types";
 	import {buildProjectSidebarCounts} from "../fulcrum/utils/projectSidebarCounts";
 	import {sortIndexedProjects} from "../fulcrum/utils/projectListSort";
@@ -35,6 +44,12 @@
 	export let onSelectProject: (path: string) => void;
 	/** When true, project rows can be dragged onto the Kanban board. */
 	export let sidebarDraggable = false;
+	/** Sidebar selects projects to filter the main view (Horizon / Kanban). */
+	export let projectFilterMode = false;
+	/** When false in filter mode, hide group/sort/filter facets (Horizon embed). */
+	export let showFacets = true;
+
+	let filterMultiselect = readViewProjectFilterMultiselect();
 
 	let facetsCollapsed = false;
 	let filterOpen = false;
@@ -70,6 +85,7 @@
 	$: doneTask = (void sRev, parseDoneStatusSet(plugin.settings.taskDoneStatuses));
 
 	$: areaFilter = $areaFilterState;
+	$: filterSelectedPaths = $viewProjectFilterPaths;
 	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
@@ -81,7 +97,9 @@
 	/** Per-project counts for sidebar notifications. */
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
 	$: activeProjectRaw = (void sRev, filterProjectsByAreaFocus(
-		snapshot.projects.filter((p) => !isProjectDone(p, plugin.settings)),
+		snapshot.projects.filter((p) =>
+			projectFilterMode ? isProjectActive(p, plugin.settings) : !isProjectDone(p, plugin.settings),
+		),
 		areaFilter,
 		lifeModeMap,
 	));
@@ -122,11 +140,15 @@
 		});
 	})();
 
-	// Live text filter: substring match on project title (case-insensitive)
+	// Live text filter: substring match on project title or area (case-insensitive)
 	$: activeProjectFiltered = ((): IndexedProject[] => {
 		const q = searchQuery.trim().toLowerCase();
 		if (!q) return activeProject;
-		return activeProject.filter((p) => p.name.toLowerCase().includes(q));
+		return activeProject.filter((p) => {
+			if (p.name.toLowerCase().includes(q)) return true;
+			const area = p.areaName?.trim() || p.areaFiles[0]?.basename.replace(/\.md$/i, "") || "";
+			return area.toLowerCase().includes(q);
+		});
 	})();
 
 	$: groupBy = (void sRev, plugin.settings.dashboardActiveProjectsGroupBy);
@@ -312,11 +334,35 @@
 		collapsedGroupKeys = toggleCollapsedGroupKey(collapsedGroupKeys, key);
 		saveCollapsedGroupKeys(GROUPS_COLLAPSED_KEY, collapsedGroupKeys);
 	}
+
+	function onToggleProjectFilter(path: string, additive: boolean): void {
+		toggleViewProjectFilterPath(path, additive);
+	}
+
+	function toggleFilterMultiselect(): void {
+		filterMultiselect = !filterMultiselect;
+		setViewProjectFilterMultiselect(filterMultiselect);
+	}
 </script>
 
 <svelte:window on:click={handleFilterClickOutside} />
 
-<div class="fulcrum-project-list-panel">
+<div
+	class="fulcrum-project-list-panel"
+	class:fulcrum-project-list-panel--filter-mode={projectFilterMode}
+>
+	{#if projectFilterMode}
+		<div class="fulcrum-project-list-panel__filter-search">
+			<input
+				type="search"
+				class="fulcrum-project-list-panel__filter-search-input"
+				placeholder="Search projects…"
+				aria-label="Search projects"
+				bind:value={searchQuery}
+			/>
+		</div>
+	{/if}
+	{#if !projectFilterMode || showFacets}
 	<FulcrumFacetPanel
 		collapsed={facetsCollapsed}
 		panelId="fulcrum-project-list-panel-facets"
@@ -397,6 +443,40 @@
 			/>
 		</FulcrumFacetRow>
 	</FulcrumFacetPanel>
+	{/if}
+	{#if projectFilterMode}
+		<div class="fulcrum-project-list-panel__filter-bar">
+			<span class="fulcrum-project-list-panel__filter-bar-label">Projects</span>
+			<div class="fulcrum-project-list-panel__filter-bar-actions">
+				<button
+					type="button"
+					class="fulcrum-project-list-panel__filter-bar-btn"
+					class:fulcrum-project-list-panel__filter-bar-btn--active={filterMultiselect}
+					title="Multi-select: click rows to toggle without ⌘/Ctrl"
+					aria-label="Toggle multi-select"
+					aria-pressed={filterMultiselect}
+					on:click={() => toggleFilterMultiselect()}
+				>
+					Multi
+				</button>
+				{#if filterSelectedPaths.size > 0}
+					<button
+						type="button"
+						class="fulcrum-project-list-panel__filter-bar-btn"
+						title="Clear project filter"
+						aria-label="Clear project filter"
+						on:click={() => clearViewProjectFilterPaths()}
+					>
+						Clear
+					</button>
+				{/if}
+			</div>
+		</div>
+	{/if}
+	<div
+		class="fulcrum-project-list-panel__body"
+		class:fulcrum-project-list-panel__body--filter-scroll={projectFilterMode}
+	>
 	{#if activeProjectFiltered.length === 0}
 		<p class="fulcrum-muted fulcrum-project-list-panel__empty">
 			{searchQuery.trim()
@@ -411,6 +491,10 @@
 						{plugin}
 						{hoverParentLeaf}
 						{sidebarDraggable}
+						{projectFilterMode}
+						{filterMultiselect}
+						filterSelectedPaths={filterSelectedPaths}
+						onToggleProjectFilter={onToggleProjectFilter}
 						{p}
 						{selectedPath}
 						{onSelectProject}
@@ -451,6 +535,10 @@
 									{plugin}
 									{hoverParentLeaf}
 									{sidebarDraggable}
+									{projectFilterMode}
+									{filterMultiselect}
+									filterSelectedPaths={filterSelectedPaths}
+									onToggleProjectFilter={onToggleProjectFilter}
 									{p}
 									{selectedPath}
 									{onSelectProject}
@@ -482,6 +570,10 @@
 									{plugin}
 									{hoverParentLeaf}
 									{sidebarDraggable}
+									{projectFilterMode}
+									{filterMultiselect}
+									filterSelectedPaths={filterSelectedPaths}
+									onToggleProjectFilter={onToggleProjectFilter}
 									{p}
 									{selectedPath}
 									{onSelectProject}
@@ -513,6 +605,10 @@
 									{plugin}
 									{hoverParentLeaf}
 									{sidebarDraggable}
+									{projectFilterMode}
+									{filterMultiselect}
+									filterSelectedPaths={filterSelectedPaths}
+									onToggleProjectFilter={onToggleProjectFilter}
 									{p}
 									{selectedPath}
 									{onSelectProject}
@@ -526,4 +622,5 @@
 			</div>
 		{/each}
 	{/if}
+	</div>
 </div>

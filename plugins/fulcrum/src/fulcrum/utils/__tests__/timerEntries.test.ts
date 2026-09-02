@@ -1,5 +1,11 @@
 import {describe, expect, it} from "vitest";
-import {applyCompletedMemoryOverrides, resolveEntriesWriteKey} from "../timerEntries";
+import {
+	applyCompletedMemoryOverrides,
+	parseTimerTimestampMs,
+	readTimerEntriesFromFm,
+	resolveEntriesWriteKey,
+	shiftRunningTimerStart,
+} from "../timerEntries";
 import type {TimeEntry} from "../../../timer/types";
 import {DEFAULT_TIMER_SETTINGS} from "../../../timer/settings";
 
@@ -102,5 +108,45 @@ describe("applyCompletedMemoryOverrides", () => {
 		const merged = applyCompletedMemoryOverrides(fm, completed);
 		expect(merged).toHaveLength(1);
 		expect(merged[0]!.endTime).toBe(500_647);
+	});
+});
+
+describe("parseTimerTimestampMs", () => {
+	it("parses YAML Date objects that Obsidian stores for unquoted datetimes", () => {
+		const start = new Date(2024, 7, 24, 10, 18, 0);
+		expect(parseTimerTimestampMs(start)).toBe(start.getTime());
+	});
+
+	it("parses ISO strings and epoch milliseconds", () => {
+		expect(parseTimerTimestampMs("2024-08-24T10:18:00")).toBe(Date.parse("2024-08-24T10:18:00"));
+		expect(parseTimerTimestampMs(1_724_500_000_000)).toBe(1_724_500_000_000);
+	});
+});
+
+describe("shiftRunningTimerStart", () => {
+	it("moves start earlier by a positive offset (more elapsed)", () => {
+		const start = Date.now() - 10 * 60_000;
+		expect(shiftRunningTimerStart(start, 5, Date.now())).toBe(start - 5 * 60_000);
+	});
+
+	it("rejects a negative offset that would start in the future", () => {
+		const start = Date.now() - 60_000;
+		expect(shiftRunningTimerStart(start, -5, Date.now())).toBeNull();
+	});
+});
+
+describe("readTimerEntriesFromFm Date timestamps", () => {
+	it("treats a YAML Date startTime with no endTime as a running entry", () => {
+		const start = new Date(2024, 7, 24, 10, 18, 0);
+		const entries = readTimerEntriesFromFm(
+			{
+				timeEntries: [{description: "Work", startTime: start}],
+			},
+			DEFAULT_TIMER_SETTINGS,
+			"Tasks/Work.md",
+		);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.startTime).toBe(start.getTime());
+		expect(entries[0]!.endTime).toBeNull();
 	});
 });

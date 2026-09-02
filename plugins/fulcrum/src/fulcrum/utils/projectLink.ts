@@ -213,3 +213,56 @@ export function firstLinkedProjectFileInLine(
 		)
 	);
 }
+
+/** Host-note `project:` (single wikilink) when it resolves to an indexed project. */
+export function inheritProjectFromNoteFrontmatter(
+	app: App,
+	sourceFile: TFile,
+	fm: Record<string, unknown> | undefined,
+	projectPaths: Set<string>,
+	indexedProjects: IndexedProject[],
+	projectLinkField: string,
+): TFile | null {
+	const dest = resolveProjectFileFromFm(app, fm, sourceFile.path, projectLinkField);
+	if (!dest) return null;
+	if (projectPaths.has(dest.path)) return dest;
+	return resolveIndexedProjectByDisplay(
+		app,
+		dest.basename.replace(/\.md$/i, ""),
+		sourceFile.path,
+		indexedProjects,
+		projectPaths,
+	);
+}
+
+/**
+ * Project for an inline checkbox: line marker, else the file if it is a project note,
+ * else the host note's `project:` frontmatter.
+ */
+export function resolveInlineTaskProjectFile(
+	app: App,
+	line: string,
+	sourceFile: TFile,
+	fm: Record<string, unknown> | undefined,
+	projectPaths: Set<string>,
+	indexedProjects: IndexedProject[],
+	projectLinkField: string,
+): TFile | null {
+	const fromLine = firstLinkedProjectFileInLine(
+		app,
+		line,
+		sourceFile.path,
+		projectPaths,
+		indexedProjects,
+	);
+	if (fromLine) return fromLine;
+	if (projectPaths.has(sourceFile.path)) return sourceFile;
+	return inheritProjectFromNoteFrontmatter(
+		app,
+		sourceFile,
+		fm,
+		projectPaths,
+		indexedProjects,
+		projectLinkField,
+	);
+}

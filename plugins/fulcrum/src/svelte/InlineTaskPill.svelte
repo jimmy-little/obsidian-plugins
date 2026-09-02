@@ -5,7 +5,7 @@
 	import type {IndexedTask} from "../fulcrum/types";
 	import {dueChip, scheduledChip, taskStatusRingCss} from "../fulcrum/utils/taskAgendaDisplay";
 	import {displayTagsForTask} from "../fulcrum/utils/taskDisplayTags";
-	import {inlineTaskDisplayTitle, setInlineTaskChecked} from "../fulcrum/utils/inlineTasks";
+	import {taskDisplayTitle} from "../fulcrum/utils/inlineTasks";
 	import {taskProjectAccentCss} from "../fulcrum/utils/taskCardAccent";
 	import {convertInlineTaskToNote} from "../fulcrum/convertInlineTaskToNote";
 	import {showFulcrumTaskContextMenu} from "../fulcrum/taskContextMenu";
@@ -27,7 +27,7 @@
 		parseDoneStatusSet,
 		parseTaskStatusChoices,
 	} from "../fulcrum/settingsDefaults";
-	import {settingsRevision} from "../fulcrum/stores";
+	import {taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
 
 	export let plugin: FulcrumHost;
 	export let task: IndexedTask;
@@ -41,8 +41,7 @@
 
 	$: s = plugin.settings;
 	$: isTaskNoteEmbed = task.source === "taskNote" && embedHost != null;
-	$: displayTitle =
-		task.source === "taskNote" ? task.title : inlineTaskDisplayTitle(task.title);
+	$: displayTitle = taskDisplayTitle(task);
 	$: rev = $settingsRevision;
 	$: due = dueChip(task.dueDate, done);
 	$: sched = scheduledChip(task.scheduledDate, done);
@@ -56,6 +55,7 @@
 	$: showTags = (void rev, isTaskNoteEmbed ? s.taskNoteCardShowTags : s.inlineTaskShowTags);
 	$: tags = displayTagsForTask(task, s);
 	$: canToggle = Platform.isDesktop;
+	$: inProgress = !done && taskIsInProgress(task, s);
 	$: canConvertToNote =
 		task.source === "inline" && task.line != null && variant !== "row";
 
@@ -178,6 +178,15 @@
 			},
 		};
 	}
+
+	function bindInProgressIcon(node: HTMLElement) {
+		setIcon(node, "circle-arrow-right");
+		return {
+			destroy() {
+				node.empty();
+			},
+		};
+	}
 </script>
 
 <div
@@ -194,13 +203,14 @@
 		aria-label="Change status"
 		class="fulcrum-task-inline-pill__status"
 		class:fulcrum-task-inline-pill__status--done={done}
+		class:fulcrum-task-inline-pill__status--in-progress={inProgress}
 		class:fulcrum-task-inline-pill__status--readonly={!canToggle}
-		style={done ? undefined : `border-color: ${statusRingCss}`}
+		style={done || inProgress ? undefined : `border-color: ${statusRingCss}`}
 		title={canToggle ? "Change status" : "Open the note to edit (mobile)"}
 		on:click|stopPropagation={onStatusClick}
 		on:keydown|stopPropagation={onStatusKeydown}
 	>
-		{#if done}✓{/if}
+		{#if done}✓{:else if inProgress}<span class="fulcrum-task-inline-pill__in-progress-icon" use:bindInProgressIcon aria-hidden="true"></span>{/if}
 	</div>
 
 	<button

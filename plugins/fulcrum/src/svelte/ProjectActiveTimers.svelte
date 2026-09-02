@@ -49,10 +49,8 @@
 			return;
 		}
 
-		if (nextCount !== lastRenderedCount) {
-			await plugin.timer.refreshProjectActiveTimers();
-			lastRenderedCount = nextCount;
-		}
+		await plugin.timer.refreshProjectActiveTimers();
+		lastRenderedCount = nextCount;
 		lastProjectPath = projectPath;
 	}
 

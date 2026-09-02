@@ -66,8 +66,20 @@ describe("buildWeekStripBlocks", () => {
 		expect(blocks[0]?.count).toBe(1);
 		expect(blocks[1]?.label).toBe("Today");
 		expect(blocks[1]?.count).toBe(1);
-		expect(blocks[blocks.length - 1]?.label).toBe("Future");
-		expect(blocks[blocks.length - 1]?.count).toBe(1);
+		const future = blocks.find((b) => b.isFuture);
+		expect(future?.label).toBe("Future");
+		expect(future?.count).toBe(1);
+		const none = blocks[blocks.length - 1];
+		expect(none?.isUnscheduled).toBe(true);
+		expect(none?.count).toBe(0);
+	});
+
+	it("counts unscheduled tasks in the None bucket", () => {
+		const today = "2026-06-29";
+		const blocks = buildWeekStripBlocks([task({title: "Backlog"})], today);
+		const none = blocks.find((b) => b.isUnscheduled);
+		expect(none?.count).toBe(1);
+		expect(none?.label).toBe("None");
 	});
 
 	it("ignores meetings (tasks only)", () => {
@@ -173,6 +185,16 @@ describe("buildDaySections with meetings", () => {
 		);
 		expect(hasMeeting).toBe(false);
 	});
+
+	it("expands day sections through the current week", () => {
+		const sections = buildDaySections(
+			[task({dueDate: "2026-07-02"})],
+			settings,
+			14,
+			today,
+		);
+		expect(sections.find((s) => s.key === "2026-07-02")?.defaultExpanded).toBe(true);
+	});
 });
 
 describe("tasksViewItemKey", () => {
@@ -231,26 +253,14 @@ describe("unscheduledSectionDefaultExpanded", () => {
 		taskSidebarFilterUncheckedSource: [],
 	} as unknown as FulcrumSettings;
 
-	it("expands when unscheduled includes inline tasks", () => {
-		expect(
-			unscheduledSectionDefaultExpanded(
-				[task({source: "inline", line: 2})],
-				settings,
-			),
-		).toBe(true);
-	});
-
-	it("stays collapsed for task notes only", () => {
-		expect(unscheduledSectionDefaultExpanded([task({})], settings)).toBe(false);
-	});
-
-	it("stays collapsed when inline is filtered out", () => {
+	it("expands unscheduled so undated task notes stay visible", () => {
+		expect(unscheduledSectionDefaultExpanded([task({})], settings)).toBe(true);
 		expect(
 			unscheduledSectionDefaultExpanded(
 				[task({source: "inline", line: 2})],
 				{...settings, taskSidebarFilterUncheckedSource: ["inline"]},
 			),
-		).toBe(false);
+		).toBe(true);
 	});
 });
 

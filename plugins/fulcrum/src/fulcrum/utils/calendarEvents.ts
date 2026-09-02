@@ -16,6 +16,7 @@ import {meetingEffectiveMinutes} from "./meetingEffectiveMinutes";
 import {parseDateTime, localDateIsoFromDate as localDateIso} from "./dateTimeParse";
 import {resolveProjectAccentCss} from "./projectVisual";
 import {occurrenceScheduledIso} from "../tasks/horizonRecurringOccurrences";
+import {taskDisplayTitle} from "./inlineTasks";
 
 export {parseDateTime} from "./dateTimeParse";
 
@@ -104,7 +105,7 @@ export function taskDueDateToCalendarEvent(
 		dateIso: due.dateIso,
 		startMinutes: due.minutesFromMidnight,
 		durationMinutes: isAllDay ? null : timedDurationForTask(t),
-		title: t.title,
+		title: taskDisplayTitle(t),
 		accentCss,
 		open,
 		task: t,
@@ -170,7 +171,7 @@ export function taskToCalendarEvent(
 			dateIso: actual.dateIso,
 			startMinutes: actual.startMinutes,
 			durationMinutes: actual.durationMinutes,
-			title: t.title,
+			title: taskDisplayTitle(t),
 			accentCss,
 			open,
 			task: t,
@@ -195,7 +196,7 @@ export function taskToCalendarEvent(
 			dateIso: sched.dateIso,
 			startMinutes: startM,
 			durationMinutes: duration,
-			title: t.title,
+			title: taskDisplayTitle(t),
 			accentCss,
 			open,
 			task: t,
@@ -208,7 +209,7 @@ export function taskToCalendarEvent(
 			dateIso: sched.dateIso,
 			startMinutes: sched.minutesFromMidnight,
 			durationMinutes: timedDurationForTask(t),
-			title: t.title,
+			title: taskDisplayTitle(t),
 			accentCss,
 			open,
 			task: t,
@@ -225,7 +226,7 @@ export function taskToCalendarEvent(
 			dateIso: parsed.dateIso,
 			startMinutes: parsed.minutesFromMidnight,
 			durationMinutes: isAllDay ? null : timedDurationForTask(t),
-			title: t.title,
+			title: taskDisplayTitle(t),
 			accentCss,
 			open,
 			task: t,

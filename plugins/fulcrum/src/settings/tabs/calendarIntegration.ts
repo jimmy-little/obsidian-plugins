@@ -90,7 +90,7 @@ export function renderCalendarIntegrationSection(
 
 	new Setting(containerEl)
 		.setName("Enable Fulcrum Bridge")
-		.setDesc("Required for system calendar events in Forecast and Reminders integration.")
+		.setDesc("Required for system calendar events in Forecast and Reminders integration. OmniFocus sync uses the same helper without this toggle.")
 		.addToggle((tg) =>
 			tg.setValue(plugin.settings.conduitEnabled).onChange(async (v) => {
 				plugin.settings.conduitEnabled = v;
@@ -100,7 +100,7 @@ export function renderCalendarIntegrationSection(
 			}),
 		);
 
-	if (!plugin.settings.conduitEnabled) return;
+	if (!plugin.settings.conduitEnabled && !plugin.settings.omnifocusEnabled) return;
 
 	new Setting(containerEl)
 		.setName("Bridge URL")

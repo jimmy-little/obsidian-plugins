@@ -112,6 +112,12 @@ export interface FulcrumHost {
 	conduitClearProjectReminderList(projectPath: string): Promise<void>;
 	conduitIsProjectConnected(projectPath: string): boolean;
 	convertTaskToReminder(task: import("./types").IndexedTask): Promise<void>;
+	omnifocusCanSync(): boolean;
+	omnifocusIsProjectConnected(projectPath: string): boolean;
+	omnifocusConnectProject(projectPath: string): Promise<void>;
+	omnifocusClearProject(projectPath: string): Promise<void>;
+	omnifocusSyncNow(opts?: {projectPath?: string; projectOmniId?: string}): Promise<void>;
+	omnifocusRunDoctor(): Promise<void>;
 	/** Tabled: native widget bridge — see timer/WidgetBridge.ts */
 	// scheduleWidgetBridgeSync?(): void;
 	/** Renders markdown into a host element (e.g. activity note preview). */

@@ -42,7 +42,6 @@
 	} from "../fulcrum/utils/calendarEvents";
 	import {isRecurringParentTask, horizonRecurringOccurrenceDates} from "../fulcrum/tasks/horizonRecurringOccurrences";
 	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
-	import {buildTimerCalendarOverlay} from "../fulcrum/utils/timerCalendarOverlay";
 	import {fetchBridgeCalendarEvents} from "../conduit/bridgeCalendar";
 	import {
 		filterAtomicNotesAgainstMeetings,
@@ -62,6 +61,7 @@
 		resolveTaskScheduleFieldSetting,
 		waitForNextFileResolved,
 	} from "../fulcrum/calendar/calendarTaskSchedule";
+	import {taskDisplayTitle} from "../fulcrum/utils/inlineTasks";
 	import TaskToolbarActions from "./TaskToolbarActions.svelte";
 	import GanttMain from "./GanttMain.svelte";
 	import FulcrumDateNavToolbar from "./shared/FulcrumDateNavToolbar.svelte";
@@ -105,8 +105,6 @@
 	$: timerLayers = (void sRev, plugin.settings.timer);
 	$: scheduleDateMode = (void sRev, plugin.settings.calendarTaskScheduleField);
 
-	let timerOverlayEvents: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
-	let timerOverlayLoadId = 0;
 	let externalCalendarEvents: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
 	let externalCalendarLoadId = 0;
 
@@ -144,7 +142,7 @@
 	}
 
 	async function toggleTimerLayer(
-		key: "calendarShowTasks" | "calendarShowMeetings" | "calendarShowLogged" | "calendarShowPlanned",
+		key: "calendarShowTasks" | "calendarShowMeetings" | "calendarShowEvents",
 	): Promise<void> {
 		await plugin.patchSettings({
 			timer: {
@@ -166,32 +164,7 @@
 	$: dates = gridDates(focalDate, viewMode, weekStart);
 	$: startDate = gridStartDate(focalDate, viewMode, weekStart);
 	$: dayCount = daysInView(viewMode);
-
-	$: {
-		void rev;
-		void dates;
-		void timerLayers.calendarShowLogged;
-		void timerLayers.calendarShowPlanned;
-		const id = ++timerOverlayLoadId;
-		const end = addDays(startDate, Math.max(dayCount - 1, 0));
-		void (async (): Promise<void> => {
-			if (!timerLayers.calendarShowLogged && !timerLayers.calendarShowPlanned) {
-				if (id === timerOverlayLoadId) timerOverlayEvents = [];
-				return;
-			}
-			const overlay = await buildTimerCalendarOverlay(
-				plugin.timer,
-				startDate,
-				end,
-				{
-					showLogged: timerLayers.calendarShowLogged,
-					showPlanned: timerLayers.calendarShowPlanned,
-				},
-				(path) => plugin.openLinkedNoteFromFulcrum(path, hoverParentLeaf),
-			);
-			if (id === timerOverlayLoadId) timerOverlayEvents = overlay;
-		})();
-	}
+	$: todayIso = todayLocalISODate();
 
 	/** Tasks with scheduled or due date */
 	$: datedTasks = snapshot.tasks.filter((t) => {
@@ -200,38 +173,12 @@
 		return (
 			(sched || due) &&
 			!isDoneStatus(t.status, doneTask) &&
-			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap) &&
+			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, {includeUnlinked: true}) &&
 			(!filterProjectPath || t.projectFile?.path === filterProjectPath)
 		);
 	});
 
 	$: projectColors = projectColorMap(snapshot.projects);
-
-	$: projectTaskPaths = ((): Set<string> => {
-		if (!filterProjectPath) return new Set();
-		const paths = new Set<string>();
-		for (const t of snapshot.tasks) {
-			if (t.projectFile?.path === filterProjectPath) paths.add(t.file.path);
-		}
-		return paths;
-	})();
-
-	function timerEventLinkedToProject(e: CalendarEvent, projectPath: string): boolean {
-		const paths = [
-			e.timerNotePath,
-			e.planned?.file.path,
-			e.task?.file.path,
-		].filter((p): p is string => Boolean(p));
-		for (const p of paths) {
-			if (p === projectPath || projectTaskPaths.has(p)) return true;
-			if (p.startsWith(`${projectPath}/`)) return true;
-		}
-		return false;
-	}
-
-	$: scopedTimerOverlayEvents = filterProjectPath
-		? timerOverlayEvents.filter((e) => timerEventLinkedToProject(e, filterProjectPath))
-		: timerOverlayEvents;
 
 	$: noteAccentCss = filterProjectPath
 		? resolveProjectAccentCss(projectColors.get(filterProjectPath))
@@ -242,10 +189,15 @@
 		void dates;
 		void plugin.settings.remindersCalendarIds;
 		void plugin.settings.conduitEnabled;
+		void timerLayers.calendarShowEvents;
 		const id = ++externalCalendarLoadId;
 		const from = toISODate(startDate);
 		const to = toISODate(addDays(startDate, Math.max(dayCount - 1, 0)));
 		void (async (): Promise<void> => {
+			if (!timerLayers.calendarShowEvents) {
+				if (id === externalCalendarLoadId) externalCalendarEvents = [];
+				return;
+			}
 			try {
 				const rows = await fetchBridgeCalendarEvents(plugin.settings, from, to);
 				if (id === externalCalendarLoadId) externalCalendarEvents = rows;
@@ -255,19 +207,17 @@
 		})();
 	}
 
-	/** Unified calendar events (tasks + meetings + timer overlay) */
+	/** Unified calendar events (tasks + meetings + optional Bridge calendar events) */
 	$: allCalendarEvents = ((): import("../fulcrum/utils/calendarEvents").CalendarEvent[] => {
 		void timerLayers.calendarShowTasks;
 		void timerLayers.calendarShowMeetings;
-		void timerLayers.calendarShowLogged;
-		void timerLayers.calendarShowPlanned;
-		void scopedTimerOverlayEvents;
+		void timerLayers.calendarShowEvents;
 		void filterProjectPath;
 		void projectAtomicNotes;
 		void noteAccentCss;
+		void externalCalendarEvents;
 		const out: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
 		if (timerLayers.calendarShowTasks) {
-			const todayIso = todayLocalISODate();
 			for (const t of datedTasks) {
 				const open = () => plugin.openIndexedTask(t, hoverParentLeaf);
 				if (isRecurringParentTask(t)) {
@@ -317,8 +267,7 @@
 			);
 			if (e) out.push(e);
 		}
-		out.push(...scopedTimerOverlayEvents);
-		if (!filterProjectPath) {
+		if (timerLayers.calendarShowEvents && !filterProjectPath) {
 			const meetingsForDedupe = snapshot.meetings.filter(
 				(m) =>
 					meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap),
@@ -357,12 +306,12 @@
 		dayCount,
 		timerLayers.calendarShowTasks ? "T" : "",
 		timerLayers.calendarShowMeetings ? "M" : "",
-		timerLayers.calendarShowLogged ? "L" : "",
-		timerLayers.calendarShowPlanned ? "P" : "",
+		timerLayers.calendarShowEvents ? "E" : "",
 		allCalendarEvents.length,
-		timerOverlayEvents.length,
+		externalCalendarEvents.length,
 		projectAtomicNotes.length,
 		filterProjectPath ?? "",
+		todayIso,
 	].join("|");
 
 	function eventsForDate(iso: string): {allDay: CalendarEvent[]; timed: CalendarEvent[]} {
@@ -470,7 +419,7 @@
 					dateIso: iso,
 					startMinutes: hour != null ? hour * 60 : null,
 					durationMinutes: null,
-					title: task.title,
+					title: taskDisplayTitle(task),
 					accentCss: null,
 					open: () => plugin.openIndexedTask(task, hoverParentLeaf),
 					task,
@@ -644,15 +593,9 @@
 		<button
 			type="button"
 			class="fulcrum-calendar__layer"
-			class:fulcrum-calendar__layer--on={timerLayers.calendarShowLogged}
-			on:click={() => toggleTimerLayer("calendarShowLogged")}
-		>Logged</button>
-		<button
-			type="button"
-			class="fulcrum-calendar__layer"
-			class:fulcrum-calendar__layer--on={timerLayers.calendarShowPlanned}
-			on:click={() => toggleTimerLayer("calendarShowPlanned")}
-		>Planned</button>
+			class:fulcrum-calendar__layer--on={timerLayers.calendarShowEvents}
+			on:click={() => toggleTimerLayer("calendarShowEvents")}
+		>Calendar Events</button>
 	</div>
 
 	<div class="fulcrum-calendar__scroll">
@@ -681,6 +624,7 @@
 									class="fulcrum-calendar__day-cell {dropTargetClass(iso)}"
 									class:fulcrum-calendar__day-cell--other-month={!cell.isCurrentMonth}
 									class:fulcrum-calendar__day-cell--has-events={hasEvents}
+									class:fulcrum-calendar__day-cell--today={iso === todayIso}
 									role="gridcell"
 									data-date={iso}
 									data-drop-target=""
@@ -721,7 +665,12 @@
 			<div class="fulcrum-calendar__time-grid-header">
 				<div class="fulcrum-calendar__time-grid-spacer"></div>
 				{#each dayCols as {label, date}}
-					<div class="fulcrum-calendar__time-grid-col-head" data-date={toISODate(date)}>
+					{@const headIso = toISODate(date)}
+					<div
+						class="fulcrum-calendar__time-grid-col-head"
+						class:fulcrum-calendar__time-grid-col-head--today={headIso === todayIso}
+						data-date={headIso}
+					>
 						{label}
 					</div>
 				{/each}
@@ -733,6 +682,7 @@
 					{@const {allDay} = eventsForDate(iso)}
 					<div
 						class="fulcrum-calendar__allday-cell {dropTargetClass(iso)}"
+						class:fulcrum-calendar__allday-cell--today={iso === todayIso}
 						data-date={iso}
 						data-drop-target=""
 						on:dragover={(e) => onDropZoneDragOver(e, iso)}
@@ -761,7 +711,10 @@
 				{#each dayCols as {date}}
 					{@const iso = toISODate(date)}
 					{@const {timed} = eventsForDate(iso)}
-					<div class="fulcrum-calendar__time-grid-day-col">
+					<div
+						class="fulcrum-calendar__time-grid-day-col"
+						class:fulcrum-calendar__time-grid-day-col--today={iso === todayIso}
+					>
 						<div class="fulcrum-calendar__time-slots">
 							{#each Array(24) as _, hour}
 								<div
@@ -804,7 +757,7 @@
 									<span class="fulcrum-calendar__timed-event-title">{e.title}</span>
 								</button>
 							{/each}
-							{#if iso === todayLocalISODate()}
+							{#if iso === todayIso}
 								<div
 									class="fulcrum-calendar__now-line"
 									style="top: {nowLineTopPct}%"

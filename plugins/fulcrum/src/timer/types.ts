@@ -112,6 +112,6 @@ export interface PlannedBlockUpsertInput {
 	tags?: string[];
 }
 
-export type TimeModeTab = "overview" | "activity" | "sessions" | "entryGrid";
+export type TimeModeTab = "overview" | "sessions";
 
 export const FULCRUM_PLANNED_DRAG_MIME = "application/x-obsidian-fulcrum-planned+json" as const;

@@ -2,7 +2,7 @@
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
-	import {parseDoneStatusSet, parseList} from "../fulcrum/settingsDefaults";
+	import {parseDoneStatusSet, isProjectDone} from "../fulcrum/settingsDefaults";
 	import {
 		buildGanttModel,
 		ganttBarStyle,
@@ -43,7 +43,7 @@
 
 	$: sRev = $settingsRevision;
 	$: doneTask = parseDoneStatusSet(plugin.settings.taskDoneStatuses);
-	$: doneProject = (void sRev, new Set(parseList(plugin.settings.projectDoneStatuses)));
+	$: doneProject = (void sRev, parseDoneStatusSet(plugin.settings.projectDoneStatuses));
 	$: areaFilter = $areaFilterState;
 
 	let zoom: GanttZoom = "4w";
@@ -67,9 +67,7 @@
 			settings: plugin.settings,
 		});
 		return filterProjectsByAreaFocus(
-			snapshot.projects.filter(
-				(p) => !doneProject.has((p.status ?? "").trim().toLowerCase()),
-			),
+			snapshot.projects.filter((p) => !isProjectDone(p, plugin.settings)),
 			areaFilter,
 			lifeModeMap,
 		).map((p) => p.file.path);

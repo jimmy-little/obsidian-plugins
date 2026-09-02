@@ -14,7 +14,7 @@ import {
 	parseObsidianTasksEmojiDates,
 	replaceInlineTaskWithWikilink,
 } from "./utils/inlineTasks";
-import {firstLinkedProjectFileInLine} from "./utils/projectLink";
+import {resolveInlineTaskProjectFile} from "./utils/projectLink";
 import {parseWikiLink} from "./utils/wikilinks";
 
 function buildCreateOptionsFromLine(
@@ -115,16 +115,17 @@ export async function convertInlineTaskAtLine(
 	if (!proj) {
 		const snap = host.vaultIndex.getSnapshot();
 		const projectPaths = new Set(snap.projects.map((p) => p.file.path));
-		proj = firstLinkedProjectFileInLine(
+		const cache = host.app.metadataCache.getFileCache(file);
+		const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+		proj = resolveInlineTaskProjectFile(
 			host.app,
 			rawLine,
-			file.path,
+			file,
+			fm,
 			projectPaths,
 			snap.projects,
+			host.settings.projectLinkField,
 		);
-		if (!proj && projectPaths.has(file.path)) {
-			proj = file;
-		}
 	}
 	if (!area) {
 		const cache = host.app.metadataCache.getFileCache(file);

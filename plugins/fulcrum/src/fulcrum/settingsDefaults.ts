@@ -312,6 +312,16 @@ export interface FulcrumSettings {
 	/** Forecast: show system calendar events from Fulcrum Bridge. */
 	forecastShowSystemCalendars: boolean;
 
+	/** Two-way OmniFocus sync (mutually exclusive with Reminders task backend). */
+	omnifocusEnabled: boolean;
+	omnifocusBridgeUrl: string;
+	omnifocusProjectIdField: string;
+	omnifocusTaskIdField: string;
+	omnifocusSyncedAtField: string;
+	omnifocusSyncHashField: string;
+	omnifocusPollSeconds: number;
+	omnifocusSyncInbox: boolean;
+
 	/** Quick note themes for project page segmented submit (emoji, type, journal). */
 	quickNoteThemes: QuickNoteTheme[];
 }
@@ -321,16 +331,14 @@ export interface QuickNoteTheme {
 	id: string;
 	label: string;
 	emoji: string;
-	/** Value for inline `type::` (defaults to `${emoji} ${label}` when empty). */
-	type: string;
 	journal?: string;
 }
 
 export const DEFAULT_QUICK_NOTE_THEMES: QuickNoteTheme[] = [
-	{id: "communication", label: "Communication", emoji: "☎️", type: "☎️ Communication", journal: "Work"},
-	{id: "challenge", label: "Challenge", emoji: "🧗", type: "🧗 Challenge", journal: "Work"},
-	{id: "intention", label: "Intention", emoji: "🎯", type: "🎯 Intention", journal: "Work"},
-	{id: "big-win", label: "Big Win", emoji: "🏆", type: "🏆 Big Win", journal: "Work"},
+	{id: "communication", label: "Communication", emoji: "☎️", journal: "Work"},
+	{id: "challenge", label: "Challenge", emoji: "🧗", journal: "Work"},
+	{id: "intention", label: "Intention", emoji: "🎯", journal: "Work"},
+	{id: "big-win", label: "Big Win", emoji: "🏆", journal: "Work"},
 ];
 
 /** Root path for area notes (separate from projects when `areasFolder` is set). */
@@ -417,8 +425,8 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	projectStatuses: "planning, active, on-hold, completed, archived",
 	priorities: "high, medium, low",
 	taskDoneStatuses: "done, completed",
-	projectActiveStatuses: "planning, active, on-hold",
-	projectDoneStatuses: "completed, archived",
+	projectActiveStatuses: "intake, in progress, ongoing, simmering",
+	projectDoneStatuses: "completed, archived, done",
 
 	openViewsIn: "main",
 	kanbanView: "projects",
@@ -525,8 +533,22 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	forecastShowVaultMeetings: true,
 	forecastShowSystemCalendars: false,
 
+	omnifocusEnabled: false,
+	omnifocusBridgeUrl: "http://127.0.0.1:9247",
+	omnifocusProjectIdField: "omnifocusProjectId",
+	omnifocusTaskIdField: "omnifocusTaskId",
+	omnifocusSyncedAtField: "omnifocusSyncedAt",
+	omnifocusSyncHashField: "omnifocusSyncHash",
+	omnifocusPollSeconds: 30,
+	omnifocusSyncInbox: false,
+
 	quickNoteThemes: [...DEFAULT_QUICK_NOTE_THEMES],
 };
+
+/** Calendar overlay can use the same local HTTP bridge as Reminders or OmniFocus. */
+export function fulcrumBridgeEnabled(s: Pick<FulcrumSettings, "conduitEnabled" | "omnifocusEnabled">): boolean {
+	return s.conduitEnabled || s.omnifocusEnabled;
+}
 
 export function parseList(s: string): string[] {
 	return s
@@ -551,6 +573,19 @@ export function isDoneStatus(status: string, doneSet: Set<string>): boolean {
 /** Case-insensitive done/inactive project statuses from settings CSV. */
 export function parseDoneProjectStatusSet(statusesCsv: string): Set<string> {
 	return parseDoneStatusSet(statusesCsv);
+}
+
+/** Case-insensitive active project statuses from settings CSV. */
+export function parseActiveProjectStatusSet(statusesCsv: string): Set<string> {
+	return parseDoneStatusSet(statusesCsv);
+}
+
+/** True when project status is in `projectActiveStatuses` (or not done when that list is empty). */
+export function isProjectActive(project: IndexedProject, settings: FulcrumSettings): boolean {
+	if (isProjectDone(project, settings)) return false;
+	const activeSet = parseActiveProjectStatusSet(settings.projectActiveStatuses);
+	if (activeSet.size === 0) return true;
+	return activeSet.has(normalizeStatusKey(project.status ?? ""));
 }
 
 /** True when project status is done or the note lives under `completedProjectsFolder`. */

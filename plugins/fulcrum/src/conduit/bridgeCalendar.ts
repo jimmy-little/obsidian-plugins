@@ -1,4 +1,5 @@
 import type {FulcrumSettings} from "../fulcrum/settingsDefaults";
+import {fulcrumBridgeEnabled} from "../fulcrum/settingsDefaults";
 import type {BridgeCalendarEvent} from "./types";
 import type {CalendarEvent} from "../fulcrum/utils/calendarEvents";
 import {createRemindersBridge} from "./remindersBridge";
@@ -44,7 +45,7 @@ export async function fetchBridgeCalendarEvents(
 	toIso: string,
 ): Promise<CalendarEvent[]> {
 	const ids = parseCalendarIds(settings.remindersCalendarIds);
-	if (!settings.conduitEnabled || ids.length === 0) return [];
+	if (!fulcrumBridgeEnabled(settings) || ids.length === 0) return [];
 	const bridge = await createRemindersBridge(settings);
 	if (!bridge.events) return [];
 	const rows = await bridge.events(fromIso, toIso, ids);

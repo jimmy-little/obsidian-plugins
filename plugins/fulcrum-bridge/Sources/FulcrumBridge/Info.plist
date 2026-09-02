@@ -22,5 +22,7 @@
 	<string>Fulcrum Bridge reads your calendars to show events in the Obsidian Forecast view.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Fulcrum Bridge reads and updates Apple Reminders for Fulcrum integration.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Fulcrum Bridge talks to OmniFocus so Fulcrum can sync projects and tasks.</string>
 </dict>
 </plist>

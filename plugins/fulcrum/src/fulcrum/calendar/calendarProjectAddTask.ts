@@ -2,6 +2,7 @@ import {FuzzySuggestModal, Notice} from "obsidian";
 import type {FulcrumHost} from "../pluginBridge";
 import {applyTaskScheduleOnSlot} from "../kanban/taskFieldUpdate";
 import type {IndexedTask} from "../types";
+import {taskDisplayTitle} from "../utils/inlineTasks";
 import type {CalendarDropSlot} from "./calendarDropSlot";
 import {promptTaskScheduleField, waitForNextFileResolved} from "./calendarTaskSchedule";
 
@@ -21,14 +22,14 @@ export class ProjectCalendarTaskPickModal extends FuzzySuggestModal<ProjectCalen
 
 	getItems(): ProjectCalendarPickItem[] {
 		const sorted = [...this.tasks].sort((a, b) =>
-			a.title.localeCompare(b.title, undefined, {sensitivity: "base"}),
+			taskDisplayTitle(a).localeCompare(taskDisplayTitle(b), undefined, {sensitivity: "base"}),
 		);
 		return [{kind: "new" as const}, ...sorted.map((task) => ({kind: "task" as const, task}))];
 	}
 
 	getItemText(item: ProjectCalendarPickItem): string {
 		if (item.kind === "new") return "New task";
-		return item.task.title;
+		return taskDisplayTitle(item.task);
 	}
 
 	onChooseItem(item: ProjectCalendarPickItem): void {

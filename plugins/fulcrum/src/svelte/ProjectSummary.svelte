@@ -1,6 +1,6 @@
 <script lang="ts">
 	import {TFile} from "obsidian";
-	import {Menu, setIcon} from "obsidian";
+	import {setIcon} from "obsidian";
 	import {onMount} from "svelte";
 
 	function bannerBtnIcon(el: HTMLElement, icon: string): { update: (next: string) => void } {
@@ -44,6 +44,9 @@
 	import QuickNoteSubmitButton from "./QuickNoteSubmitButton.svelte";
 	import ProjectActiveTimers from "./ProjectActiveTimers.svelte";
 	import ProjectHeaderActiveTimers from "./ProjectHeaderActiveTimers.svelte";
+	import {showFulcrumProjectCardContextMenu} from "../fulcrum/projectCardContextMenu";
+	import {readProjectOmniFocusLink} from "../omnifocus/mapping";
+	import ProjectOmniFocusLinkPill from "./ProjectOmniFocusLinkPill.svelte";
 
 	type ProjectSummaryTab = "overview" | "board" | "timeline" | "calendar" | "files";
 	const PROJECT_TABS: {id: ProjectSummaryTab; label: string}[] = [
@@ -187,16 +190,11 @@
 		void appendLog();
 	}
 
-	async function captureSnapshot(): Promise<void> {
-		await plugin.archiveProjectSnapshot(projectPath);
-	}
-
-	function markReviewed(): void {
-		plugin.openMarkReviewedModal(projectPath, () => void loadLogActivity());
-	}
-
-	function openProjectProperties(): void {
-		plugin.openProjectNoteProperties(projectPath);
+	function openHeaderMenu(ev: MouseEvent): void {
+		if (!rollup) return;
+		showFulcrumProjectCardContextMenu(ev, plugin, rollup.project, hoverParentLeaf, {
+			onReviewComplete: () => void loadLogActivity(),
+		});
 	}
 
 	$: nextUpSeg = rollup
@@ -245,7 +243,9 @@
 				href: jiraHref(rollup.pageMeta.jira),
 			}
 		: null;
-	$: ticketUrl = jiraTicket?.href ?? null;
+	$: omniFocusLink = rollup
+		? (void rev, readProjectOmniFocusLink(plugin.app, rollup.project, plugin.settings))
+		: null;
 
 	$: bannerMode = !rollup
 		? "plain"
@@ -289,23 +289,6 @@
 
 	$: statusKind = rollup ? statusPillKind(rollup.project.status) : "neutral";
 
-	function markProjectComplete(): void {
-		plugin.openMarkProjectCompleteModal(projectPath);
-	}
-
-	$: taskSourceMode = plugin.settings.taskSourceMode;
-	$: showNewInlineTaskBtn = taskSourceMode === "obsidianTasks" || taskSourceMode === "both";
-	$: showNewTaskNoteBtn = taskSourceMode === "taskNotes" || taskSourceMode === "both";
-	$: showNewNoteFromTemplateBtn = plugin.settings.projectNewNoteTemplatePath.trim().length > 0;
-
-	function startProjectTimer(): void {
-		if (!rollup) return;
-		void plugin.startTimerInNote(rollup.project.file.path, {
-			projectName: rollup.project.name,
-			noteTitle: rollup.project.name,
-		});
-	}
-
 	let activeTab: ProjectSummaryTab = "overview";
 
 	onMount(() => {
@@ -326,93 +309,6 @@
 		} catch {
 			/* ignore */
 		}
-	}
-
-	function openHeaderMenu(ev: MouseEvent): void {
-		if (!rollup) return;
-		const menu = new Menu();
-		menu.addItem((item) => {
-			item.setTitle("Open note");
-			item.setIcon("square-arrow-out-up-right");
-			item.onClick(() => openPath(rollup.project.file.path));
-		});
-		if (ticketUrl) {
-			const url = ticketUrl;
-			menu.addItem((item) => {
-				item.setTitle("External link");
-				item.setIcon("external-link");
-				item.onClick(() => window.open(url, "_blank", "noopener,noreferrer"));
-			});
-		}
-		menu.addItem((item) => {
-			item.setTitle("Capture snapshot");
-			item.setIcon("camera");
-			item.onClick(() => void captureSnapshot());
-		});
-		menu.addItem((item) => {
-			item.setTitle("Edit properties");
-			item.setIcon("file-json");
-			item.onClick(() => openProjectProperties());
-		});
-		if (plugin.conduitCanSync()) {
-			if (plugin.conduitIsProjectConnected(projectPath)) {
-				menu.addItem((item) => {
-					item.setTitle("Clear Reminders list");
-					item.setIcon("bell-off");
-					item.onClick(() => void plugin.conduitClearProjectReminderList(projectPath));
-				});
-			} else {
-				menu.addItem((item) => {
-					item.setTitle("Set Reminders list…");
-					item.setIcon("bell");
-					item.onClick(() => void plugin.conduitConnectProject(projectPath));
-				});
-			}
-		}
-		menu.addItem((item) => {
-			item.setTitle("Mark reviewed");
-			item.setIcon("glasses");
-			item.onClick(() => markReviewed());
-		});
-		menu.addItem((item) => {
-			item.setTitle("Add milestone");
-			item.setIcon("gem");
-			item.onClick(() => plugin.openAddMilestoneModal(projectPath));
-		});
-		menu.addItem((item) => {
-			item.setTitle("Mark project complete");
-			item.setIcon("folder-check");
-			item.onClick(() => markProjectComplete());
-		});
-		if (showNewNoteFromTemplateBtn) {
-			menu.addItem((item) => {
-				item.setTitle("New note from template");
-				item.setIcon("file-plus");
-				item.onClick(() =>
-					void plugin.createNewNoteFromTemplateForProject(projectPath, hoverParentLeaf),
-				);
-			});
-		}
-		if (showNewInlineTaskBtn) {
-			menu.addItem((item) => {
-				item.setTitle("New task");
-				item.setIcon("check");
-				item.onClick(() => plugin.openNewInlineTaskForProject(projectPath));
-			});
-		}
-		if (showNewTaskNoteBtn) {
-			menu.addItem((item) => {
-				item.setTitle("New task note");
-				item.setIcon("file-check");
-				item.onClick(() => plugin.openTaskNoteCreateForProject(projectPath));
-			});
-		}
-		menu.addItem((item) => {
-			item.setTitle("Start timer in project note");
-			item.setIcon("play");
-			item.onClick(() => startProjectTimer());
-		});
-		menu.showAtMouseEvent(ev);
 	}
 </script>
 
@@ -467,7 +363,7 @@
 						{#if rollup.project.areaName}
 							<div class="fulcrum-project-banner__area">{rollup.project.areaName}</div>
 						{/if}
-						{#if rollup.relatedProjects?.length > 0 || rollup.relatedProducts?.length > 0 || jiraTicket}
+						{#if rollup.relatedProjects?.length > 0 || rollup.relatedProducts?.length > 0 || jiraTicket || omniFocusLink}
 							<div class="fulcrum-project-banner__related">
 								{#if rollup.relatedProjects?.length > 0}
 									<div class="fulcrum-project-banner__related-row">
@@ -488,7 +384,7 @@
 										{/each}
 									</div>
 								{/if}
-								{#if rollup.relatedProducts?.length > 0 || jiraTicket}
+								{#if rollup.relatedProducts?.length > 0 || jiraTicket || omniFocusLink}
 									<div class="fulcrum-project-banner__related-row">
 										{#each rollup.relatedProducts as note (note.file.path)}
 											<button
@@ -531,6 +427,12 @@
 													<span class="fulcrum-project-related-pill__label">{jiraTicket.label}</span>
 												</span>
 											{/if}
+										{/if}
+										{#if omniFocusLink}
+											<ProjectOmniFocusLinkPill
+												href={omniFocusLink.href}
+												title={`Open in OmniFocus (${omniFocusLink.id})`}
+											/>
 										{/if}
 									</div>
 								{/if}

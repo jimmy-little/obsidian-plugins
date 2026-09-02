@@ -13,6 +13,13 @@
 	export let p: IndexedProject;
 	export let selectedPath: string | null;
 	export let onSelectProject: (path: string) => void;
+	/** When set, row highlights when path is in the filter selection set. */
+	export let filterSelectedPaths: Set<string> | undefined = undefined;
+	/** Click toggles view filter instead of navigating. */
+	export let projectFilterMode = false;
+	export let filterMultiselect = false;
+	export let onToggleProjectFilter: ((path: string, additive: boolean) => void) | undefined =
+		undefined;
 	export let openTaskCount = 0;
 	export let upcomingMeetingCount = 0;
 	/** Larger card style for dashboard “needs attention” grid. */
@@ -54,7 +61,17 @@
 	$: hasMeta = Boolean(endDisp || reviewDisp || hasNotifs);
 	$: desc = p.description?.trim() ?? "";
 
-	function activateRow(): void {
+	$: filterSelected = filterSelectedPaths?.has(p.file.path) ?? false;
+	$: rowActive = projectFilterMode ? filterSelected : selectedPath === p.file.path;
+
+	function activateRow(ev?: MouseEvent): void {
+		if (projectFilterMode && onToggleProjectFilter) {
+			const additive = Boolean(
+				ev && (ev.metaKey || ev.ctrlKey || filterMultiselect),
+			);
+			onToggleProjectFilter(p.file.path, additive);
+			return;
+		}
 		onSelectProject(p.file.path);
 	}
 
@@ -79,11 +96,12 @@
 	tabindex="0"
 	class="fulcrum-pl-row"
 	class:fulcrum-pl-row--tile={tile}
-	class:fulcrum-pl-row--active={selectedPath === p.file.path}
+	class:fulcrum-pl-row--active={rowActive}
+	class:fulcrum-pl-row--filter-selected={projectFilterMode && filterSelected}
 	class:fulcrum-pl-row--overdue={overdue}
 	style={`--fulcrum-pl-accent: ${accent}`}
 	aria-label={overdue ? `${p.name}, review overdue` : p.name}
-	on:click={activateRow}
+	on:click={(e) => activateRow(e)}
 	on:keydown={onRowKeydown}
 	on:contextmenu={onContextMenu}
 	draggable={sidebarDraggable}

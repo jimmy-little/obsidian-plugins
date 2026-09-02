@@ -3,7 +3,7 @@
 	import type {WorkspaceLeaf} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {TasksViewGroupBy, TasksViewColumnId} from "../fulcrum/settingsDefaults";
-	import {indexRevision, settingsRevision, areaFilterState} from "../fulcrum/stores";
+	import {indexRevision, settingsRevision, areaFilterState, viewProjectFilterPaths} from "../fulcrum/stores";
 	import {isDoneStatus, parseDoneStatusSet} from "../fulcrum/settingsDefaults";
 	import {buildAreaLifeModeMap, meetingPassesAreaFilter} from "../fulcrum/utils/areaFocusFilter";
 	import {
@@ -21,6 +21,7 @@
 	import {handleTasksViewTaskDrop, tasksViewDragOver} from "../fulcrum/tasks/tasksViewDnD";
 	import {FULCRUM_CALENDAR_TASK_MIME, findTaskByDragKey} from "../fulcrum/calendar/calendarTaskSchedule";
 	import type {ForecastCalendarRow} from "../fulcrum/tasks/tasksViewModel";
+	import {showFulcrumProjectCardContextMenu} from "../fulcrum/projectCardContextMenu";
 
 	export let plugin: FulcrumHost;
 	export let groupBy: TasksViewGroupBy;
@@ -53,12 +54,14 @@
 		settings: plugin.settings,
 	});
 
+	$: selectedProjectPaths = $viewProjectFilterPaths;
 	$: filteredTasks = collectHorizonTasks(
 		snapshot,
 		plugin.settings,
 		areaFilter,
 		lifeModeMap,
 		doneTask,
+		selectedProjectPaths,
 	);
 	$: filteredMeetings =
 		groupBy === "day" && plugin.settings.forecastShowVaultMeetings
@@ -142,6 +145,14 @@
 			},
 		};
 	}
+
+	function onSectionContextMenu(ev: MouseEvent, section: TasksViewSection): void {
+		const projectPath = section.dropProjectPath;
+		if (!projectPath) return;
+		const p = snapshot.projects.find((x) => x.file.path === projectPath);
+		if (!p) return;
+		showFulcrumProjectCardContextMenu(ev, plugin, p, hoverParentLeaf);
+	}
 </script>
 
 <div class="fulcrum-tasks-center">
@@ -177,6 +188,7 @@
 						if (dropSectionKey === section.key) dropSectionKey = null;
 					}}
 					on:drop={(e) => void onSectionDrop(e, section)}
+					on:contextmenu={(e) => onSectionContextMenu(e, section)}
 				>
 					<span
 						class="fulcrum-tasks-center__section-chevron"

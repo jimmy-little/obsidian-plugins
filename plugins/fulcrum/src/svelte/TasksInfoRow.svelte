@@ -3,6 +3,7 @@
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {TasksViewColumnId} from "../fulcrum/settingsDefaults";
 	import type {TasksViewItem} from "../fulcrum/tasks/tasksViewModel";
+	import {taskDisplayTitle} from "../fulcrum/utils/inlineTasks";
 	import {
 		formatMinutesLabel,
 		gridTemplateForColumns,
@@ -20,7 +21,7 @@
 
 	$: title =
 		item.kind === "task"
-			? item.task.title
+			? taskDisplayTitle(item.task)
 			: item.kind === "meeting"
 				? item.meeting.title?.trim() || item.meeting.file.basename.replace(/\.md$/i, "")
 				: item.title;

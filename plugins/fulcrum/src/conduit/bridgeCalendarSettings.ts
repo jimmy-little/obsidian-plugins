@@ -1,5 +1,6 @@
 import {Setting} from "obsidian";
 import type {FulcrumSettings} from "../fulcrum/settingsDefaults";
+import {fulcrumBridgeEnabled} from "../fulcrum/settingsDefaults";
 import {createRemindersBridge} from "./remindersBridge";
 import type {BridgeCalendarRow} from "./types";
 
@@ -23,8 +24,8 @@ export type BridgeCalendarLoadResult = {
 export async function loadBridgeCalendarRows(
 	host: BridgeCalendarHost,
 ): Promise<BridgeCalendarLoadResult> {
-	if (!host.settings.conduitEnabled) {
-		return {rows: [], error: "Enable Fulcrum Bridge above to load calendars."};
+	if (!fulcrumBridgeEnabled(host.settings)) {
+		return {rows: [], error: "Enable Fulcrum Bridge or OmniFocus sync above to load calendars."};
 	}
 	try {
 		const bridge = await createRemindersBridge(host.settings);

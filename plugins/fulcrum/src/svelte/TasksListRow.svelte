@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {createEventDispatcher} from "svelte";
 	import type {WorkspaceLeaf} from "obsidian";
+	import {setIcon} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {TasksViewColumnId} from "../fulcrum/settingsDefaults";
 	import type {IndexedTask} from "../fulcrum/types";
@@ -17,7 +18,11 @@
 		calendarTaskDragKey,
 	} from "../fulcrum/calendar/calendarTaskSchedule";
 	import {setCalendarTaskDragActive} from "../fulcrum/stores";
+	import {taskDisplayTitle} from "../fulcrum/utils/inlineTasks";
+	import {taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
 	import {handleTaskStatusClick, openTaskNoteFromCard} from "../fulcrum/taskCardInteractions";
+	import {showFulcrumTaskContextMenu} from "../fulcrum/taskContextMenu";
+	import {showFulcrumProjectCardContextMenu} from "../fulcrum/projectCardContextMenu";
 
 	export let plugin: FulcrumHost;
 	export let task: IndexedTask;
@@ -71,9 +76,28 @@
 		openTaskNoteFromCard(plugin, task, hoverParentLeaf);
 	}
 
+	function onContextMenu(ev: MouseEvent): void {
+		showFulcrumTaskContextMenu(ev, plugin, task, hoverParentLeaf);
+	}
+
+	function onProjectContextMenu(ev: MouseEvent): void {
+		if (!task.projectFile) return;
+		const p = plugin.vaultIndex
+			.getSnapshot()
+			.projects.find((x) => x.file.path === task.projectFile!.path);
+		if (!p) return;
+		showFulcrumProjectCardContextMenu(ev, plugin, p, hoverParentLeaf);
+	}
+
+	function bindInProgressIcon(node: HTMLElement) {
+		setIcon(node, "circle-arrow-right");
+		return { destroy() { node.empty(); } };
+	}
+
 	$: rowGridStyle = `grid-template-columns: ${gridTemplateForColumns(columns)}`;
 	$: statusRingStyle = taskStatusRingCss(task, doneTask);
 	$: done = isDoneStatus(task.status, doneTask);
+	$: inProgress = !done && taskIsInProgress(task, plugin.settings);
 	$: displayScheduled = occurrenceDateIso
 		? occurrenceScheduledIso(task, occurrenceDateIso)
 		: task.scheduledDate;
@@ -81,6 +105,7 @@
 	$: schedChip = scheduledChip(displayScheduled, done);
 	$: dueChipVal = dueChip(displayDue, done);
 	$: showRecur = !!task.recurrence?.trim() && !task.recurrenceParentPath;
+	$: displayTitle = taskDisplayTitle(task);
 </script>
 
 <button
@@ -95,29 +120,38 @@
 	draggable="true"
 	on:dragstart={onDragStart}
 	on:dragend={onDragEnd}
+	on:contextmenu={onContextMenu}
 >
 	<span
 		class="fulcrum-tasks-row__status"
+		class:fulcrum-tasks-row__status--in-progress={inProgress}
 		role="button"
 		tabindex="0"
 		title="Status"
-		style={statusRingStyle}
+		style={inProgress ? undefined : statusRingStyle}
 		on:click={onStatusClick}
 		on:keydown={onStatusKeydown}
-	></span>
+	>
+		{#if inProgress}
+			<span class="fulcrum-tasks-row__in-progress-icon" use:bindInProgressIcon aria-hidden="true"></span>
+		{/if}
+	</span>
 	{#each columns as col (col)}
 		{#if col === "title"}
-			<span class="fulcrum-tasks-row__title" title={task.title}>
+			<span class="fulcrum-tasks-row__title" title={displayTitle}>
 				{#if task.source === "inline"}
 					<span class="fulcrum-tasks-row__inline-mark" aria-hidden="true">▸</span>
 				{/if}
-				{task.title}
+				{displayTitle}
 				{#if showRecur}
 					<span class="fulcrum-tasks-row__recur" title="Recurring">↻</span>
 				{/if}
 			</span>
 		{:else if col === "project"}
-			<span class="fulcrum-tasks-row__project fulcrum-muted">{projectName()}</span>
+			<span
+				class="fulcrum-tasks-row__project fulcrum-muted"
+				on:contextmenu={onProjectContextMenu}
+			>{projectName()}</span>
 		{:else if col === "scheduled"}
 			<span
 				class="fulcrum-tasks-row__date"

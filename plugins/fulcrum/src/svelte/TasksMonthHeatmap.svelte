@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
-	import {indexRevision, settingsRevision, areaFilterState} from "../fulcrum/stores";
+	import {indexRevision, settingsRevision, areaFilterState, viewProjectFilterPaths} from "../fulcrum/stores";
 	import {isDoneStatus, parseDoneStatusSet} from "../fulcrum/settingsDefaults";
 	import {buildAreaLifeModeMap} from "../fulcrum/utils/areaFocusFilter";
 	import {weekdayLabelsOrdered} from "../fulcrum/recurrence/recurrenceRuleBuilder";
@@ -40,12 +40,14 @@
 		areaTypeValue: plugin.settings.areaTypeValue,
 		settings: plugin.settings,
 	});
+	$: selectedProjectPaths = $viewProjectFilterPaths;
 	$: filteredTasks = collectHorizonTasks(
 		snapshot,
 		plugin.settings,
 		areaFilter,
 		lifeModeMap,
 		doneTask,
+		selectedProjectPaths,
 	);
 	$: counts = buildTaskDueCountsByDay(filteredTasks, monthStart);
 	$: maxCount = maxCountInMap(counts);

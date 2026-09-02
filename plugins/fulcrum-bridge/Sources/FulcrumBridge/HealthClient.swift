@@ -5,6 +5,7 @@ struct HealthResponse: Codable {
 	let status: String
 	let authorization: [String: String]
 	let calendarCount: Int
+	let omnifocus: OmniFocusHealth?
 }
 
 enum HealthClient {
@@ -23,11 +24,19 @@ enum HealthClient {
 			let health = try JSONDecoder().decode(HealthResponse.self, from: data)
 			let rem = health.authorization["reminders"] ?? "?"
 			let cal = health.authorization["calendar"] ?? "?"
+			let of = health.omnifocus
+			let ofLine: String
+			if let of {
+				ofLine = "OmniFocus: \(of.status) (installed=\(of.installed) running=\(of.running) automation=\(of.automationOk))"
+			} else {
+				ofLine = "OmniFocus: (not reported)"
+			}
 			return """
 			Status: \(health.status) (\(health.ok ? "healthy" : "needs attention"))
 			Calendars visible: \(health.calendarCount)
 			Reminders access: \(rem)
 			Calendar access: \(cal)
+			\(ofLine)
 			URL: http://127.0.0.1:\(BridgeServer.port)/health
 			"""
 		} catch {

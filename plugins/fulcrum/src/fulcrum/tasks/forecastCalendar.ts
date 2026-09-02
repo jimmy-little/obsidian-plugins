@@ -1,4 +1,5 @@
 import type {FulcrumSettings} from "../settingsDefaults";
+import {fulcrumBridgeEnabled} from "../settingsDefaults";
 import type {BridgeCalendarEvent} from "../../conduit/types";
 import type {ForecastCalendarRow} from "./tasksViewModel";
 import {createRemindersBridge} from "../../conduit/remindersBridge";
@@ -46,7 +47,7 @@ export async function fetchForecastCalendarRows(
 	toIso: string,
 ): Promise<ForecastCalendarRow[]> {
 	const ids = parseForecastCalendarIds(settings.forecastCalendarIds);
-	if (!settings.conduitEnabled || !settings.forecastShowSystemCalendars || ids.length === 0) {
+	if (!fulcrumBridgeEnabled(settings) || !settings.forecastShowSystemCalendars || ids.length === 0) {
 		return [];
 	}
 	const bridge = await createRemindersBridge(settings);

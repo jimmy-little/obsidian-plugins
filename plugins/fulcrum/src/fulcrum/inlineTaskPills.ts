@@ -16,7 +16,7 @@ import {
 	stripInlineTagsForTitle,
 } from "./utils/inlineTasks";
 import {lineMatchesInlineTaskFilter} from "./utils/inlineTaskTag";
-import {firstLinkedProjectFileInLine} from "./utils/projectLink";
+import {resolveInlineTaskProjectFile} from "./utils/projectLink";
 import {isTaskNoteFile} from "./utils/taskNoteFile";
 import {taskProjectAccentCss} from "./utils/taskCardAccent";
 import {toggleInlineTaskLine} from "./taskVaultToggle";
@@ -111,14 +111,19 @@ function resolveProjectFromLi(
 		);
 		if (dest instanceof TFile && projectPaths.has(dest.path)) return dest;
 	}
-	const projectPathsSet = projectPaths;
-	const indexedProjects = host.vaultIndex.getSnapshot().projects;
-	return firstLinkedProjectFileInLine(
+	const file = host.app.vault.getAbstractFileByPath(sourcePath);
+	if (!(file instanceof TFile)) return null;
+	const fm = host.app.metadataCache.getFileCache(file)?.frontmatter as
+		| Record<string, unknown>
+		| undefined;
+	return resolveInlineTaskProjectFile(
 		host.app,
 		`- [ ] ${lineText}`,
-		sourcePath,
-		projectPathsSet,
-		indexedProjects,
+		file,
+		fm,
+		projectPaths,
+		host.vaultIndex.getSnapshot().projects,
+		host.settings.projectLinkField,
 	);
 }
 

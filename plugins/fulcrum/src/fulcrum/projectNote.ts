@@ -124,8 +124,6 @@ function formatLocalDateTime(d: Date): string {
 }
 
 function themeTypeValue(theme: QuickNoteTheme): string {
-	const t = theme.type?.trim();
-	if (t) return t;
 	return `${theme.emoji} ${theme.label}`.trim();
 }
 

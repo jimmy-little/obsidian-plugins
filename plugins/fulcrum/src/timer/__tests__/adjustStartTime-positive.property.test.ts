@@ -17,18 +17,14 @@ import * as fc from "fast-check";
  * ActiveTimersPanel.adjustStartTime(). This tests the core computation
  * without DOM or plugin side-effects.
  */
+import {shiftRunningTimerStart} from "../../fulcrum/utils/timerEntries";
+
 function computeAdjustedStartTime(
 	originalStartTime: number,
 	offsetMinutes: number,
 	now: number,
 ): number | null {
-	const offsetMs = offsetMinutes * 60 * 1000;
-	const newStartTime = originalStartTime - offsetMs;
-
-	// Guard: new startTime must not be in the future
-	if (newStartTime > now) return null;
-
-	return newStartTime;
+	return shiftRunningTimerStart(originalStartTime, offsetMinutes, now);
 }
 
 describe("Property 2: Positive adjust decreases startTime by exact offset", () => {

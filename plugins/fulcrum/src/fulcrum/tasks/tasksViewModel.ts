@@ -41,10 +41,11 @@ export const TASKS_VIEW_COLUMN_LABELS: Record<TasksViewColumnId, string> = {
 
 const NONE_KEY = "__none__";
 const UNTAGGED_KEY = "__untagged__";
-const PAST_DUE_KEY = "__past_due__";
+export const PAST_DUE_KEY = "__past_due__";
 const UNSCHEDULED_KEY = "__unscheduled__";
 const PAST_STRIP_KEY = "__past__";
-const FUTURE_STRIP_KEY = "__future__";
+export const FUTURE_STRIP_KEY = "__future__";
+export const UNSCHEDULED_STRIP_KEY = UNSCHEDULED_KEY;
 
 /** System calendar event row for Forecast day merge. */
 export type ForecastCalendarRow = {
@@ -101,6 +102,7 @@ export type WeekStripBlock = {
 	isToday?: boolean;
 	isPast?: boolean;
 	isFuture?: boolean;
+	isUnscheduled?: boolean;
 };
 
 export type BuildTasksViewSectionsOptions = {
@@ -434,6 +436,7 @@ export function buildWeekStripBlocks(tasks: IndexedTask[], today = todayLocalISO
 
 	let pastCount = 0;
 	let futureCount = 0;
+	let unscheduledCount = 0;
 	const dayCounts = new Map<string, number>();
 	for (const iso of dayIsos) dayCounts.set(iso, 0);
 
@@ -447,7 +450,10 @@ export function buildWeekStripBlocks(tasks: IndexedTask[], today = todayLocalISO
 			continue;
 		}
 		const iso = taskPrimaryDateIso(t);
-		if (!iso) continue;
+		if (!iso) {
+			unscheduledCount++;
+			continue;
+		}
 		if (iso < today) {
 			pastCount++;
 		} else if (iso > todayPlus6) {
@@ -484,10 +490,19 @@ export function buildWeekStripBlocks(tasks: IndexedTask[], today = todayLocalISO
 		isFuture: true,
 	});
 
+	blocks.push({
+		key: UNSCHEDULED_STRIP_KEY,
+		dayName: "None",
+		label: "None",
+		count: unscheduledCount,
+		isUnscheduled: true,
+	});
+
 	return blocks;
 }
 
 export function weekStripDropDateIso(block: WeekStripBlock, today = todayLocalISODate()): string | null {
+	if (block.isUnscheduled) return null;
 	if (block.dateIso) return block.dateIso;
 	if (block.isPast) return addDaysIso(today, -1);
 	if (block.isFuture) return addDaysIso(today, 7);
@@ -576,7 +591,7 @@ export function buildDaySections(
 			tasks: sortedTasks,
 			items,
 			dropDateIso: iso,
-			defaultExpanded: i === 0,
+			defaultExpanded: i <= 6,
 		});
 	}
 
@@ -789,12 +804,10 @@ function sectionDefaultExpandedForInline(tasks: IndexedTask[]): boolean {
 }
 
 export function unscheduledSectionDefaultExpanded(
-	unscheduled: IndexedTask[],
-	settings: FulcrumSettings,
+	_unscheduled: IndexedTask[],
+	_settings: FulcrumSettings,
 ): boolean {
-	const uncheckedSource = new Set(settings.taskSidebarFilterUncheckedSource ?? []);
-	if (uncheckedSource.has("inline")) return false;
-	return sectionDefaultExpandedForInline(unscheduled);
+	return true;
 }
 
 export function filterOpenTasksForTasksView(

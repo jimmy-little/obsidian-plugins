@@ -6,6 +6,7 @@ final class BridgeServer: @unchecked Sendable {
 	static let port: UInt16 = 9247
 
 	private let bridge = EventKitBridge()
+	private let omnifocus = OmniFocusBridge()
 	private var serverTask: Task<Void, Never>?
 	private(set) var lastError: String?
 
@@ -27,23 +28,36 @@ final class BridgeServer: @unchecked Sendable {
 	}
 
 	func restart() {
-		stop()
+		serverTask?.cancel()
+		serverTask = nil
+		lastError = nil
 		serverTask = Task {
-			try? await Task.sleep(nanoseconds: 400_000_000)
+			// Let the previous FlyingFox listener release the port.
+			try? await Task.sleep(nanoseconds: 600_000_000)
 			await self.runServer()
 		}
 	}
 
 	private func runServer() async {
 		do {
-			try await bridge.requestAccess()
-			let handlers = HTTPHandlers(bridge: bridge)
+			guard !Task.isCancelled else { return }
+			let handlers = HTTPHandlers(bridge: bridge, omnifocus: omnifocus)
 			let server = HTTPServer(port: Self.port) { request in
 				do {
 					return try await handlers.route(request)
 				} catch {
 					let msg = (error as NSError).localizedDescription
-					return HTTPResponse(statusCode: .internalServerError, body: msg.data(using: .utf8)!)
+					let body = (msg.isEmpty ? "Internal server error" : msg).data(using: .utf8)!
+					return HTTPResponse(statusCode: .internalServerError, body: body)
+				}
+			}
+			// Bind first so LaunchAgent health checks succeed; permissions can prompt afterward.
+			Task { @MainActor in
+				let auth = self.bridge.authorizationStatus()
+				let needReminders = !(auth["reminders"] == "fullAccess" || auth["reminders"] == "authorized")
+				let needCalendar = !(auth["calendar"] == "fullAccess" || auth["calendar"] == "authorized")
+				if needReminders || needCalendar {
+					try? await self.bridge.requestAccess()
 				}
 			}
 			fputs("Fulcrum Bridge listening on http://127.0.0.1:\(Self.port)\n", stderr)
@@ -55,12 +69,16 @@ final class BridgeServer: @unchecked Sendable {
 			lastError = msg
 			if msg.contains("Address already in use") || msg.contains("errno: 48") {
 				fputs(
-					"Fulcrum Bridge: port \(Self.port) already in use — another copy may be running.\n",
+					"Fulcrum Bridge: port \(Self.port) already in use — retrying…\n",
 					stderr,
 				)
-			} else {
-				fputs("Fulcrum Bridge: server error — \(error)\n", stderr)
+				guard !Task.isCancelled else { return }
+				try? await Task.sleep(nanoseconds: 800_000_000)
+				guard !Task.isCancelled else { return }
+				await runServer()
+				return
 			}
+			fputs("Fulcrum Bridge: server error — \(error)\n", stderr)
 		}
 	}
 }

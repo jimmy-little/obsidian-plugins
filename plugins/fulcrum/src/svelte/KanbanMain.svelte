@@ -3,14 +3,15 @@
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import type {KanbanDimension, KanbanSwimlaneDimension} from "../fulcrum/settingsDefaults";
 	import {isDoneStatus, isProjectDone, parseDoneStatusSet} from "../fulcrum/settingsDefaults";
-	import {areaFilterState, indexRevision, settingsRevision} from "../fulcrum/stores";
+	import {areaFilterState, indexRevision, settingsRevision, viewProjectFilterPaths} from "../fulcrum/stores";
 	import {
 		areaPathEnabled,
 		buildAreaLifeModeMap,
 		filterProjectsByAreaFocus,
 		resolveIndexedAreaLifeMode,
-		taskPassesAreaFilter,
 	} from "../fulcrum/utils/areaFocusFilter";
+	import {projectMatchesViewProjectFilter} from "../fulcrum/utils/viewProjectFilter";
+	import {collectOpenTasks} from "../fulcrum/tasks/horizonTasks";
 	import {buildProjectSidebarCounts} from "../fulcrum/utils/projectSidebarCounts";
 	import {buildKanbanBoard, allColumnDefsForView} from "../fulcrum/kanban/buildBoard";
 	import {applyKanbanDrop, applyKanbanSidebarDrop} from "../fulcrum/kanban/applyDrop";
@@ -55,6 +56,7 @@
 	$: doneTask = (void sRev, parseDoneStatusSet(plugin.settings.taskDoneStatuses));
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
 	$: areaFilter = $areaFilterState;
+	$: selectedProjectPaths = $viewProjectFilterPaths;
 	$: lifeModeMap = buildAreaLifeModeMap(snapshot.areas, {
 		projects: snapshot.projects,
 		app: plugin.app,
@@ -66,10 +68,15 @@
 		snapshot.projects.filter((p) => !isProjectDone(p, plugin.settings)),
 		areaFilter,
 		lifeModeMap,
-	)).filter((p) => !filterProjectPath || p.file.path === filterProjectPath);
-	$: openTasks = snapshot.tasks
-		.filter((t) => taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap))
-		.filter((t) => !filterProjectPath || t.projectFile?.path === filterProjectPath);
+	)).filter((p) => !filterProjectPath || p.file.path === filterProjectPath)
+		.filter((p) => projectMatchesViewProjectFilter(p, selectedProjectPaths));
+	$: openTasks = collectOpenTasks(
+		snapshot,
+		areaFilter,
+		lifeModeMap,
+		doneTask,
+		selectedProjectPaths,
+	).filter((t) => !filterProjectPath || t.projectFile?.path === filterProjectPath);
 
 	$: kanbanSnapshot = {
 		...snapshot,

@@ -23,6 +23,7 @@ import type {FulcrumHost} from "./pluginBridge";
 import {waitForNextFileResolved} from "./calendar/calendarTaskSchedule";
 import {isDoneStatus, normalizeStatusKey, parseDoneStatusSet, parseList, parseTaskStatusChoices, type FulcrumSettings} from "./settingsDefaults";
 import type {IndexedTask} from "./types";
+import {taskDisplayTitle} from "./utils/inlineTasks";
 import {displayTagsForTask} from "./utils/taskDisplayTags";
 
 function formatStatusLabel(statusId: string): string {
@@ -145,7 +146,7 @@ export function handleTaskStatusClick(
 }
 
 export function openEditTaskTitle(host: FulcrumHost, task: IndexedTask): void {
-	new EditTaskTitleModal(host.app, task.title, async (title) => {
+	new EditTaskTitleModal(host.app, taskDisplayTitle(task), async (title) => {
 		await withFileResolved(host, task, () =>
 			applyTaskTitleChange(host.app, task, host.settings, title),
 		);
@@ -277,7 +278,7 @@ export function taskCardTimerActive(host: FulcrumHost, task: IndexedTask): boole
 }
 
 const TASK_CARD_INTERACTIVE =
-	"button,a,[role=button],.fulcrum-task-card__status-dot,.fulcrum-task-card__title,.fulcrum-task-card__meta-chip,.fulcrum-task-card__start-timer,.fulcrum-task-card__timer,.fulcrum-task-inline-pill__status,.fulcrum-task-inline-pill__title,.fulcrum-task-inline-pill__meta,.fulcrum-task-inline-pill__open-note,.fulcrum-task-inline-pill__to-note";
+	"button,a,[role=button],.fulcrum-task-card__status-dot,.fulcrum-task-card__title,.fulcrum-task-card__meta-chip,.fulcrum-task-card__start-timer,.fulcrum-task-card__timer,.fulcrum-task-card__timer-widget,.fulcrum-timer-btn-adjust,.fulcrum-task-inline-pill__status,.fulcrum-task-inline-pill__title,.fulcrum-task-inline-pill__meta,.fulcrum-task-inline-pill__open-note,.fulcrum-task-inline-pill__to-note";
 
 /** Click on non-interactive card chrome opens the task edit modal (task notes) or note (inline). */
 export function handleTaskCardBlankClick(

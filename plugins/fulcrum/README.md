@@ -11,6 +11,26 @@ Fulcrum indexes **task notes** (YAML frontmatter compatible with [TaskNotes](htt
 - **Recurring tasks** use RFC 5545 RRULE in frontmatter (`recurrence`, `complete_instances`, `recurrence_anchor`).
 - **Inline tasks** with your configured include tag appear in Fulcrum with distinct card styling.
 
+## OmniFocus sync (macOS)
+
+Two-way mirror between **Fulcrum tasks** (task notes and inline checkboxes on a linked project) and **OmniFocus**. Tasks are linked by stable IDs (`omnifocusProjectId` on project notes, `omnifocusTaskId` on task notes, `<!-- omnifocus-id: … -->` on inline lines). Recurring vault tasks are skipped. This backend is **mutually exclusive** with Reminders task sync.
+
+Enable under **Settings → Fulcrum → Integrations → OmniFocus sync**. Requires [Fulcrum Bridge](../fulcrum-bridge/README.md) and OmniFocus running (typically Pro, with Automation permission).
+
+### Setup
+
+1. Build and run Fulcrum Bridge (`plugins/fulcrum-bridge` → `./build.sh` then `./install-daemon.sh`).
+2. Open OmniFocus. On first sync, allow **Fulcrum Bridge** to control OmniFocus.
+3. Enable OmniFocus sync in Fulcrum settings (this turns off Reminders task sync).
+4. On a project: **Link OmniFocus project…** (creates or picks an OmniFocus project).
+5. Use **OmniFocus: Sync now** or wait for the poll interval.
+
+Inbox items are pulled into the vault only when **Pull OmniFocus Inbox** is on. Unlinked vault tasks are not dumped into OmniFocus.
+
+### Agents
+
+Cursor can use the same HTTP API via the project MCP (`.cursor/mcp.json` → `fulcrum-omnifocus`). Do not also attach a third-party OmniFocus MCP while Fulcrum owns IDs.
+
 ## Reminders bridge (macOS)
 
 Fulcrum shows **live** Apple Reminders in notes and supports **one-way convert** actions. Tasks live in Obsidian **or** Reminders — never mirrored copies.
