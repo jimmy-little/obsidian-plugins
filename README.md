@@ -38,6 +38,8 @@ Each plugin’s **Settings** tab includes a **URL schemes (Obsidian URI)** secti
 
 ## Install into a vault (no symlinks)
 
+Run these from the **monorepo clone** (the folder that contains `package.json` and `plugins/`). The vault plugin directory is only the *destination*.
+
 **Option A — env (one-off):**
 
 ```bash
@@ -86,7 +88,7 @@ The **Fulcrum** plugin is ported from the standalone `obsidian-fulcrum` repo: fu
 
 `src/fulcrum/openViews.ts` uses `claimLeaf` from `@obsidian-suite/core`.
 
-Build / install:
+Build / install (from this **git repo root**, not from `.obsidian/plugins/fulcrum` in the vault):
 
 ```bash
 npm run build -w obsidian-plugin-fulcrum

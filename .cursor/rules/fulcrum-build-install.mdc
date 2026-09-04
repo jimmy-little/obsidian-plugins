@@ -9,13 +9,20 @@ After any change under `plugins/fulcrum` (or Fulcrum Bridge that the plugin cons
 
 ## Required last step
 
-From the repo root:
+Run from the **git monorepo root** (`obsidian-plugins`), never from the vault copy at `.obsidian/plugins/fulcrum` (that folder has no `package.json`).
 
 ```bash
+cd /path/to/obsidian-plugins
 npm run build:install -w obsidian-plugin-fulcrum
 ```
 
-That runs `tsc` + esbuild, merges CSS, and copies `main.js`, `manifest.json`, and `styles.css` to `.obsidian/plugins/fulcrum/` using `OBSIDIAN_VAULT_PATH` or gitignored `.vault-path.local.json`.
+That runs `tsc` + esbuild, merges CSS, and copies `main.js`, `manifest.json`, and `styles.css` into the vault’s `.obsidian/plugins/fulcrum/` using `OBSIDIAN_VAULT_PATH` or gitignored `.vault-path.local.json`.
+
+This user’s vault:
+
+`/Users/Jimmy.Little/Library/Mobile Documents/iCloud~md~obsidian/Documents/JimmyOS`
+
+When telling the user to install, give the repo `cd` first. Do not `cd` into the vault plugin folder.
 
 ## Also
 
