@@ -51,6 +51,8 @@ import {
 	revealOrCreateActiveTimers,
 	revealOrCreateTasks,
 	revealOrCreateDashboard,
+	revealOrCreateToday,
+	revealOrCreateLanding,
 	revealOrCreateProjectManager,
 	revealOrCreateQuickStart,
 	revealOrCreateTimeTracked,
@@ -86,6 +88,7 @@ import {taskIsDone} from "./fulcrum/taskCardInteractions";
 import {toggleInlineTaskLine} from "./fulcrum/taskVaultToggle";
 import {bumpSettingsRevision, bumpTimerRevision} from "./fulcrum/stores";
 import {appendTimeBlockToDailyNote as appendTimeBlockLineToDailyNote} from "./fulcrum/utils/dailyPlannerEvents";
+import {appendQuickNoteToDailyNote as appendQuickNoteLineToDailyNote} from "./fulcrum/today/dailyQuickNote";
 import type {IndexedPlannerEvent, IndexedTask} from "./fulcrum/types";
 import {registerCompanionDocChrome} from "./fulcrum/companionDocChrome";
 import {registerTaskNoteChrome} from "./fulcrum/taskNoteChrome";
@@ -304,13 +307,27 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 		if (this.settings.showRibbonIcon) {
 			this.addRibbonIcon(FULCRUM_PLUGIN_ICON, "Fulcrum Project Manager", () => {
-				void this.openDashboard();
+				void this.openLanding();
 			});
 		}
 
 		this.addCommand({
 			id: "open-dashboard",
 			name: "Open Project Manager",
+			callback: () => {
+				void this.openLanding();
+			},
+		});
+		this.addCommand({
+			id: "open-today",
+			name: "Open Today",
+			callback: () => {
+				void this.openToday();
+			},
+		});
+		this.addCommand({
+			id: "open-dashboard-view",
+			name: "Open Dashboard",
 			callback: () => {
 				void this.openDashboard();
 			},
@@ -652,7 +669,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			const seg = tail.split("/")[0] ?? "";
 			screen = seg.toLowerCase().replace(/-/g, "_");
 		}
-		if (!screen) screen = "dashboard";
+		if (!screen) screen = this.settings.landingPage === "dashboard" ? "dashboard" : "today";
 
 		const projectPath = String(params.projectPath ?? "").trim();
 		const focalDate = String(params.focalDate ?? params.date ?? "").trim();
@@ -684,6 +701,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		switch (screen) {
 			case "dashboard":
 				await revealOrCreateDashboard(this.app, this.settings);
+				return;
+			case "today":
+				await revealOrCreateToday(this.app, this.settings);
 				return;
 			case "tasks":
 			case "areas":
@@ -778,6 +798,18 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 			merged.dashboardActiveProjectsGroupBy !== "none"
 		) {
 			merged.dashboardActiveProjectsGroupBy = DEFAULT_SETTINGS.dashboardActiveProjectsGroupBy;
+		}
+		if (merged.landingPage !== "dashboard" && merged.landingPage !== "today") {
+			merged.landingPage = DEFAULT_SETTINGS.landingPage;
+		}
+		if (typeof merged.todayWorldClocks !== "string") {
+			merged.todayWorldClocks = DEFAULT_SETTINGS.todayWorldClocks;
+		}
+		if (typeof merged.todayWeatherLocation !== "string") {
+			merged.todayWeatherLocation = DEFAULT_SETTINGS.todayWeatherLocation;
+		}
+		if (merged.todayWeatherUnits !== "celsius" && merged.todayWeatherUnits !== "fahrenheit") {
+			merged.todayWeatherUnits = DEFAULT_SETTINGS.todayWeatherUnits;
 		}
 		if (
 			merged.projectSidebarSortBy !== "end" &&
@@ -1183,6 +1215,28 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		);
 	}
 
+	async appendQuickNoteToDailyNote(dateIso: string, text: string): Promise<boolean> {
+		const trimmed = text.trim();
+		if (!trimmed) {
+			new Notice("Write something to add to the daily note.");
+			return false;
+		}
+		try {
+			const file = await appendQuickNoteLineToDailyNote(this.app, dateIso.slice(0, 10), trimmed);
+			if (!file) {
+				new Notice("Could not update the daily note. Configure Daily Notes or Periodic Notes.");
+				return false;
+			}
+			this.vaultIndex.scheduleRebuild();
+			new Notice(`Appended to ${file.basename}.`);
+			return true;
+		} catch (e) {
+			console.error(e);
+			new Notice("Could not write to the daily note.");
+			return false;
+		}
+	}
+
 	async appendTimeBlockToDailyNote(
 		dateIso: string,
 		anchorLeaf?: WorkspaceLeaf,
@@ -1368,6 +1422,14 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	async openDashboard(): Promise<void> {
 		await revealOrCreateDashboard(this.app, this.settings);
+	}
+
+	async openToday(): Promise<void> {
+		await revealOrCreateToday(this.app, this.settings);
+	}
+
+	async openLanding(): Promise<void> {
+		await revealOrCreateLanding(this.app, this.settings);
 	}
 
 	async openReview(): Promise<void> {

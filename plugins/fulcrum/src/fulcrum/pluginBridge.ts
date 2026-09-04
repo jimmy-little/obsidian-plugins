@@ -16,6 +16,8 @@ export interface FulcrumHost {
 	readonly orbitHost: OrbitHost;
 	openProjectSummary(path: string): Promise<void>;
 	openDashboard(): Promise<void>;
+	openToday(): Promise<void>;
+	openLanding(): Promise<void>;
 	openReview(): Promise<void>;
 	openTimeTracked(tab?: TimeModeTab): Promise<void>;
 	openActiveTimers(): Promise<void>;
@@ -59,12 +61,20 @@ export interface FulcrumHost {
 	archiveProjectSnapshot(projectPath: string): Promise<void>;
 	/** Append `- [ ] title #tag [[project]]` to the project note (Obsidian Tasks / inline source). */
 	openNewInlineTaskForProject(projectPath: string): void;
+	openNewInlineTaskForProjectOnDate(
+		projectPath: string,
+		slot?: import("./calendar/calendarDropSlot").CalendarDropSlot,
+	): void;
 	/** Pick a project, then append an inline checkbox task to its note. */
 	promptNewInlineTaskForProject(): void;
 	/** TaskNotes “Create new task” with project pre-filled when the plugin exposes it. */
 	openTaskNoteCreateForProject(projectPath: string): void;
 	/** Create a TaskNotes-compatible task note (Fulcrum-native). */
 	openCreateTaskNoteForProject(projectPath: string): void;
+	openCreateTaskNoteForProjectOnDate(
+		projectPath: string,
+		slot?: import("./calendar/calendarDropSlot").CalendarDropSlot,
+	): void;
 	/** Pick a project, then open the create task note modal. */
 	promptCreateTaskNoteForProject(): void;
 	/** Project calendar cell “+”: pick a task to schedule or create a new one on that date. */
@@ -93,6 +103,8 @@ export interface FulcrumHost {
 	openLinkedNoteFromFulcrum(path: string, anchorLeaf?: WorkspaceLeaf): void;
 	openIndexedTask(task: IndexedTask, anchorLeaf?: WorkspaceLeaf): void;
 	openPlannerEvent(event: IndexedPlannerEvent, anchorLeaf?: WorkspaceLeaf): void;
+	/** Append a timestamped bullet to the daily note for `dateIso`. */
+	appendQuickNoteToDailyNote(dateIso: string, text: string): Promise<boolean>;
 	/** Append a new timed line under the daily-note planner heading for the given day. */
 	appendTimeBlockToDailyNote(dateIso: string, anchorLeaf?: WorkspaceLeaf): Promise<void>;
 	toggleIndexedTask(task: IndexedTask): Promise<void>;

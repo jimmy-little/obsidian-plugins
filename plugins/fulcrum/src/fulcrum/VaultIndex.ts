@@ -266,6 +266,16 @@ export class VaultIndex {
 		return this.snapshot;
 	}
 
+	/** Flatten cached atomic notes (project-linked) for date-scoped views. */
+	async listAtomicNotes(): Promise<{projectPath: string; note: AtomicNoteRow}[]> {
+		const map = await this.buildAtomicNotesByProject(this.getSettings());
+		const out: {projectPath: string; note: AtomicNoteRow}[] = [];
+		for (const [projectPath, notes] of map) {
+			for (const note of notes) out.push({projectPath, note});
+		}
+		return out;
+	}
+
 	/**
 	 * Apply a local patch to one indexed task and bump the view revision so UI
 	 * updates immediately. Pair with `scheduleRebuild()` so the vault scan catches up.

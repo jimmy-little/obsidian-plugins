@@ -196,6 +196,26 @@ export function filterProjectsByAreaFocus(
 	return projects.filter((p) => projectPassesAreaFilter(p, state, lifeModeMap));
 }
 
+/**
+ * When Kanban columns/swimlanes are by Area, keep projects with no area so they
+ * remain visible for triage even if the area focus filter is active (that filter
+ * otherwise drops zero-area projects).
+ */
+export function includeUnassignedProjectsForAreaKanban(
+	filtered: IndexedProject[],
+	candidates: IndexedProject[],
+): IndexedProject[] {
+	const have = new Set(filtered.map((p) => p.file.path));
+	const out = [...filtered];
+	for (const p of candidates) {
+		if (p.areaFiles.length === 0 && !have.has(p.file.path)) {
+			out.push(p);
+			have.add(p.file.path);
+		}
+	}
+	return out;
+}
+
 export type TaskAreaFilterOptions = {
 	/** When true, tasks without a project link still show (Timeline personal / vault tasks). */
 	includeUnlinked?: boolean;

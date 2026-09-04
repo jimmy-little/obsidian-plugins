@@ -12,8 +12,15 @@ import type {FulcrumSettings} from "./settingsDefaults";
 import type {ProjectManagerViewState} from "../views/ProjectManagerView";
 import type {TimelineViewState} from "../views/TimelineView";
 
-function resolveProjectManagerState(initial?: ProjectManagerViewState): ProjectManagerViewState {
-	if (!initial) return {mode: "dashboard"};
+function landingMode(settings: FulcrumSettings): "dashboard" | "today" {
+	return settings.landingPage === "dashboard" ? "dashboard" : "today";
+}
+
+function resolveProjectManagerState(
+	settings: FulcrumSettings,
+	initial?: ProjectManagerViewState,
+): ProjectManagerViewState {
+	if (!initial) return {mode: landingMode(settings)};
 	if (initial.mode === "project" && initial.projectPath) {
 		return {mode: "project", projectPath: initial.projectPath};
 	}
@@ -27,11 +34,13 @@ function resolveProjectManagerState(initial?: ProjectManagerViewState): ProjectM
 		initial.mode === "kanban" ||
 		initial.mode === "calendar" ||
 		initial.mode === "time" ||
-		initial.mode === "review"
+		initial.mode === "review" ||
+		initial.mode === "today" ||
+		initial.mode === "dashboard"
 	) {
 		return {mode: initial.mode, timeTab: initial.timeTab};
 	}
-	return {mode: "dashboard"};
+	return {mode: landingMode(settings)};
 }
 
 /** Primary Fulcrum shell: sidebars + dashboard or project in the main pane. Exported for deep links. */
@@ -40,7 +49,7 @@ export async function revealOrCreateProjectManager(
 	settings: FulcrumSettings,
 	initial?: ProjectManagerViewState,
 ): Promise<void> {
-	const state = resolveProjectManagerState(initial);
+	const state = resolveProjectManagerState(settings, initial);
 	const existing = app.workspace.getLeavesOfType(VIEW_PROJECT_MANAGER)[0];
 	if (existing) {
 		await existing.setViewState({
@@ -65,6 +74,20 @@ export async function revealOrCreateDashboard(
 	settings: FulcrumSettings,
 ): Promise<void> {
 	await revealOrCreateProjectManager(app, settings, {mode: "dashboard"});
+}
+
+export async function revealOrCreateToday(
+	app: App,
+	settings: FulcrumSettings,
+): Promise<void> {
+	await revealOrCreateProjectManager(app, settings, {mode: "today"});
+}
+
+export async function revealOrCreateLanding(
+	app: App,
+	settings: FulcrumSettings,
+): Promise<void> {
+	await revealOrCreateProjectManager(app, settings, {mode: landingMode(settings)});
 }
 
 export async function revealOrCreateTimeTracked(

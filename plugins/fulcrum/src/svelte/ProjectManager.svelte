@@ -3,6 +3,7 @@
 	import {Platform, setIcon} from "obsidian";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import DashboardMain from "./DashboardMain.svelte";
+	import TodayMain from "./TodayMain.svelte";
 	import KanbanMain from "./KanbanMain.svelte";
 	import CalendarMain from "./CalendarMain.svelte";
 	import TimeMain from "./TimeMain.svelte";
@@ -27,10 +28,10 @@
 	export let plugin: FulcrumHost;
 	export let orbitHost: OrbitHost;
 	export let hoverParentLeaf: WorkspaceLeaf;
-	export let mainMode: "dashboard" | "review" | "tasks" | "project" | "kanban" | "calendar" | "time" | "orbit";
+	export let mainMode: "dashboard" | "today" | "review" | "tasks" | "project" | "kanban" | "calendar" | "time" | "orbit";
 	export let projectPath: string | null;
 	export let personPath: string | null = null;
-	export let onSelectDashboard: () => void;
+	export let onSelectHome: () => void;
 	export let onSelectTasks: () => void;
 	export let onSelectProject: (path: string) => void;
 	export let onSelectKanban: () => void;
@@ -64,7 +65,7 @@
 	let leftCollapsed = false;
 	let pmEl: HTMLDivElement | null = null;
 	let leftWidthPx: number | null = readStoredLeftWidth();
-	let dashboardBtnEl: HTMLButtonElement | null = null;
+	let homeBtnEl: HTMLButtonElement | null = null;
 	let tasksBtnEl: HTMLButtonElement | null = null;
 	let kanbanBtnEl: HTMLButtonElement | null = null;
 	let timeBtnEl: HTMLButtonElement | null = null;
@@ -77,8 +78,14 @@
 		setIcon(collapseBtnEl, leftCollapsed ? "panel-left" : "panel-left-close");
 	}
 
-	$: if (dashboardBtnEl && plugin) {
-		setIcon(dashboardBtnEl, "layout-dashboard");
+	$: selectedProjectPath = mainMode === "project" ? projectPath : null;
+	$: selectedPersonPath = mainMode === "orbit" ? personPath : null;
+	$: sRev = $settingsRevision;
+	$: landingPage = (void sRev, plugin.settings.landingPage === "dashboard" ? "dashboard" : "today");
+	$: homeActive = mainMode === landingPage;
+	$: homeLabel = landingPage === "dashboard" ? "Dashboard" : "Today";
+	$: if (homeBtnEl && plugin) {
+		setIcon(homeBtnEl, landingPage === "dashboard" ? "layout-dashboard" : "sun");
 	}
 	$: if (tasksBtnEl && plugin) {
 		setIcon(tasksBtnEl, "sunrise");
@@ -98,10 +105,6 @@
 	$: if (orgChartBtnEl) {
 		setIcon(orgChartBtnEl, "git-branch");
 	}
-
-	$: selectedProjectPath = mainMode === "project" ? projectPath : null;
-	$: selectedPersonPath = mainMode === "orbit" ? personPath : null;
-	$: sRev = $settingsRevision;
 	$: void $indexRevision;
 	$: areaFilter = $areaFilterState;
 	$: kanbanView = (void sRev, plugin.settings.kanbanView);
@@ -111,7 +114,7 @@
 	$: sidebarShowsProjectFilter = mainMode === "kanban" || mainMode === "time";
 	$: sidebarProjectDraggable = mainMode === "kanban" && kanbanView === "projects";
 	$: dashboardAreaSubtext = (() => {
-		if (mainMode !== "dashboard") return "";
+		if (mainMode !== "dashboard" && mainMode !== "today") return "";
 		if (isAreaFilterWideOpen(areaFilter)) return "";
 		const groups = buildAreaFilterPanelGroups(
 			plugin.vaultIndex.getSnapshot().areas,
@@ -231,11 +234,11 @@
 				<button
 					type="button"
 					class="fulcrum-pm__glyph-btn clickable-icon"
-					class:fulcrum-pm__glyph-btn--active={mainMode === "dashboard"}
-					aria-label="Dashboard"
-					title="Dashboard"
-					bind:this={dashboardBtnEl}
-					on:click={onSelectDashboard}
+					class:fulcrum-pm__glyph-btn--active={homeActive}
+					aria-label={homeLabel}
+					title={homeLabel}
+					bind:this={homeBtnEl}
+					on:click={onSelectHome}
 				></button>
 				<button
 					type="button"
@@ -380,8 +383,13 @@
 		class:fulcrum-pm__main--kanban-fill={mainMode === "kanban"}
 		class:fulcrum-pm__main--project-fill={mainMode === "project" && !!projectPath}
 		class:fulcrum-pm__main--tasks-fill={mainMode === "tasks"}
+		class:fulcrum-pm__main--today-fill={mainMode === "today"}
 	>
-		{#if mainMode === "dashboard"}
+		{#if mainMode === "today"}
+			<div class="fulcrum-pm__panel">
+				<TodayMain {plugin} {hoverParentLeaf} />
+			</div>
+		{:else if mainMode === "dashboard"}
 			<div class="fulcrum-pm__panel">
 				<header class="fulcrum-pm__main-head">
 					<div class="fulcrum-pm__main-title-block">

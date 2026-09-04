@@ -3,6 +3,7 @@ import type {FulcrumSettings} from "../../fulcrum/settingsDefaults";
 import {DEFAULT_SETTINGS} from "../../fulcrum/settingsDefaults";
 import type {SettingsContext} from "../settingsContext";
 import {heading, settingsLead, textSetting, toggleSetting} from "../settingsHelpers";
+import {bumpSettingsRevision} from "../../fulcrum/stores";
 
 export function renderViewsTab(ctx: SettingsContext): void {
 	const {containerEl, plugin} = ctx;
@@ -11,6 +12,56 @@ export function renderViewsTab(ctx: SettingsContext): void {
 		containerEl,
 		"Default layout for dashboards, Kanban, Calendar, Timeline, and how Fulcrum opens views.",
 	);
+
+	heading(containerEl, "Landing page");
+	new Setting(containerEl)
+		.setName("Landing page")
+		.setDesc("First sidebar icon and ribbon: Dashboard (existing home) or Today (daily broadsheet).")
+		.addDropdown((d) =>
+			d
+				.addOptions({today: "Today", dashboard: "Dashboard"})
+				.setValue(plugin.settings.landingPage)
+				.onChange(async (v) => {
+					plugin.settings.landingPage = v === "dashboard" ? "dashboard" : "today";
+					await plugin.saveSettings();
+					bumpSettingsRevision();
+				}),
+		);
+
+	heading(containerEl, "Today");
+	new Setting(containerEl)
+		.setName("World clocks")
+		.setDesc("One per line: Label|IANA/Timezone. Example: Paris|Europe/Paris")
+		.addTextArea((ta) => {
+			ta.inputEl.rows = 4;
+			ta.setValue(plugin.settings.todayWorldClocks).onChange(async (value) => {
+				plugin.settings.todayWorldClocks = value;
+				await plugin.saveSettings();
+				bumpSettingsRevision();
+			});
+		});
+	new Setting(containerEl)
+		.setName("Weather location")
+		.setDesc("City for Open-Meteo (e.g. Washington, DC). Leave empty to hide weather.")
+		.addText((tx) =>
+			tx.setValue(plugin.settings.todayWeatherLocation).onChange(async (v) => {
+				plugin.settings.todayWeatherLocation = v;
+				await plugin.saveSettings();
+				bumpSettingsRevision();
+			}),
+		);
+	new Setting(containerEl)
+		.setName("Weather units")
+		.addDropdown((d) =>
+			d
+				.addOptions({fahrenheit: "Fahrenheit", celsius: "Celsius"})
+				.setValue(plugin.settings.todayWeatherUnits)
+				.onChange(async (v) => {
+					plugin.settings.todayWeatherUnits = v === "celsius" ? "celsius" : "fahrenheit";
+					await plugin.saveSettings();
+					bumpSettingsRevision();
+				}),
+		);
 
 	heading(containerEl, "Dashboard & project list");
 	new Setting(containerEl)
@@ -257,7 +308,7 @@ export function renderViewsTab(ctx: SettingsContext): void {
 					await plugin.saveSettings();
 				}),
 		);
-	toggleSetting(ctx, "showRibbonIcon", "Show dashboard ribbon icon");
+	toggleSetting(ctx, "showRibbonIcon", "Show ribbon icon");
 	new Setting(containerEl)
 		.setName("Calendar: first day of week")
 		.addDropdown((d) =>

@@ -68,9 +68,6 @@ function buildAreaColumnDefs(
 			out.push({id: a.file.path, label: a.name, area: a});
 		}
 	}
-	if (byAreaPath.has(UNASSIGNED_AREA)) {
-		out.push({id: UNASSIGNED_AREA, label: "Unassigned"});
-	}
 	for (const path of byAreaPath) {
 		if (path === UNASSIGNED_AREA || areas.some((a) => a.file.path === path)) continue;
 		const sampleProject = projects.find((p) =>
@@ -90,6 +87,9 @@ function buildAreaColumnDefs(
 			area: oa ? areas.find((a) => a.file.path === oa.path) : undefined,
 		});
 	}
+	// Always offer Unassigned so projects/tasks with no area stay visible for triage
+	// (and can be dragged onto an area column to write frontmatter).
+	out.push({id: UNASSIGNED_AREA, label: "Unassigned"});
 	return out;
 }
 

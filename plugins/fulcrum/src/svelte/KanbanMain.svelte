@@ -8,6 +8,7 @@
 		areaPathEnabled,
 		buildAreaLifeModeMap,
 		filterProjectsByAreaFocus,
+		includeUnassignedProjectsForAreaKanban,
 		resolveIndexedAreaLifeMode,
 	} from "../fulcrum/utils/areaFocusFilter";
 	import {projectMatchesViewProjectFilter} from "../fulcrum/utils/viewProjectFilter";
@@ -64,12 +65,24 @@
 		areaTypeValue: plugin.settings.areaTypeValue,
 		settings: plugin.settings,
 	});
-	$: activeProjects = (void sRev, filterProjectsByAreaFocus(
-		snapshot.projects.filter((p) => !isProjectDone(p, plugin.settings)),
-		areaFilter,
-		lifeModeMap,
-	)).filter((p) => !filterProjectPath || p.file.path === filterProjectPath)
-		.filter((p) => projectMatchesViewProjectFilter(p, selectedProjectPaths));
+	$: kanbanView = (void sRev, plugin.settings.kanbanView);
+	$: effectiveKanbanView = filterProjectPath ? "tasks" : kanbanView;
+	$: columnBy = (void sRev,
+		filterProjectPath && plugin.settings.kanbanColumnBy === "project"
+			? "status"
+			: plugin.settings.kanbanColumnBy);
+	$: swimlaneBy = (void sRev,
+		filterProjectPath && plugin.settings.kanbanSwimlaneBy === "project"
+			? "none"
+			: plugin.settings.kanbanSwimlaneBy);
+	$: projectCandidates = (void sRev, snapshot.projects
+		.filter((p) => !isProjectDone(p, plugin.settings))
+		.filter((p) => !filterProjectPath || p.file.path === filterProjectPath)
+		.filter((p) => projectMatchesViewProjectFilter(p, selectedProjectPaths)));
+	$: activeProjects = includeUnassignedProjectsForAreaKanban(
+		filterProjectsByAreaFocus(projectCandidates, areaFilter, lifeModeMap),
+		(columnBy === "area" || swimlaneBy === "area") ? projectCandidates : [],
+	);
 	$: openTasks = collectOpenTasks(
 		snapshot,
 		areaFilter,
@@ -86,16 +99,6 @@
 		}),
 	};
 
-	$: kanbanView = (void sRev, plugin.settings.kanbanView);
-	$: effectiveKanbanView = filterProjectPath ? "tasks" : kanbanView;
-	$: columnBy = (void sRev,
-		filterProjectPath && plugin.settings.kanbanColumnBy === "project"
-			? "status"
-			: plugin.settings.kanbanColumnBy);
-	$: swimlaneBy = (void sRev,
-		filterProjectPath && plugin.settings.kanbanSwimlaneBy === "project"
-			? "none"
-			: plugin.settings.kanbanSwimlaneBy);
 	$: kanbanBuildSettings = (void sRev, filterProjectPath
 		? {...plugin.settings, kanbanView: "tasks" as const, kanbanColumnBy: columnBy, kanbanSwimlaneBy: swimlaneBy}
 		: plugin.settings);

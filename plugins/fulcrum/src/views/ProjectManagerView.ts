@@ -5,7 +5,7 @@ import type {FulcrumHost} from "../fulcrum/pluginBridge";
 import ProjectManager from "../svelte/ProjectManager.svelte";
 
 export type ProjectManagerViewState = {
-	mode?: "dashboard" | "review" | "tasks" | "project" | "kanban" | "calendar" | "time" | "orbit";
+	mode?: "dashboard" | "today" | "review" | "tasks" | "project" | "kanban" | "calendar" | "time" | "orbit";
 	projectPath?: string;
 	personPath?: string;
 	timeTab?: import("../timer/types").TimeModeTab;
@@ -13,6 +13,7 @@ export type ProjectManagerViewState = {
 
 export type ProjectManagerShellMode =
 	| "dashboard"
+	| "today"
 	| "review"
 	| "tasks"
 	| "kanban"
@@ -23,6 +24,7 @@ export type ProjectManagerShellMode =
 export function projectManagerShellLabel(mode: ProjectManagerShellMode): string {
 	const names: Record<ProjectManagerShellMode, string> = {
 		dashboard: "Dashboard",
+		today: "Today",
 		review: "Review",
 		tasks: "Horizon",
 		kanban: "Kanban",
@@ -39,8 +41,8 @@ export class ProjectManagerView extends ItemView {
 	private lastMainMode: ProjectManagerView["mainMode"] | "" = "";
 	private lastProjectPath: string | null = null;
 	private lastPersonPath: string | null = null;
-	mainMode: "dashboard" | "review" | "tasks" | "project" | "kanban" | "calendar" | "time" | "orbit" =
-		"dashboard";
+	mainMode: "dashboard" | "today" | "review" | "tasks" | "project" | "kanban" | "calendar" | "time" | "orbit" =
+		"today";
 	projectPath: string | null = null;
 	personPath: string | null = null;
 	/** Last non-project mode; used when leaving a project view (glyph bar or back). */
@@ -49,6 +51,9 @@ export class ProjectManagerView extends ItemView {
 	constructor(leaf: WorkspaceLeaf, host: FulcrumHost) {
 		super(leaf);
 		this.host = host;
+		const landing = host.settings.landingPage === "dashboard" ? "dashboard" : "today";
+		this.mainMode = landing;
+		this.shellReturnTarget = landing;
 	}
 
 	getViewType(): string {
@@ -65,6 +70,7 @@ export class ProjectManagerView extends ItemView {
 			if (f?.name) return f.name.replace(/\.md$/i, "");
 		}
 		if (this.mainMode === "review") return "Review";
+		if (this.mainMode === "today") return "Today";
 		if (this.mainMode === "tasks") return "Horizon";
 		if (this.mainMode === "kanban") return "Kanban";
 		if (this.mainMode === "calendar") return "Calendar";
@@ -85,6 +91,7 @@ export class ProjectManagerView extends ItemView {
 			return this.personPath ? {mode: "orbit", personPath: this.personPath} : {mode: "orbit"};
 		}
 		if (this.mainMode === "review") return {mode: "review"};
+		if (this.mainMode === "today") return {mode: "today"};
 		if (this.mainMode === "tasks") return {mode: "tasks"};
 		if (this.mainMode === "kanban") return {mode: "kanban"};
 		if (this.mainMode === "calendar") return {mode: "calendar"};
@@ -103,6 +110,11 @@ export class ProjectManagerView extends ItemView {
 			this.personPath =
 				typeof state.personPath === "string" && state.personPath ? state.personPath : null;
 			this.shellReturnTarget = "orbit";
+		} else if (state?.mode === "today") {
+			this.mainMode = "today";
+			this.projectPath = null;
+			this.personPath = null;
+			this.shellReturnTarget = "today";
 		} else if (state?.mode === "review") {
 			this.mainMode = "review";
 			this.projectPath = null;
@@ -128,11 +140,17 @@ export class ProjectManagerView extends ItemView {
 			this.projectPath = null;
 			this.personPath = null;
 			this.shellReturnTarget = "time";
-		} else {
+		} else if (state?.mode === "dashboard") {
 			this.mainMode = "dashboard";
 			this.projectPath = null;
 			this.personPath = null;
 			this.shellReturnTarget = "dashboard";
+		} else {
+			const landing = this.host.settings.landingPage === "dashboard" ? "dashboard" : "today";
+			this.mainMode = landing;
+			this.projectPath = null;
+			this.personPath = null;
+			this.shellReturnTarget = landing;
 		}
 		await this.render();
 	}
@@ -168,11 +186,12 @@ export class ProjectManagerView extends ItemView {
 							});
 						}
 					: undefined,
-			onSelectDashboard: () => {
+			onSelectHome: () => {
+				const mode = this.host.settings.landingPage === "dashboard" ? "dashboard" : "today";
 				void this.leaf.setViewState({
 					type: VIEW_PROJECT_MANAGER,
 					active: true,
-					state: {mode: "dashboard"},
+					state: {mode},
 				});
 			},
 			onSelectWeeklyReview: () => {
@@ -238,6 +257,7 @@ export class ProjectManagerView extends ItemView {
 		const props = this.projectManagerProps();
 		const nonProjectShellModes = new Set<ProjectManagerView["mainMode"]>([
 			"dashboard",
+			"today",
 			"review",
 			"tasks",
 			"kanban",

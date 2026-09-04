@@ -1,0 +1,18 @@
+---
+description: After Fulcrum (or other plugin) code changes, build and install into the local vault
+alwaysApply: true
+---
+
+# Build/install into local vault
+
+When you finish implementing or fixing a plugin in this repo, always end by installing into the local Obsidian vault so the user can reload and test.
+
+For Fulcrum:
+
+```bash
+npm run build:install -w obsidian-plugin-fulcrum
+```
+
+For another plugin package, use that workspace’s `build:install` (same `tooling/install-to-vault.mjs` copy into `.obsidian/plugins/<id>`).
+
+Do this after the change is complete — not instead of tests. Skip only if the session was planning/Q&A with no code changes, or if the user said not to install.

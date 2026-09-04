@@ -37,6 +37,11 @@ export type CalendarTaskScheduleField = "due" | "scheduled" | "ask";
 
 export type TasksViewGroupBy = "day" | "project" | "tag";
 
+/** First glyph in Project Manager: Dashboard or the new Today view. */
+export type FulcrumLandingPage = "dashboard" | "today";
+
+export type TodayWeatherUnits = "fahrenheit" | "celsius";
+
 export type TasksViewColumnId =
 	| "title"
 	| "project"
@@ -148,6 +153,16 @@ export interface FulcrumSettings {
 	projectDoneStatuses: string;
 
 	openViewsIn: "main" | "sidebar";
+	/** Project Manager home glyph and ribbon: Dashboard or Today. */
+	landingPage: FulcrumLandingPage;
+	/**
+	 * Today view world clocks, one per line: `Label|IANA/Timezone`.
+	 * Example: `Paris|Europe/Paris`.
+	 */
+	todayWorldClocks: string;
+	/** Open-Meteo geocoding query (city, region). Empty hides weather. */
+	todayWeatherLocation: string;
+	todayWeatherUnits: TodayWeatherUnits;
 	/** Kanban view: projects or tasks board */
 	kanbanView: KanbanView;
 	kanbanColumnBy: KanbanDimension;
@@ -429,6 +444,10 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	projectDoneStatuses: "completed, archived, done",
 
 	openViewsIn: "main",
+	landingPage: "today",
+	todayWorldClocks: "Washington|America/New_York\nParis|Europe/Paris\nPT|America/Los_Angeles",
+	todayWeatherLocation: "",
+	todayWeatherUnits: "fahrenheit",
 	kanbanView: "projects",
 	kanbanColumnBy: "status",
 	kanbanSwimlaneBy: "none",
