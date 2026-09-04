@@ -31,6 +31,7 @@
 		formatTrackedMinutesShort,
 		taskHasDateOn,
 		taskIsPastOpen,
+		taskBelongsOnToday,
 	} from "../fulcrum/utils/dates";
 	import {
 		toISODate,
@@ -71,6 +72,7 @@
 	import GanttMain from "./GanttMain.svelte";
 	import FulcrumDateNavToolbar from "./shared/FulcrumDateNavToolbar.svelte";
 	import DashboardActiveTimers from "./DashboardActiveTimers.svelte";
+	import WorldClocks from "./WorldClocks.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -119,18 +121,19 @@
 			attentionBuckets.upcomingMeetings.length >
 		0;
 
-	$: tasksDueToday = snapshot.tasks.filter(
+	$: todayIso = todayLocalISODate();
+	$: areaTaskOpts = {includeUnlinked: true as const};
+	$: openAreaTasks = snapshot.tasks.filter(
 		(t) =>
 			!isDoneStatus(t.status, doneTask) &&
-			taskHasDateOn(t, todayLocalISODate()) &&
-			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, {includeUnlinked: true}),
+			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, areaTaskOpts),
 	);
-	$: overdueTasks = snapshot.tasks.filter(
-		(t) =>
-			!isDoneStatus(t.status, doneTask) &&
-			taskIsPastOpen(t) &&
-			taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, {includeUnlinked: true}),
-	);
+	$: tasksDueToday = openAreaTasks.filter((t) => taskHasDateOn(t, todayIso));
+	$: overdueTasks = openAreaTasks.filter((t) => taskIsPastOpen(t, todayIso));
+	$: todayTasks = [
+		...overdueTasks,
+		...openAreaTasks.filter((t) => taskBelongsOnToday(t, todayIso) && !taskIsPastOpen(t, todayIso)),
+	];
 	$: meetingsToday = snapshot.meetings.filter(
 		(m) =>
 			m.date?.slice(0, 10) === todayLocalISODate() &&
@@ -199,9 +202,12 @@
 		const endIso = meetingGridDays[meetingGridDays.length - 1]!.iso;
 		for (const t of snapshot.tasks) {
 			if (isDoneStatus(t.status, doneTask)) continue;
-			if (!taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, {includeUnlinked: true})) continue;
-			const open = () => plugin.openIndexedTask(t, hoverParentLeaf);
-			for (const ev of taskToCalendarEvent(t, open, projectColors)) {
+			if (!taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, areaTaskOpts)) continue;
+			for (const ev of taskToCalendarEvent(
+				t,
+				() => plugin.openIndexedTask(t, hoverParentLeaf),
+				projectColors,
+			)) {
 				if (ev.dateIso < startIso || ev.dateIso > endIso) continue;
 				const bucket = out.get(ev.dateIso) ?? {untimed: [], timed: []};
 				if (ev.startMinutes == null) bucket.untimed.push(ev);
@@ -218,8 +224,6 @@
 	function dueTasksForDay(iso: string): {untimed: CalendarEvent[]; timed: CalendarEvent[]} {
 		return dueTasksByDate.get(iso) ?? {untimed: [], timed: []};
 	}
-
-	$: todayTasks = tasksDueToday;
 
 	$: pastDueTasks = overdueTasks;
 
@@ -418,6 +422,7 @@
 
 <section class="fulcrum-section">
 	<h2>Today</h2>
+	<WorldClocks {plugin} />
 	<div class="fulcrum-hero-row fulcrum-hero-row--quad">
 		<div class="fulcrum-mega-stat fulcrum-mega-stat--neutral">
 			<div class="fulcrum-mega-stat__value">{tasksDueToday.length}</div>
@@ -566,7 +571,7 @@
 <section class="fulcrum-section">
 	<TaskSectionHead title="Today's Tasks" {plugin} />
 	{#if todayTasks.length === 0}
-		<p class="fulcrum-muted">Nothing scheduled or due today in indexed tasks.</p>
+		<p class="fulcrum-muted">Nothing due, scheduled, or overdue in indexed tasks for today.</p>
 	{:else}
 		<ul class="fulcrum-task-list fulcrum-task-agenda-list fulcrum-task-agenda-list--compact">
 			{#each todayTasks as t}

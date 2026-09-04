@@ -281,6 +281,14 @@ export function renderViewsTab(ctx: SettingsContext): void {
 				}),
 		);
 
+	heading(containerEl, "World clocks");
+	textSetting(
+		ctx,
+		"worldClocks",
+		"World clocks",
+		"Comma-separated Label|IANA timezone. Leave the zone empty for local time (HOME). Example: Washington|America/New_York,Paris|Europe/Paris,HOME|",
+	);
+
 	heading(containerEl, "General");
 	new Setting(containerEl)
 		.setName("Open views in")

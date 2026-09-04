@@ -195,6 +195,32 @@ describe("buildDaySections with meetings", () => {
 		);
 		expect(sections.find((s) => s.key === "2026-07-02")?.defaultExpanded).toBe(true);
 	});
+
+	it("pins overdue tasks onto today's section", () => {
+		const sections = buildDaySections(
+			[
+				task({
+					title: "Today",
+					dueDate: today,
+					file: {path: "today.md", basename: "today.md"} as IndexedTask["file"],
+				}),
+				task({
+					title: "Overdue",
+					dueDate: "2026-06-08",
+					file: {path: "overdue.md", basename: "overdue.md"} as IndexedTask["file"],
+				}),
+			],
+			settings,
+			7,
+			today,
+		);
+		const todaySection = sections.find((s) => s.key === today);
+		const titles = todaySection?.items
+			.filter((i) => i.kind === "task")
+			.map((i) => (i.kind === "task" ? i.task.title : ""));
+		expect(titles).toEqual(["Overdue", "Today"]);
+		expect(sections.find((s) => s.key === "__past_due__")?.tasks.length).toBe(1);
+	});
 });
 
 describe("tasksViewItemKey", () => {

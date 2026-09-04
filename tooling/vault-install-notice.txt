@@ -1,0 +1,20 @@
+This folder is the Obsidian *install* of the plugin (main.js, manifest.json, styles.css).
+It is not the git source. Do not run npm here.
+
+To rebuild and copy into this vault:
+
+  1. cd to your clone of github.com/jimmy-little/obsidian-plugins
+     (the folder that contains both package.json and plugins/fulcrum/src)
+  2. Point install at this vault (once), at the repo root:
+
+       echo '{ "vaultPath": "/Users/Jimmy.Little/Library/Mobile Documents/iCloud~md~obsidian/Documents/JimmyOS" }' > .vault-path.local.json
+
+  3. From that repo root:
+
+       npm run build:fulcrum:install
+
+     or:
+
+       npm run build:install -w obsidian-plugin-fulcrum
+
+  4. Reload the Fulcrum plugin in Obsidian.

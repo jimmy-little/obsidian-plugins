@@ -3,23 +3,13 @@ import {fulcrumBridgeEnabled} from "../fulcrum/settingsDefaults";
 import type {BridgeCalendarEvent} from "./types";
 import type {CalendarEvent} from "../fulcrum/utils/calendarEvents";
 import {createRemindersBridge} from "./remindersBridge";
-
-function parseCalendarIds(raw: string): string[] {
-	return raw
-		.split(",")
-		.map((s) => s.trim())
-		.filter(Boolean);
-}
+import {padBridgeCalendarQuery, selectedBridgeCalendarIds} from "../fulcrum/tasks/forecastCalendar";
+import {localDateAndStartMinutes} from "../fulcrum/utils/worldClocks";
 
 export function bridgeCalendarEventToCalendarEvent(row: BridgeCalendarEvent): CalendarEvent {
-	const start = row.startIso.slice(0, 10);
-	const startMinutes = row.allDay
-		? null
-		: (() => {
-				const d = new Date(row.startIso);
-				if (Number.isNaN(d.getTime())) return null;
-				return d.getHours() * 60 + d.getMinutes();
-			})();
+	const timed = row.allDay
+		? {dateIso: localDateAndStartMinutes(row.startIso).dateIso, startMinutes: null}
+		: localDateAndStartMinutes(row.startIso);
 	let durationMinutes: number | null = null;
 	if (!row.allDay && row.endIso) {
 		const a = new Date(row.startIso).getTime();
@@ -30,12 +20,13 @@ export function bridgeCalendarEventToCalendarEvent(row: BridgeCalendarEvent): Ca
 	}
 	return {
 		kind: "external",
-		dateIso: start,
-		startMinutes,
+		dateIso: timed.dateIso,
+		startMinutes: timed.startMinutes,
 		durationMinutes,
 		title: row.title,
 		accentCss: "var(--text-muted)",
 		open: () => undefined,
+		location: row.location?.trim() || undefined,
 	};
 }
 
@@ -44,11 +35,15 @@ export async function fetchBridgeCalendarEvents(
 	fromIso: string,
 	toIso: string,
 ): Promise<CalendarEvent[]> {
-	const ids = parseCalendarIds(settings.remindersCalendarIds);
+	const ids = selectedBridgeCalendarIds(settings);
 	if (!fulcrumBridgeEnabled(settings) || ids.length === 0) return [];
 	const bridge = await createRemindersBridge(settings);
 	if (!bridge.events) return [];
-	const rows = await bridge.events(fromIso, toIso, ids);
+	const {queryFrom, queryTo} = padBridgeCalendarQuery(fromIso, toIso);
+	const rows = await bridge.events(queryFrom, queryTo, ids);
 	const allowed = new Set(ids);
-	return rows.filter((r) => allowed.has(r.calendarId)).map(bridgeCalendarEventToCalendarEvent);
+	return rows
+		.filter((r) => allowed.has(r.calendarId))
+		.map(bridgeCalendarEventToCalendarEvent)
+		.filter((r) => r.dateIso >= fromIso && r.dateIso <= toIso);
 }

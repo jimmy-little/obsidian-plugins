@@ -19,6 +19,7 @@
 		"build:pulse": "npm run build -w obsidian-plugin-pulse",
 		"build:ratchet": "npm run build -w obsidian-plugin-ratchet",
 		"build:fulcrum": "npm run build -w obsidian-plugin-fulcrum",
+		"build:fulcrum:install": "npm run build:install -w obsidian-plugin-fulcrum",
 		"build:repose": "npm run build -w obsidian-plugin-repose",
 		"build:chisel": "npm run build -w obsidian-plugin-chisel",
 		"build:trace": "npm run build -w obsidian-plugin-trace"

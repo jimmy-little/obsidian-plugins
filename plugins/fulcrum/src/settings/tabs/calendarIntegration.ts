@@ -38,7 +38,7 @@ async function renderCalendarPickers(
 	renderCalendarIdPicker(host, {
 		sectionTitle: "Horizon calendars",
 		sectionDesc:
-			"Read-only events in the Horizon day list. The gear icon in Horizon opens the same options.",
+			"Events from these calendars appear in the Horizon day agenda. Calendars checked under Calendar view overlay are included too.",
 		rows,
 		selectedIds: forecastIds,
 		onToggle: async (ids) => {
@@ -50,7 +50,8 @@ async function renderCalendarPickers(
 	const overlayIds = parseCalendarIdList(plugin.settings.remindersCalendarIds);
 	renderCalendarIdPicker(host, {
 		sectionTitle: "Calendar view overlay",
-		sectionDesc: "Read-only events in the Calendar view (dashed blocks).",
+		sectionDesc:
+			"Read-only events in the Calendar view (dashed blocks). These calendars also appear in the Horizon agenda when system calendars are enabled.",
 		rows,
 		selectedIds: overlayIds,
 		onToggle: async (ids) => {

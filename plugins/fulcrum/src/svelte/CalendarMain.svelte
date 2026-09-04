@@ -31,6 +31,7 @@
 		type CalendarViewMode,
 	} from "../fulcrum/utils/calendarGrid";
 	import {todayLocalISODate} from "../fulcrum/utils/dates";
+	import {occurrenceIsPast} from "../fulcrum/utils/worldClocks";
 	import {
 		taskToCalendarEvent,
 		taskOccurrenceToCalendarEvents,
@@ -44,7 +45,7 @@
 	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
 	import {fetchBridgeCalendarEvents} from "../conduit/bridgeCalendar";
 	import {
-		filterAtomicNotesAgainstMeetings,
+		preferNotesInCalendarEvents,
 		filterExternalCalendarEventsAgainstMeetings,
 	} from "../fulcrum/utils/calendarOccurrenceDedupe";
 	import {
@@ -87,6 +88,7 @@
 	});
 
 	$: nowLineTopPct = (void nowLineTick, timeGridNowLineTopPercent());
+	$: calendarNow = (void nowLineTick, new Date());
 
 	let focalDate = new Date();
 	focalDate.setHours(0, 0, 0, 0);
@@ -107,6 +109,8 @@
 
 	let externalCalendarEvents: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
 	let externalCalendarLoadId = 0;
+	let vaultAtomicNotes: import("../fulcrum/types").AtomicNoteRow[] = [];
+	let vaultNotesLoadId = 0;
 
 	let dragOverSlot: CalendarDropSlot | null = null;
 	let calendarEventDragActive = false;
@@ -186,8 +190,26 @@
 
 	$: {
 		void rev;
+		void sRev;
+		if (filterProjectPath) {
+			vaultAtomicNotes = [];
+		} else {
+			const id = ++vaultNotesLoadId;
+			void plugin.vaultIndex.getAllAtomicNotes(plugin.settings).then((rows) => {
+				if (id === vaultNotesLoadId) vaultAtomicNotes = rows;
+			}).catch(() => {
+				if (id === vaultNotesLoadId) vaultAtomicNotes = [];
+			});
+		}
+	}
+
+	$: notesForCalendar = filterProjectPath ? projectAtomicNotes : vaultAtomicNotes;
+
+	$: {
+		void rev;
 		void dates;
 		void plugin.settings.remindersCalendarIds;
+		void plugin.settings.forecastCalendarIds;
 		void plugin.settings.conduitEnabled;
 		void timerLayers.calendarShowEvents;
 		const id = ++externalCalendarLoadId;
@@ -214,6 +236,7 @@
 		void timerLayers.calendarShowEvents;
 		void filterProjectPath;
 		void projectAtomicNotes;
+		void notesForCalendar;
 		void noteAccentCss;
 		void externalCalendarEvents;
 		const out: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
@@ -251,26 +274,25 @@
 				if (e) out.push(e);
 			}
 		}
-		const meetingsForNoteDedupe = snapshot.meetings.filter(
-			(m) =>
-				meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap) &&
-				(!filterProjectPath || m.projectFile?.path === filterProjectPath),
-		);
-		for (const n of filterAtomicNotesAgainstMeetings(
-			projectAtomicNotes,
-			meetingsForNoteDedupe,
-		)) {
+		const notesToShow = notesForCalendar.filter((n) => {
+			if (filterProjectPath && n.projectFile?.path !== filterProjectPath) return false;
+			if (!n.projectFile) return true;
+			const fakeMeeting = {file: n.file, projectFile: n.projectFile, title: n.entryTitle};
+			return meetingPassesAreaFilter(fakeMeeting, snapshot, areaFilter, lifeModeMap);
+		});
+		for (const n of notesToShow) {
 			const e = atomicNoteToCalendarEvent(
 				n,
 				() => plugin.openLinkedNoteFromFulcrum(n.file.path, hoverParentLeaf),
-				noteAccentCss,
+				n.projectFile?.path
+					? resolveProjectAccentCss(projectColors.get(n.projectFile.path))
+					: noteAccentCss,
 			);
 			if (e) out.push(e);
 		}
 		if (timerLayers.calendarShowEvents && !filterProjectPath) {
-			const meetingsForDedupe = snapshot.meetings.filter(
-				(m) =>
-					meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap),
+			const meetingsForDedupe = snapshot.meetings.filter((m) =>
+				meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap),
 			);
 			out.push(
 				...filterExternalCalendarEventsAgainstMeetings(
@@ -279,7 +301,7 @@
 				),
 			);
 		}
-		return out;
+		return preferNotesInCalendarEvents(out);
 	})();
 
 	$: eventsByDate = (() => {
@@ -637,6 +659,7 @@
 										{#each dayEvents.slice(0, 5) as e (calendarEventKey(e))}
 											<CalendarEventChip
 												event={e}
+												now={calendarNow}
 												onDragStart={onCalendarEventDragStart}
 												onDragEnd={onCalendarEventDragEnd}
 												onContextMenu={onTaskEventContextMenu}
@@ -692,6 +715,7 @@
 						{#each allDay as e (calendarEventKey(e))}
 							<CalendarEventChip
 								event={e}
+								now={calendarNow}
 								onDragStart={onCalendarEventDragStart}
 								onDragEnd={onCalendarEventDragEnd}
 								onContextMenu={onTaskEventContextMenu}
@@ -733,12 +757,20 @@
 								{@const totalMinutes = 24 * 60}
 								{@const topPct = ((e.startMinutes ?? 0) / totalMinutes) * 100}
 								{@const heightPct = ((e.durationMinutes ?? 30) / totalMinutes) * 100}
+								{@const eventPast = occurrenceIsPast(
+									e.dateIso,
+									e.startMinutes,
+									e.durationMinutes,
+									calendarNow,
+								)}
 								<button
 									type="button"
 									class="fulcrum-calendar__timed-event fulcrum-calendar__timed-event--{e.kind}"
 									class:fulcrum-calendar__timed-event--ghost={e.isGhostOccurrence}
+									class:fulcrum-calendar__timed-event--past={eventPast}
 									style="top: {topPct}%; height: {heightPct}%;{e.accentCss ? ` --fulcrum-event-accent: ${e.accentCss};` : ""}"
 									data-fulcrum-calendar-event
+									title="{e.title}{e.location ? ` · ${e.location}` : ""}"
 									draggable="true"
 									on:dragstart={(ev) => { ev.stopPropagation(); onCalendarEventDragStart(ev, e); }}
 									on:dragend={onCalendarEventDragEnd}
@@ -754,7 +786,9 @@
 											<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
 										{/if}
 									</span>
-									<span class="fulcrum-calendar__timed-event-title">{e.title}</span>
+									<span class="fulcrum-calendar__timed-event-title">
+										{e.title}{#if e.location}<span class="fulcrum-calendar__timed-event-location"> · {e.location}</span>{/if}
+									</span>
 								</button>
 							{/each}
 							{#if iso === todayIso}

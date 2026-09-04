@@ -957,6 +957,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (merged.omnifocusEnabled && merged.conduitEnabled) {
 			merged.conduitEnabled = false;
 		}
+		if (typeof merged.worldClocks !== "string") {
+			merged.worldClocks = DEFAULT_SETTINGS.worldClocks;
+		}
 		delete (merged as Record<string, unknown>).conduitSyncOverrides;
 		if (
 			merged.calendarViewMode !== "month" &&

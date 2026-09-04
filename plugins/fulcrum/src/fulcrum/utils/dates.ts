@@ -33,11 +33,11 @@ export function isDueToday(due: string | undefined, done: boolean): boolean {
 	return norm === todayLocalISODate();
 }
 
-/** YYYY-MM-DD prefix when the value is at least a calendar day. */
+/** YYYY-MM-DD prefix when `raw` starts with a calendar date. */
 export function isoDatePrefix(raw: string | undefined): string | null {
-	if (!raw?.trim()) return null;
-	const norm = raw.trim().slice(0, 10);
-	return norm.length >= 10 ? norm : null;
+	const norm = raw?.trim().slice(0, 10);
+	if (!norm || !/^\d{4}-\d{2}-\d{2}$/.test(norm)) return null;
+	return norm;
 }
 
 /** True when due or scheduled falls on `iso` (YYYY-MM-DD). */
@@ -49,18 +49,25 @@ export function taskHasDateOn(
 }
 
 /**
- * Open task is past its planning date: due before today, or no due and scheduled before today.
- * Tasks due/scheduled today are not past.
+ * Open task is past: due before today, or scheduled before today when there is no due date.
+ * Recurring parents should use occurrence dates instead of this helper.
  */
 export function taskIsPastOpen(
 	task: {dueDate?: string; scheduledDate?: string},
 	today = todayLocalISODate(),
 ): boolean {
-	if (taskHasDateOn(task, today)) return false;
 	const due = isoDatePrefix(task.dueDate);
 	if (due) return due < today;
 	const sched = isoDatePrefix(task.scheduledDate);
 	return sched != null && sched < today;
+}
+
+/** Open task belongs on the Today list: dated today, or still open and already due/scheduled. */
+export function taskBelongsOnToday(
+	task: {dueDate?: string; scheduledDate?: string},
+	today = todayLocalISODate(),
+): boolean {
+	return taskHasDateOn(task, today) || taskIsPastOpen(task, today);
 }
 
 /** True if `iso` is a calendar day on or after today (local), YYYY-MM-DD prefix. */

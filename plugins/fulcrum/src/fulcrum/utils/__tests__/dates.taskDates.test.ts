@@ -1,37 +1,49 @@
 import {describe, expect, it} from "vitest";
-import {taskHasDateOn, taskIsPastOpen} from "../dates";
+import {isoDatePrefix, taskBelongsOnToday, taskHasDateOn, taskIsPastOpen} from "../dates";
+
+describe("isoDatePrefix", () => {
+	it("returns the calendar day from a datetime string", () => {
+		expect(isoDatePrefix("2026-06-08T09:00")).toBe("2026-06-08");
+	});
+
+	it("returns null for missing or invalid values", () => {
+		expect(isoDatePrefix(undefined)).toBeNull();
+		expect(isoDatePrefix("soon")).toBeNull();
+	});
+});
 
 describe("taskHasDateOn", () => {
-	it("matches due or scheduled on the given day", () => {
-		expect(taskHasDateOn({dueDate: "2026-09-02"}, "2026-09-02")).toBe(true);
-		expect(taskHasDateOn({scheduledDate: "2026-09-02T14:00"}, "2026-09-02")).toBe(true);
-		expect(taskHasDateOn({dueDate: "2026-09-03", scheduledDate: "2026-09-02"}, "2026-09-02")).toBe(
+	it("matches due or scheduled on that day", () => {
+		expect(taskHasDateOn({dueDate: "2026-09-04", scheduledDate: "2026-09-01"}, "2026-09-04")).toBe(
 			true,
 		);
-		expect(taskHasDateOn({dueDate: "2026-09-03"}, "2026-09-02")).toBe(false);
-		expect(taskHasDateOn({}, "2026-09-02")).toBe(false);
+		expect(taskHasDateOn({scheduledDate: "2026-09-04T08:35"}, "2026-09-04")).toBe(true);
+		expect(taskHasDateOn({dueDate: "2026-09-03"}, "2026-09-04")).toBe(false);
 	});
 });
 
 describe("taskIsPastOpen", () => {
-	const today = "2026-09-02";
+	const today = "2026-09-04";
 
-	it("treats a past due as overdue", () => {
-		expect(taskIsPastOpen({dueDate: "2026-09-01"}, today)).toBe(true);
+	it("treats a past due date as overdue", () => {
+		expect(taskIsPastOpen({dueDate: "2026-06-08", scheduledDate: "2026-09-10"}, today)).toBe(true);
 	});
 
-	it("treats a past scheduled date as overdue when there is no due", () => {
-		expect(taskIsPastOpen({scheduledDate: "2026-08-30"}, today)).toBe(true);
+	it("treats a past scheduled date as overdue when there is no due date", () => {
+		expect(taskIsPastOpen({scheduledDate: "2026-09-03"}, today)).toBe(true);
 	});
 
-	it("does not treat today as overdue even if the other date is past", () => {
-		expect(taskIsPastOpen({dueDate: "2026-09-01", scheduledDate: "2026-09-02"}, today)).toBe(false);
-		expect(taskIsPastOpen({dueDate: "2026-09-02", scheduledDate: "2026-08-01"}, today)).toBe(false);
+	it("does not treat a future due as overdue even if scheduled is past", () => {
+		expect(taskIsPastOpen({dueDate: "2026-09-10", scheduledDate: "2026-09-01"}, today)).toBe(false);
 	});
+});
 
-	it("ignores future dates and undated tasks", () => {
-		expect(taskIsPastOpen({dueDate: "2026-09-10"}, today)).toBe(false);
-		expect(taskIsPastOpen({scheduledDate: "2026-09-10"}, today)).toBe(false);
-		expect(taskIsPastOpen({}, today)).toBe(false);
+describe("taskBelongsOnToday", () => {
+	const today = "2026-09-04";
+
+	it("includes overdue and today-dated open tasks", () => {
+		expect(taskBelongsOnToday({dueDate: "2026-06-08"}, today)).toBe(true);
+		expect(taskBelongsOnToday({dueDate: "2026-09-04"}, today)).toBe(true);
+		expect(taskBelongsOnToday({dueDate: "2026-09-10"}, today)).toBe(false);
 	});
 });

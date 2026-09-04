@@ -2228,7 +2228,10 @@ export class TasksForecastSettingsModal extends Modal {
 		super(app);
 		this.showVaultMeetings = host.settings.forecastShowVaultMeetings;
 		this.showSystemCalendars = host.settings.forecastShowSystemCalendars;
-		this.selectedIds = parseCalendarIdList(host.settings.forecastCalendarIds);
+		this.selectedIds = new Set([
+			...parseCalendarIdList(host.settings.forecastCalendarIds),
+			...parseCalendarIdList(host.settings.remindersCalendarIds),
+		]);
 	}
 
 	onOpen(): void {
@@ -2256,7 +2259,7 @@ export class TasksForecastSettingsModal extends Modal {
 
 		contentEl.createEl("p", {
 			cls: "fulcrum-settings-lead",
-			text: "Calendars to show in Horizon. The same list is under Settings → Integrations → Calendar integration.",
+			text: "Calendars to show in Horizon. Includes calendars checked under Settings → Integrations → Calendar integration (Horizon and overlay lists).",
 		});
 
 		void this.loadCalendars(contentEl);
@@ -2292,10 +2295,14 @@ export class TasksForecastSettingsModal extends Modal {
 
 	private async save(): Promise<void> {
 		const forecastCalendarIds = joinCalendarIds(this.selectedIds);
+		const overlayKept = [...parseCalendarIdList(this.host.settings.remindersCalendarIds)].filter((id) =>
+			this.selectedIds.has(id),
+		);
 		await this.host.patchSettings({
 			forecastShowVaultMeetings: this.showVaultMeetings,
 			forecastShowSystemCalendars: this.showSystemCalendars,
 			forecastCalendarIds,
+			remindersCalendarIds: joinCalendarIds(overlayKept),
 		});
 		this.onSaved?.();
 		this.close();

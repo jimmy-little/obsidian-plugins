@@ -1,7 +1,11 @@
 import type {FulcrumSettings} from "../settingsDefaults";
-import type {IndexedMeeting, IndexedPlannerEvent, IndexedTask, IndexSnapshot} from "../types";
+import type {AtomicNoteRow, IndexedMeeting, IndexedPlannerEvent, IndexedTask, IndexSnapshot} from "../types";
 import {parseDateTime} from "../utils/dateTimeParse";
-import {filterForecastCalendarsAgainstMeetings} from "../utils/calendarOccurrenceDedupe";
+import {
+	filterForecastCalendarsAgainstMeetings,
+	filterForecastCalendarsAgainstNotes,
+	filterMeetingsAgainstNotes,
+} from "../utils/calendarOccurrenceDedupe";
 import {addDaysIso, todayLocalISODate} from "../utils/dates";
 import {sortIndexedTasks} from "../utils/taskListSort";
 import {
@@ -55,6 +59,7 @@ export type ForecastCalendarRow = {
 	startMinutes: number | null;
 	durationMinutes: number | null;
 	calendarTitle?: string;
+	location?: string;
 };
 
 export type TasksViewItem =
@@ -73,6 +78,13 @@ export type TasksViewItem =
 			startMinutes: number | null;
 			durationMinutes: number | null;
 			calendarTitle?: string;
+			location?: string;
+	  }
+	| {
+			kind: "note";
+			note: AtomicNoteRow;
+			dateIso: string;
+			startMinutes: number | null;
 	  };
 
 export type TasksViewSection = {
@@ -108,6 +120,7 @@ export type WeekStripBlock = {
 export type BuildTasksViewSectionsOptions = {
 	meetings?: IndexedMeeting[];
 	calendarEvents?: ForecastCalendarRow[];
+	notes?: AtomicNoteRow[];
 };
 
 export type TasksViewDayEntry = {
@@ -166,6 +179,15 @@ export function taskStartMinutes(task: IndexedTask): number | null {
 
 export function meetingStartMinutes(m: IndexedMeeting): number | null {
 	return parseDateTime(m.date)?.minutesFromMidnight ?? null;
+}
+
+export function noteStartMinutes(n: AtomicNoteRow): number | null {
+	return parseDateTime(n.startTime?.trim() || n.dateSort?.trim())?.minutesFromMidnight ?? null;
+}
+
+export function notePrimaryDateIso(n: AtomicNoteRow): string | null {
+	const parsed = parseDateTime(n.startTime?.trim() || n.dateSort?.trim());
+	return parsed?.dateIso ?? (n.dateSort?.slice(0, 10) || null);
 }
 
 export function formatMinutesLabel(minutes: number): string {
@@ -270,30 +292,38 @@ function bucketTaskByPrimaryDate(
 
 type TimedSortEntry = {
 	startMinutes: number;
-	kind: "meeting" | "calendar" | "task";
+	kind: "meeting" | "calendar" | "task" | "note";
 	entry?: TasksViewDayEntry;
 	meeting?: IndexedMeeting;
 	calendar?: ForecastCalendarRow;
+	note?: AtomicNoteRow;
 };
 
-/** Merge tasks, meetings, and calendar rows for one day section. */
+/** Merge tasks, meetings, notes, and calendar rows for one day section. */
 export function mergeDayItems(
 	entries: TasksViewDayEntry[],
 	meetings: IndexedMeeting[],
 	calendars: ForecastCalendarRow[],
 	settings: FulcrumSettings,
+	notes: AtomicNoteRow[] = [],
 ): TasksViewItem[] {
 	const sortBy = settings.taskSidebarSortBy;
 	const sortDir = settings.taskSidebarSortDir;
 	const timed: TimedSortEntry[] = [];
 	const untimedMeetings: IndexedMeeting[] = [];
 	const untimedCalendars: ForecastCalendarRow[] = [];
+	const untimedNotes: AtomicNoteRow[] = [];
 	const untimedEntries: TasksViewDayEntry[] = [];
 
 	for (const entry of entries) {
 		const mins = taskStartMinutesForEntry(entry);
 		if (mins != null) timed.push({startMinutes: mins, kind: "task", entry});
 		else untimedEntries.push(entry);
+	}
+	for (const n of notes) {
+		const mins = noteStartMinutes(n);
+		if (mins != null) timed.push({startMinutes: mins, kind: "note", note: n});
+		else untimedNotes.push(n);
 	}
 	for (const m of meetings) {
 		const mins = meetingStartMinutes(m);
@@ -309,9 +339,10 @@ export function mergeDayItems(
 	}
 
 	const kindOrder: Record<TimedSortEntry["kind"], number> = {
-		meeting: 0,
-		calendar: 1,
-		task: 2,
+		note: 0,
+		meeting: 1,
+		calendar: 2,
+		task: 3,
 	};
 	timed.sort((a, b) => {
 		if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
@@ -322,6 +353,9 @@ export function mergeDayItems(
 		(a.title ?? a.file.basename).localeCompare(b.title ?? b.file.basename),
 	);
 	untimedCalendars.sort((a, b) => a.title.localeCompare(b.title));
+	untimedNotes.sort((a, b) =>
+		(a.entryTitle || a.file.basename).localeCompare(b.entryTitle || b.file.basename),
+	);
 
 	const items: TasksViewItem[] = [];
 	for (const e of timed) {
@@ -331,6 +365,13 @@ export function mergeDayItems(
 				task: e.entry.task,
 				occurrenceDateIso: e.entry.occurrenceDateIso,
 				isGhostOccurrence: e.entry.isGhostOccurrence,
+			});
+		} else if (e.kind === "note" && e.note) {
+			items.push({
+				kind: "note",
+				note: e.note,
+				dateIso: notePrimaryDateIso(e.note) ?? "",
+				startMinutes: e.startMinutes,
 			});
 		} else if (e.kind === "meeting" && e.meeting) {
 			const parsed = parseDateTime(e.meeting.date);
@@ -343,6 +384,14 @@ export function mergeDayItems(
 		} else if (e.kind === "calendar" && e.calendar) {
 			items.push({kind: "calendar", ...e.calendar});
 		}
+	}
+	for (const n of untimedNotes) {
+		items.push({
+			kind: "note",
+			note: n,
+			dateIso: notePrimaryDateIso(n) ?? "",
+			startMinutes: null,
+		});
 	}
 	for (const m of untimedMeetings) {
 		items.push({
@@ -382,6 +431,27 @@ function bucketMeetingsByDay(
 			inWindow.set(iso, cur);
 		} else {
 			beyond.push(m);
+		}
+	}
+	return {inWindow, beyond};
+}
+
+function bucketNotesByDay(
+	notes: AtomicNoteRow[],
+	today: string,
+	dayKeys: Set<string>,
+): {inWindow: Map<string, AtomicNoteRow[]>; beyond: AtomicNoteRow[]} {
+	const inWindow = new Map<string, AtomicNoteRow[]>();
+	const beyond: AtomicNoteRow[] = [];
+	for (const n of notes) {
+		const iso = notePrimaryDateIso(n);
+		if (!iso || iso < today) continue;
+		if (dayKeys.has(iso)) {
+			const cur = inWindow.get(iso) ?? [];
+			cur.push(n);
+			inWindow.set(iso, cur);
+		} else {
+			beyond.push(n);
 		}
 	}
 	return {inWindow, beyond};
@@ -528,10 +598,11 @@ export function buildDaySections(
 ): TasksViewSection[] {
 	const sortBy = settings.taskSidebarSortBy;
 	const sortDir = settings.taskSidebarSortDir;
-	const meetings = options?.meetings ?? [];
-	const calendarEvents = filterForecastCalendarsAgainstMeetings(
-		options?.calendarEvents ?? [],
-		meetings,
+	const notes = options?.notes ?? [];
+	const meetings = filterMeetingsAgainstNotes(options?.meetings ?? [], notes);
+	const calendarEvents = filterForecastCalendarsAgainstNotes(
+		filterForecastCalendarsAgainstMeetings(options?.calendarEvents ?? [], meetings),
+		notes,
 	);
 
 	const pastDue: TasksViewDayEntry[] = [];
@@ -560,6 +631,7 @@ export function buildDaySections(
 		today,
 		dayKeys,
 	);
+	const {inWindow: notesByDay, beyond: notesBeyond} = bucketNotesByDay(notes, today, dayKeys);
 
 	const sections: TasksViewSection[] = [];
 
@@ -581,9 +653,28 @@ export function buildDaySections(
 		const list = byDay.get(iso) ?? [];
 		const dayMeetings = meetingsByDay.get(iso) ?? [];
 		const dayCalendars = calendarsByDay.get(iso) ?? [];
+		const dayNotes = notesByDay.get(iso) ?? [];
 		const sorted = sortDayEntries(list, sortBy, sortDir);
-		const sortedTasks = sorted.map((e) => e.task);
-		const items = mergeDayItems(sorted, dayMeetings, dayCalendars, settings);
+		let sortedTasks = sorted.map((e) => e.task);
+		let items = mergeDayItems(sorted, dayMeetings, dayCalendars, settings, dayNotes);
+		if (i === 0 && pastDue.length > 0) {
+			const overdueSorted = sortDayEntries(pastDue, sortBy, sortDir);
+			const overdueItems = entriesToItems(overdueSorted);
+			const seen = new Set(items.map((it) => tasksViewItemKey(it)));
+			items = [...overdueItems.filter((it) => !seen.has(tasksViewItemKey(it))), ...items];
+			const taskSeen = new Set(sortedTasks.map((t) => `${t.file.path}:${t.line ?? ""}`));
+			sortedTasks = [
+				...overdueSorted
+					.map((e) => e.task)
+					.filter((t) => {
+						const k = `${t.file.path}:${t.line ?? ""}`;
+						if (taskSeen.has(k)) return false;
+						taskSeen.add(k);
+						return true;
+					}),
+				...sortedTasks,
+			];
+		}
 		if (items.length === 0 && i > 0) continue;
 		sections.push({
 			key: iso,
@@ -597,7 +688,13 @@ export function buildDaySections(
 
 	const futureSorted = sortDayEntries(futureBeyond, sortBy, sortDir);
 	const futureTasks = futureSorted.map((e) => e.task);
-	const futureItems = mergeDayItems(futureSorted, meetingsBeyond, calendarsBeyond, settings);
+	const futureItems = mergeDayItems(
+		futureSorted,
+		meetingsBeyond,
+		calendarsBeyond,
+		settings,
+		notesBeyond,
+	);
 	if (futureItems.length > 0) {
 		sections.push({
 			key: FUTURE_STRIP_KEY,
@@ -862,6 +959,9 @@ export function tasksViewItemKey(item: TasksViewItem): string {
 	}
 	if (item.kind === "meeting") {
 		return `meeting:${item.meeting.file.path}`;
+	}
+	if (item.kind === "note") {
+		return `note:${item.note.file.path}`;
 	}
 	return `calendar:${item.eventId}`;
 }

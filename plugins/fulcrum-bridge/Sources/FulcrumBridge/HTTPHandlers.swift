@@ -62,10 +62,11 @@ struct HTTPHandlers {
 		if path == "/events" && method == "GET" {
 			let fromStr = request.query["from"] ?? ""
 			let toStr = request.query["to"] ?? ""
-			let f = ISO8601DateFormatter()
-			f.formatOptions = [.withFullDate]
-			let from = f.date(from: fromStr) ?? Date()
-			let to = f.date(from: toStr) ?? from.addingTimeInterval(86400 * 7)
+			let from = parseLocalDay(fromStr) ?? Date()
+			let toStart = parseLocalDay(toStr) ?? from
+			// EventKit end is exclusive; include the whole local `to` day.
+			let to = Calendar.current.date(byAdding: .day, value: 1, to: toStart)
+				?? toStart.addingTimeInterval(86400)
 			var calIds = request.query.filter { $0.name == "calendarId" }.map(\.value)
 			if calIds.isEmpty, let csv = request.query["calendarIds"], !csv.isEmpty {
 				calIds = csv.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -187,6 +188,12 @@ struct HTTPHandlers {
 		case "0", "false", "no": return false
 		default: return nil
 		}
+	}
+
+	private func parseLocalDay(_ s: String) -> Date? {
+		let parts = s.prefix(10).split(separator: "-").compactMap { Int($0) }
+		guard parts.count == 3 else { return nil }
+		return Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
 	}
 
 	private func jsonResponse<T: Encodable>(_ value: T) -> HTTPResponse {

@@ -1,0 +1,31 @@
+---
+description: Finish Fulcrum plugin work with a vault build/install
+alwaysApply: true
+---
+
+# Fulcrum: always build and install
+
+After any change under `plugins/fulcrum` (or Fulcrum Bridge that the plugin consumes), **do not finish until the plugin is production-built and installed into the Obsidian vault**. The user reloads Obsidian; they should not have to build locally.
+
+## Required last step
+
+Run from the **git monorepo root** (`obsidian-plugins`), never from the vault copy at `.obsidian/plugins/fulcrum` (that folder has no `package.json`).
+
+```bash
+cd /path/to/obsidian-plugins
+npm run build:fulcrum:install
+```
+
+That runs `tsc` + esbuild, merges CSS, and copies `main.js`, `manifest.json`, and `styles.css` into the vault’s `.obsidian/plugins/fulcrum/` using `OBSIDIAN_VAULT_PATH` or gitignored `.vault-path.local.json`. After install, that vault folder also has `BUILD.txt` — if npm is run there, it prints these instructions instead of failing with missing `package.json`.
+
+This user’s vault:
+
+`/Users/Jimmy.Little/Library/Mobile Documents/iCloud~md~obsidian/Documents/JimmyOS`
+
+When telling the user to install, do **not** guess a clone path such as `Documents/GitHub/obsidian-plugins`. Cloud agents cannot write the iCloud vault (`EACCES`); treat that as install skipped after a successful `npm run build -w obsidian-plugin-fulcrum`. Tell the user to run `build:fulcrum:install` in **Terminal on the Mac**, from `git rev-parse --show-toplevel` (a folder that contains `plugins/fulcrum`). Do not `cd` into the vault plugin folder.
+
+## Also
+
+- Commit generated `plugins/fulcrum/main.js`, `plugins/fulcrum/styles.css`, and `plugins/fulcrum/src/generated/pluginStyles.ts` when they change.
+- If the vault path is missing (cloud agent with no vault), still run `npm run build -w obsidian-plugin-fulcrum` and say that install was skipped. Never skip the production build.
+- Swift Fulcrum Bridge changes are separate: `plugins/fulcrum-bridge/build.sh` / `install-daemon.sh` on macOS. Still build/install the Obsidian plugin.

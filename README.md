@@ -38,6 +38,8 @@ Each plugin’s **Settings** tab includes a **URL schemes (Obsidian URI)** secti
 
 ## Install into a vault (no symlinks)
 
+Run these from the **monorepo clone on the Mac that has the vault** (the folder that contains `package.json` and `plugins/`). Cursor cloud agents cannot write into iCloud. The vault plugin directory is only the *destination*.
+
 **Option A — env (one-off):**
 
 ```bash
@@ -54,7 +56,7 @@ npm run build:install -w obsidian-plugin-pulse
 Then `npm run build:install -w obsidian-plugin-pulse` works without exporting the variable.
 
 Copies `main.js`, `manifest.json`, and `styles.css` into  
-`.obsidian/plugins/<plugin-id>/`.
+`.obsidian/plugins/<plugin-id>/`. Vault installs also get a `BUILD.txt` so that running npm *inside* that folder prints these instructions instead of `ENOENT` on `package.json`.
 
 ## Release (per plugin)
 
@@ -86,13 +88,13 @@ The **Fulcrum** plugin is ported from the standalone `obsidian-fulcrum` repo: fu
 
 `src/fulcrum/openViews.ts` uses `claimLeaf` from `@obsidian-suite/core`.
 
-Build / install:
+Build / install from this **git repo root on your Mac** (the clone that contains `package.json` and `plugins/fulcrum/src`). Never `cd` into the vault’s `.obsidian/plugins/fulcrum`, and do not run this in the Cursor cloud agent — that VM cannot write your iCloud vault.
 
 ```bash
-npm run build -w obsidian-plugin-fulcrum
+git rev-parse --show-toplevel   # cd there if needed
 # Either: export OBSIDIAN_VAULT_PATH="/path/to/vault"
 # Or: add .vault-path.local.json at repo root — see “Install into a vault” above
-npm run build:install -w obsidian-plugin-fulcrum
+npm run build:fulcrum:install
 ```
 
 ### Shared theme (`packages/theme`)

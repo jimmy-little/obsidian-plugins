@@ -22,6 +22,7 @@
 	import {FULCRUM_CALENDAR_TASK_MIME, findTaskByDragKey} from "../fulcrum/calendar/calendarTaskSchedule";
 	import type {ForecastCalendarRow} from "../fulcrum/tasks/tasksViewModel";
 	import {showFulcrumProjectCardContextMenu} from "../fulcrum/projectCardContextMenu";
+	import type {AtomicNoteRow} from "../fulcrum/types";
 
 	export let plugin: FulcrumHost;
 	export let groupBy: TasksViewGroupBy;
@@ -29,6 +30,8 @@
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 	/** System calendar rows merged into day sections (Phase 2). */
 	export let forecastCalendarRows: ForecastCalendarRow[] = [];
+	/** Vault notes for the day agenda; calendar/meeting copies are dropped when they match. */
+	export let horizonNotes: AtomicNoteRow[] = [];
 
 	const COLLAPSED_LS = "fulcrum-tasks-collapsed";
 
@@ -69,9 +72,22 @@
 					meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap),
 				)
 			: [];
+	$: filteredNotes =
+		groupBy === "day"
+			? horizonNotes.filter((n) => {
+					if (!n.projectFile) return true;
+					return meetingPassesAreaFilter(
+						{file: n.file, projectFile: n.projectFile, title: n.entryTitle},
+						snapshot,
+						areaFilter,
+						lifeModeMap,
+					);
+				})
+			: [];
 	$: sections = buildTasksViewSections(filteredTasks, snapshot, plugin.settings, groupBy, {
 		meetings: filteredMeetings,
 		calendarEvents: forecastCalendarRows,
+		notes: filteredNotes,
 	});
 	$: selectedKey = $tasksViewSelectedKey;
 	$: gridCols = gridTemplateForColumns(columns);
@@ -216,7 +232,7 @@
 									on:select={(e) => onSelectRow(e.detail)}
 								/>
 							{:else}
-								<TasksInfoRow {plugin} item={row} {columns} />
+								<TasksInfoRow {plugin} item={row} />
 							{/if}
 						{/each}
 					</div>

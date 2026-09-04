@@ -40,6 +40,8 @@ export type CalendarEvent = {
 	task?: IndexedTask;
 	/** For meetings */
 	meeting?: IndexedMeeting;
+	/** For atomic notes shown on the calendar */
+	note?: AtomicNoteRow;
 	/** Daily-note planner line */
 	planner?: IndexedPlannerEvent;
 	/** Timer overlay: entry id for stable keys and live updates */
@@ -55,6 +57,8 @@ export type CalendarEvent = {
 	/** Recurring task: projected future occurrence (read-only preview). */
 	isGhostOccurrence?: boolean;
 	occurrenceDateIso?: string;
+	/** System calendar event location (EventKit). */
+	location?: string;
 };
 
 const DEFAULT_DURATION_MINUTES = 30;
@@ -119,6 +123,7 @@ export function calendarEventKey(e: CalendarEvent): string {
 		return `task:${e.task.file.path}:${e.task.line ?? ""}:${occ}:${e.isGhostOccurrence ? "ghost" : "live"}`;
 	}
 	if (e.meeting) return `meeting:${e.meeting.file.path}:${e.dateIso}`;
+	if (e.note) return `note:${e.note.file.path}:${e.dateIso}`;
 	if (e.planner) return `planner:${e.planner.file.path}:${e.planner.line}`;
 	if (e.timerEntryId) return `timer:${e.timerEntryId}:${e.dateIso}`;
 	return `${e.kind}:${e.title}:${e.dateIso}:${e.startMinutes ?? "a"}`;
@@ -338,6 +343,7 @@ export function atomicNoteToCalendarEvent(
 			title,
 			accentCss,
 			open,
+			note: n,
 		};
 	}
 
@@ -352,6 +358,7 @@ export function atomicNoteToCalendarEvent(
 		title,
 		accentCss,
 		open,
+		note: n,
 	};
 }
 
