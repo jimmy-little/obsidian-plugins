@@ -38,7 +38,7 @@ Each plugin’s **Settings** tab includes a **URL schemes (Obsidian URI)** secti
 
 ## Install into a vault (no symlinks)
 
-Run these from the **monorepo clone** (the folder that contains `package.json` and `plugins/`). The vault plugin directory is only the *destination*.
+Run these from the **monorepo clone on the Mac that has the vault** (the folder that contains `package.json` and `plugins/`). Cursor cloud agents cannot write into iCloud. The vault plugin directory is only the *destination*.
 
 **Option A — env (one-off):**
 
@@ -88,10 +88,10 @@ The **Fulcrum** plugin is ported from the standalone `obsidian-fulcrum` repo: fu
 
 `src/fulcrum/openViews.ts` uses `claimLeaf` from `@obsidian-suite/core`.
 
-Build / install from this **git repo root** (the clone that contains `package.json` and `plugins/fulcrum/src`). Never `cd` into the vault’s `.obsidian/plugins/fulcrum` — that directory is only the copy Obsidian loads.
+Build / install from this **git repo root on your Mac** (the clone that contains `package.json` and `plugins/fulcrum/src`). Never `cd` into the vault’s `.obsidian/plugins/fulcrum`, and do not run this in the Cursor cloud agent — that VM cannot write your iCloud vault.
 
 ```bash
-cd /path/to/obsidian-plugins
+git rev-parse --show-toplevel   # cd there if needed
 # Either: export OBSIDIAN_VAULT_PATH="/path/to/vault"
 # Or: add .vault-path.local.json at repo root — see “Install into a vault” above
 npm run build:fulcrum:install

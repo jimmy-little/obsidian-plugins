@@ -15,7 +15,7 @@ Native Mac and iOS companion for [Fulcrum](https://github.com/) time tracking. R
 
 ```bash
 brew install xcodegen   # one-time; skip if already installed
-cd /Users/Jimmy.Little/Documents/GitHub/obsidian-plugins/companion/FulcrumCompanion
+cd companion/FulcrumCompanion   # from the obsidian-plugins git clone root
 xcodegen generate
 open FulcrumCompanion.xcodeproj
 ```

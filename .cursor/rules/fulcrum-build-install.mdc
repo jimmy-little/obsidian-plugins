@@ -22,7 +22,7 @@ This user’s vault:
 
 `/Users/Jimmy.Little/Library/Mobile Documents/iCloud~md~obsidian/Documents/JimmyOS`
 
-When telling the user to install, give the repo `cd` first. Do not `cd` into the vault plugin folder.
+When telling the user to install, do **not** guess a clone path such as `Documents/GitHub/obsidian-plugins`. Cloud agents cannot write the iCloud vault (`EACCES`); treat that as install skipped after a successful `npm run build -w obsidian-plugin-fulcrum`. Tell the user to run `build:fulcrum:install` in **Terminal on the Mac**, from `git rev-parse --show-toplevel` (a folder that contains `plugins/fulcrum`). Do not `cd` into the vault plugin folder.
 
 ## Also
 

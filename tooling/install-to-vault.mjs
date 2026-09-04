@@ -10,6 +10,7 @@
 import { copyFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { platform } from "os";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -64,21 +65,30 @@ if (!id) {
 }
 
 const dest = join(vault, ".obsidian", "plugins", id);
-mkdirSync(dest, { recursive: true });
-
-const files = ["main.js", "manifest.json", "styles.css"];
-for (const f of files) {
-	const src = join(pluginDir, f);
-	if (!existsSync(src)) {
-		console.warn("Skip missing:", src);
-		continue;
-	}
-	const out = join(dest, f);
-	copyFileSync(src, out);
-	console.log("Copied", f, "→", out);
+const skipReason = vaultUnreachableReason(vault);
+if (skipReason) {
+	printLocalInstallHelp(vault, dest, skipReason);
+	process.exit(0);
 }
 
-installWrongDirGuard(dest, pluginDir);
+try {
+	mkdirSync(dest, { recursive: true });
+	const files = ["main.js", "manifest.json", "styles.css"];
+	for (const f of files) {
+		const src = join(pluginDir, f);
+		if (!existsSync(src)) {
+			console.warn("Skip missing:", src);
+			continue;
+		}
+		const out = join(dest, f);
+		copyFileSync(src, out);
+		console.log("Copied", f, "→", out);
+	}
+	installWrongDirGuard(dest, pluginDir);
+} catch (err) {
+	printLocalInstallHelp(vault, dest, err);
+	process.exit(err && (err.code === "EACCES" || err.code === "ENOENT") ? 0 : 1);
+}
 
 console.log("Installed to", dest);
 console.log(
@@ -90,6 +100,53 @@ console.log(
  * Never overwrite those. Vault installs usually have no package.json — drop a
  * stub so `npm run build:install` prints BUILD.txt instead of ENOENT.
  */
+function vaultUnreachableReason(vaultPath) {
+	const plat = platform();
+	if (plat !== "darwin" && (vaultPath.startsWith("/Users/") || vaultPath.includes("iCloud~md~obsidian"))) {
+		return `This is ${plat}, not macOS. Cannot write to ${vaultPath}`;
+	}
+	return null;
+}
+
+function printLocalInstallHelp(vaultPath, destDir, reason) {
+	const detail = reason && reason.code ? `${reason.code}: ${reason.message}` : String(reason);
+	const vaultJson = JSON.stringify({ vaultPath: vaultPath }, null, "  ");
+	console.error(`
+Install skipped — this machine cannot write the Obsidian vault.
+
+  ${detail}
+  Vault: ${vaultPath}
+  Dest:  ${destDir}
+
+The plugin *build* finished. Run install on the Mac that has the vault, in Terminal.app
+(not the Cursor cloud agent). Do not guess Documents/GitHub; use the clone you actually have:
+
+  git rev-parse --show-toplevel    # must print a folder that contains plugins/fulcrum
+  git pull
+  cat > .vault-path.local.json <<'EOF'
+${vaultJson}
+EOF
+  npm run build:fulcrum:install
+
+If you have no clone yet:
+
+  git clone --branch feature/fulcrum-widget-companion https://github.com/jimmy-little/obsidian-plugins.git
+  cd obsidian-plugins
+  npm install
+  cat > .vault-path.local.json <<'EOF'
+${vaultJson}
+EOF
+  npm run build:fulcrum:install
+
+Or copy committed artifacts from that clone (no npm):
+
+  mkdir -p ${JSON.stringify(destDir)}
+  cp plugins/fulcrum/main.js plugins/fulcrum/manifest.json plugins/fulcrum/styles.css ${JSON.stringify(destDir)}
+
+Then reload Fulcrum in Obsidian.
+`);
+}
+
 function destLooksLikeSourceCheckout(destDir) {
 	const pkgPath = join(destDir, "package.json");
 	if (!existsSync(pkgPath)) return false;
