@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {isoDatePrefix, taskHasDateOn, taskIsPastOpen} from "../dates";
+import {isoDatePrefix, taskBelongsOnToday, taskHasDateOn, taskIsPastOpen} from "../dates";
 
 describe("isoDatePrefix", () => {
 	it("returns the calendar day from a datetime string", () => {
@@ -35,5 +35,15 @@ describe("taskIsPastOpen", () => {
 
 	it("does not treat a future due as overdue even if scheduled is past", () => {
 		expect(taskIsPastOpen({dueDate: "2026-09-10", scheduledDate: "2026-09-01"}, today)).toBe(false);
+	});
+});
+
+describe("taskBelongsOnToday", () => {
+	const today = "2026-09-04";
+
+	it("includes overdue and today-dated open tasks", () => {
+		expect(taskBelongsOnToday({dueDate: "2026-06-08"}, today)).toBe(true);
+		expect(taskBelongsOnToday({dueDate: "2026-09-04"}, today)).toBe(true);
+		expect(taskBelongsOnToday({dueDate: "2026-09-10"}, today)).toBe(false);
 	});
 });

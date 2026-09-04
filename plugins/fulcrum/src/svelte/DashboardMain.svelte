@@ -31,6 +31,7 @@
 		formatTrackedMinutesShort,
 		taskHasDateOn,
 		taskIsPastOpen,
+		taskBelongsOnToday,
 	} from "../fulcrum/utils/dates";
 	import {
 		toISODate,
@@ -129,6 +130,10 @@
 	);
 	$: tasksDueToday = openAreaTasks.filter((t) => taskHasDateOn(t, todayIso));
 	$: overdueTasks = openAreaTasks.filter((t) => taskIsPastOpen(t, todayIso));
+	$: todayTasks = [
+		...overdueTasks,
+		...openAreaTasks.filter((t) => taskBelongsOnToday(t, todayIso) && !taskIsPastOpen(t, todayIso)),
+	];
 	$: meetingsToday = snapshot.meetings.filter(
 		(m) =>
 			m.date?.slice(0, 10) === todayLocalISODate() &&
@@ -219,8 +224,6 @@
 	function dueTasksForDay(iso: string): {untimed: CalendarEvent[]; timed: CalendarEvent[]} {
 		return dueTasksByDate.get(iso) ?? {untimed: [], timed: []};
 	}
-
-	$: todayTasks = tasksDueToday;
 
 	$: pastDueTasks = overdueTasks;
 
@@ -568,7 +571,7 @@
 <section class="fulcrum-section">
 	<TaskSectionHead title="Today's Tasks" {plugin} />
 	{#if todayTasks.length === 0}
-		<p class="fulcrum-muted">Nothing due or scheduled today in indexed tasks.</p>
+		<p class="fulcrum-muted">Nothing due, scheduled, or overdue in indexed tasks for today.</p>
 	{:else}
 		<ul class="fulcrum-task-list fulcrum-task-agenda-list fulcrum-task-agenda-list--compact">
 			{#each todayTasks as t}

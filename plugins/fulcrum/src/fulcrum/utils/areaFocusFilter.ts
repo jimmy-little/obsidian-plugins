@@ -179,8 +179,9 @@ export function projectPassesAreaFilter(
 	lifeModeMap: Map<string, string>,
 ): boolean {
 	if (isAreaFilterWideOpen(state)) return true;
-	if (p.areaFiles.length === 0) return false;
-	for (const af of p.areaFiles) {
+	const areas = p.areaFiles.length > 0 ? p.areaFiles : p.areaFile ? [p.areaFile] : [];
+	if (areas.length === 0) return false;
+	for (const af of areas) {
 		const lm = lifeModeMap.get(af.path) ?? "Other";
 		if (areaPathEnabled(af.path, lm, state)) return true;
 	}

@@ -62,6 +62,14 @@ export function taskIsPastOpen(
 	return sched != null && sched < today;
 }
 
+/** Open task belongs on the Today list: dated today, or still open and already due/scheduled. */
+export function taskBelongsOnToday(
+	task: {dueDate?: string; scheduledDate?: string},
+	today = todayLocalISODate(),
+): boolean {
+	return taskHasDateOn(task, today) || taskIsPastOpen(task, today);
+}
+
 /** True if `iso` is a calendar day on or after today (local), YYYY-MM-DD prefix. */
 export function isISODateTodayOrFuture(iso: string | undefined): boolean {
 	if (!iso?.trim()) return false;

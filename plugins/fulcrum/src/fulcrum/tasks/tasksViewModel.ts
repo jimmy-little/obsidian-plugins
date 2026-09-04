@@ -640,8 +640,26 @@ export function buildDaySections(
 		const dayCalendars = calendarsByDay.get(iso) ?? [];
 		const dayNotes = notesByDay.get(iso) ?? [];
 		const sorted = sortDayEntries(list, sortBy, sortDir);
-		const sortedTasks = sorted.map((e) => e.task);
-		const items = mergeDayItems(sorted, dayMeetings, dayCalendars, settings, dayNotes);
+		let sortedTasks = sorted.map((e) => e.task);
+		let items = mergeDayItems(sorted, dayMeetings, dayCalendars, settings, dayNotes);
+		if (i === 0 && pastDue.length > 0) {
+			const overdueSorted = sortDayEntries(pastDue, sortBy, sortDir);
+			const overdueItems = entriesToItems(overdueSorted);
+			const seen = new Set(items.map((it) => tasksViewItemKey(it)));
+			items = [...overdueItems.filter((it) => !seen.has(tasksViewItemKey(it))), ...items];
+			const taskSeen = new Set(sortedTasks.map((t) => `${t.file.path}:${t.line ?? ""}`));
+			sortedTasks = [
+				...overdueSorted
+					.map((e) => e.task)
+					.filter((t) => {
+						const k = `${t.file.path}:${t.line ?? ""}`;
+						if (taskSeen.has(k)) return false;
+						taskSeen.add(k);
+						return true;
+					}),
+				...sortedTasks,
+			];
+		}
 		if (items.length === 0 && i > 0) continue;
 		sections.push({
 			key: iso,
