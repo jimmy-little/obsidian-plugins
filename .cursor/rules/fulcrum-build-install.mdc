@@ -1,0 +1,24 @@
+---
+description: Finish Fulcrum plugin work with a vault build/install
+alwaysApply: true
+---
+
+# Fulcrum: always build and install
+
+After any change under `plugins/fulcrum` (or Fulcrum Bridge that the plugin consumes), **do not finish until the plugin is production-built and installed into the Obsidian vault**. The user reloads Obsidian; they should not have to build locally.
+
+## Required last step
+
+From the repo root:
+
+```bash
+npm run build:install -w obsidian-plugin-fulcrum
+```
+
+That runs `tsc` + esbuild, merges CSS, and copies `main.js`, `manifest.json`, and `styles.css` to `.obsidian/plugins/fulcrum/` using `OBSIDIAN_VAULT_PATH` or gitignored `.vault-path.local.json`.
+
+## Also
+
+- Commit generated `plugins/fulcrum/main.js`, `plugins/fulcrum/styles.css`, and `plugins/fulcrum/src/generated/pluginStyles.ts` when they change.
+- If the vault path is missing (cloud agent with no vault), still run `npm run build -w obsidian-plugin-fulcrum` and say that install was skipped. Never skip the production build.
+- Swift Fulcrum Bridge changes are separate: `plugins/fulcrum-bridge/build.sh` / `install-daemon.sh` on macOS. Still build/install the Obsidian plugin.
