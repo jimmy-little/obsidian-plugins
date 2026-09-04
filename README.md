@@ -56,7 +56,7 @@ npm run build:install -w obsidian-plugin-pulse
 Then `npm run build:install -w obsidian-plugin-pulse` works without exporting the variable.
 
 Copies `main.js`, `manifest.json`, and `styles.css` into  
-`.obsidian/plugins/<plugin-id>/`.
+`.obsidian/plugins/<plugin-id>/`. Vault installs also get a `BUILD.txt` so that running npm *inside* that folder prints these instructions instead of `ENOENT` on `package.json`.
 
 ## Release (per plugin)
 
@@ -88,13 +88,13 @@ The **Fulcrum** plugin is ported from the standalone `obsidian-fulcrum` repo: fu
 
 `src/fulcrum/openViews.ts` uses `claimLeaf` from `@obsidian-suite/core`.
 
-Build / install (from this **git repo root**, not from `.obsidian/plugins/fulcrum` in the vault):
+Build / install from this **git repo root** (the clone that contains `package.json` and `plugins/fulcrum/src`). Never `cd` into the vault’s `.obsidian/plugins/fulcrum` — that directory is only the copy Obsidian loads.
 
 ```bash
-npm run build -w obsidian-plugin-fulcrum
+cd /path/to/obsidian-plugins
 # Either: export OBSIDIAN_VAULT_PATH="/path/to/vault"
 # Or: add .vault-path.local.json at repo root — see “Install into a vault” above
-npm run build:install -w obsidian-plugin-fulcrum
+npm run build:fulcrum:install
 ```
 
 ### Shared theme (`packages/theme`)

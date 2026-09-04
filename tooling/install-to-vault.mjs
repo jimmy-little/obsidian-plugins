@@ -7,9 +7,8 @@
  *   - OBSIDIAN_VAULT_PATH environment variable
  *   - Monorepo root `.vault-path.local.json` — see README (gitignored)
  */
-import { copyFileSync, mkdirSync, existsSync } from "fs";
+import { copyFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
-import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -36,7 +35,7 @@ if (!vault) {
 	console.error(`Set OBSIDIAN_VAULT_PATH to your vault root, e.g.:
 
   export OBSIDIAN_VAULT_PATH="/path/to/your/vault"
-  npm run build:install -w obsidian-plugin-fulcrum
+  npm run build:fulcrum:install
 
 Or create ${join(repoRoot, ".vault-path.local.json")} (gitignored):
 
@@ -79,4 +78,44 @@ for (const f of files) {
 	console.log("Copied", f, "→", out);
 }
 
+installWrongDirGuard(dest, pluginDir);
+
 console.log("Installed to", dest);
+console.log(
+	"Rebuild next time from the git clone (package.json + plugins/), not from this vault folder.",
+);
+
+/**
+ * Source checkouts have a real package.json (esbuild / devDependencies).
+ * Never overwrite those. Vault installs usually have no package.json — drop a
+ * stub so `npm run build:install` prints BUILD.txt instead of ENOENT.
+ */
+function destLooksLikeSourceCheckout(destDir) {
+	const pkgPath = join(destDir, "package.json");
+	if (!existsSync(pkgPath)) return false;
+	try {
+		const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+		if (pkg.workspaces && !pkg.description?.includes("Vault install copy")) return true;
+		if (pkg.devDependencies && Object.keys(pkg.devDependencies).length > 0) return true;
+		if (typeof pkg.scripts?.build === "string" && pkg.scripts.build.includes("esbuild")) return true;
+	} catch {
+		/* ignore */
+	}
+	return false;
+}
+
+function installWrongDirGuard(destDir, sourcePluginDir) {
+	if (resolve(destDir) === resolve(sourcePluginDir)) return;
+	if (destLooksLikeSourceCheckout(destDir)) {
+		console.log("Skip BUILD.txt guard — destination looks like a source checkout.");
+		return;
+	}
+	const noticeSrc = join(repoRoot, "tooling", "vault-install-notice.txt");
+	const stubSrc = join(repoRoot, "tooling", "vault-install-stub-package.json");
+	const wrongDirSrc = join(repoRoot, "tooling", "vault-install-wrong-dir.cjs");
+	if (!existsSync(noticeSrc) || !existsSync(stubSrc) || !existsSync(wrongDirSrc)) return;
+	copyFileSync(noticeSrc, join(destDir, "BUILD.txt"));
+	copyFileSync(wrongDirSrc, join(destDir, "wrong-dir.cjs"));
+	copyFileSync(stubSrc, join(destDir, "package.json"));
+	console.log("Copied BUILD.txt (npm in this folder prints the rebuild instructions)");
+}

@@ -1,0 +1,10 @@
+{
+	"name": "obsidian-plugin-fulcrum",
+	"private": true,
+	"description": "Vault install copy — not the source repo. See BUILD.txt.",
+	"workspaces": ["."],
+	"scripts": {
+		"build": "node ./wrong-dir.cjs",
+		"build:install": "node ./wrong-dir.cjs"
+	}
+}

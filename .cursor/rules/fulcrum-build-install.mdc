@@ -13,10 +13,10 @@ Run from the **git monorepo root** (`obsidian-plugins`), never from the vault co
 
 ```bash
 cd /path/to/obsidian-plugins
-npm run build:install -w obsidian-plugin-fulcrum
+npm run build:fulcrum:install
 ```
 
-That runs `tsc` + esbuild, merges CSS, and copies `main.js`, `manifest.json`, and `styles.css` into the vault’s `.obsidian/plugins/fulcrum/` using `OBSIDIAN_VAULT_PATH` or gitignored `.vault-path.local.json`.
+That runs `tsc` + esbuild, merges CSS, and copies `main.js`, `manifest.json`, and `styles.css` into the vault’s `.obsidian/plugins/fulcrum/` using `OBSIDIAN_VAULT_PATH` or gitignored `.vault-path.local.json`. After install, that vault folder also has `BUILD.txt` — if npm is run there, it prints these instructions instead of failing with missing `package.json`.
 
 This user’s vault:
 
