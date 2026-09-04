@@ -220,7 +220,7 @@
 									on:select={(e) => onSelectRow(e.detail)}
 								/>
 							{:else}
-								<TasksInfoRow {plugin} item={row} {columns} />
+								<TasksInfoRow {plugin} item={row} />
 							{/if}
 						{/each}
 					</div>
