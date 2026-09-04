@@ -14,6 +14,7 @@ import {
 	formatShowingAreaFilterSubtext,
 	listEnabledAreaNames,
 	quickStartPassesAreaFilter,
+	taskPassesAreaFilter,
 	type AreaFilterPanelGroup,
 	type AreaFilterState,
 } from "../areaFocusFilter";
@@ -93,6 +94,38 @@ describe("quickStartPassesAreaFilter", () => {
 			new Map(),
 		);
 		expect(passes).toBe(false);
+	});
+});
+
+describe("taskPassesAreaFilter", () => {
+	it("keeps a task when its project area is enabled even if the task area is elsewhere", () => {
+		const project = makeProject("Projects/Core Library Admin.md", "Areas/Work Admin.md");
+		const taskArea = new TFile();
+		taskArea.path = "Areas/Other.md";
+		const snapshot = emptySnapshot([project]);
+		const task = {
+			file: {path: "tasks/x.md", basename: "x.md"},
+			title: "Overdue",
+			status: "todo",
+			projectFile: project.file,
+			areaFile: taskArea,
+			tags: [],
+			createdAtMs: 0,
+			source: "taskNote" as const,
+			trackedMinutes: 0,
+		};
+		const lifeModeMap = new Map([
+			["Areas/Work Admin.md", "Work"],
+			["Areas/Other.md", "Other"],
+		]);
+		expect(
+			taskPassesAreaFilter(
+				task as never,
+				snapshot,
+				{disabledLifeModes: ["other"], disabledAreaPaths: []},
+				lifeModeMap,
+			),
+		).toBe(true);
 	});
 });
 

@@ -149,6 +149,8 @@ export interface AtomicNoteRow {
 	bodyPreview?: string;
 	tags: string[];
 	priority?: string;
+	/** Project this atomic note is linked to, when known. */
+	projectFile?: TFile | null;
 	/** Explicit frontmatter date/startTime/startDate for activity ordering; unchanged when the file is touched. */
 	anchorDateMs?: number;
 	/** Vault file mtime — activity sort fallback when no anchor date. */

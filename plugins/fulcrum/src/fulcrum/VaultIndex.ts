@@ -820,6 +820,13 @@ export class VaultIndex {
 		return this.snapshot.personWorksWith.get(personPath) ?? [];
 	}
 
+	async getAllAtomicNotes(s: FulcrumSettings): Promise<AtomicNoteRow[]> {
+		const map = await this.buildAtomicNotesByProject(s);
+		const out: AtomicNoteRow[] = [];
+		for (const rows of map.values()) out.push(...rows);
+		return out;
+	}
+
 	async getProjectRollup(
 		projectPath: string,
 		s: FulcrumSettings,
@@ -953,6 +960,7 @@ export class VaultIndex {
 				bodyPreview,
 				tags: parseTagsFromFm(fm),
 				priority: fmString(fm, s.taskPriorityField)?.toLowerCase(),
+				projectFile,
 				anchorDateMs,
 				modifiedMs: f.stat.mtime,
 				endTime: endTimeRaw || undefined,

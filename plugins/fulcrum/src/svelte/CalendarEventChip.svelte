@@ -1,20 +1,27 @@
 <script lang="ts">
 	import type {CalendarEvent} from "../fulcrum/utils/calendarEvents";
+	import {occurrenceIsPast} from "../fulcrum/utils/worldClocks";
 
 	export let event: CalendarEvent;
 	/** When false, the chip is not a drag source (e.g. dashboard preview-only). */
 	export let draggable = true;
+	export let now: Date | undefined = undefined;
 	export let onDragStart: ((ev: DragEvent, e: CalendarEvent) => void) | undefined = undefined;
 	export let onDragEnd: (() => void) | undefined = undefined;
 	export let onContextMenu: ((ev: MouseEvent, e: CalendarEvent) => void) | undefined = undefined;
+
+	$: past = occurrenceIsPast(event.dateIso, event.startMinutes, event.durationMinutes, now);
+	$: location = event.location?.trim() ?? "";
 </script>
 
 <button
 	type="button"
 	class="fulcrum-calendar__event fulcrum-calendar__event--{event.kind}"
 	class:fulcrum-calendar__event--ghost={event.isGhostOccurrence}
+	class:fulcrum-calendar__event--past={past}
 	style={event.accentCss ? `--fulcrum-event-accent: ${event.accentCss}` : undefined}
 	data-fulcrum-calendar-event
+	title="{event.title}{location ? ` · ${location}` : ""}"
 	draggable={draggable ? "true" : undefined}
 	on:dragstart={(ev) => {
 		ev.stopPropagation();
@@ -67,5 +74,10 @@
 			>
 		{/if}
 	</span>
-	<span class="fulcrum-calendar__event-title">{event.title}</span>
+	<span class="fulcrum-calendar__event-text">
+		<span class="fulcrum-calendar__event-title">{event.title}</span>
+		{#if location}
+			<span class="fulcrum-calendar__event-location">{location}</span>
+		{/if}
+	</span>
 </button>

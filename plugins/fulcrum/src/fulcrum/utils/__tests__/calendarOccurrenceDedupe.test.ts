@@ -5,9 +5,13 @@ import {
 	atomicNoteMatchesMeeting,
 	filterAtomicNotesAgainstMeetings,
 	filterForecastCalendarsAgainstMeetings,
+	filterMeetingsAgainstNotes,
+	filterExternalCalendarEventsAgainstNotes,
 	normalizeOccurrenceTitle,
 	occurrenceDedupeKey,
+	preferNotesInCalendarEvents,
 } from "../calendarOccurrenceDedupe";
+import type {CalendarEvent} from "../calendarEvents";
 
 function meeting(partial: Partial<IndexedMeeting> & {date?: string; title?: string}): IndexedMeeting {
 	return {
@@ -143,5 +147,117 @@ describe("filterAtomicNotesAgainstMeetings", () => {
 			meeting({file, title: "Standup", date: "2026-06-30T09:00"}),
 		]);
 		expect(filtered.map((n) => n.entryTitle)).toEqual(["Other note"]);
+	});
+});
+
+describe("filterMeetingsAgainstNotes", () => {
+	it("drops meetings that match a note by file path", () => {
+		const file = {path: "meetings/standup.md", basename: "standup.md"} as AtomicNoteRow["file"];
+		const filtered = filterMeetingsAgainstNotes(
+			[
+				meeting({file, title: "Standup", date: "2026-06-30T09:00"}),
+				meeting({title: "Other", date: "2026-06-30T10:00"}),
+			],
+			[atomicNote({file, entryTitle: "Standup", dateSort: "2026-06-30"})],
+		);
+		expect(filtered.map((m) => m.title)).toEqual(["Other"]);
+	});
+
+	it("drops meetings that match a note by title and start time", () => {
+		const filtered = filterMeetingsAgainstNotes(
+			[meeting({title: "Core Library Standup", date: "2026-09-04T09:00"})],
+			[
+				atomicNote({
+					entryTitle: "Core Library Standup",
+					startTime: "2026-09-04T09:00",
+					dateSort: "2026-09-04",
+				}),
+			],
+		);
+		expect(filtered).toHaveLength(0);
+	});
+});
+
+describe("preferNotesInCalendarEvents", () => {
+	function event(
+		partial: Pick<CalendarEvent, "kind" | "title" | "dateIso" | "startMinutes"> &
+			Partial<CalendarEvent>,
+	): CalendarEvent {
+		return {
+			durationMinutes: 30,
+			accentCss: null,
+			open: () => {},
+			...partial,
+		};
+	}
+
+	it("keeps the note and drops a matching meeting and calendar event", () => {
+		const noteFile = {path: "notes/sync.md", basename: "sync.md"} as AtomicNoteRow["file"];
+		const filtered = preferNotesInCalendarEvents([
+			event({
+				kind: "meeting",
+				title: "Disney - Fluree BiWeekly Sync",
+				dateIso: "2026-09-04",
+				startMinutes: 8 * 60 + 35,
+			}),
+			event({
+				kind: "note",
+				title: "Disney - Fluree BiWeekly Sync",
+				dateIso: "2026-09-04",
+				startMinutes: 8 * 60 + 35,
+				note: atomicNote({file: noteFile, entryTitle: "Disney - Fluree BiWeekly Sync"}),
+			}),
+			event({
+				kind: "external",
+				title: "Disney - Fluree BiWeekly Sync",
+				dateIso: "2026-09-04",
+				startMinutes: 8 * 60 + 35,
+			}),
+			event({
+				kind: "external",
+				title: "Gary Drop Off (C)",
+				dateIso: "2026-09-04",
+				startMinutes: 7 * 60 + 55,
+			}),
+		]);
+		expect(filtered.map((e) => `${e.kind}:${e.title}`)).toEqual([
+			"note:Disney - Fluree BiWeekly Sync",
+			"external:Gary Drop Off (C)",
+		]);
+	});
+});
+
+describe("filterExternalCalendarEventsAgainstNotes", () => {
+	it("drops external events that match a note occurrence", () => {
+		const filtered = filterExternalCalendarEventsAgainstNotes(
+			[
+				{
+					kind: "external",
+					title: "Standup",
+					dateIso: "2026-06-30",
+					startMinutes: 9 * 60,
+					durationMinutes: 30,
+					accentCss: null,
+					open: () => {},
+				},
+				{
+					kind: "external",
+					title: "Other",
+					dateIso: "2026-06-30",
+					startMinutes: 10 * 60,
+					durationMinutes: 30,
+					accentCss: null,
+					open: () => {},
+				},
+			],
+			[
+				atomicNote({
+					entryTitle: "Standup",
+					startTime: "2026-06-30T09:00",
+					dateSort: "2026-06-30",
+				}),
+			],
+		);
+		expect(filtered.map((e) => e.title)).toEqual(["Other"]);
 	});
 });

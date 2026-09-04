@@ -7,11 +7,13 @@
 	import {TasksForecastSettingsModal} from "../fulcrum/modals";
 	import {fetchForecastCalendarRows} from "../fulcrum/tasks/forecastCalendar";
 	import type {ForecastCalendarRow} from "../fulcrum/tasks/tasksViewModel";
+	import type {AtomicNoteRow} from "../fulcrum/types";
 	import {addDaysIso, todayLocalISODate} from "../fulcrum/utils/dates";
 	import TasksCenterList from "./TasksCenterList.svelte";
 	import TaskInspectorPanel from "./TaskInspectorPanel.svelte";
 	import TasksWeekStrip from "./TasksWeekStrip.svelte";
 	import FulcrumLeafToolbar from "./FulcrumLeafToolbar.svelte";
+	import WorldClocks from "./WorldClocks.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
@@ -38,6 +40,8 @@
 	let inspectorWidthPx: number | null = readInspectorWidth();
 	let forecastCalendarRows: ForecastCalendarRow[] = [];
 	let calendarLoadId = 0;
+	let horizonNotes: AtomicNoteRow[] = [];
+	let notesLoadId = 0;
 
 	async function refreshForecastCalendars(): Promise<void> {
 		const id = ++calendarLoadId;
@@ -78,10 +82,17 @@
 		void iRev;
 		void sRev;
 		void plugin.settings.forecastCalendarIds;
+		void plugin.settings.remindersCalendarIds;
 		void plugin.settings.forecastShowSystemCalendars;
 		void plugin.settings.conduitEnabled;
 		void plugin.settings.tasksViewFutureDays;
 		void refreshForecastCalendars();
+		const nid = ++notesLoadId;
+		void plugin.vaultIndex.getAllAtomicNotes(plugin.settings).then((rows) => {
+			if (nid === notesLoadId) horizonNotes = rows;
+		}).catch(() => {
+			if (nid === notesLoadId) horizonNotes = [];
+		});
 	}
 
 	function maxInspectorWidth(): number {
@@ -169,6 +180,7 @@
 	<div class="fulcrum-tasks-main__body" style={inspectorStyle}>
 		<div class="fulcrum-tasks-main__center">
 			<div class="fulcrum-tasks-main__center-top">
+				<WorldClocks {plugin} />
 				<TasksWeekStrip {plugin} />
 			</div>
 			<TasksCenterList
@@ -177,6 +189,7 @@
 				{columns}
 				{hoverParentLeaf}
 				{forecastCalendarRows}
+				{horizonNotes}
 			/>
 		</div>
 

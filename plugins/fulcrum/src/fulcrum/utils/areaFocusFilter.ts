@@ -211,9 +211,11 @@ export function taskPassesAreaFilter(
 	if (isAreaFilterWideOpen(state)) return true;
 	if (t.areaFile) {
 		const lm = lifeModeMap.get(t.areaFile.path) ?? "Other";
-		return areaPathEnabled(t.areaFile.path, lm, state);
+		if (areaPathEnabled(t.areaFile.path, lm, state)) return true;
 	}
-	if (!t.projectFile) return options?.includeUnlinked === true;
+	if (!t.projectFile) {
+		return t.areaFile ? false : options?.includeUnlinked === true;
+	}
 	const proj = snapshot.projects.find((p) => p.file.path === t.projectFile!.path);
 	return proj != null && projectPassesAreaFilter(proj, state, lifeModeMap);
 }

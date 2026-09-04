@@ -305,12 +305,17 @@ export interface FulcrumSettings {
 	taskNotesArchiveFolder: string;
 	remindersQueryRefreshSeconds: number;
 	remindersCalendarIds: string;
-	/** Forecast: comma-separated macOS calendar IDs to show (independent of Calendar view). */
+	/** Horizon + Calendar overlay: comma-separated macOS calendar IDs (unioned at fetch time). */
 	forecastCalendarIds: string;
 	/** Forecast: show vault meeting notes in the day-grouped center list. */
 	forecastShowVaultMeetings: boolean;
 	/** Forecast: show system calendar events from Fulcrum Bridge. */
 	forecastShowSystemCalendars: boolean;
+	/**
+	 * World clocks: `Label|IANA,Label|IANA`. Empty zone = local time.
+	 * Example: `Washington|America/New_York,Paris|Europe/Paris,HOME|`
+	 */
+	worldClocks: string;
 
 	/** Quick note themes for project page segmented submit (emoji, type, journal). */
 	quickNoteThemes: QuickNoteTheme[];
@@ -523,7 +528,8 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	remindersCalendarIds: "",
 	forecastCalendarIds: "",
 	forecastShowVaultMeetings: true,
-	forecastShowSystemCalendars: false,
+	forecastShowSystemCalendars: true,
+	worldClocks: "Washington|America/New_York,Paris|Europe/Paris,HOME|",
 
 	quickNoteThemes: [...DEFAULT_QUICK_NOTE_THEMES],
 };

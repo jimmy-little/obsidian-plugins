@@ -824,6 +824,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (typeof merged.forecastShowSystemCalendars !== "boolean") {
 			merged.forecastShowSystemCalendars = DEFAULT_SETTINGS.forecastShowSystemCalendars;
 		}
+		if (typeof merged.worldClocks !== "string") {
+			merged.worldClocks = DEFAULT_SETTINGS.worldClocks;
+		}
 		delete (merged as Record<string, unknown>).conduitSyncOverrides;
 		if (
 			merged.calendarViewMode !== "month" &&
