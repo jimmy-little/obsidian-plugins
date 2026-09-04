@@ -1,4 +1,10 @@
-import {describe, expect, it} from "vitest";
+import {describe, expect, it, vi} from "vitest";
+
+vi.mock("obsidian", () => ({
+	requestUrl: vi.fn(),
+	Setting: class Setting {},
+}));
+
 import type {BridgeCalendarEvent} from "../../../conduit/types";
 import type {FulcrumSettings} from "../../settingsDefaults";
 import {
