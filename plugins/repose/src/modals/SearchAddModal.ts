@@ -1,6 +1,7 @@
 import { App, Modal } from "obsidian";
 import type { SvelteComponent } from "svelte";
 import type ReposePlugin from "../main";
+import { reposeMobile } from "../platform";
 import SearchAddPanel from "../svelte/SearchAddPanel.svelte";
 
 /**
@@ -20,16 +21,27 @@ export class SearchAddModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("repose-search-add-modal");
+		if (reposeMobile()) {
+			this.modalEl.addClass("repose-search-add-modal--mobile");
+		}
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass("repose-search-add-modal__content");
 
-		const root = contentEl.createDiv({ cls: "repose-search-add-modal__mount" });
-		this.component = new SearchAddPanel({
-			target: root,
-			intro: false,
-			props: { plugin: this.plugin },
-		});
+		const mount = (): void => {
+			const root = contentEl.createDiv({ cls: "repose-search-add-modal__mount" });
+			this.component = new SearchAddPanel({
+				target: root,
+				intro: false,
+				props: { plugin: this.plugin },
+			});
+		};
+
+		if (reposeMobile()) {
+			window.requestAnimationFrame(mount);
+		} else {
+			mount();
+		}
 	}
 
 	onClose(): void {
@@ -37,5 +49,6 @@ export class SearchAddModal extends Modal {
 		this.component = null;
 		this.contentEl.empty();
 		this.modalEl.removeClass("repose-search-add-modal");
+		this.modalEl.removeClass("repose-search-add-modal--mobile");
 	}
 }

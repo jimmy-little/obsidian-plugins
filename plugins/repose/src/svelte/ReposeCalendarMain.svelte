@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import { TFile, type WorkspaceLeaf } from "obsidian";
 	import type ReposePlugin from "../main";
+	import { reposeMobile } from "../platform";
 	import {
 		addDays,
 		daysInView,
@@ -33,6 +34,10 @@
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 	export let focalDateIso: string | undefined = undefined;
 	export let onFocalIsoChange: ((iso: string) => void) | undefined = undefined;
+	/** Mobile: open consumption records inside Repose instead of a split markdown tab. */
+	export let onSelectPath: ((path: string) => void) | undefined = undefined;
+
+	const mobileCalendar = reposeMobile();
 
 	const WEEK_START = 0;
 
@@ -46,10 +51,19 @@
 	let episodeDragActive = false;
 	let draggingCardPath: string | null = null;
 	let dropBusy = false;
+	let indexTimer: number | undefined;
 
-	$: {
-		void listRev;
-		index = buildConsumptionIndex(plugin.app, plugin.settings);
+	function scheduleIndexRebuild(): void {
+		if (indexTimer !== undefined) window.clearTimeout(indexTimer);
+		const delay = mobileCalendar ? 400 : 120;
+		indexTimer = window.setTimeout(() => {
+			indexTimer = undefined;
+			index = buildConsumptionIndex(plugin.app, plugin.settings);
+		}, delay);
+	}
+
+	$: if (listRev > 0) {
+		scheduleIndexRebuild();
 	}
 
 	$: if (focalDateIso && /^\d{4}-\d{2}-\d{2}$/.test(focalDateIso)) {
@@ -83,6 +97,10 @@
 	}
 
 	function openEvent(ev: ConsumptionEvent): void {
+		if (mobileCalendar && onSelectPath) {
+			onSelectPath(ev.path);
+			return;
+		}
 		void plugin.openConsumptionRecordInSplit(ev.path, hoverParentLeaf);
 	}
 
@@ -190,6 +208,10 @@
 
 	onMount(() => {
 		return bindVaultRefresh(plugin, () => listRev++, { debounceMs: 200 });
+	});
+
+	onDestroy(() => {
+		if (indexTimer !== undefined) window.clearTimeout(indexTimer);
 	});
 </script>
 

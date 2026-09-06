@@ -212,6 +212,10 @@ export class ReposeShellView extends ItemView {
 			return;
 		}
 
+		if (Platform.isMobile) {
+			return;
+		}
+
 		await this.leaf.setViewState({
 			type: VIEW_TYPE_REPOSE,
 			active: true,
@@ -251,6 +255,10 @@ export class ReposeShellView extends ItemView {
 			detailOnly: this.detailOnly,
 		});
 
+		if (Platform.isMobile) {
+			return;
+		}
+
 		await this.leaf.setViewState({
 			type: VIEW_TYPE_REPOSE,
 			active: true,
@@ -262,6 +270,11 @@ export class ReposeShellView extends ItemView {
 	}
 
 	private async onSelected(path: string): Promise<void> {
+		if (Platform.isMobile) {
+			this.updateSelection(path);
+			return;
+		}
+
 		this.showLanding = false;
 		this.showCalendar = false;
 		this.calendarFocalDateIso = undefined;
@@ -300,9 +313,6 @@ export class ReposeShellView extends ItemView {
 		}
 
 		this.updateSelection(path);
-		if (Platform.isMobile) {
-			return;
-		}
 		await this.leaf.setViewState({
 			type: VIEW_TYPE_REPOSE,
 			active: true,

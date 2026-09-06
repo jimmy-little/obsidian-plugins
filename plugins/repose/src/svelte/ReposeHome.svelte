@@ -27,10 +27,11 @@
 	export let onBackToList: () => void = () => {};
 
 	const mobile = reposeMobile();
-	/** Full-screen detail: hide library column, keep one Svelte tree (avoids mobile teardown glitches). */
-	$: mobileDetailMode = mobile && !!selectedPath && !landing && !showCalendar;
+	/** Detail, calendar, or landing — show the main pane full-width on mobile. */
+	$: mobileShowMain =
+		mobile && fullView && (!!selectedPath || landing || showCalendar);
 	/** List-only column on mobile — avoid 3-column grid squeezing the sidebar to a sliver. */
-	$: mobileListMode = mobile && fullView && !mobileDetailMode;
+	$: mobileListMode = mobile && fullView && !mobileShowMain;
 
 	const LEFT_WIDTH_LS = "repose-pm-left-col-px";
 	const LEFT_MIN = 220;
@@ -44,6 +45,7 @@
 	let collapseBtnEl: HTMLButtonElement | null = null;
 	let homeBtnEl: HTMLButtonElement | null = null;
 	let calendarBtnEl: HTMLButtonElement | null = null;
+	let mobileBackBtnEl: HTMLButtonElement | null = null;
 
 	$: if (addToggleBtnEl) {
 		setIcon(addToggleBtnEl, "plus");
@@ -59,6 +61,10 @@
 
 	$: if (calendarBtnEl) {
 		setIcon(calendarBtnEl, "calendar");
+	}
+
+	$: if (mobileBackBtnEl) {
+		setIcon(mobileBackBtnEl, "arrow-left");
 	}
 
 	function openCalendar(): void {
@@ -126,15 +132,21 @@
 	}
 
 	function collapseLeftIfNarrow(): void {
-		if (typeof window === "undefined") return;
-		if (mobile || window.matchMedia("(max-width: 768px)").matches) {
+		if (typeof window === "undefined" || mobile) return;
+		if (window.matchMedia("(max-width: 768px)").matches) {
 			leftCollapsed = true;
 		}
 	}
 
 	function backToList(): void {
-		leftCollapsed = false;
+		if (!mobile) {
+			leftCollapsed = false;
+		}
 		onBackToList();
+	}
+
+	function backFromAltPane(): void {
+		backToList();
 	}
 
 	function selectPath(path: string): void {
@@ -164,6 +176,7 @@
 					{plugin}
 					hoverParentLeaf={hostLeaf}
 					focalDateIso={calendarFocalDateIso}
+					onSelectPath={mobile ? selectPath : undefined}
 				/>
 			{/if}
 			{#if landing && !showCalendar}
@@ -187,7 +200,7 @@
 		class="repose-pm"
 		class:repose-pm-left-collapsed={leftCollapsed}
 		class:repose-pm--list-only={!fullView}
-		class:repose-pm--mobile-detail={mobileDetailMode}
+		class:repose-pm--mobile-detail={mobileShowMain}
 		class:repose-pm--mobile-list={mobileListMode}
 		style={fullView && !leftCollapsed && leftWidthPx != null && !mobile
 			? `--repose-pm-left-w: ${leftWidthPx}px`
@@ -253,11 +266,25 @@
 
 		{#if fullView}
 			<main class="repose-pm__main repose-view-root">
+				{#if mobile && (showCalendar || landing)}
+					<div class="repose-pm__mobile-bar">
+						<button
+							type="button"
+							class="repose-pm__glyph-btn clickable-icon"
+							bind:this={mobileBackBtnEl}
+							aria-label="Back to list"
+							title="Back to list"
+							on:click={backFromAltPane}
+						></button>
+						<span class="repose-pm__mobile-bar-title">{showCalendar ? "Calendar" : "Home"}</span>
+					</div>
+				{/if}
 				{#if showCalendar}
 					<ReposeCalendarMain
 						{plugin}
 						hoverParentLeaf={hostLeaf}
 						focalDateIso={calendarFocalDateIso}
+						onSelectPath={mobile ? selectPath : undefined}
 					/>
 				{/if}
 				{#if landing && !showCalendar}
