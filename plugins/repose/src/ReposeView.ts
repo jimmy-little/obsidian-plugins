@@ -544,16 +544,38 @@ export class ReposeView extends ItemView {
 		const tmdb = this.plugin.settings.tmdbApiKey.trim();
 		const showTmdb = (showData.ids as { tmdb?: number } | undefined)?.tmdb;
 		const showTrakt = (showData.ids as { trakt?: number } | undefined)?.trakt;
-		const progressOnce =
-			showTrakt != null ? await fetchShowWatchedProgress(this.plugin, showTrakt) : undefined;
+		let progressOnce: Awaited<ReturnType<typeof fetchShowWatchedProgress>> | undefined;
+		try {
+			const lu = await lookupShowInVault(this.app.vault, this.plugin.settings, showData.title!);
+			if (!lu.found && this.selectedKind === "show" && this.selectedItem) {
+				await addTraktShowOrMovieToVault(
+					this.app.vault,
+					this.plugin.settings,
+					this.selectedItem as TraktShowOrMovie,
+					"show",
+					this.selectedImages,
+					this.plugin,
+				);
+			}
+			progressOnce = showTrakt != null ? await fetchShowWatchedProgress(this.plugin, showTrakt) : undefined;
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			new Notice(msg.length < 160 ? msg : "Could not prepare show folder for import.");
+			return;
+		}
 		let ok = 0;
 		let failed = 0;
+		let firstError: string | undefined;
 		for (const epRow of episodes) {
 			const raw = epRow as unknown as Record<string, unknown>;
 			const episode = asEpisode(raw);
 			let still: string | null = null;
 			if (tmdb && showTmdb != null && episode.season != null && episode.number != null) {
-				still = await fetchEpisodeStill(tmdb, showTmdb, episode.season, episode.number);
+				try {
+					still = await fetchEpisodeStill(tmdb, showTmdb, episode.season, episode.number);
+				} catch (e) {
+					console.warn("[Repose] episode still fetch skipped:", e);
+				}
 			}
 			try {
 				await addTraktEpisodeToVault(
@@ -564,13 +586,22 @@ export class ReposeView extends ItemView {
 					still,
 					this.plugin,
 					progressOnce,
+					true,
 				);
 				ok++;
-			} catch {
+			} catch (e) {
 				failed++;
+				const msg = e instanceof Error ? e.message : String(e);
+				if (!firstError) {
+					firstError = msg;
+					console.error("[Repose] season import episode failed:", e);
+				}
 			}
 		}
-		new Notice(`Season import: ${ok} episode note(s) saved${failed ? `, ${failed} failed` : ""}.`);
+		const errSuffix = firstError ? ` First error: ${firstError}` : "";
+		new Notice(
+			`Season import: ${ok} episode note(s) saved${failed ? `, ${failed} failed` : ""}.${errSuffix}`,
+		);
 	}
 
 	private async selectEpisodeFromSeason(

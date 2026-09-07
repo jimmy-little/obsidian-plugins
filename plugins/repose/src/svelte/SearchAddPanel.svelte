@@ -475,15 +475,40 @@
 		}
 		const tmdb = plugin.settings.tmdbApiKey.trim();
 		const showTmdb = show.ids?.tmdb;
-		const progressOnce =
-			show.ids?.trakt != null ? await fetchShowWatchedProgress(plugin, show.ids.trakt) : undefined;
+		let progressOnce: Awaited<ReturnType<typeof fetchShowWatchedProgress>> | undefined;
+		try {
+			const lu = await lookupShowInVault(plugin.app.vault, plugin.settings, show.title);
+			if (!lu.found && parsed?.kind === "show") {
+				await addTraktShowOrMovieToVault(
+					plugin.app.vault,
+					plugin.settings,
+					parsed.item as TraktShowOrMovie,
+					"show",
+					imagesForAdd,
+					plugin,
+				);
+			}
+			progressOnce =
+				show.ids?.trakt != null
+					? await fetchShowWatchedProgress(plugin, show.ids.trakt)
+					: undefined;
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			new Notice(msg.length < 160 ? msg : "Could not prepare show folder for import.");
+			return;
+		}
 		let ok = 0;
 		let failed = 0;
+		let firstError: string | undefined;
 		for (const epRow of episodesList) {
 			const episode = episodeFromSeasonRow(epRow);
 			let still: string | null = null;
 			if (tmdb && showTmdb != null && episode.season != null && episode.number != null) {
-				still = await fetchEpisodeStill(tmdb, showTmdb, episode.season, episode.number);
+				try {
+					still = await fetchEpisodeStill(tmdb, showTmdb, episode.season, episode.number);
+				} catch (e) {
+					console.warn("[Repose] episode still fetch skipped:", e);
+				}
 			}
 			try {
 				await addTraktEpisodeToVault(
@@ -494,13 +519,22 @@
 					still,
 					plugin,
 					progressOnce,
+					true,
 				);
 				ok++;
-			} catch {
+			} catch (e) {
 				failed++;
+				const msg = e instanceof Error ? e.message : String(e);
+				if (!firstError) {
+					firstError = msg;
+					console.error("[Repose] season import episode failed:", e);
+				}
 			}
 		}
-		new Notice(`Season import: ${ok} episode note(s) saved${failed ? `, ${failed} failed` : ""}.`);
+		const errSuffix = firstError ? ` First error: ${firstError}` : "";
+		new Notice(
+			`Season import: ${ok} episode note(s) saved${failed ? `, ${failed} failed` : ""}.${errSuffix}`,
+		);
 	}
 
 	function pickEpisodeFromList(ep: (typeof episodesList)[0]): void {

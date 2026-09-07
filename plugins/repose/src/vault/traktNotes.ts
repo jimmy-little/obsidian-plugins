@@ -1,5 +1,5 @@
 import matter from "gray-matter";
-import { normalizePath, requestUrl, TFile, type Vault } from "obsidian";
+import { normalizePath, requestUrl, TFile, TFolder, type Vault } from "obsidian";
 import type { OlSearchDoc } from "../openlibrary/client";
 import {
 	extractOlDescription,
@@ -12,10 +12,34 @@ import { noteAttachmentsBase, type ReposeSettings } from "../settings";
 
 /** Match Noma server: readable names for paths */
 export function readableMediaName(title: string): string {
-	return title
+	const cleaned = title
 		.replace(/[^\w\s-]/g, "")
 		.replace(/\s+/g, " ")
 		.trim();
+	return cleaned || "untitled";
+}
+
+/** Vault-safe episode note filename (season x episode + title). */
+export function episodeNoteFilename(episode: TraktEpisode): string {
+	const season = episode.season ?? 0;
+	const epNum = episode.number ?? 0;
+	const episodeTitleText = episode.title?.trim() || `Episode ${epNum}`;
+	let sanitized = episodeTitleText
+		.replace(/[^\w\s-]/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+	if (!sanitized) sanitized = `Episode ${epNum}`;
+	const base = `${season}x${String(epNum).padStart(2, "0")} ${sanitized}`;
+	const maxLen = 120;
+	const truncated = base.length > maxLen ? base.slice(0, maxLen).trim() : base;
+	return `${truncated}.md`;
+}
+
+export function formatRatingLine(rating: unknown): string | null {
+	if (rating == null) return null;
+	const n = typeof rating === "number" ? rating : Number(rating);
+	if (!Number.isFinite(n)) return null;
+	return `**Rating:** ${n.toFixed(1)}/10`;
 }
 
 export function sanitizeFilename(filename: string): string {
@@ -216,7 +240,14 @@ export function openLibraryBookToObsidianFrontmatter(
 
 async function ensureFolder(vault: Vault, dirPath: string): Promise<void> {
 	const normalized = normalizePath(dirPath);
-	if (vault.getAbstractFileByPath(normalized)) return;
+	if (!normalized) return;
+	const existing = vault.getAbstractFileByPath(normalized);
+	if (existing instanceof TFolder) return;
+	if (existing instanceof TFile) {
+		throw new Error(
+			`Cannot create folder "${normalized}" — a note already exists at that path.`,
+		);
+	}
 	const parent = normalized.split("/").slice(0, -1).join("/");
 	if (parent) await ensureFolder(vault, parent);
 	await vault.createFolder(normalized);

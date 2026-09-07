@@ -26,6 +26,8 @@ import {
 	stringifyNote,
 	traktToObsidianFrontmatter,
 	writeMarkdownFile,
+	episodeNoteFilename,
+	formatRatingLine,
 	type TraktEpisode,
 	type TraktShowOrMovie,
 } from "./traktNotes";
@@ -162,7 +164,10 @@ export async function addTraktShowOrMovieToVault(
 	if (itemData.status) metadataLines.push(`**Status:** ${itemData.status.replace("_", " ")}`);
 	if (itemData.network) metadataLines.push(`**Network:** ${itemData.network}`);
 	if (itemData.runtime) metadataLines.push(`**Runtime:** ${itemData.runtime} minutes`);
-	if (itemData.rating != null) metadataLines.push(`**Rating:** ${itemData.rating.toFixed(1)}/10`);
+	if (itemData.rating != null) {
+		const ratingLine = formatRatingLine(itemData.rating);
+		if (ratingLine) metadataLines.push(ratingLine);
+	}
 
 	if (metadataLines.length > 0) content += metadataLines.join(" • ") + "\n\n";
 
@@ -211,33 +216,39 @@ export async function addTraktEpisodeToVault(
 	tokenStore?: TraktSettingsStore,
 	/** When provided (including null), skips fetching; use for batch imports after one progress call. */
 	cachedShowProgress?: ShowWatchedProgress | null,
+	/** Batch import: apply progress only; skip per-episode Trakt history GETs. */
+	skipWatchHistory = false,
 ): Promise<{ path: string }> {
 	const images = episodeStillUrl ? { episodeStill: episodeStillUrl } : null;
 
 	const frontmatter = traktToObsidianFrontmatter(episodeData, "episode", {}, settings.projectWikilink);
 
 	if (showData.ids?.trakt != null && episodeData.season != null && episodeData.number != null) {
-		let progress: ShowWatchedProgress | null = null;
-		if (cachedShowProgress !== undefined) {
-			progress = cachedShowProgress;
-		} else if (tokenStore) {
-			progress = await fetchShowWatchedProgress(tokenStore, showData.ids.trakt);
-		}
-		let hist: string[] | null = null;
-		const epTid = episodeData.ids?.trakt;
-		if (tokenStore && typeof epTid === "number" && Number.isFinite(epTid)) {
-			hist = await fetchEpisodeWatchHistoryIsos(tokenStore, epTid);
-		}
-		if (progress != null || hist !== null) {
-			applyEpisodeWatchFieldsFromTrakt(
-				frontmatter,
-				episodeData.season,
-				episodeData.number,
-				progress,
-				hist,
-				null,
-				null,
-			);
+		try {
+			let progress: ShowWatchedProgress | null = null;
+			if (cachedShowProgress !== undefined) {
+				progress = cachedShowProgress;
+			} else if (tokenStore) {
+				progress = await fetchShowWatchedProgress(tokenStore, showData.ids.trakt);
+			}
+			let hist: string[] | null = null;
+			const epTid = episodeData.ids?.trakt;
+			if (!skipWatchHistory && tokenStore && typeof epTid === "number" && Number.isFinite(epTid)) {
+				hist = await fetchEpisodeWatchHistoryIsos(tokenStore, epTid);
+			}
+			if (progress != null || hist !== null) {
+				applyEpisodeWatchFieldsFromTrakt(
+					frontmatter,
+					episodeData.season,
+					episodeData.number,
+					progress,
+					hist,
+					null,
+					null,
+				);
+			}
+		} catch (e) {
+			console.warn("[Repose] episode watch state skipped during import:", e);
 		}
 	}
 
@@ -247,11 +258,16 @@ export async function addTraktEpisodeToVault(
 	}
 
 	const showTitleForImages = showData.title || "Episode";
-	const imagePaths = await downloadObsidianImages(vault, settings, images, showTitleForImages, {
-		showName: showData.title ?? null,
-		season: episodeData.season,
-		episode: episodeData.number,
-	});
+	let imagePaths: Awaited<ReturnType<typeof downloadObsidianImages>> = { banner: null, poster: null };
+	try {
+		imagePaths = await downloadObsidianImages(vault, settings, images, showTitleForImages, {
+			showName: showData.title ?? null,
+			season: episodeData.season,
+			episode: episodeData.number,
+		});
+	} catch (e) {
+		console.warn("[Repose] episode image download skipped during import:", e);
+	}
 
 	let content = "";
 	if (episodeData.overview) content += `${episodeData.overview}\n\n`;
@@ -266,7 +282,8 @@ export async function addTraktEpisodeToVault(
 	const fa = episodeData.firstAired ?? episodeData.first_aired;
 	if (fa) metadataLines.push(`**Air Date:** ${new Date(fa).toLocaleDateString()}`);
 	if (episodeData.runtime != null) metadataLines.push(`**Runtime:** ${episodeData.runtime} minutes`);
-	if (episodeData.rating != null) metadataLines.push(`**Rating:** ${episodeData.rating.toFixed(1)}/10`);
+	const ratingLine = formatRatingLine(episodeData.rating);
+	if (ratingLine) metadataLines.push(ratingLine);
 
 	if (metadataLines.length > 0) content += metadataLines.join("\n") + "\n\n";
 
@@ -279,16 +296,10 @@ export async function addTraktEpisodeToVault(
 		if (idLines.length > 0) content += idLines.join("\n") + "\n\n";
 	}
 
-	const season = episodeData.season ?? 0;
-	const episode = episodeData.number ?? 0;
-	const episodeTitleText = episodeData.title || `Episode ${episodeData.number}`;
-	const sanitizedEpisodeTitle = episodeTitleText
-		.replace(/[^\w\s]/g, "")
-		.replace(/\s+/g, " ")
-		.trim();
-	const filename = `${season}x${String(episode).padStart(2, "0")} ${sanitizedEpisodeTitle}.md`;
-
-	const readableShowName = readableMediaName(showData.title || "");
+	const readableShowName =
+		readableMediaName(showData.title || "") ||
+		(showData.ids?.trakt != null ? `show-${showData.ids.trakt}` : "untitled");
+	const filename = episodeNoteFilename(episodeData);
 	const showSegs = folderSegmentsForType(settings, "show");
 	const relativePath = pathUnderMedia(settings, ...showSegs, readableShowName, filename);
 
@@ -368,7 +379,8 @@ export async function addTraktEpisodeNextToShowBundle(
 	const fa = episodeData.firstAired ?? episodeData.first_aired;
 	if (fa) metadataLines.push(`**Air Date:** ${new Date(fa).toLocaleDateString()}`);
 	if (episodeData.runtime != null) metadataLines.push(`**Runtime:** ${episodeData.runtime} minutes`);
-	if (episodeData.rating != null) metadataLines.push(`**Rating:** ${episodeData.rating.toFixed(1)}/10`);
+	const bundleRatingLine = formatRatingLine(episodeData.rating);
+	if (bundleRatingLine) metadataLines.push(bundleRatingLine);
 
 	if (metadataLines.length > 0) content += metadataLines.join("\n") + "\n\n";
 
@@ -381,14 +393,7 @@ export async function addTraktEpisodeNextToShowBundle(
 		if (idLines.length > 0) content += idLines.join("\n") + "\n\n";
 	}
 
-	const season = episodeData.season ?? 0;
-	const episode = episodeData.number ?? 0;
-	const episodeTitleText = episodeData.title || `Episode ${episodeData.number}`;
-	const sanitizedEpisodeTitle = episodeTitleText
-		.replace(/[^\w\s]/g, "")
-		.replace(/\s+/g, " ")
-		.trim();
-	const filename = `${season}x${String(episode).padStart(2, "0")} ${sanitizedEpisodeTitle}.md`;
+	const filename = episodeNoteFilename(episodeData);
 
 	const relativePath = normalizePath(`${parent.path}/${filename}`);
 	const md = stringifyNote(frontmatter, content, { banner: imagePaths.banner });
