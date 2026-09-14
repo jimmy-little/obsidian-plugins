@@ -2761,6 +2761,168 @@ span.fulcrum-project-related-pill {
 	font-size: var(--font-ui-smaller);
 }
 
+.fulcrum-task-field-date-modal-shell {
+	width: min(22.5rem, 94vw);
+}
+
+.fulcrum-date-picker {
+	display: flex;
+	flex-direction: column;
+	gap: 0.7rem;
+	margin: 0.35rem 0 0.15rem;
+}
+
+.fulcrum-date-picker__presets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+
+.fulcrum-date-picker__preset {
+	margin: 0;
+	padding: 0.2rem 0.5rem;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
+	line-height: 1.2;
+}
+
+.fulcrum-date-picker__preset:hover {
+	color: var(--text-normal);
+	border-color: var(--background-modifier-border-hover);
+}
+
+.fulcrum-date-picker__preset.is-active {
+	color: var(--text-on-accent, var(--text-normal));
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
+.fulcrum-date-picker__cal {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	padding: 0.45rem 0.45rem 0.55rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
+.fulcrum-date-picker__nav {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.fulcrum-date-picker__month {
+	flex: 1 1 auto;
+	text-align: center;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.fulcrum-date-picker__nav-btn {
+	margin: 0;
+	width: 1.75rem;
+	height: 1.75rem;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--radius-s);
+	background: transparent;
+	color: var(--text-muted);
+	font-size: 1.15rem;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.fulcrum-date-picker__nav-btn:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-date-picker__dows,
+.fulcrum-date-picker__grid {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	gap: 0.12rem;
+}
+
+.fulcrum-date-picker__dow {
+	text-align: center;
+	font-size: 0.68rem;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-faint);
+	padding: 0.1rem 0;
+}
+
+.fulcrum-date-picker__day {
+	margin: 0;
+	width: 100%;
+	aspect-ratio: 1;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-normal);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.fulcrum-date-picker__day:hover {
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-date-picker__day--other {
+	color: var(--text-faint);
+}
+
+.fulcrum-date-picker__day--today {
+	border-color: color-mix(in srgb, var(--interactive-accent) 38%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+}
+
+.fulcrum-date-picker__day--selected {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	color: var(--text-on-accent, var(--text-normal));
+	font-weight: 650;
+}
+
+.fulcrum-date-picker__day--selected.fulcrum-date-picker__day--today {
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-on-accent, #fff) 35%, transparent);
+}
+
+.fulcrum-date-picker__time {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: 0.2rem 0.65rem;
+	align-items: center;
+}
+
+.fulcrum-date-picker__time-label {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.fulcrum-date-picker__time-input {
+	width: 100%;
+	max-width: 9rem;
+	justify-self: start;
+}
+
+.fulcrum-date-picker__time-hint {
+	grid-column: 2;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+
 .fulcrum-task-field-date-modal__fields {
 	display: flex;
 	flex-wrap: wrap;
@@ -9462,6 +9624,7 @@ button.fulcrum-time-insight__value:hover {
 
 .fulcrum-tasks-inspector__date-quick {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: stretch;
 	width: 100%;
 	border: 1px solid var(--background-modifier-border);
@@ -9471,10 +9634,10 @@ button.fulcrum-time-insight__value:hover {
 }
 
 .fulcrum-tasks-inspector__date-quick-btn {
-	flex: 1 1 0;
+	flex: 1 1 4.4rem;
 	min-width: 0;
 	margin: 0;
-	padding: 0.2rem 0.15rem;
+	padding: 0.2rem 0.25rem;
 	border: none;
 	border-right: 1px solid var(--background-modifier-border);
 	background: transparent;
@@ -9490,6 +9653,11 @@ button.fulcrum-time-insight__value:hover {
 .fulcrum-tasks-inspector__date-quick-btn:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
+}
+
+.fulcrum-tasks-inspector__date-quick-btn.is-active {
+	color: var(--text-normal);
+	background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
 }
 
 .fulcrum-tasks-inspector__date-quick-btn--clear {
@@ -10103,28 +10271,52 @@ button.orbit-heatmap-day-modal__link:hover {
 	overflow: auto;
 }
 
-.fulcrum-today__rule {
+.fulcrum-today__split {
 	display: none;
 }
 
 @media (min-width: 840px) {
 	.fulcrum-today__columns {
-		grid-template-columns: minmax(0, 1.12fr) 1px minmax(0, 0.88fr);
-		gap: 0 1.35rem;
+		grid-template-columns: minmax(10rem, var(--fulcrum-today-agenda-w, 56%)) var(--fulcrum-today-split-w, 5px) minmax(10rem, 1fr);
+		gap: 0;
 		overflow: hidden;
 	}
 
-	.fulcrum-today__rule {
+	.fulcrum-today__split {
 		display: block;
-		background: var(--background-modifier-border);
-		width: 1px;
+		width: var(--fulcrum-today-split-w, 5px);
+		margin: 0;
+		padding: 0;
+		border: none;
+		border-left: 1px solid var(--background-modifier-border);
+		border-right: 1px solid var(--background-modifier-border);
+		background: transparent;
+		cursor: col-resize;
 		align-self: stretch;
+		touch-action: none;
+		box-sizing: border-box;
+	}
+
+	.fulcrum-today__split:hover,
+	.fulcrum-today__split:focus-visible {
+		background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	}
+
+	.fulcrum-today__split:focus-visible {
+		outline: 2px solid var(--interactive-accent);
+		outline-offset: -2px;
 	}
 
 	.fulcrum-today__col {
 		overflow: auto;
 		min-height: 0;
-		padding-right: 0.25rem;
+		min-width: 0;
+		padding: 0 0.85rem 0 0.15rem;
+	}
+
+	.fulcrum-today__col--right {
+		padding-left: 0.85rem;
+		padding-right: 0.15rem;
 	}
 }
 

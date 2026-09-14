@@ -37,10 +37,8 @@ import {
 } from "./settingsDefaults";
 import type {IndexedTask} from "./types";
 import {
-	scheduleNextWeekIso,
-	scheduleThisWeekendIso,
-	scheduleTodayIso,
-	scheduleTomorrowIso,
+	isoForTaskDatePreset,
+	TASK_DATE_PRESETS,
 } from "./taskSchedulePresets";
 import type {TaskReminderSpec} from "./types";
 import {
@@ -119,32 +117,30 @@ function addDatePresetSubmenu(
 	host: FulcrumHost,
 	apply: (iso: string | null) => Promise<void>,
 ): void {
-	const presets: {title: string; iso: () => string}[] = [
-		{title: "Today", iso: scheduleTodayIso},
-		{title: "Tomorrow", iso: scheduleTomorrowIso},
-		{title: "This weekend", iso: scheduleThisWeekendIso},
-		{
-			title: "Next week",
-			iso: () => scheduleNextWeekIso(host.settings.calendarFirstDayOfWeek),
-		},
-	];
+	const weekStartDay = host.settings.calendarFirstDayOfWeek;
 	menu.addItem((item) => {
 		item.setTitle(label);
 		item.setIcon(icon);
 		const sub = createSubmenu(item);
-		for (const p of presets) {
+		for (const p of TASK_DATE_PRESETS) {
 			sub.addItem((row) => {
 				row.setTitle(p.title);
 				row.onClick(() => {
-					void withFileResolved(host, task, () => apply(p.iso())).catch(handleMenuError);
+					void withFileResolved(host, task, () =>
+						apply(isoForTaskDatePreset(p.id, weekStartDay)),
+					).catch(handleMenuError);
 				});
 			});
 		}
 		sub.addItem((row) => {
 			row.setTitle("Set date / time…");
 			row.onClick(() => {
-				new TaskFieldDateModal(host.app, label, undefined, (iso) =>
-					withFileResolved(host, task, () => apply(iso ?? "")),
+				new TaskFieldDateModal(
+					host.app,
+					label,
+					undefined,
+					(iso) => withFileResolved(host, task, () => apply(iso ?? "")),
+					weekStartDay,
 				).open();
 			});
 		});

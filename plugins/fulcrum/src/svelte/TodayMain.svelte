@@ -29,6 +29,10 @@
 	import {weatherLucideIcon} from "../fulcrum/today/weatherParse";
 	import {getDailyNoteForIso} from "../fulcrum/today/dailyQuickNote";
 	import {showTodayAddMenu} from "../fulcrum/today/todayAddMenu";
+	import {
+		clampTodayAgendaWidth,
+		TODAY_AGENDA_MIN_PX,
+	} from "../fulcrum/today/todayLayout";
 	import TasksListRow from "./TasksListRow.svelte";
 	import TodayWeekStrip from "./TodayWeekStrip.svelte";
 	import FulcrumLeafToolbar from "./FulcrumLeafToolbar.svelte";
@@ -37,6 +41,22 @@
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 
 	const CHECKLIST_COLUMNS = ["title", "project", "tags"] as const;
+	const AGENDA_WIDTH_LS = "fulcrum-today-agenda-w";
+
+	function readAgendaWidth(): number | null {
+		if (typeof localStorage === "undefined") return null;
+		try {
+			const s = localStorage.getItem(AGENDA_WIDTH_LS);
+			if (!s) return null;
+			const n = Number.parseInt(s, 10);
+			return Number.isFinite(n) && n >= TODAY_AGENDA_MIN_PX ? n : null;
+		} catch {
+			return null;
+		}
+	}
+
+	let columnsEl: HTMLDivElement | null = null;
+	let agendaWidthPx: number | null = readAgendaWidth();
 
 	let focalDateIso = todayLocalISODate();
 	let nowTick = 0;
@@ -254,6 +274,59 @@
 		};
 	}
 
+	function persistAgendaWidth(w: number): void {
+		try {
+			localStorage.setItem(AGENDA_WIDTH_LS, String(w));
+		} catch {
+			/* private mode / quota */
+		}
+	}
+
+	function containerWidth(): number {
+		return columnsEl?.getBoundingClientRect().width ?? 840;
+	}
+
+	function onSplitPointerDown(ev: PointerEvent): void {
+		const handle = ev.currentTarget as HTMLElement;
+		ev.preventDefault();
+		handle.setPointerCapture(ev.pointerId);
+		const left = columnsEl?.querySelector(".fulcrum-today__col--left");
+		const startW =
+			left instanceof HTMLElement ? left.getBoundingClientRect().width : TODAY_AGENDA_MIN_PX;
+		const startX = ev.clientX;
+		const total = containerWidth();
+
+		function move(e: PointerEvent): void {
+			agendaWidthPx = clampTodayAgendaWidth(startW + (e.clientX - startX), total);
+		}
+
+		function up(e: PointerEvent): void {
+			handle.releasePointerCapture(e.pointerId);
+			window.removeEventListener("pointermove", move);
+			window.removeEventListener("pointerup", up);
+			window.removeEventListener("pointercancel", up);
+			if (agendaWidthPx != null) persistAgendaWidth(agendaWidthPx);
+		}
+
+		window.addEventListener("pointermove", move);
+		window.addEventListener("pointerup", up);
+		window.addEventListener("pointercancel", up);
+	}
+
+	function onSplitKeydown(ev: KeyboardEvent): void {
+		if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+		ev.preventDefault();
+		const left = columnsEl?.querySelector(".fulcrum-today__col--left");
+		const cur =
+			agendaWidthPx ??
+			(left instanceof HTMLElement ? left.getBoundingClientRect().width : 420);
+		const step = ev.shiftKey ? 24 : 8;
+		const delta = ev.key === "ArrowRight" ? step : -step;
+		const next = clampTodayAgendaWidth(cur + delta, containerWidth());
+		agendaWidthPx = next;
+		persistAgendaWidth(next);
+	}
+
 	function openFeedItem(item: TodayFeedItem): void {
 		if (item.kind === "planner" && item.planner) {
 			plugin.openPlannerEvent(item.planner, hoverParentLeaf);
@@ -277,7 +350,11 @@
 		<FulcrumLeafToolbar {plugin} />
 	</header>
 
-	<div class="fulcrum-today__columns">
+	<div
+		bind:this={columnsEl}
+		class="fulcrum-today__columns"
+		style={agendaWidthPx != null ? `--fulcrum-today-agenda-w: ${agendaWidthPx}px` : undefined}
+	>
 		<section class="fulcrum-today__col fulcrum-today__col--left" aria-label="Schedule">
 			{#if clockTimes.length > 0}
 				<div class="fulcrum-today__clocks" role="group" aria-label="World time">
@@ -334,7 +411,14 @@
 			{/if}
 		</section>
 
-		<div class="fulcrum-today__rule" aria-hidden="true"></div>
+		<button
+			type="button"
+			class="fulcrum-today__split"
+			aria-label="Resize agenda and task list. Drag or use arrow keys."
+			tabindex="0"
+			on:pointerdown={onSplitPointerDown}
+			on:keydown={onSplitKeydown}
+		></button>
 
 		<section class="fulcrum-today__col fulcrum-today__col--right" aria-label="Tasks">
 			<div class="fulcrum-today__weather">

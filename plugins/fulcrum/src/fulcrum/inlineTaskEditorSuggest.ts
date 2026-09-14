@@ -12,12 +12,7 @@ import {
 import type {FulcrumSettings} from "./settingsDefaults";
 import type {VaultIndex} from "./VaultIndex";
 import {normalizeIsoDateTime} from "./calendar/isoDateTime";
-import {
-	scheduleNextWeekIso,
-	scheduleThisWeekendIso,
-	scheduleTodayIso,
-	scheduleTomorrowIso,
-} from "./taskSchedulePresets";
+import {isoForTaskDatePreset, TASK_DATE_PRESETS} from "./taskSchedulePresets";
 import {isCheckboxLine, isInlineTaskLineInScope} from "./utils/inlineTasks";
 import {effectiveInlineTaskIncludeTag} from "./utils/inlineTaskTag";
 
@@ -53,12 +48,10 @@ function posAtIndex(line: number, index: number): EditorPosition {
 }
 
 function buildDatePresets(settings: FulcrumSettings): {label: string; iso: string}[] {
-	return [
-		{label: "Today", iso: scheduleTodayIso()},
-		{label: "Tomorrow", iso: scheduleTomorrowIso()},
-		{label: "This weekend", iso: scheduleThisWeekendIso()},
-		{label: "Next week", iso: scheduleNextWeekIso(settings.calendarFirstDayOfWeek)},
-	];
+	return TASK_DATE_PRESETS.map((p) => ({
+		label: p.title,
+		iso: isoForTaskDatePreset(p.id, settings.calendarFirstDayOfWeek),
+	}));
 }
 
 function filterByQuery(items: string[], query: string, limit: number): string[] {

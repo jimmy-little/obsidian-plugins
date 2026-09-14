@@ -42,12 +42,7 @@ import {
 	renderCalendarIdPicker,
 } from "../conduit/bridgeCalendarSettings";
 import type {FulcrumSettings} from "./settingsDefaults";
-import {
-	scheduleNextWeekIso,
-	scheduleThisWeekendIso,
-	scheduleTodayIso,
-	scheduleTomorrowIso,
-} from "./taskSchedulePresets";
+import {mountDateTimePicker} from "./dateTimePicker";
 
 export class ProjectPickerModal extends FuzzySuggestModal<IndexedProject> {
 	private readonly projects: IndexedProject[];
@@ -714,6 +709,7 @@ export class TaskScheduleDateTimeModal extends Modal {
 		app: App,
 		private readonly task: IndexedTask,
 		private readonly onSubmit: (result: TaskScheduleDateTimeResult) => void | Promise<void>,
+		private readonly weekStartDay = 1,
 	) {
 		super(app);
 		const seed =
@@ -727,45 +723,34 @@ export class TaskScheduleDateTimeModal extends Modal {
 	}
 
 	onOpen(): void {
-		const {contentEl} = this;
+		const {contentEl, modalEl} = this;
 		contentEl.empty();
+		modalEl.addClass("fulcrum-task-field-date-modal-shell");
+		contentEl.addClass("fulcrum-task-field-date-modal");
 		contentEl.createEl("h2", {text: "Schedule task"});
 		contentEl.createEl("p", {
 			cls: "fulcrum-muted",
 			text: taskTitleForModal(this.task),
 		});
 
-		new Setting(contentEl)
-			.setName("Date")
-			.addText((t) => {
-				t.inputEl.type = "date";
-				t.setValue(this.dateIso);
-				t.onChange((v) => {
-					this.dateIso = v;
-				});
-			});
+		mountDateTimePicker(contentEl, {
+			date: this.dateIso,
+			time: this.timeValue,
+			weekStartDay: this.weekStartDay,
+			timeHint: "Leave empty for all-day.",
+			onDateChange: (iso) => {
+				this.dateIso = iso;
+			},
+			onTimeChange: (hhmm) => {
+				this.timeValue = hhmm;
+			},
+		});
 
-		new Setting(contentEl)
-			.setName("Time (optional)")
-			.setDesc("Leave empty for all-day.")
-			.addText((t) => {
-				t.inputEl.type = "time";
-				t.setValue(this.timeValue);
-				t.onChange((v) => {
-					this.timeValue = v;
-				});
-			});
-
-		new Setting(contentEl).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
-
-		new Setting(contentEl).addButton((b) =>
-			b
-				.setButtonText("Set")
-				.setCta()
-				.onClick(() => {
-					void this.submit();
-				}),
-		);
+		const row = contentEl.createDiv({cls: "fulcrum-modal-button-row"});
+		const cancelBtn = row.createEl("button", {text: "Cancel"});
+		const saveBtn = row.createEl("button", {text: "Set", cls: "mod-cta"});
+		cancelBtn.onclick = () => this.close();
+		saveBtn.onclick = () => void this.submit();
 	}
 
 	onClose(): void {
@@ -873,34 +858,6 @@ function addCompactFieldRow(
 	buildControl(row.createDiv({cls: "fulcrum-create-task-note-modal__field-control"}));
 }
 
-function addCompactDateInput(
-	control: HTMLElement,
-	value: string,
-	onChange: (v: string) => void,
-): HTMLInputElement {
-	const input = control.createEl("input", {
-		type: "date",
-		cls: "fulcrum-create-task-note-modal__input",
-	});
-	if (/^\d{4}-\d{2}-\d{2}$/.test(value)) input.value = value;
-	input.addEventListener("change", () => onChange(input.value));
-	return input;
-}
-
-function addCompactTimeInput(
-	control: HTMLElement,
-	value: string,
-	onChange: (v: string) => void,
-): HTMLInputElement {
-	const input = control.createEl("input", {
-		type: "time",
-		cls: "fulcrum-create-task-note-modal__input",
-	});
-	if (/^\d{2}:\d{2}$/.test(value)) input.value = value;
-	input.addEventListener("change", () => onChange(input.value));
-	return input;
-}
-
 function addCompactTextInput(
 	control: HTMLElement,
 	value: string,
@@ -954,30 +911,16 @@ function renderDateTimeSection(
 	timeHint: string,
 	onDateChange: (v: string) => void,
 	onTimeChange: (v: string) => void,
-	onPresetPick: (iso: string, dateInput: HTMLInputElement) => void,
 ): void {
 	const body = createModalSection(container, title);
-	const fields = body.createDiv({cls: "fulcrum-create-task-note-modal__datetime-fields"});
-
-	const dateField = fields.createDiv({cls: "fulcrum-create-task-note-modal__datetime-field"});
-	dateField.createEl("span", {
-		cls: "fulcrum-create-task-note-modal__datetime-label",
-		text: "Date",
+	mountDateTimePicker(body, {
+		date: dateValue,
+		time: timeValue,
+		weekStartDay: host.settings.calendarFirstDayOfWeek,
+		timeHint,
+		onDateChange,
+		onTimeChange,
 	});
-	const dateInput = addCompactDateInput(dateField, dateValue, onDateChange);
-
-	const timeField = fields.createDiv({cls: "fulcrum-create-task-note-modal__datetime-field"});
-	timeField.createEl("span", {
-		cls: "fulcrum-create-task-note-modal__datetime-label",
-		text: "Time",
-	});
-	addCompactTimeInput(timeField, timeValue, onTimeChange);
-	timeField.createEl("span", {
-		cls: "fulcrum-create-task-note-modal__field-hint",
-		text: timeHint,
-	});
-
-	addDatePresetRow(body, host, (iso) => onPresetPick(iso, dateInput));
 }
 
 export function promptDeleteIndexedTask(app: App, task: IndexedTask): Promise<boolean> {
@@ -1029,28 +972,6 @@ const CREATE_TASK_REMINDER_PRESETS: {label: string; spec: TaskReminderSpec}[] = 
 		spec: {type: "relative", anchor: "scheduled", offset: 1, unit: "hours", direction: "before"},
 	},
 ];
-
-function addDatePresetRow(
-	container: HTMLElement,
-	host: FulcrumHost,
-	onPick: (iso: string) => void,
-): void {
-	const row = container.createDiv({cls: "fulcrum-create-task-note-modal__date-presets"});
-	const presets: {title: string; iso: () => string}[] = [
-		{title: "Today", iso: scheduleTodayIso},
-		{title: "Tomorrow", iso: scheduleTomorrowIso},
-		{title: "This weekend", iso: scheduleThisWeekendIso},
-		{
-			title: "Next week",
-			iso: () => scheduleNextWeekIso(host.settings.calendarFirstDayOfWeek),
-		},
-	];
-	for (const p of presets) {
-		const btn = row.createEl("button", {text: p.title, type: "button"});
-		btn.classList.add("fulcrum-create-task-note-modal__date-preset");
-		btn.onclick = () => onPick(p.iso());
-	}
-}
 
 function reminderSpecKey(spec: TaskReminderSpec): string {
 	if (spec.type === "absolute") return `abs:${spec.date}:${spec.time ?? ""}`;
@@ -1215,10 +1136,6 @@ export class CreateTaskNoteModal extends Modal {
 			(v) => {
 				this.dueTimeValue = v;
 			},
-			(iso, dateInput) => {
-				this.dueDateValue = iso;
-				dateInput.value = iso;
-			},
 		);
 
 		renderDateTimeSection(
@@ -1234,11 +1151,6 @@ export class CreateTaskNoteModal extends Modal {
 			},
 			(v) => {
 				this.schedTimeValue = v;
-			},
-			(iso, dateInput) => {
-				this.schedDateValue = iso;
-				dateInput.value = iso;
-				this.syncRecurrenceStart();
 			},
 		);
 
@@ -1668,6 +1580,7 @@ export class TaskFieldDateModal extends Modal {
 		private readonly label: string,
 		private readonly initial: string | undefined,
 		private readonly onSubmit: (iso: string | null) => void | Promise<void>,
+		private readonly weekStartDay = 1,
 	) {
 		super(app);
 		const parts = splitTaskDateTime(initial);
@@ -1676,31 +1589,23 @@ export class TaskFieldDateModal extends Modal {
 	}
 
 	onOpen(): void {
-		const {contentEl} = this;
+		const {contentEl, modalEl} = this;
 		contentEl.empty();
+		modalEl.addClass("fulcrum-task-field-date-modal-shell");
 		contentEl.addClass("fulcrum-task-field-date-modal");
 		this.titleEl.setText(this.label);
 
-		const fields = contentEl.createDiv({cls: "fulcrum-task-field-date-modal__fields"});
-		const dateField = fields.createDiv({cls: "fulcrum-task-field-date-modal__field"});
-		dateField.createEl("span", {text: "Date", cls: "fulcrum-task-field-date-modal__label"});
-		const dateInput = dateField.createEl("input", {type: "date", cls: "fulcrum-task-field-date-modal__input"});
-		if (/^\d{4}-\d{2}-\d{2}$/.test(this.dateValue)) dateInput.value = this.dateValue;
-		dateInput.addEventListener("change", () => {
-			this.dateValue = dateInput.value;
-		});
-
-		const timeField = fields.createDiv({cls: "fulcrum-task-field-date-modal__field"});
-		timeField.createEl("span", {text: "Time", cls: "fulcrum-task-field-date-modal__label"});
-		const timeInput = timeField.createEl("input", {type: "time", cls: "fulcrum-task-field-date-modal__input"});
-		if (/^\d{2}:\d{2}$/.test(this.timeValue)) timeInput.value = this.timeValue;
-		timeInput.addEventListener("change", () => {
-			this.timeValue = timeInput.value;
-		});
-
-		contentEl.createEl("p", {
-			text: "Leave time empty for all-day.",
-			cls: "fulcrum-modal-hint fulcrum-task-field-date-modal__hint",
+		mountDateTimePicker(contentEl, {
+			date: this.dateValue,
+			time: this.timeValue,
+			weekStartDay: this.weekStartDay,
+			timeHint: "Leave empty for all-day.",
+			onDateChange: (iso) => {
+				this.dateValue = iso;
+			},
+			onTimeChange: (hhmm) => {
+				this.timeValue = hhmm;
+			},
 		});
 
 		const row = contentEl.createDiv({cls: "fulcrum-modal-button-row"});
