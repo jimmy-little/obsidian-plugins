@@ -366,6 +366,7 @@
 					bind:date={schedDate}
 					bind:time={schedTime}
 					existingIso={task.scheduledDate}
+					weekStartDay={plugin.settings.calendarFirstDayOfWeek}
 					onChange={saveScheduled}
 				/>
 
@@ -374,6 +375,7 @@
 					bind:date={dueDate}
 					bind:time={dueTime}
 					existingIso={task.dueDate}
+					weekStartDay={plugin.settings.calendarFirstDayOfWeek}
 					onChange={saveDue}
 				/>
 
@@ -383,6 +385,7 @@
 						bind:date={completedDate}
 						bind:time={completedTime}
 						existingIso={task.completedDate}
+						weekStartDay={plugin.settings.calendarFirstDayOfWeek}
 						onChange={saveCompleted}
 					/>
 				{/if}

@@ -184,19 +184,31 @@ export function openTaskProjectFromCard(host: FulcrumHost, task: IndexedTask): v
 }
 
 export function openEditTaskDue(host: FulcrumHost, task: IndexedTask): void {
-	new TaskFieldDateModal(host.app, "Due date", task.dueDate, async (iso) => {
-		await withFileResolved(host, task, () =>
-			applyTaskDueChange(host.app, task, host.settings, iso),
-		);
-	}).open();
+	new TaskFieldDateModal(
+		host.app,
+		"Due date",
+		task.dueDate,
+		async (iso) => {
+			await withFileResolved(host, task, () =>
+				applyTaskDueChange(host.app, task, host.settings, iso),
+			);
+		},
+		host.settings.calendarFirstDayOfWeek,
+	).open();
 }
 
 export function openEditTaskScheduled(host: FulcrumHost, task: IndexedTask): void {
-	new TaskFieldDateModal(host.app, "Scheduled date", task.scheduledDate, async (iso) => {
-		await withFileResolved(host, task, () =>
-			applyTaskScheduledOnlyChange(host.app, task, host.settings, iso),
-		);
-	}).open();
+	new TaskFieldDateModal(
+		host.app,
+		"Scheduled date",
+		task.scheduledDate,
+		async (iso) => {
+			await withFileResolved(host, task, () =>
+				applyTaskScheduledOnlyChange(host.app, task, host.settings, iso),
+			);
+		},
+		host.settings.calendarFirstDayOfWeek,
+	).open();
 }
 
 export function openEditTaskTags(host: FulcrumHost, task: IndexedTask): void {
