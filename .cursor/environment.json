@@ -1,0 +1,5 @@
+{
+	"name": "Obsidian plugins monorepo",
+	"user": "ubuntu",
+	"install": "npm ci && npm run build"
+}
