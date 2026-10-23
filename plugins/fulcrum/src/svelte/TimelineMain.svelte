@@ -106,12 +106,17 @@
 	let timerOverlayEvents: CalendarEvent[] = [];
 	let timerOverlayLoadId = 0;
 
+	function takeTimerOverlayLoadId(): number {
+		timerOverlayLoadId += 1;
+		return timerOverlayLoadId;
+	}
+
 	$: {
 		void rev;
 		void iso;
 		void timerLayers.calendarShowLogged;
 		void timerLayers.calendarShowPlanned;
-		const id = ++timerOverlayLoadId;
+		const id = takeTimerOverlayLoadId();
 		const dayStart = new Date(iso + "T00:00:00");
 		const dayEnd = new Date(iso + "T23:59:59");
 		void (async (): Promise<void> => {

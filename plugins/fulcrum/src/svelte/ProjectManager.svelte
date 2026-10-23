@@ -360,11 +360,6 @@
 						</div>
 					{/if}
 				</div>
-				{#if !sidebarShowsPeople}
-					<div class="fulcrum-pm__left-footer">
-						<AreaFilterPanel {plugin} variant="sidebar-footer" />
-					</div>
-				{/if}
 			{/if}
 		</div>
 	</aside>
@@ -470,4 +465,8 @@
 			</div>
 		{/if}
 	</main>
+
+	<div class="fulcrum-pm__area-bar">
+		<AreaFilterPanel {plugin} variant="bottom-bar" />
+	</div>
 </div>

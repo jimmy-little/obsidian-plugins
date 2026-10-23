@@ -49,9 +49,10 @@ describe("bridgeEventToForecastRow", () => {
 			allDay: false,
 			location: "Fluree Maintenance and Updates",
 		};
-		const mapped = bridgeEventToForecastRow(row, "Work");
+		const mapped = bridgeEventToForecastRow(row, "Work", "#3366cc");
 		expect(mapped.location).toBe("Fluree Maintenance and Updates");
 		expect(mapped.calendarTitle).toBe("Work");
+		expect(mapped.calendarColor).toBe("#3366cc");
 		expect(mapped.startMinutes).toBe(8 * 60 + 35);
 		expect(mapped.durationMinutes).toBe(30);
 		expect(mapped.dateIso).toBe("2026-09-04");

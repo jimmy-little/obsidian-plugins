@@ -1,0 +1,147 @@
+.acc-env,
+.acc-dashboard {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 0.8rem 1rem 1rem;
+	background: var(--background-secondary);
+}
+
+.acc-env p,
+.acc-dashboard p {
+	margin: 0.2rem 0 0.6rem;
+	text-align: left;
+}
+
+.acc-path {
+	font-family: var(--font-monospace);
+	font-size: 0.85em;
+	word-break: break-all;
+}
+
+.acc-actions {
+	display: flex;
+	gap: 0.5rem;
+	align-items: center;
+	margin-bottom: 0.8rem;
+}
+
+.acc-filter {
+	flex: 1;
+	min-width: 0;
+}
+
+.acc-ok {
+	color: var(--text-success);
+}
+
+.acc-missing {
+	color: var(--text-error);
+	text-align: left;
+}
+
+.acc-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9em;
+}
+
+.acc-table th,
+.acc-table td {
+	text-align: left;
+	padding: 0.25rem 0.5rem 0.25rem 0;
+	vertical-align: top;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.acc-table code {
+	font-size: 0.85em;
+}
+
+.acc-domain h3 {
+	margin: 0.8rem 0 0.4rem;
+	text-transform: capitalize;
+	text-align: left;
+}
+
+.acc-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	gap: 0.75rem;
+}
+
+.acc-tile {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 0.4rem;
+	text-align: left;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 0.75rem;
+	background: var(--background-primary);
+	min-height: 100%;
+}
+
+.acc-tile h4 {
+	margin: 0;
+	text-align: left;
+}
+
+.acc-desc {
+	margin: 0;
+	color: var(--text-muted);
+	text-align: left;
+	display: -webkit-box;
+	-webkit-line-clamp: 4;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.acc-tile-actions {
+	display: flex;
+	gap: 0.4rem;
+	align-items: center;
+	margin-top: auto;
+}
+
+.acc-info {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.2rem 0.4rem;
+}
+
+.acc-run {
+	align-self: center;
+	margin-top: 0;
+}
+
+.acc-doc-modal h2 {
+	text-align: left;
+}
+
+.acc-doc {
+	max-height: 65vh;
+	overflow: auto;
+	text-align: left;
+}
+
+.acc-run-modal h2,
+.acc-run-modal p {
+	text-align: left;
+}
+
+.acc-field {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 0.25rem;
+	margin: 0.6rem 0;
+	text-align: left;
+}
+
+.acc-field input,
+.acc-field textarea,
+.acc-field select {
+	width: 100%;
+}

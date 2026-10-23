@@ -30,7 +30,10 @@ export function collectOpenTasks(
 	);
 }
 
-/** Open tasks for Horizon views: area filter (incl. unlinked inline), facet filters, planner blocks. */
+/**
+ * Open tasks for Horizon / Today / Kanban: area filter, status/source facets,
+ * project-list multi-select (`selectedProjectPaths`; empty = all), planner blocks.
+ */
 export function collectHorizonTasks(
 	snapshot: IndexSnapshot,
 	settings: FulcrumSettings,
@@ -39,10 +42,8 @@ export function collectHorizonTasks(
 	doneTask: Set<string>,
 	selectedProjectPaths: Set<string> = new Set(),
 ): IndexedTask[] {
-	const open = collectOpenTasks(snapshot, areaFilter, lifeModeMap, doneTask);
-	const filtered = filterOpenTasksForTasksView(open, settings).filter((t) =>
-		taskMatchesViewProjectFilter(t, selectedProjectPaths),
-	);
+	const open = collectOpenTasks(snapshot, areaFilter, lifeModeMap, doneTask, selectedProjectPaths);
+	const filtered = filterOpenTasksForTasksView(open, settings);
 	if (settings.taskSourceMode === "taskNotes") return filtered;
 
 	const seen = new Set(filtered.map((t) => horizonTaskDedupeKey(t)));

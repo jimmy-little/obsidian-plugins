@@ -22,6 +22,8 @@ export interface TimerSettings {
 	defaultTagOnNote: string;
 	defaultTagOnTimeEntries: string;
 	timeAdjustMinutes: number;
+	/** Minutes between “still running” notices. 0 disables. */
+	longRunningReminderMinutes: number;
 	firstDayOfWeek: number;
 	excludedFolders: string[];
 	showStatusBar: boolean;
@@ -68,6 +70,7 @@ export const DEFAULT_TIMER_SETTINGS: TimerSettings = {
 	defaultTagOnNote: "#fulcrum-timer",
 	defaultTagOnTimeEntries: "",
 	timeAdjustMinutes: 5,
+	longRunningReminderMinutes: 60,
 	firstDayOfWeek: 0,
 	excludedFolders: [],
 	showStatusBar: true,

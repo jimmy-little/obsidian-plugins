@@ -49,33 +49,19 @@ export async function createTaskNoteFromReminder(
 	const project =
 		projectOverride ??
 		findProjectByReminderList(host.app, snap.projects, host.settings, reminder);
+	if (project) {
+		new Notice("This list is synced to a project — use Reminders: Sync now instead of converting.");
+		return null;
+	}
 
 	const dates = splitReminderDue(reminder.dueDate);
 	const tags = reminder.tags.map((t) => (t.startsWith("#") ? t : `#${t}`));
-
-	let projectLinks: string[] | undefined;
-	let areaLink: string | null = null;
-	if (project) {
-		const lt =
-			host.app.metadataCache.fileToLinktext(project.file, project.file.path, false) ??
-			project.file.basename.replace(/\.md$/i, "");
-		projectLinks = [`[[${lt}]]`];
-		if (project.areaFiles[0]) {
-			const area = project.areaFiles[0];
-			const alt =
-				host.app.metadataCache.fileToLinktext(area, project.file.path, false) ??
-				area.basename.replace(/\.md$/i, "");
-			areaLink = `[[${alt}]]`;
-		}
-	}
 
 	const file = await createTaskNoteFile(host.app, host.settings, {
 		title: reminder.title,
 		dueDate: dates.dueDate ?? null,
 		scheduledDate: dates.scheduledDate ?? null,
-		projectLinks,
 		tags: tags.length > 0 ? tags : undefined,
-		areaLink,
 	});
 
 	if (!file) return null;
@@ -98,8 +84,8 @@ export async function createTaskNoteFromReminder(
 		file,
 		title: reminder.title,
 		status: host.settings.taskStatuses.split(",")[0]?.trim() ?? "todo",
-		projectFile: project?.file ?? null,
-		areaFile: project?.areaFiles[0] ?? null,
+		projectFile: null,
+		areaFile: null,
 		tags: reminder.tags,
 		createdAtMs: file.stat.ctime,
 		source: "taskNote",

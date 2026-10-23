@@ -42,9 +42,11 @@
 	import ProjectPageSections from "./ProjectPageSections.svelte";
 	import PersonCard from "./PersonCard.svelte";
 	import QuickNoteSubmitButton from "./QuickNoteSubmitButton.svelte";
+	import type {QuickNoteSubmitAction} from "./QuickNoteSubmitButton.svelte";
 	import ProjectActiveTimers from "./ProjectActiveTimers.svelte";
 	import ProjectHeaderActiveTimers from "./ProjectHeaderActiveTimers.svelte";
 	import {showFulcrumProjectCardContextMenu} from "../fulcrum/projectCardContextMenu";
+	import {readProjectRemindersOpenLink} from "../conduit/mapping";
 	import {readProjectOmniFocusLink} from "../omnifocus/mapping";
 	import ProjectOmniFocusLinkPill from "./ProjectOmniFocusLinkPill.svelte";
 
@@ -67,8 +69,22 @@
 
 	let rollup: ProjectRollup | null = null;
 	let rollupLoadId = 0;
+
+	function takeRollupLoadId(): number {
+		rollupLoadId += 1;
+		return rollupLoadId;
+	}
 	let rollupMissing = false;
 	let rollupLoadError = false;
+
+	// Clear immediately when switching projects (do not read `rollup` in the load
+	// block below — that would re-run on every assignment and infinite-loop).
+	$: {
+		void projectPath;
+		rollup = null;
+		rollupMissing = false;
+		rollupLoadError = false;
+	}
 
 	$: rev = $indexRevision;
 	$: {
@@ -80,9 +96,8 @@
 			rollupLoadError = false;
 		} else {
 			rollupMissing = false;
-			rollup = null;
 			rollupLoadError = false;
-			const id = ++rollupLoadId;
+			const id = takeRollupLoadId();
 			void plugin.vaultIndex
 				.getProjectRollup(projectPath, plugin.settings)
 				.then((r) => {
@@ -172,13 +187,27 @@
 		return null;
 	}
 
-	async function appendLog(themeId?: string): Promise<void> {
+	async function onQuickNoteSubmit(action: QuickNoteSubmitAction): Promise<void> {
 		if (logBusy) return;
 		logBusy = true;
 		try {
-			await plugin.appendProjectLogEntry(projectPath, logDraft, themeId);
-			logDraft = "";
-			await loadLogActivity();
+			if (action.kind === "trackTime") {
+				const ok = await plugin.startQuickNoteTimer(projectPath, logDraft);
+				if (ok) {
+					logDraft = "";
+					await loadLogActivity();
+				}
+				return;
+			}
+			const ok = await plugin.appendProjectLogEntry(
+				projectPath,
+				logDraft,
+				action.themeId,
+			);
+			if (ok) {
+				logDraft = "";
+				await loadLogActivity();
+			}
 		} finally {
 			logBusy = false;
 		}
@@ -187,7 +216,7 @@
 	function onQuickNoteKeydown(ev: KeyboardEvent): void {
 		if (ev.key !== "Enter" || ev.shiftKey) return;
 		ev.preventDefault();
-		void appendLog();
+		void onQuickNoteSubmit({kind: "note"});
 	}
 
 	function openHeaderMenu(ev: MouseEvent): void {
@@ -244,7 +273,10 @@
 			}
 		: null;
 	$: omniFocusLink = rollup
-		? (void rev, readProjectOmniFocusLink(plugin.app, rollup.project, plugin.settings))
+		? (void rev, void sRev, readProjectOmniFocusLink(plugin.app, rollup.project, plugin.settings))
+		: null;
+	$: remindersOpenLink = rollup
+		? (void rev, void sRev, readProjectRemindersOpenLink(plugin.app, rollup.project, plugin.settings))
 		: null;
 
 	$: bannerMode = !rollup
@@ -363,7 +395,7 @@
 						{#if rollup.project.areaName}
 							<div class="fulcrum-project-banner__area">{rollup.project.areaName}</div>
 						{/if}
-						{#if rollup.relatedProjects?.length > 0 || rollup.relatedProducts?.length > 0 || jiraTicket || omniFocusLink}
+						{#if rollup.relatedProjects?.length > 0 || rollup.relatedProducts?.length > 0 || jiraTicket || omniFocusLink || remindersOpenLink}
 							<div class="fulcrum-project-banner__related">
 								{#if rollup.relatedProjects?.length > 0}
 									<div class="fulcrum-project-banner__related-row">
@@ -384,7 +416,7 @@
 										{/each}
 									</div>
 								{/if}
-								{#if rollup.relatedProducts?.length > 0 || jiraTicket || omniFocusLink}
+								{#if rollup.relatedProducts?.length > 0 || jiraTicket || omniFocusLink || remindersOpenLink}
 									<div class="fulcrum-project-banner__related-row">
 										{#each rollup.relatedProducts as note (note.file.path)}
 											<button
@@ -432,6 +464,14 @@
 											<ProjectOmniFocusLinkPill
 												href={omniFocusLink.href}
 												title={`Open in OmniFocus (${omniFocusLink.id})`}
+											/>
+										{/if}
+										{#if remindersOpenLink}
+											<ProjectOmniFocusLinkPill
+												href={remindersOpenLink.href}
+												label={remindersOpenLink.label}
+												title={remindersOpenLink.title}
+												icon="bell"
 											/>
 										{/if}
 									</div>
@@ -585,7 +625,7 @@
 				<QuickNoteSubmitButton
 					disabled={logBusy}
 					themes={quickNoteThemes}
-					onSubmit={(themeId) => void appendLog(themeId)}
+					onSubmit={(action) => void onQuickNoteSubmit(action)}
 				/>
 			</div>
 		</section>

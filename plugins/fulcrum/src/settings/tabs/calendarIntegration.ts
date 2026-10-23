@@ -9,6 +9,7 @@ import {
 import type FulcrumPlugin from "../../main";
 import {heading, settingsLead} from "../settingsHelpers";
 import type {SettingsContext} from "../settingsContext";
+import {bumpSettingsRevision} from "../../fulcrum/stores";
 
 const BRIDGE_BUILD_STEPS = `1. Open Terminal and run:
    cd plugins/fulcrum-bridge
@@ -96,6 +97,7 @@ export function renderCalendarIntegrationSection(
 			tg.setValue(plugin.settings.conduitEnabled).onChange(async (v) => {
 				plugin.settings.conduitEnabled = v;
 				await plugin.saveSettings();
+				bumpSettingsRevision();
 				await plugin.restartConduit();
 				refresh?.();
 			}),
@@ -111,6 +113,7 @@ export function renderCalendarIntegrationSection(
 				plugin.settings.remindersBridgeUrl = v;
 				await plugin.saveSettings();
 				plugin.conduit?.invalidateBridge();
+				plugin.remindersSync?.invalidate();
 			}),
 		);
 	new Setting(containerEl)
@@ -120,6 +123,7 @@ export function renderCalendarIntegrationSection(
 				plugin.settings.remindersBridgeToken = v;
 				await plugin.saveSettings();
 				plugin.conduit?.invalidateBridge();
+				plugin.remindersSync?.invalidate();
 			}),
 		);
 
@@ -134,6 +138,7 @@ export function renderCalendarIntegrationSection(
 					btn.setDisabled(true);
 					try {
 						plugin.conduit?.invalidateBridge();
+				plugin.remindersSync?.invalidate();
 						await plugin.conduitRunDoctor();
 						new Notice("Bridge connection OK.");
 						refresh?.();

@@ -109,8 +109,19 @@
 
 	let externalCalendarEvents: import("../fulcrum/utils/calendarEvents").CalendarEvent[] = [];
 	let externalCalendarLoadId = 0;
-	let vaultAtomicNotes: import("../fulcrum/types").AtomicNoteRow[] = [];
 	let vaultNotesLoadId = 0;
+
+	function takeVaultNotesLoadId(): number {
+		vaultNotesLoadId += 1;
+		return vaultNotesLoadId;
+	}
+
+	function takeExternalCalendarLoadId(): number {
+		externalCalendarLoadId += 1;
+		return externalCalendarLoadId;
+	}
+
+	let vaultAtomicNotes: import("../fulcrum/types").AtomicNoteRow[] = [];
 
 	let dragOverSlot: CalendarDropSlot | null = null;
 	let calendarEventDragActive = false;
@@ -194,7 +205,7 @@
 		if (filterProjectPath) {
 			vaultAtomicNotes = [];
 		} else {
-			const id = ++vaultNotesLoadId;
+			const id = takeVaultNotesLoadId();
 			void plugin.vaultIndex.getAllAtomicNotes(plugin.settings).then((rows) => {
 				if (id === vaultNotesLoadId) vaultAtomicNotes = rows;
 			}).catch(() => {
@@ -212,7 +223,7 @@
 		void plugin.settings.forecastCalendarIds;
 		void plugin.settings.conduitEnabled;
 		void timerLayers.calendarShowEvents;
-		const id = ++externalCalendarLoadId;
+		const id = takeExternalCalendarLoadId();
 		const from = toISODate(startDate);
 		const to = toISODate(addDays(startDate, Math.max(dayCount - 1, 0)));
 		void (async (): Promise<void> => {

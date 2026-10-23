@@ -6,7 +6,10 @@ import {createRemindersBridge} from "./remindersBridge";
 import {padBridgeCalendarQuery, selectedBridgeCalendarIds} from "../fulcrum/tasks/forecastCalendar";
 import {localDateAndStartMinutes} from "../fulcrum/utils/worldClocks";
 
-export function bridgeCalendarEventToCalendarEvent(row: BridgeCalendarEvent): CalendarEvent {
+export function bridgeCalendarEventToCalendarEvent(
+	row: BridgeCalendarEvent,
+	calendarColor?: string,
+): CalendarEvent {
 	const timed = row.allDay
 		? {dateIso: localDateAndStartMinutes(row.startIso).dateIso, startMinutes: null}
 		: localDateAndStartMinutes(row.startIso);
@@ -27,6 +30,7 @@ export function bridgeCalendarEventToCalendarEvent(row: BridgeCalendarEvent): Ca
 		accentCss: "var(--text-muted)",
 		open: () => undefined,
 		location: row.location?.trim() || undefined,
+		calendarColor: calendarColor?.trim() || undefined,
 	};
 }
 
@@ -38,12 +42,20 @@ export async function fetchBridgeCalendarEvents(
 	const ids = selectedBridgeCalendarIds(settings);
 	if (!fulcrumBridgeEnabled(settings) || ids.length === 0) return [];
 	const bridge = await createRemindersBridge(settings);
-	if (!bridge.events) return [];
+	const colorById = new Map<string, string>();
+	try {
+		const cals = await bridge.calendars();
+		for (const c of cals) {
+			if (c.color?.trim()) colorById.set(c.id, c.color.trim());
+		}
+	} catch {
+		/* color optional */
+	}
 	const {queryFrom, queryTo} = padBridgeCalendarQuery(fromIso, toIso);
 	const rows = await bridge.events(queryFrom, queryTo, ids);
 	const allowed = new Set(ids);
 	return rows
 		.filter((r) => allowed.has(r.calendarId))
-		.map(bridgeCalendarEventToCalendarEvent)
+		.map((r) => bridgeCalendarEventToCalendarEvent(r, colorById.get(r.calendarId)))
 		.filter((r) => r.dateIso >= fromIso && r.dateIso <= toIso);
 }

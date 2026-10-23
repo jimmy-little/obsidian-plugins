@@ -72,9 +72,7 @@ export function parseOpenMeteoForecast(
 	};
 }
 
-function weekdayShort(iso: string, now: Date): string {
-	const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-	if (iso === today) return "Today";
+function weekdayShort(iso: string, _now: Date): string {
 	const d = new Date(`${iso}T12:00:00`);
 	if (Number.isNaN(d.getTime())) return iso.slice(5);
 	return new Intl.DateTimeFormat("en-US", {weekday: "short"}).format(d);

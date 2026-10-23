@@ -60,6 +60,8 @@ export type ForecastCalendarRow = {
 	durationMinutes: number | null;
 	calendarTitle?: string;
 	location?: string;
+	/** EventKit calendar color (`#RRGGBB`) when the bridge provides one. */
+	calendarColor?: string;
 };
 
 export type TasksViewItem =
@@ -160,12 +162,14 @@ export function meetingPrimaryDateIso(m: IndexedMeeting): string | null {
 	return parsed?.dateIso ?? null;
 }
 
-/** Minutes from midnight when the task has an explicit time (scheduled, due, or logged window). */
+/** Minutes from midnight when the task has an explicit time (scheduled, due, startTime, or logged window). */
 export function taskStartMinutes(task: IndexedTask): number | null {
 	const sched = parseDateTime(task.scheduledDate);
 	if (sched?.minutesFromMidnight != null) return sched.minutesFromMidnight;
 	const due = parseDateTime(task.dueDate);
 	if (due?.minutesFromMidnight != null) return due.minutesFromMidnight;
+	const start = parseDateTime(task.startTime);
+	if (start?.minutesFromMidnight != null) return start.minutesFromMidnight;
 	if (task.startTime?.trim() && task.endTime?.trim()) {
 		const a = Date.parse(task.startTime.trim());
 		const b = Date.parse(task.endTime.trim());
@@ -655,26 +659,8 @@ export function buildDaySections(
 		const dayCalendars = calendarsByDay.get(iso) ?? [];
 		const dayNotes = notesByDay.get(iso) ?? [];
 		const sorted = sortDayEntries(list, sortBy, sortDir);
-		let sortedTasks = sorted.map((e) => e.task);
-		let items = mergeDayItems(sorted, dayMeetings, dayCalendars, settings, dayNotes);
-		if (i === 0 && pastDue.length > 0) {
-			const overdueSorted = sortDayEntries(pastDue, sortBy, sortDir);
-			const overdueItems = entriesToItems(overdueSorted);
-			const seen = new Set(items.map((it) => tasksViewItemKey(it)));
-			items = [...overdueItems.filter((it) => !seen.has(tasksViewItemKey(it))), ...items];
-			const taskSeen = new Set(sortedTasks.map((t) => `${t.file.path}:${t.line ?? ""}`));
-			sortedTasks = [
-				...overdueSorted
-					.map((e) => e.task)
-					.filter((t) => {
-						const k = `${t.file.path}:${t.line ?? ""}`;
-						if (taskSeen.has(k)) return false;
-						taskSeen.add(k);
-						return true;
-					}),
-				...sortedTasks,
-			];
-		}
+		const sortedTasks = sorted.map((e) => e.task);
+		const items = mergeDayItems(sorted, dayMeetings, dayCalendars, settings, dayNotes);
 		if (items.length === 0 && i > 0) continue;
 		sections.push({
 			key: iso,
@@ -912,15 +898,12 @@ export function filterOpenTasksForTasksView(
 	settings: FulcrumSettings,
 ): IndexedTask[] {
 	const uncheckedStatus = new Set(settings.taskSidebarFilterUncheckedStatus ?? []);
-	const uncheckedProject = new Set(settings.taskSidebarFilterUncheckedProject ?? []);
 	const uncheckedSource = new Set(settings.taskSidebarFilterUncheckedSource ?? []);
 	const statusSetLc = new Set([...uncheckedStatus].map((s) => s.toLowerCase()));
 
 	return tasks.filter((t) => {
 		const statusKey = t.status?.trim() ? t.status : NONE_KEY;
-		const projectKey = t.projectFile?.path ?? NONE_KEY;
 		if (uncheckedStatus.size > 0 && statusSetLc.has(statusKey.toLowerCase())) return false;
-		if (uncheckedProject.size > 0 && uncheckedProject.has(projectKey)) return false;
 		if (uncheckedSource.size > 0 && uncheckedSource.has(taskSourceFilterKey(t))) return false;
 		return true;
 	});

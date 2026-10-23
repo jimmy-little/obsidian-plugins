@@ -314,11 +314,18 @@ export interface FulcrumSettings {
 	conduitArchivedListPrefix: string;
 	/** Apply project frontmatter color to the matching Reminders list. */
 	conduitSyncListColors: boolean;
-	/** HTTP bridge URL (Fulcrum Bridge app). Empty = remctl only. */
+	/** HTTP bridge URL (Fulcrum Bridge app). */
 	remindersBridgeUrl: string;
 	remindersBridgeToken: string;
+	appleReminderIdField: string;
+	appleReminderSyncHashField: string;
+	appleReminderSyncedAtField: string;
+	remindersPollSeconds: number;
+	remindersSyncInbox: boolean;
 	taskNotesArchiveFolder: string;
 	remindersQueryRefreshSeconds: number;
+	/** Project header pill: open Apple Reminders or GoodTask for a linked list. */
+	remindersOpenTarget: "reminders" | "goodtask";
 	remindersCalendarIds: string;
 	/** Horizon + Calendar overlay: comma-separated macOS calendar IDs (unioned at fetch time). */
 	forecastCalendarIds: string;
@@ -540,7 +547,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	plannerHeading: "Day planner",
 	plannerDefaultDurationMinutes: 30,
 
-	/** macOS: Apple Reminders bridge (live views + convert). */
+	/** macOS: Apple Reminders two-way sync via Fulcrum Bridge (EventKit). */
 	conduitEnabled: false,
 	conduitRemctlPath: "",
 	conduitInboxListName: "Fulcrum Inbox",
@@ -550,8 +557,14 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	conduitSyncListColors: true,
 	remindersBridgeUrl: "http://127.0.0.1:9247",
 	remindersBridgeToken: "",
+	appleReminderIdField: "appleReminderId",
+	appleReminderSyncHashField: "appleReminderSyncHash",
+	appleReminderSyncedAtField: "appleReminderSyncedAt",
+	remindersPollSeconds: 30,
+	remindersSyncInbox: false,
 	taskNotesArchiveFolder: "35 Tasks/TaskNotes/Archive",
 	remindersQueryRefreshSeconds: 0,
+	remindersOpenTarget: "reminders",
 	remindersCalendarIds: "",
 	forecastCalendarIds: "",
 	forecastShowVaultMeetings: true,

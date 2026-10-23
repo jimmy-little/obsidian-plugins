@@ -59,6 +59,8 @@ export type CalendarEvent = {
 	occurrenceDateIso?: string;
 	/** System calendar event location (EventKit). */
 	location?: string;
+	/** EventKit calendar color (`#RRGGBB`) when the bridge provides one. */
+	calendarColor?: string;
 };
 
 const DEFAULT_DURATION_MINUTES = 30;

@@ -52,6 +52,11 @@
 	let milestonesByProject = new Map<string, ProjectMilestone[]>();
 	let milestoneLoadId = 0;
 
+	function takeMilestoneLoadId(): number {
+		milestoneLoadId += 1;
+		return milestoneLoadId;
+	}
+
 	$: weekStart = (void sRev, plugin.settings.calendarFirstDayOfWeek);
 
 	$: milestoneProjectPaths = ((): string[] => {
@@ -79,7 +84,7 @@
 		void milestoneProjectPaths;
 		const heading = plugin.settings.projectMilestonesSectionHeading;
 		const paths = milestoneProjectPaths;
-		const id = ++milestoneLoadId;
+		const id = takeMilestoneLoadId();
 		void loadProjectMilestonesMap(plugin.app, paths, heading).then((m) => {
 			if (id !== milestoneLoadId) return;
 			milestonesByProject = m;

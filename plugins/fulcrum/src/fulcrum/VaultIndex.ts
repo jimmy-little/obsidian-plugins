@@ -237,6 +237,8 @@ export class VaultIndex {
 	private rebuildGeneration = 0;
 	private rebuildInflight = false;
 	private rebuildPending = false;
+	/** Until the first explicit rebuild finishes, vault/metadata events only set pending. */
+	private bootstrapComplete = false;
 	private rollupAtomicNotesByProject: Map<string, AtomicNoteRow[]> | null = null;
 	private rollupAtomicNotesIndexAt = 0;
 	private rollupAtomicNotesInflight: Promise<Map<string, AtomicNoteRow[]>> | null = null;
@@ -254,8 +256,9 @@ export class VaultIndex {
 	static readonly REBUILD_MAX_WAIT_MS = 2000;
 	/** While a note is open in an editor, wait for a typing pause before re-indexing. */
 	static readonly IDLE_REBUILD_MS = 2500;
-	/** Yield to the main thread while scanning large vaults. */
-	static readonly REBUILD_YIELD_EVERY = 32;
+	/** Max continuous scan work (ms) before yielding to the main thread. */
+	static readonly REBUILD_YIELD_BUDGET_MS = 12;
+	private lastYieldAt = 0;
 
 	constructor(app: App, getSettings: () => FulcrumSettings) {
 		this.app = app;
@@ -316,7 +319,7 @@ export class VaultIndex {
 	}
 
 	scheduleRebuild(): void {
-		if (this.rebuildInflight) {
+		if (!this.bootstrapComplete || this.rebuildInflight) {
 			this.rebuildPending = true;
 			return;
 		}
@@ -347,7 +350,12 @@ export class VaultIndex {
 	 * open editor file use the same idle path so autosave does not thrash the index.
 	 */
 	scheduleRebuildFromMetadataChange(file: TFile, _options?: {persisted?: boolean}): void {
-		if (this.isFileOpenInMarkdownEditor(file.path)) {
+		if (!this.bootstrapComplete || this.rebuildInflight) {
+			this.rebuildPending = true;
+			return;
+		}
+		const active = this.app.workspace.getActiveFile();
+		if (active?.path === file.path && this.isFileOpenInMarkdownEditor(file.path)) {
 			if (!this.fileNeedsIndexWhileEditing(file)) return;
 			this.scheduleIdleRebuild();
 			return;
@@ -374,6 +382,10 @@ export class VaultIndex {
 	}
 
 	private scheduleIdleRebuild(): void {
+		if (!this.bootstrapComplete) {
+			this.rebuildPending = true;
+			return;
+		}
 		if (this.idleDebounceHandle != null) {
 			window.clearTimeout(this.idleDebounceHandle);
 		}
@@ -413,8 +425,25 @@ export class VaultIndex {
 		this.rebuildPending = false;
 	}
 
+	/**
+	 * MessageChannel instead of setTimeout(0): chained timeouts are clamped to >=4ms
+	 * and throttled to ~1s while the window is in the background.
+	 */
 	private yieldToMain(): Promise<void> {
-		return new Promise((resolve) => window.setTimeout(resolve, 0));
+		return new Promise((resolve) => {
+			const channel = new MessageChannel();
+			channel.port1.onmessage = () => {
+				channel.port1.close();
+				this.lastYieldAt = performance.now();
+				resolve();
+			};
+			channel.port2.postMessage(null);
+		});
+	}
+
+	/** True once the current slice of scan work has used its time budget. */
+	private shouldYield(): boolean {
+		return performance.now() - this.lastYieldAt >= VaultIndex.REBUILD_YIELD_BUDGET_MS;
 	}
 
 	private isRebuildStale(generation: number): boolean {
@@ -422,18 +451,19 @@ export class VaultIndex {
 	}
 
 	async rebuild(): Promise<void> {
-		this.rebuildGeneration += 1;
-		const generation = this.rebuildGeneration;
-		this.cancelScheduledRebuild();
 		if (this.rebuildInflight) {
 			this.rebuildPending = true;
 			return;
 		}
+		this.rebuildGeneration += 1;
+		const generation = this.rebuildGeneration;
+		this.cancelScheduledRebuild();
 		this.rebuildInflight = true;
 		try {
 			await this.rebuildCore(generation);
 		} finally {
 			this.rebuildInflight = false;
+			this.bootstrapComplete = true;
 			if (this.rebuildPending) {
 				this.rebuildPending = false;
 				this.scheduleRebuild();
@@ -453,10 +483,8 @@ export class VaultIndex {
 		const projectsRoot = resolveProjectsRoot(s);
 		const statusKey = s.projectStatusField.trim().replace(/:+$/u, "") || "status";
 
-		let scannedNotes = 0;
 		for (const file of this.app.vault.getMarkdownFiles()) {
-			scannedNotes += 1;
-			if (scannedNotes % VaultIndex.REBUILD_YIELD_EVERY === 0) {
+			if (this.shouldYield()) {
 				await this.yieldToMain();
 				if (this.isRebuildStale(generation)) return;
 			}
@@ -610,14 +638,12 @@ export class VaultIndex {
 		const inlineIncludeTag = s.inlineTaskIncludeTag.trim();
 
 		if (useTaskNotes) {
-			let scannedTaskNotes = 0;
 			for (const file of this.app.vault.getMarkdownFiles()) {
-				if (!fileMatchesFolderScope(file.path, taskNoteRoots)) continue;
-				scannedTaskNotes += 1;
-				if (scannedTaskNotes % VaultIndex.REBUILD_YIELD_EVERY === 0) {
+				if (this.shouldYield()) {
 					await this.yieldToMain();
 					if (this.isRebuildStale(generation)) return;
 				}
+				if (!fileMatchesFolderScope(file.path, taskNoteRoots)) continue;
 				const cache = this.app.metadataCache.getFileCache(file);
 				const fm = cache?.frontmatter as Record<string, unknown> | undefined;
 				if (!fm) continue;
@@ -680,9 +706,11 @@ export class VaultIndex {
 		}
 
 		if (useInline) {
-			let scanned = 0;
 			for (const file of this.app.vault.getMarkdownFiles()) {
-				if (this.isRebuildStale(generation)) return;
+				if (this.shouldYield()) {
+					await this.yieldToMain();
+					if (this.isRebuildStale(generation)) return;
+				}
 				if (
 					!projectPaths.has(file.path) &&
 					!fileMatchesFolderScopeWithExcludes(
@@ -697,14 +725,13 @@ export class VaultIndex {
 				const cache = this.app.metadataCache.getFileCache(file);
 				const listItems = cache?.listItems;
 				if (!listItems?.length) continue;
+				if (!listItems.some((item) => item.task !== undefined)) continue;
 
-				scanned += 1;
-				if (scanned % VaultIndex.REBUILD_YIELD_EVERY === 0) {
+				const lines = (await this.app.vault.cachedRead(file)).split(/\n/);
+				if (this.shouldYield()) {
 					await this.yieldToMain();
 					if (this.isRebuildStale(generation)) return;
 				}
-
-				const lines = (await this.app.vault.cachedRead(file)).split(/\n/);
 				const fm = cache?.frontmatter as Record<string, unknown> | undefined;
 				const areaFile = (() => {
 					const al = parseWikiLink(fm?.[s.areaLinkField]);
@@ -919,6 +946,9 @@ export class VaultIndex {
 		}
 
 		for (const f of this.app.vault.getMarkdownFiles()) {
+			if (this.shouldYield()) {
+				await this.yieldToMain();
+			}
 			if (projectPaths.has(f.path)) continue;
 			if (
 				taskNoteRoots.length > 0 &&

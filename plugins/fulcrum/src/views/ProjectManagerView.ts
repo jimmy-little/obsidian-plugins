@@ -2,6 +2,7 @@ import {ItemView, WorkspaceLeaf, type ViewStateResult} from "obsidian";
 import type {SvelteComponent} from "svelte";
 import {FULCRUM_PLUGIN_ICON, VIEW_PROJECT_MANAGER} from "../fulcrum/constants";
 import type {FulcrumHost} from "../fulcrum/pluginBridge";
+import {indexRevision} from "../fulcrum/stores";
 import ProjectManager from "../svelte/ProjectManager.svelte";
 
 export type ProjectManagerViewState = {
@@ -38,6 +39,7 @@ export function projectManagerShellLabel(mode: ProjectManagerShellMode): string 
 export class ProjectManagerView extends ItemView {
 	private readonly host: FulcrumHost;
 	private component: SvelteComponent | null = null;
+	private indexWaitUnsub: (() => void) | null = null;
 	private lastMainMode: ProjectManagerView["mainMode"] | "" = "";
 	private lastProjectPath: string | null = null;
 	private lastPersonPath: string | null = null;
@@ -160,6 +162,8 @@ export class ProjectManagerView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		this.indexWaitUnsub?.();
+		this.indexWaitUnsub = null;
 		this.component?.$destroy();
 		this.component = null;
 	}
@@ -254,6 +258,28 @@ export class ProjectManagerView extends ItemView {
 	}
 
 	private async render(): Promise<void> {
+		if (this.host.vaultIndex.getSnapshot().rebuiltAt === 0) {
+			this.component?.$destroy();
+			this.component = null;
+			this.contentEl.empty();
+			this.contentEl.createEl("p", {
+				text: "Fulcrum is indexing the vault…",
+				cls: "fulcrum-muted",
+			});
+			if (!this.indexWaitUnsub) {
+				this.indexWaitUnsub = indexRevision.subscribe(() => {
+					if (this.host.vaultIndex.getSnapshot().rebuiltAt === 0) return;
+					this.indexWaitUnsub?.();
+					this.indexWaitUnsub = null;
+					void this.render();
+				});
+			}
+			return;
+		}
+
+		this.indexWaitUnsub?.();
+		this.indexWaitUnsub = null;
+
 		const props = this.projectManagerProps();
 		const nonProjectShellModes = new Set<ProjectManagerView["mainMode"]>([
 			"dashboard",

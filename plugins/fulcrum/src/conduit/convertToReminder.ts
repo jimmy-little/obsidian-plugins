@@ -15,7 +15,7 @@ import {
 import {moveTaskNoteFile} from "../fulcrum/taskNoteActions";
 import {readProjectListId} from "./mapping";
 import {indexLists, resolveListForTask} from "./projectListSync";
-import type {CreateReminderOptions, RemctlListRow} from "./types";
+import type {CreateReminderOptions, ReminderListRow} from "./types";
 import type {RemindersBridge} from "./remindersBridge";
 
 function resolveIndexedProject(
@@ -55,7 +55,7 @@ export function resolveReminderListRef(
 	app: App,
 	settings: FulcrumSettings,
 	project: IndexedProject | null,
-	lists: RemctlListRow[],
+	lists: ReminderListRow[],
 ): {listId?: string; listName?: string} {
 	const listIndex = indexLists(lists);
 	if (project) {
@@ -108,14 +108,23 @@ async function readTaskNoteBody(app: App, file: TFile): Promise<string> {
 	return content.trim();
 }
 
+function projectIsRemindersLinked(host: FulcrumHost, projectFile: TFile | null): boolean {
+	if (!projectFile) return false;
+	return host.conduitIsProjectConnected(projectFile.path);
+}
+
 export async function convertInlineTaskToReminder(
 	host: FulcrumHost,
 	bridge: RemindersBridge,
 	task: IndexedTask,
-	lists: RemctlListRow[],
+	lists: ReminderListRow[],
 ): Promise<boolean> {
 	if (task.source !== "inline" || task.line == null) {
 		new Notice("Only inline tasks can be converted to Reminders.");
+		return false;
+	}
+	if (projectIsRemindersLinked(host, task.projectFile)) {
+		new Notice("This project is linked to Reminders — tasks sync automatically. Use Reminders: Sync now.");
 		return false;
 	}
 	const content = await host.app.vault.read(task.file);
@@ -167,10 +176,14 @@ export async function convertTaskNoteToReminder(
 	host: FulcrumHost,
 	bridge: RemindersBridge,
 	task: IndexedTask,
-	lists: RemctlListRow[],
+	lists: ReminderListRow[],
 ): Promise<boolean> {
 	if (task.source !== "taskNote") {
 		new Notice("Only task notes can use this action.");
+		return false;
+	}
+	if (projectIsRemindersLinked(host, task.projectFile)) {
+		new Notice("This project is linked to Reminders — tasks sync automatically. Use Reminders: Sync now.");
 		return false;
 	}
 

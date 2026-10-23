@@ -22,6 +22,7 @@ export function readProjectOmniFocusLink(
 	project: IndexedProject,
 	settings: FulcrumSettings,
 ): {href: string; id: string} | null {
+	if (!settings.omnifocusEnabled) return null;
 	const id = readProjectOmniId(app, project, settings);
 	if (!id) return null;
 	const href = omnifocusProjectOpenUrl(id);

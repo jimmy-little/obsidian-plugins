@@ -15,13 +15,19 @@ struct HTTPHandlers {
 				&& (auth["calendar"] == "fullAccess" || auth["calendar"] == "authorized")
 			let of = omnifocus.health(probeAutomation: false)
 			// Avoid EventKit queries while TCC prompts are outstanding — they can hang the handler.
-			let calendarCount = ok ? bridge.calendars().count : 0
+			let calendarCount: Int
+			if ok {
+				calendarCount = (try? await bridge.calendars())?.count ?? 0
+			} else {
+				calendarCount = 0
+			}
 			return jsonResponse(
 				HealthResponse(
 					ok: ok,
 					status: ok ? "ok" : "needs_permission",
 					authorization: auth,
 					calendarCount: calendarCount,
+					remindersRevision: bridge.currentRevision(),
 					omnifocus: of
 				)
 			)
@@ -31,32 +37,76 @@ struct HTTPHandlers {
 			return ofResponse
 		}
 
+		do {
+			return try await remindersAndCalendarRoute(path: path, method: method, request: request)
+		} catch let error as EventKitNotFoundError {
+			return HTTPResponse(statusCode: .notFound, body: Data(error.message.utf8))
+		}
+	}
+
+	private func remindersAndCalendarRoute(
+		path: String,
+		method: String,
+		request: HTTPRequest
+	) async throws -> HTTPResponse {
 		if path == "/lists" && method == "GET" {
-			return jsonResponse(["lists": bridge.lists()])
+			return jsonResponse(["lists": try await bridge.lists()])
 		}
 
 		if path == "/lists" && method == "POST" {
 			let body = try await readJsonBody(request)
 			let name = (body["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 			guard !name.isEmpty else {
-				return HTTPResponse(statusCode: .badRequest, body: "Missing list name".data(using: .utf8)!)
+				return HTTPResponse(statusCode: .badRequest, body: Data("Missing list name".utf8))
 			}
-			let listId = try bridge.createList(name: name)
+			let listId = try await bridge.createList(name: name)
+			if let colorBody = body["color"] as? [String: Any] {
+				try? await bridge.editList(id: listId, body: colorBody)
+			} else if body["color"] != nil {
+				try? await bridge.editList(id: listId, body: body)
+			}
 			return jsonResponse(["listId": listId, "id": listId])
 		}
 
+		if path.hasPrefix("/lists/") && method == "PATCH" {
+			let parts = path.split(separator: "/").map(String.init)
+			guard parts.count >= 2 else {
+				return HTTPResponse(statusCode: .badRequest, body: Data("Missing list id".utf8))
+			}
+			let id = decodePathId(parts[1])
+			guard !id.isEmpty else {
+				return HTTPResponse(statusCode: .badRequest, body: Data("Missing list id".utf8))
+			}
+			let body = try await readJsonBody(request)
+			try await bridge.editList(id: id, body: body)
+			return HTTPResponse(statusCode: .noContent)
+		}
+
+		if path == "/reminders/revision" && method == "GET" {
+			return jsonResponse(["revision": bridge.currentRevision()])
+		}
+
 		if path == "/reminders" && method == "GET" {
-			return jsonResponse(["reminders": bridge.reminders()])
+			var listIds: [String] = []
+			if let csv = emptyToNil(request.query["listIds"]) {
+				listIds = csv.split(separator: ",").map {
+					String($0).trimmingCharacters(in: .whitespacesAndNewlines)
+				}.filter { !$0.isEmpty }
+			}
+			listIds.append(contentsOf: request.query.filter { $0.name == "listId" }.map(\.value))
+			let inbox = boolQuery(request.query["inbox"]) ?? false
+			let reminders = try await bridge.reminders(listIds: listIds, inbox: inbox)
+			return jsonResponse(["reminders": reminders])
 		}
 
 		if path == "/reminders" && method == "POST" {
 			let body = try await readJsonBody(request)
-			let id = try bridge.createReminder(body: body)
-			return jsonResponse(["numericId": id, "id": id])
+			let id = try await bridge.createReminder(body: body)
+			return jsonResponse(["id": id])
 		}
 
 		if path == "/calendars" && method == "GET" {
-			return jsonResponse(["calendars": bridge.calendars()])
+			return jsonResponse(["calendars": try await bridge.calendars()])
 		}
 
 		if path == "/events" && method == "GET" {
@@ -71,36 +121,43 @@ struct HTTPHandlers {
 			if calIds.isEmpty, let csv = request.query["calendarIds"], !csv.isEmpty {
 				calIds = csv.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
 			}
-			let events = bridge.events(from: from, to: to, calendarIds: calIds)
+			let events = try await bridge.events(from: from, to: to, calendarIds: calIds)
 			return jsonResponse(["events": events])
 		}
 
 		if path.hasPrefix("/reminders/") {
 			let parts = path.split(separator: "/").map(String.init)
-			guard parts.count >= 3, let id = Int(parts[2]) else {
-				return HTTPResponse(statusCode: .badRequest, body: "Invalid reminder id".data(using: .utf8)!)
+			guard parts.count >= 2 else {
+				return HTTPResponse(statusCode: .badRequest, body: Data("Invalid reminder id".utf8))
 			}
-			let action = parts.count > 3 ? parts[3] : ""
+			let id = decodePathId(parts[1])
+			guard !id.isEmpty else {
+				return HTTPResponse(statusCode: .badRequest, body: Data("Invalid reminder id".utf8))
+			}
+			let action = parts.count > 2 ? parts[2] : ""
+			if method == "GET" && action.isEmpty {
+				return jsonResponse(try await bridge.reminder(id: id))
+			}
 			if method == "POST" && action == "complete" {
-				try bridge.complete(id: id, done: true)
+				try await bridge.complete(id: id, done: true)
 				return HTTPResponse(statusCode: .noContent)
 			}
 			if method == "POST" && action == "reopen" {
-				try bridge.complete(id: id, done: false)
+				try await bridge.complete(id: id, done: false)
 				return HTTPResponse(statusCode: .noContent)
 			}
-			if method == "DELETE" {
-				try bridge.deleteReminder(id: id)
+			if method == "DELETE" && action.isEmpty {
+				try await bridge.deleteReminder(id: id)
 				return HTTPResponse(statusCode: .noContent)
 			}
-			if method == "PATCH" {
+			if method == "PATCH" && action.isEmpty {
 				let body = try await readJsonBody(request)
-				try bridge.editReminder(id: id, body: body)
+				try await bridge.editReminder(id: id, body: body)
 				return HTTPResponse(statusCode: .noContent)
 			}
 		}
 
-		return HTTPResponse(statusCode: .notFound, body: "Not found".data(using: .utf8)!)
+		return HTTPResponse(statusCode: .notFound, body: Data("Not found".utf8))
 	}
 
 	private func omnifocusRoute(path: String, method: String, request: HTTPRequest) async throws -> HTTPResponse? {
@@ -174,6 +231,10 @@ struct HTTPHandlers {
 		}
 
 		return HTTPResponse(statusCode: .notFound, body: Data("Not found".utf8))
+	}
+
+	private func decodePathId(_ raw: String) -> String {
+		raw.removingPercentEncoding ?? raw
 	}
 
 	private func emptyToNil(_ value: String?) -> String? {

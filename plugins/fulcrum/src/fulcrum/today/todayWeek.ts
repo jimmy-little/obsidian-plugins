@@ -9,14 +9,20 @@ export type TodayWeekDay = {
 	isFocal: boolean;
 };
 
-export function formatTodayMasthead(iso: string): {dayNum: string; monthWeekday: string} {
+export function formatTodayMasthead(iso: string): {
+	dayNum: string;
+	month: string;
+	weekday: string;
+} {
 	const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
 	if (Number.isNaN(d.getTime())) {
-		return {dayNum: iso.slice(8, 10), monthWeekday: iso};
+		return {dayNum: iso.slice(8, 10), month: "", weekday: iso};
 	}
-	const month = d.toLocaleDateString("en-US", {month: "long"}).toUpperCase();
-	const weekday = d.toLocaleDateString("en-US", {weekday: "long"}).toUpperCase();
-	return {dayNum: String(d.getDate()), monthWeekday: `${month} ${weekday}`};
+	return {
+		dayNum: String(d.getDate()),
+		month: d.toLocaleDateString("en-US", {month: "long"}),
+		weekday: d.toLocaleDateString("en-US", {weekday: "long"}),
+	};
 }
 
 /** Seven days of the week containing `focalIso`, starting on `weekStartDay` (0=Sun). */

@@ -22,6 +22,11 @@
 	let loading = true;
 	let loadId = 0;
 
+	function takeLoadId(): number {
+		loadId += 1;
+		return loadId;
+	}
+
 	$: rev = $indexRevision;
 	$: areaFilter = $areaFilterState;
 	$: selectedProjectPaths = $viewProjectFilterPaths;
@@ -41,7 +46,7 @@
 		void areaFilter;
 		void lifeModeMap;
 		void selectedProjectPaths;
-		const id = ++loadId;
+		const id = takeLoadId();
 		loading = true;
 		loadError = null;
 		const active = filterProjectsByAreaFocus(

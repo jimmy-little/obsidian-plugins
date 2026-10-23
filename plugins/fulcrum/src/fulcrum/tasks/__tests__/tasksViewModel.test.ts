@@ -196,7 +196,7 @@ describe("buildDaySections with meetings", () => {
 		expect(sections.find((s) => s.key === "2026-07-02")?.defaultExpanded).toBe(true);
 	});
 
-	it("pins overdue tasks onto today's section", () => {
+	it("keeps overdue tasks only in Past due, not duplicated into Today", () => {
 		const sections = buildDaySections(
 			[
 				task({
@@ -218,8 +218,10 @@ describe("buildDaySections with meetings", () => {
 		const titles = todaySection?.items
 			.filter((i) => i.kind === "task")
 			.map((i) => (i.kind === "task" ? i.task.title : ""));
-		expect(titles).toEqual(["Overdue", "Today"]);
-		expect(sections.find((s) => s.key === "__past_due__")?.tasks.length).toBe(1);
+		expect(titles).toEqual(["Today"]);
+		expect(sections.find((s) => s.key === "__past_due__")?.tasks.map((t) => t.title)).toEqual([
+			"Overdue",
+		]);
 	});
 });
 
@@ -271,6 +273,20 @@ describe("filterOpenTasksForTasksView", () => {
 			taskSidebarFilterUncheckedSource: ["inline"],
 		});
 		expect(filtered.map((t) => t.title)).toEqual(["Note todo"]);
+	});
+
+	it("does not hide tasks by leftover project facet unchecks", () => {
+		const tasks = [
+			task({
+				title: "Core Library",
+				projectFile: {path: "40 Projects/Core Library Admin.md"} as IndexedTask["projectFile"],
+			}),
+		];
+		const filtered = filterOpenTasksForTasksView(tasks, {
+			...baseSettings,
+			taskSidebarFilterUncheckedProject: ["40 Projects/Core Library Admin.md"],
+		});
+		expect(filtered.map((t) => t.title)).toEqual(["Core Library"]);
 	});
 });
 

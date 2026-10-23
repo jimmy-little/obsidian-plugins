@@ -7,7 +7,17 @@ vi.mock("obsidian", () => ({
 	},
 }));
 
-import {ofTaskFingerprint, omnifocusProjectOpenUrl, readInlineOmniId, readYamlScalar, withInlineOmniId} from "../mapping";
+import type {App} from "obsidian";
+import type {FulcrumSettings} from "../../fulcrum/settingsDefaults";
+import type {IndexedProject} from "../../fulcrum/types";
+import {
+	ofTaskFingerprint,
+	omnifocusProjectOpenUrl,
+	readInlineOmniId,
+	readProjectOmniFocusLink,
+	readYamlScalar,
+	withInlineOmniId,
+} from "../mapping";
 import {syncHash} from "../hash";
 
 describe("omnifocus mapping fingerprints", () => {
@@ -55,5 +65,34 @@ describe("omnifocusProjectOpenUrl", () => {
 
 	it("passes through existing omnifocus URLs", () => {
 		expect(omnifocusProjectOpenUrl("omnifocus:///task/h-abc")).toBe("omnifocus:///task/h-abc");
+	});
+});
+
+describe("readProjectOmniFocusLink", () => {
+	function stub(enabled: boolean): {app: App; project: IndexedProject; settings: FulcrumSettings} {
+		const app = {
+			metadataCache: {
+				getFileCache: () => ({frontmatter: {omnifocusProjectId: "h-abc"}}),
+			},
+		} as unknown as App;
+		const project = {file: {path: "p.md"}} as IndexedProject;
+		const settings = {
+			omnifocusEnabled: enabled,
+			omnifocusProjectIdField: "omnifocusProjectId",
+		} as FulcrumSettings;
+		return {app, project, settings};
+	}
+
+	it("returns null when OmniFocus sync is disabled", () => {
+		const {app, project, settings} = stub(false);
+		expect(readProjectOmniFocusLink(app, project, settings)).toBeNull();
+	});
+
+	it("returns a deep link when OmniFocus sync is enabled", () => {
+		const {app, project, settings} = stub(true);
+		expect(readProjectOmniFocusLink(app, project, settings)).toEqual({
+			href: "omnifocus:///task/h-abc",
+			id: "h-abc",
+		});
 	});
 });

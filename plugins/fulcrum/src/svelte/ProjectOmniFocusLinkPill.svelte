@@ -3,14 +3,15 @@
 
 	export let href: string;
 	export let label = "OmniFocus";
+	export let icon = "list-checks";
 	export let title: string | undefined = undefined;
 
-	function bindIcon(el: HTMLElement) {
-		setIcon(el, "list-checks");
+	function bindIcon(el: HTMLElement, name: string) {
+		setIcon(el, name);
 		return {
-			update() {
+			update(next: string) {
 				el.empty();
-				setIcon(el, "list-checks");
+				setIcon(el, next);
 			},
 			destroy() {
 				el.empty();
@@ -26,6 +27,6 @@
 	class="fulcrum-project-related-pill"
 	title={title ?? label}
 >
-	<span class="fulcrum-project-related-pill__icon" use:bindIcon aria-hidden="true"></span>
+	<span class="fulcrum-project-related-pill__icon" use:bindIcon={icon} aria-hidden="true"></span>
 	<span class="fulcrum-project-related-pill__label">{label}</span>
 </a>

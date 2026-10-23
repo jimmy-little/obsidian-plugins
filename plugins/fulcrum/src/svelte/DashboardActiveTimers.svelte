@@ -2,13 +2,14 @@
 	import {onDestroy, tick} from "svelte";
 	import type {FulcrumHost} from "../fulcrum/pluginBridge";
 	import {timerRevision} from "../fulcrum/stores";
+	import {activeTimerDisplayKey} from "../timer/activeTimerSet";
 
 	export let plugin: FulcrumHost;
 
 	let host: HTMLDivElement | undefined;
 	let activeCount = 0;
 	let panelMounted = false;
-	let lastRenderedCount = 0;
+	let lastPathKey = "";
 	let syncSerial = 0;
 
 	async function syncActiveTimers(): Promise<void> {
@@ -16,15 +17,16 @@
 		const rows = plugin.timer.listActiveTimersInMemory();
 		if (serial !== syncSerial) return;
 
+		const nextKey = activeTimerDisplayKey(rows);
 		const nextCount = rows.length;
 
 		if (nextCount === 0) {
 			if (panelMounted) {
 				plugin.timer.unmountDashboardActiveTimers();
 				panelMounted = false;
-				lastRenderedCount = 0;
 			}
 			activeCount = 0;
+			lastPathKey = "";
 			return;
 		}
 
@@ -35,12 +37,14 @@
 		if (!panelMounted) {
 			await plugin.timer.mountDashboardActiveTimers(host);
 			panelMounted = true;
-			lastRenderedCount = nextCount;
+			lastPathKey = nextKey;
 			return;
 		}
 
+		if (lastPathKey === nextKey) return;
+
 		await plugin.timer.refreshDashboardActiveTimers();
-		lastRenderedCount = nextCount;
+		lastPathKey = nextKey;
 	}
 
 	$: void $timerRevision, void syncActiveTimers();
@@ -49,7 +53,7 @@
 		syncSerial++;
 		plugin.timer.unmountDashboardActiveTimers();
 		panelMounted = false;
-		lastRenderedCount = 0;
+		lastPathKey = "";
 	});
 </script>
 

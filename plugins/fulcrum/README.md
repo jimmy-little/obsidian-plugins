@@ -31,62 +31,58 @@ Inbox items are pulled into the vault only when **Pull OmniFocus Inbox** is on. 
 
 Cursor can use the same HTTP API via the project MCP (`.cursor/mcp.json` → `fulcrum-omnifocus`). Do not also attach a third-party OmniFocus MCP while Fulcrum owns IDs.
 
-## Reminders bridge (macOS)
+## Reminders sync (macOS)
 
-Fulcrum shows **live** Apple Reminders in notes and supports **one-way convert** actions. Tasks live in Obsidian **or** Reminders — never mirrored copies.
+Two-way mirror between **Fulcrum tasks** (task notes and inline checkboxes on a linked project) and **Apple Reminders**. Tasks are linked by stable EventKit ids (`appleReminderListId` on project notes, `appleReminderId` on task notes, `<!-- reminder-id: … -->` on inline lines). Recurring vault tasks and recurring Reminders are skipped. This backend is **mutually exclusive** with OmniFocus.
 
-Enable under **Settings → Fulcrum → Integrations → Reminders bridge**.
+iPhone captures sync through iCloud to this Mac’s EventKit, then into the vault while Fulcrum Bridge and Obsidian are running.
+
+Enable under **Settings → Fulcrum → Integrations → Reminders sync**. Requires [Fulcrum Bridge](../fulcrum-bridge/README.md).
 
 ### Setup
 
-**Option A — Fulcrum Bridge app (recommended)**
-
-1. Build and run [`plugins/fulcrum-bridge`](../fulcrum-bridge/README.md) (`swift build -c release`).
+1. Build and run [`plugins/fulcrum-bridge`](../fulcrum-bridge/README.md) (`./build.sh` then `./install-daemon.sh`).
 2. Grant Reminders and Calendar access.
-3. Set bridge URL to `http://127.0.0.1:9247` in Fulcrum settings.
+3. Enable Reminders sync in Fulcrum settings (this turns off OmniFocus).
+4. On a project: **Set Reminders list…**
+5. Use **Reminders: Sync now** or wait for the poll / EventKit change wake.
 
-**Option B — remctl fallback**
-
-1. Install [remctl](https://github.com/viticci/remctl).
-2. Run `remctl onboard` and grant permissions to Obsidian (or set remctl path in settings).
-3. Fulcrum uses remctl when the HTTP bridge is unreachable.
+Unlinked vault tasks are not dumped into Reminders. Optional **Pull default Reminders list** creates vault notes for incomplete items on the Mac default list.
 
 ### Query blocks
+
+Live views of Apple Reminders (including unlinked lists such as shopping):
 
 ````markdown
 ```fulcrum-reminders
 due: today
-tags include: #do-this
 list: Shopping
 completed: false
 ```
 ````
 
-Checkboxes complete/reopen the Apple Reminder directly. Right-click a row for **Create task note** (deletes the Reminder, creates a vault task note).
+Checkboxes complete/reopen the Apple Reminder directly. Right-click a row on an **unlinked** list for **Create task note** (deletes the Reminder). Tag filters are empty: EventKit does not expose Reminder tags.
 
-### Convert actions
+### Convert actions (unlinked lists only)
 
 | Source | Action |
 |--------|--------|
-| Inline task | **Convert to Reminder** — marks line done with note; creates Reminder |
-| Inline task | **Convert to task note** — existing behavior |
-| Task note | **Convert to Reminder** — marks done, archives note, creates Reminder with body in notes |
+| Inline task | **Convert to Reminder** — marks line done; creates Reminder |
+| Task note | **Convert to Reminder** — marks done, archives note, creates Reminder |
 | Reminder row | **Create task note** — deletes Reminder, creates task note |
 
-Projects can **Set Reminders list…** from the project menu (maps `appleReminderListId` for convert targeting).
+Linked projects use two-way sync instead of convert.
 
 ### Calendar overlay
 
 When calendar IDs are set in settings, Fulcrum calendar shows external events from the bridge (read-only, dashed style).
 
-### Migrating from Conduit sync
+### Migrating from remctl / Conduit
 
-On first launch after upgrading, Fulcrum shows a one-time notice if you previously used Conduit sync.
+Optional cleanup (command palette):
 
-Optional cleanup (command palette or **Settings → Integrations → Reminders bridge → Migration**):
-
-- **Clean up vault metadata** — removes `appleReminderId`, inline `reminder-id` comments, and `conduitSync` from projects
-- **Clean up Reminders metadata** — strips `obsidian://` links from reminder notes in project-linked lists (and area tags synced by Conduit)
+- **Clean up leftover remctl numeric ids** — removes numeric `appleReminderId` values that cannot look up EventKit items (UUID join ids are kept)
+- **Clean up Conduit metadata in Reminders** — strips `obsidian://` links from reminder notes in project-linked lists
 
 ## URL schemes (Obsidian URI)
 

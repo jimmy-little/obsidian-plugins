@@ -31,7 +31,6 @@
 		formatTrackedMinutesShort,
 		taskHasDateOn,
 		taskIsPastOpen,
-		taskBelongsOnToday,
 	} from "../fulcrum/utils/dates";
 	import {
 		toISODate,
@@ -130,10 +129,7 @@
 	);
 	$: tasksDueToday = openAreaTasks.filter((t) => taskHasDateOn(t, todayIso));
 	$: overdueTasks = openAreaTasks.filter((t) => taskIsPastOpen(t, todayIso));
-	$: todayTasks = [
-		...overdueTasks,
-		...openAreaTasks.filter((t) => taskBelongsOnToday(t, todayIso) && !taskIsPastOpen(t, todayIso)),
-	];
+	$: todayTasks = openAreaTasks.filter((t) => taskHasDateOn(t, todayIso));
 	$: meetingsToday = snapshot.meetings.filter(
 		(m) =>
 			m.date?.slice(0, 10) === todayLocalISODate() &&
@@ -230,6 +226,11 @@
 	let aggregatedActivity: ActivityRowModel[] = [];
 	let aggregatedActivityLoadId = 0;
 
+	function takeAggregatedActivityLoadId(): number {
+		aggregatedActivityLoadId += 1;
+		return aggregatedActivityLoadId;
+	}
+
 	$: {
 		void rev;
 		void sRev;
@@ -240,7 +241,7 @@
 			areaFilter,
 			lifeModeMap,
 		);
-		const loadId = ++aggregatedActivityLoadId;
+		const loadId = takeAggregatedActivityLoadId();
 		const load = async (): Promise<void> => {
 			const inputs = await Promise.all(
 				active.map(async (p) => {

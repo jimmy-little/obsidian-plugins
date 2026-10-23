@@ -2,16 +2,28 @@
 	import {Menu} from "obsidian";
 	import type {QuickNoteTheme} from "../fulcrum/settingsDefaults";
 
+	export type QuickNoteSubmitAction =
+		| {kind: "note"; themeId?: string}
+		| {kind: "trackTime"};
+
 	export let disabled = false;
 	export let themes: QuickNoteTheme[] = [];
-	export let onSubmit: (themeId?: string) => void;
+	export let onSubmit: (action: QuickNoteSubmitAction) => void;
 
 	function openThemeMenu(ev: MouseEvent): void {
 		const menu = new Menu();
+		menu.addItem((item) => {
+			item.setTitle("⏱️ Track Time");
+			item.setIcon("timer");
+			item.onClick(() => onSubmit({kind: "trackTime"}));
+		});
+		if (themes.length > 0) {
+			menu.addSeparator();
+		}
 		for (const theme of themes) {
 			menu.addItem((item) => {
 				item.setTitle(`${theme.emoji} ${theme.label}`.trim());
-				item.onClick(() => onSubmit(theme.id));
+				item.onClick(() => onSubmit({kind: "note", themeId: theme.id}));
 			});
 		}
 		if (themes.length === 0) {
@@ -29,7 +41,7 @@
 		type="button"
 		class="fulcrum-quick-note-segmented__main fulcrum-quick-note-btn"
 		{disabled}
-		on:click={() => onSubmit()}
+		on:click={() => onSubmit({kind: "note"})}
 	>
 		Add Quick Note
 	</button>

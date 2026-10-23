@@ -135,6 +135,7 @@ import {openConnectRemindersListModal, clearProjectReminderList} from "./conduit
 import {ConduitService} from "./conduit/conduitService";
 import {registerReminderQueryBlock} from "./conduit/reminderQueryBlock";
 import {readProjectListId} from "./conduit/mapping";
+import {RemindersSyncService} from "./conduit/syncService";
 import {
 	convertInlineTaskToReminder,
 	convertTaskNoteToReminder,
@@ -169,6 +170,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	vaultIndex!: VaultIndex;
 	timer!: TimerModule;
 	conduit: ConduitService | null = null;
+	remindersSync: RemindersSyncService | null = null;
 	omnifocus: OmniFocusSyncService | null = null;
 	conduitConvertNoticeShown = false;
 	orbitHost!: OrbitHost;
@@ -246,14 +248,15 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		);
 
 		this.app.workspace.onLayoutReady(() => {
-			void this.vaultIndex.rebuild();
+			this.whenMetadataCacheReady(() => {
+				void (async () => {
+					await this.vaultIndex.rebuild();
+					void maybeShowConduitConvertNotice(this, data);
+					void this.restartConduit();
+					void this.restartOmniFocus();
+				})();
+			});
 		});
-
-		void this.vaultIndex.rebuild();
-		const deferredRebuild = window.setTimeout(() => {
-			void this.vaultIndex.rebuild();
-		}, 750);
-		this.register(() => window.clearTimeout(deferredRebuild));
 		this.register(() => {
 			this.fulcrumCompanionLeaf.current = null;
 		});
@@ -460,18 +463,14 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 				new Notice("Orbit could not open that link.");
 			});
 		});
-
-		this.app.workspace.onLayoutReady(() => {
-			void maybeShowConduitConvertNotice(this, data);
-			void this.restartConduit();
-			void this.restartOmniFocus();
-		});
 	}
 
 	onunload(): void {
 		this.vaultIndex.cancelScheduledRebuild();
 		this.conduit?.stop();
 		this.conduit = null;
+		this.remindersSync?.stop();
+		this.remindersSync = null;
 		this.omnifocus?.stop();
 		this.omnifocus = null;
 		void this.timer?.onunload();
@@ -544,9 +543,13 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	async restartConduit(): Promise<void> {
 		this.conduit?.stop();
 		this.conduit = null;
+		this.remindersSync?.stop();
+		this.remindersSync = null;
 		if (!ConduitService.canRun(this.settings)) return;
 		this.conduit = new ConduitService(this);
 		await this.conduit.start();
+		this.remindersSync = new RemindersSyncService(this);
+		await this.remindersSync.start();
 	}
 
 	async notifyConduitProjectCompleted(_projectPath: string): Promise<void> {
@@ -577,7 +580,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	async conduitConnectProject(projectPath: string): Promise<void> {
 		if (!ConduitService.canRun(this.settings)) {
-			new Notice("Enable the Reminders bridge in Fulcrum settings (macOS only).");
+			new Notice("Enable Reminders sync in Fulcrum settings (macOS only).");
 			return;
 		}
 		const project = this.vaultIndex.resolveProjectByPath(projectPath);
@@ -599,6 +602,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (!ConduitService.canRun(this.settings)) return;
 		try {
 			await clearProjectReminderList(this, projectPath);
+			this.remindersSync?.forgetLinkedList(projectPath);
 			const svc = this.conduit ?? new ConduitService(this);
 			await svc.refreshRemindersListCache();
 		} catch (e) {
@@ -609,7 +613,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	async convertTaskToReminder(task: IndexedTask): Promise<void> {
 		if (!ConduitService.canRun(this.settings)) {
-			new Notice("Enable the Reminders bridge in Fulcrum settings (macOS only).");
+			new Notice("Enable Reminders sync in Fulcrum settings (macOS only).");
 			return;
 		}
 		const svc = this.conduit ?? new ConduitService(this);
@@ -620,6 +624,40 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		} else if (task.source === "taskNote") {
 			await convertTaskNoteToReminder(this, bridge, task, lists);
 		}
+	}
+
+	async remindersSyncNow(opts?: {projectPath?: string; listId?: string}): Promise<void> {
+		if (!RemindersSyncService.canRun(this.settings)) {
+			new Notice("Enable Reminders sync in Fulcrum settings (macOS only).");
+			return;
+		}
+		const svc = this.remindersSync ?? new RemindersSyncService(this);
+		this.remindersSync = svc;
+		await svc.tick({force: true, notify: true, ...opts});
+	}
+
+	private whenMetadataCacheReady(fn: () => void): void {
+		let done = false;
+		const run = (): void => {
+			if (done) return;
+			done = true;
+			fn();
+		};
+		const files = this.app.vault.getMarkdownFiles();
+		const sample = files.slice(0, 24);
+		const cached = sample.filter((f) => this.app.metadataCache.getFileCache(f)).length;
+		if (sample.length === 0 || cached >= Math.min(8, sample.length)) {
+			run();
+			return;
+		}
+		const fallback = window.setTimeout(run, 45_000);
+		this.register(() => window.clearTimeout(fallback));
+		const ref = this.app.metadataCache.on("resolved", () => {
+			window.clearTimeout(fallback);
+			this.app.metadataCache.offref(ref);
+			run();
+		});
+		this.registerEvent(ref);
 	}
 
 	private handleFulcrumOpenUri(params: ObsidianProtocolData): void {
@@ -912,11 +950,35 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		if (typeof merged.remindersBridgeToken !== "string") {
 			merged.remindersBridgeToken = DEFAULT_SETTINGS.remindersBridgeToken;
 		}
+		if (typeof merged.appleReminderIdField !== "string" || !merged.appleReminderIdField.trim()) {
+			merged.appleReminderIdField = DEFAULT_SETTINGS.appleReminderIdField;
+		}
+		if (
+			typeof merged.appleReminderSyncHashField !== "string" ||
+			!merged.appleReminderSyncHashField.trim()
+		) {
+			merged.appleReminderSyncHashField = DEFAULT_SETTINGS.appleReminderSyncHashField;
+		}
+		if (
+			typeof merged.appleReminderSyncedAtField !== "string" ||
+			!merged.appleReminderSyncedAtField.trim()
+		) {
+			merged.appleReminderSyncedAtField = DEFAULT_SETTINGS.appleReminderSyncedAtField;
+		}
+		if (typeof merged.remindersPollSeconds !== "number") {
+			merged.remindersPollSeconds = DEFAULT_SETTINGS.remindersPollSeconds;
+		}
+		if (typeof merged.remindersSyncInbox !== "boolean") {
+			merged.remindersSyncInbox = DEFAULT_SETTINGS.remindersSyncInbox;
+		}
 		if (typeof merged.taskNotesArchiveFolder !== "string") {
 			merged.taskNotesArchiveFolder = DEFAULT_SETTINGS.taskNotesArchiveFolder;
 		}
 		if (typeof merged.remindersQueryRefreshSeconds !== "number") {
 			merged.remindersQueryRefreshSeconds = DEFAULT_SETTINGS.remindersQueryRefreshSeconds;
+		}
+		if (merged.remindersOpenTarget !== "reminders" && merged.remindersOpenTarget !== "goodtask") {
+			merged.remindersOpenTarget = DEFAULT_SETTINGS.remindersOpenTarget;
 		}
 		if (typeof merged.remindersCalendarIds !== "string") {
 			merged.remindersCalendarIds = DEFAULT_SETTINGS.remindersCalendarIds;
@@ -1495,6 +1557,53 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		} catch (e) {
 			console.error(e);
 			new Notice("Could not write to the project note.");
+			return false;
+		}
+	}
+
+	async startQuickNoteTimer(projectPath: string, title: string): Promise<boolean> {
+		const trimmed = title.trim();
+		if (!trimmed) {
+			new Notice("Write something to add to the project note.");
+			return false;
+		}
+		const f = this.app.vault.getAbstractFileByPath(projectPath);
+		if (!(f instanceof TFile)) {
+			new Notice("Project file not found.");
+			return false;
+		}
+		const indexed = this.vaultIndex.resolveProjectByPath(projectPath);
+		const projectName =
+			indexed?.name?.trim() || f.basename.replace(/\.md$/i, "");
+		const projectLink = projectFileWikilink(this.app, f);
+		try {
+			const sessionFile = await this.timer.createAndStartQuickNoteTimer({
+				projectName,
+				projectForFrontmatter: projectLink,
+				title: trimmed,
+			});
+			const sessionLt =
+				this.app.metadataCache.fileToLinktext(sessionFile, f.path, false) ??
+				sessionFile.basename.replace(/\.md$/i, "");
+			const sessionWikilink = `[[${sessionLt}]]`;
+			const block = formatQuickNoteLogBlock({
+				text: `${trimmed} — ${sessionWikilink}`,
+				projectLink,
+				projectLinkField: this.settings.projectLinkField,
+				theme: {id: "track-time", label: "Track Time", emoji: "⏱️"},
+			});
+			await appendFulcrumProjectLog(
+				this.app,
+				f,
+				this.settings.projectLogSectionHeading,
+				block,
+			);
+			await this.vaultIndex.rebuild();
+			new Notice("Timer started.");
+			return true;
+		} catch (e) {
+			console.error(e);
+			new Notice("Could not start timer from quick note.");
 			return false;
 		}
 	}

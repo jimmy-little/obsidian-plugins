@@ -1,6 +1,7 @@
 import {Platform, Setting} from "obsidian";
 import type FulcrumPlugin from "../main";
 import {heading, settingsLead} from "../settings/settingsHelpers";
+import {bumpSettingsRevision} from "../fulcrum/stores";
 
 export function displayOmniFocusSettings(
 	containerEl: HTMLElement,
@@ -30,6 +31,7 @@ export function displayOmniFocusSettings(
 				plugin.settings.omnifocusEnabled = v;
 				if (v) plugin.settings.conduitEnabled = false;
 				await plugin.saveSettings();
+				bumpSettingsRevision();
 				await plugin.restartConduit();
 				await plugin.restartOmniFocus();
 				refresh?.();

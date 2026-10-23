@@ -43,8 +43,18 @@
 	let horizonNotes: AtomicNoteRow[] = [];
 	let notesLoadId = 0;
 
+	function takeNotesLoadId(): number {
+		notesLoadId += 1;
+		return notesLoadId;
+	}
+
+	function takeCalendarLoadId(): number {
+		calendarLoadId += 1;
+		return calendarLoadId;
+	}
+
 	async function refreshForecastCalendars(): Promise<void> {
-		const id = ++calendarLoadId;
+		const id = takeCalendarLoadId();
 		const today = todayLocalISODate();
 		const to = addDaysIso(today, plugin.settings.tasksViewFutureDays);
 		try {
@@ -87,7 +97,7 @@
 		void plugin.settings.conduitEnabled;
 		void plugin.settings.tasksViewFutureDays;
 		void refreshForecastCalendars();
-		const nid = ++notesLoadId;
+		const nid = takeNotesLoadId();
 		void plugin.vaultIndex.getAllAtomicNotes(plugin.settings).then((rows) => {
 			if (nid === notesLoadId) horizonNotes = rows;
 		}).catch(() => {

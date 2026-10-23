@@ -1,45 +1,40 @@
 import {Notice, Platform, Setting} from "obsidian";
 import type FulcrumPlugin from "../main";
 import {addConduitBridgeSettingsRow} from "./actions";
-import {
-	cleanupRemindersConduitMetadata,
-	cleanupVaultConduitMetadata,
-} from "./conduitMigration";
-import {findRemctlBinary} from "./remctlPath";
-import {RemctlClient} from "./remctlClient";
-
-function heading(containerEl: HTMLElement, text: string): void {
-	containerEl.createEl("h3", {text, cls: "fulcrum-settings-heading"});
-}
+import {cleanupRemindersConduitMetadata} from "./conduitMigration";
+import {heading, settingsLead} from "../settings/settingsHelpers";
+import {bumpSettingsRevision} from "../fulcrum/stores";
+import {parseRemindersOpenTarget} from "./mapping";
 
 export function displayConduitSettings(
 	containerEl: HTMLElement,
 	plugin: FulcrumPlugin,
 	refresh?: () => void,
 ): void {
-	heading(containerEl, "Reminders bridge");
+	heading(containerEl, "Reminders sync");
 
 	if (!Platform.isMacOS) {
 		containerEl.createEl("p", {
-			text: "Apple Reminders integration is available on macOS only.",
+			text: "Apple Reminders two-way sync is available on macOS only.",
 			cls: "fulcrum-settings-lead",
 		});
 		return;
 	}
 
-	containerEl.createEl("p", {
-		text: "Live Reminders views in notes (fulcrum-reminders code blocks) and one-way convert actions. Tasks live in Obsidian or Reminders — not both. Use the Fulcrum Bridge app or remctl for API access.",
-		cls: "fulcrum-settings-lead",
-	});
+	settingsLead(
+		containerEl,
+		"Two-way mirror between Fulcrum tasks (task notes and inline checkboxes on linked projects) and Apple Reminders via Fulcrum Bridge (EventKit). Mutually exclusive with OmniFocus. Recurring vault tasks and recurring Reminders are skipped. Connect a project from its menu, then Sync now. iPhone captures land in the vault after iCloud reaches this Mac.",
+	);
 
 	new Setting(containerEl)
-		.setName("Enable Reminders bridge")
-		.setDesc("Query blocks and convert actions for Apple Reminders. Disables OmniFocus two-way sync.")
+		.setName("Enable Reminders sync")
+		.setDesc("Requires Fulcrum Bridge with Reminders permission. Disables OmniFocus two-way sync.")
 		.addToggle((tg) =>
 			tg.setValue(plugin.settings.conduitEnabled).onChange(async (v) => {
 				plugin.settings.conduitEnabled = v;
 				if (v) plugin.settings.omnifocusEnabled = false;
 				await plugin.saveSettings();
+				bumpSettingsRevision();
 				await plugin.restartConduit();
 				await plugin.restartOmniFocus();
 				refresh?.();
@@ -48,49 +43,58 @@ export function displayConduitSettings(
 
 	if (!plugin.settings.conduitEnabled) return;
 
+	new Setting(containerEl)
+		.setName("Header pill")
+		.setDesc("Where the project header pill opens when a Reminders list is linked.")
+		.addDropdown((d) =>
+			d
+				.addOption("reminders", "Open Reminders")
+				.addOption("goodtask", "Open GoodTask")
+				.setValue(parseRemindersOpenTarget(plugin.settings.remindersOpenTarget))
+				.onChange(async (v) => {
+					plugin.settings.remindersOpenTarget = parseRemindersOpenTarget(v);
+					await plugin.saveSettings();
+					bumpSettingsRevision();
+				}),
+		);
+
 	textSetting(
 		plugin,
 		containerEl,
 		"remindersBridgeUrl",
 		"Bridge URL",
-		"Fulcrum Bridge HTTP API (default http://127.0.0.1:9247). Falls back to remctl when unreachable.",
+		"Fulcrum Bridge HTTP API (default http://127.0.0.1:9247).",
 	);
 	textSetting(plugin, containerEl, "remindersBridgeToken", "Bridge token (optional)");
 
-	const remctlRow = new Setting(containerEl)
-		.setName("remctl path (fallback)")
-		.setDesc("Used when the HTTP bridge is unavailable. Full path required.");
-	remctlRow.addText((t) => {
-		const client = new RemctlClient(plugin.settings.conduitRemctlPath);
-		t.setPlaceholder(client.resolvedPath)
-			.setValue(plugin.settings.conduitRemctlPath)
-			.onChange(async (v) => {
-				plugin.settings.conduitRemctlPath = v;
+	new Setting(containerEl)
+		.setName("Poll interval (seconds)")
+		.setDesc("0 = no interval. EventKit changes still wake sync every few seconds while enabled.")
+		.addText((t) =>
+			t.setValue(String(plugin.settings.remindersPollSeconds)).onChange(async (v) => {
+				const n = Number(v);
+				plugin.settings.remindersPollSeconds = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 30;
 				await plugin.saveSettings();
-				plugin.conduit?.invalidateBridge();
-			});
-	});
-	remctlRow.addButton((b) =>
-		b.setButtonText("Detect path").onClick(async () => {
-			const found = findRemctlBinary();
-			if (!found) {
-				new Notice("remctl not found in ~/.local/bin, Homebrew, or /usr/local/bin.");
-				return;
-			}
-			plugin.settings.conduitRemctlPath = found;
-			await plugin.saveSettings();
-			plugin.conduit?.invalidateBridge();
-			new Notice(`Using ${found}`);
-			refresh?.();
-		}),
-	);
+				await plugin.restartConduit();
+			}),
+		);
+
+	new Setting(containerEl)
+		.setName("Pull default Reminders list")
+		.setDesc("Create vault task notes for incomplete items on the Mac default Reminders list that are not already linked.")
+		.addToggle((tg) =>
+			tg.setValue(plugin.settings.remindersSyncInbox).onChange(async (v) => {
+				plugin.settings.remindersSyncInbox = v;
+				await plugin.saveSettings();
+			}),
+		);
 
 	textSetting(
 		plugin,
 		containerEl,
 		"conduitInboxListName",
 		"Inbox list name",
-		"Default Reminders list when converting tasks without a project list.",
+		"Fallback Reminders list when converting unlinked tasks without a project list.",
 	);
 	textSetting(plugin, containerEl, "conduitReminderListIdField", "Project list id field");
 	textSetting(
@@ -98,7 +102,7 @@ export function displayConduitSettings(
 		containerEl,
 		"taskNotesArchiveFolder",
 		"Task note archive folder",
-		"Where task notes move after Convert to Reminder.",
+		"Where task notes move after Convert to Reminder (unlinked lists only).",
 	);
 
 	new Setting(containerEl)
@@ -118,7 +122,7 @@ export function displayConduitSettings(
 
 	new Setting(containerEl)
 		.setName("Sync project colors to lists")
-		.setDesc("When setting a project's Reminders list, apply project color.")
+		.setDesc("When setting a project's Reminders list, apply project color (best-effort in EventKit).")
 		.addToggle((tg) =>
 			tg.setValue(plugin.settings.conduitSyncListColors).onChange(async (v) => {
 				plugin.settings.conduitSyncListColors = v;
@@ -128,40 +132,14 @@ export function displayConduitSettings(
 
 	addConduitBridgeSettingsRow(containerEl, plugin);
 
-	heading(containerEl, "Migration from Conduit sync");
+	heading(containerEl, "Migration from remctl / Conduit");
 	containerEl.createEl("p", {
-		text: "If you used bidirectional Conduit sync, remove leftover links in the vault and Reminders.",
+		text: "Optional: strip leftover obsidian:// links from Reminder notes. Join IDs (appleReminderId) are kept for two-way sync.",
 		cls: "fulcrum-settings-lead",
 	});
 	new Setting(containerEl)
-		.setName("Clean up vault metadata")
-		.setDesc("Remove appleReminderId frontmatter, inline reminder-id comments, and conduitSync from projects.")
-		.addButton((btn) => {
-			btn.setButtonText("Clean vault").onClick(() => {
-				void (async () => {
-					try {
-						const result = await cleanupVaultConduitMetadata(plugin);
-						const total =
-							result.taskNotesCleared +
-							result.inlineCommentsCleared +
-							result.projectSyncFieldsCleared;
-						if (total === 0) {
-							new Notice("No legacy Conduit metadata found in the vault.");
-							return;
-						}
-						new Notice(
-							`Removed legacy Conduit metadata (${result.taskNotesCleared} task notes, ${result.inlineCommentsCleared} inline lines, ${result.projectSyncFieldsCleared} projects).`,
-						);
-					} catch (e) {
-						console.error(e);
-						new Notice("Could not clean up vault Conduit metadata.");
-					}
-				})();
-			});
-		});
-	new Setting(containerEl)
-		.setName("Clean up Reminders metadata")
-		.setDesc("Strip obsidian:// links and area tags from reminders in project-linked lists.")
+		.setName("Clean up Reminders notes")
+		.setDesc("Strip obsidian:// links from reminders in project-linked lists.")
 		.addButton((btn) => {
 			btn.setButtonText("Clean Reminders").onClick(() => {
 				void (async () => {
@@ -203,6 +181,7 @@ function textSetting(
 			await plugin.saveSettings();
 			if (key === "remindersBridgeUrl" || key === "remindersBridgeToken") {
 				plugin.conduit?.invalidateBridge();
+				plugin.remindersSync?.invalidate();
 			}
 		}),
 	);

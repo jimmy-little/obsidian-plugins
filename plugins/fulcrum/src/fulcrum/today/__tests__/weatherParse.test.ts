@@ -27,7 +27,7 @@ describe("parseOpenMeteoForecast", () => {
 		);
 		expect(parsed?.currentTemp).toBe(82);
 		expect(parsed?.days).toHaveLength(2);
-		expect(parsed?.days[0]?.weekday).toBe("Today");
+		expect(parsed?.days[0]?.weekday).toBe("Fri");
 		expect(parsed?.days[1]?.high).toBe(79);
 		expect(parsed?.locationLabel).toBe("Washington");
 	});

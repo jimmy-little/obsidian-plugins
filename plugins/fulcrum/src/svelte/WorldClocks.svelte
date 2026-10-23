@@ -5,6 +5,7 @@
 		formatClockTimeInZone,
 		isDaytimeInTimeZone,
 		parseWorldClockSettings,
+		sortWorldClocksByLocalTime,
 	} from "../fulcrum/utils/worldClocks";
 
 	export let plugin: {settings: {worldClocks: string}};
@@ -17,7 +18,8 @@
 		return () => window.clearInterval(id);
 	});
 
-	$: clocks = (void $settingsRevision, parseWorldClockSettings(plugin.settings.worldClocks));
+	$: clocks = (void $settingsRevision,
+		sortWorldClocksByLocalTime(parseWorldClockSettings(plugin.settings.worldClocks), now));
 </script>
 
 <div class="fulcrum-world-clocks" aria-label="World clocks">

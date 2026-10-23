@@ -388,7 +388,9 @@
 	}
 
 	$: filterActive =
-		uncheckedStatus.size > 0 || uncheckedProject.size > 0 || uncheckedSource.size > 0;
+		uncheckedStatus.size > 0 ||
+		(!hideProjectFilter && !filterProjectPath && uncheckedProject.size > 0) ||
+		uncheckedSource.size > 0;
 
 	function openFilterPanel(): void {
 		filterOpen = !filterOpen;

@@ -3,6 +3,7 @@ import {
 	isDaytimeInTimeZone,
 	occurrenceIsPast,
 	parseWorldClockSettings,
+	sortWorldClocksByLocalTime,
 } from "../worldClocks";
 
 describe("parseWorldClockSettings", () => {
@@ -12,6 +13,22 @@ describe("parseWorldClockSettings", () => {
 			{label: "Paris", timeZone: "Europe/Paris"},
 			{label: "HOME", timeZone: null},
 		]);
+	});
+});
+
+describe("sortWorldClocksByLocalTime", () => {
+	it("orders earliest local time first", () => {
+		// 19:00 UTC → 12:00 Pacific, 15:00 Eastern, 21:00 Paris (CEST)
+		const now = new Date("2026-09-04T19:00:00Z");
+		const sorted = sortWorldClocksByLocalTime(
+			[
+				{label: "Washington", timeZone: "America/New_York"},
+				{label: "Paris", timeZone: "Europe/Paris"},
+				{label: "HOME", timeZone: "America/Los_Angeles"},
+			],
+			now,
+		);
+		expect(sorted.map((c) => c.label)).toEqual(["HOME", "Washington", "Paris"]);
 	});
 });
 

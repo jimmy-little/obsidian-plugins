@@ -29,15 +29,6 @@ export async function loadBridgeCalendarRows(
 	}
 	try {
 		const bridge = await createRemindersBridge(host.settings);
-		if (!bridge.calendars) {
-			const url = host.settings.remindersBridgeUrl.trim();
-			return {
-				rows: [],
-				error: url
-					? `Could not reach Fulcrum Bridge at ${url}. Ensure it is running (menu bar pyramid icon or ./install-daemon.sh).`
-					: "Set a Bridge URL above (default http://127.0.0.1:9247) to load calendars.",
-			};
-		}
 		const rows = await bridge.calendars();
 		if (rows.length === 0) {
 			return {

@@ -5,6 +5,7 @@ struct HealthResponse: Codable {
 	let status: String
 	let authorization: [String: String]
 	let calendarCount: Int
+	let remindersRevision: UInt64
 	let omnifocus: OmniFocusHealth?
 }
 
@@ -34,6 +35,7 @@ enum HealthClient {
 			return """
 			Status: \(health.status) (\(health.ok ? "healthy" : "needs attention"))
 			Calendars visible: \(health.calendarCount)
+			Reminders revision: \(health.remindersRevision)
 			Reminders access: \(rem)
 			Calendar access: \(cal)
 			\(ofLine)

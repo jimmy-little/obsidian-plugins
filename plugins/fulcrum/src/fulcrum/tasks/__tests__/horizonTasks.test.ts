@@ -8,8 +8,9 @@ vi.mock("obsidian", () => ({
 }));
 
 import {TFile} from "obsidian";
+import type {FulcrumSettings} from "../../settingsDefaults";
 import type {IndexSnapshot, IndexedTask} from "../../types";
-import {collectOpenTasks} from "../horizonTasks";
+import {collectHorizonTasks, collectOpenTasks} from "../horizonTasks";
 
 function file(path: string): TFile {
 	const f = new TFile();
@@ -61,5 +62,43 @@ describe("collectOpenTasks", () => {
 			new Set(["done"]),
 		);
 		expect(open.map((t) => t.title).sort()).toEqual(["Scheduled", "Undated"]);
+	});
+
+	it("keeps only tasks for the project-list multi-select", () => {
+		const core = {path: "40 Projects/Core Library Admin.md"} as IndexedTask["projectFile"];
+		const other = {path: "40 Projects/Other.md"} as IndexedTask["projectFile"];
+		const open = collectOpenTasks(
+			snapshot([
+				task({title: "Core", projectFile: core}),
+				task({title: "Other", projectFile: other}),
+			]),
+			openFilter,
+			new Map(),
+			new Set(["done"]),
+			new Set(["40 Projects/Core Library Admin.md"]),
+		);
+		expect(open.map((t) => t.title)).toEqual(["Core"]);
+	});
+});
+
+describe("collectHorizonTasks", () => {
+	const settings = {
+		taskSourceMode: "both",
+		taskSidebarFilterUncheckedStatus: [],
+		taskSidebarFilterUncheckedProject: ["40 Projects/Core Library Admin.md"],
+		taskSidebarFilterUncheckedSource: [],
+	} as unknown as FulcrumSettings;
+
+	it("uses the project-list multi-select, not leftover project facet unchecks", () => {
+		const core = {path: "40 Projects/Core Library Admin.md"} as IndexedTask["projectFile"];
+		const tasks = collectHorizonTasks(
+			snapshot([task({title: "Core", projectFile: core, dueDate: "2026-09-08"})]),
+			settings,
+			openFilter,
+			new Map(),
+			new Set(["done"]),
+			new Set(),
+		);
+		expect(tasks.map((t) => t.title)).toEqual(["Core"]);
 	});
 });

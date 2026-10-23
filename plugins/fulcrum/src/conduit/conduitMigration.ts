@@ -1,13 +1,13 @@
 import {App, Modal, Notice, Platform} from "obsidian";
 import type FulcrumPlugin from "../main";
-import {readProjectListId} from "./mapping";
+import {isLegacyNumericReminderId, readProjectListId} from "./mapping";
 import {areaTagForProject} from "./projectMeta";
-import {createRemindersBridge, createRemctlBridge} from "./remindersBridge";
+import {createRemindersBridge} from "./remindersBridge";
 import type {FulcrumReminder} from "./types";
 
 const LEGACY_REMINDER_ID_FIELD = "appleReminderId";
 const LEGACY_PROJECT_SYNC_FIELD = "conduitSync";
-const INLINE_REMINDER_ID_COMMENT = /<!--\s*reminder-id:\s*\d+\s*-->/i;
+const INLINE_NUMERIC_REMINDER_ID = /<!--\s*reminder-id:\s*\d+\s*-->/i;
 
 export const CONDUIT_CONVERT_NOTICE_KEY = "conduitConvertNoticeShown";
 
@@ -32,15 +32,15 @@ class ConduitConvertNoticeModal extends Modal {
 
 	onOpen(): void {
 		const {contentEl, titleEl} = this;
-		titleEl.setText("Reminders bridge: convert model");
+		titleEl.setText("Reminders: two-way EventKit sync");
 		contentEl.createEl("p", {
-			text: "Fulcrum no longer mirrors tasks into Apple Reminders. Tasks live in Obsidian or Reminders — not both.",
+			text: "Fulcrum now mirrors linked project tasks with Apple Reminders through Fulcrum Bridge (EventKit). remctl is no longer used.",
 		});
 		contentEl.createEl("p", {
-			text: "Use fulcrum-reminders query blocks for live Reminders views, and convert actions to move tasks between vault and Reminders.",
+			text: "On a project: Set Reminders list… then Reminders: Sync now. Captures on iPhone appear in the vault after iCloud reaches this Mac.",
 		});
 		contentEl.createEl("p", {
-			text: "Optional: run Reminders → Clean up legacy Conduit metadata in vault / Reminders from the command palette.",
+			text: "Convert actions remain for unlinked lists (for example shopping). Query blocks still show live Reminders.",
 			cls: "fulcrum-muted",
 		});
 		const row = contentEl.createDiv({cls: "modal-button-container"});
@@ -102,7 +102,10 @@ export async function cleanupVaultConduitMetadata(
 		if (task.source === "taskNote") {
 			const cache = app.metadataCache.getFileCache(task.file);
 			const fm = cache?.frontmatter as Record<string, unknown> | undefined;
-			if (!fm || !(LEGACY_REMINDER_ID_FIELD in fm)) continue;
+			const rawId = fm?.[LEGACY_REMINDER_ID_FIELD];
+			const id =
+				typeof rawId === "string" ? rawId : typeof rawId === "number" ? String(rawId) : null;
+			if (!id || !isLegacyNumericReminderId(id)) continue;
 			if (touchedTaskNotes.has(task.file.path)) continue;
 			await app.fileManager.processFrontMatter(task.file, (next) => {
 				delete next[LEGACY_REMINDER_ID_FIELD];
@@ -113,8 +116,8 @@ export async function cleanupVaultConduitMetadata(
 			const content = await app.vault.read(task.file);
 			const lines = content.split("\n");
 			const line = lines[task.line];
-			if (!line || !INLINE_REMINDER_ID_COMMENT.test(line)) continue;
-			lines[task.line] = line.replace(INLINE_REMINDER_ID_COMMENT, "").trimEnd();
+			if (!line || !INLINE_NUMERIC_REMINDER_ID.test(line)) continue;
+			lines[task.line] = line.replace(INLINE_NUMERIC_REMINDER_ID, "").trimEnd();
 			await app.vault.modify(task.file, lines.join("\n"));
 			inlineCommentsCleared++;
 		}
@@ -123,7 +126,9 @@ export async function cleanupVaultConduitMetadata(
 	for (const file of app.vault.getMarkdownFiles()) {
 		if (touchedTaskNotes.has(file.path)) continue;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
-		if (!fm || !(LEGACY_REMINDER_ID_FIELD in fm)) continue;
+		const rawId = fm?.[LEGACY_REMINDER_ID_FIELD];
+		const id = typeof rawId === "string" ? rawId : typeof rawId === "number" ? String(rawId) : null;
+		if (!id || !isLegacyNumericReminderId(id)) continue;
 		await app.fileManager.processFrontMatter(file, (next) => {
 			delete next[LEGACY_REMINDER_ID_FIELD];
 		});
@@ -153,11 +158,10 @@ export async function cleanupRemindersConduitMetadata(
 		throw new Error("Reminders cleanup is macOS only.");
 	}
 	if (!plugin.settings.conduitEnabled) {
-		throw new Error("Enable the Reminders bridge in Fulcrum settings first.");
+		throw new Error("Enable Reminders sync in Fulcrum settings first.");
 	}
 
 	const bridge = await createRemindersBridge(plugin.settings);
-	const remctlBridge = createRemctlBridge(plugin.settings);
 
 	const app = plugin.app;
 	const settings = plugin.settings;
@@ -182,14 +186,9 @@ export async function cleanupRemindersConduitMetadata(
 		if (!reminderHasConduitMetadata(rem, areaTags)) continue;
 
 		const nextNotes = cleanConduitReminderNotes(rem.notes);
-		const nextTags = rem.tags.filter((t) => !areaTags.has(t.toLowerCase()));
-		const patch: {notes?: string; tags?: string[]} = {};
-		if (nextNotes !== rem.notes) patch.notes = nextNotes;
-		if (nextTags.length !== rem.tags.length) patch.tags = nextTags;
-		if (Object.keys(patch).length === 0) continue;
+		if (nextNotes === rem.notes) continue;
 
-		const editor = patch.tags ? remctlBridge : bridge;
-		await editor.editReminder!(rem.id, patch);
+		await bridge.editReminder(rem.id, {notes: nextNotes});
 		updated++;
 	}
 
@@ -201,7 +200,7 @@ export function registerConduitMigrationCommands(plugin: FulcrumPlugin): void {
 
 	plugin.addCommand({
 		id: "conduit-cleanup-vault-metadata",
-		name: "Reminders: Clean up legacy Conduit metadata in vault",
+		name: "Reminders: Clean up leftover remctl numeric ids",
 		callback: () => {
 			void (async () => {
 				try {
@@ -211,15 +210,15 @@ export function registerConduitMigrationCommands(plugin: FulcrumPlugin): void {
 						result.inlineCommentsCleared +
 						result.projectSyncFieldsCleared;
 					if (total === 0) {
-						new Notice("No legacy Conduit metadata found in the vault.");
+						new Notice("No leftover remctl numeric ids found in the vault.");
 						return;
 					}
 					new Notice(
-						`Removed legacy Conduit metadata (${result.taskNotesCleared} task notes, ${result.inlineCommentsCleared} inline lines, ${result.projectSyncFieldsCleared} projects).`,
+						`Removed leftover remctl ids (${result.taskNotesCleared} task notes, ${result.inlineCommentsCleared} inline lines, ${result.projectSyncFieldsCleared} projects).`,
 					);
 				} catch (e) {
 					console.error(e);
-					new Notice("Could not clean up vault Conduit metadata.");
+					new Notice("Could not clean up leftover remctl ids.");
 				}
 			})();
 		},

@@ -1,5 +1,5 @@
 export interface FulcrumReminder {
-	id: number;
+	id: string;
 	title: string;
 	completed: boolean;
 	dueDate: string | null;
@@ -8,28 +8,23 @@ export interface FulcrumReminder {
 	listName?: string;
 	tags: string[];
 	lastModified?: string;
+	externalId?: string;
+	recurring?: boolean;
 }
 
-export interface RemctlReminderRow {
-	numericId: number;
-	title: string;
-	completed: boolean;
-	dueDate: string | null;
-	notes: string;
-	listId?: string;
-	listName?: string;
-	tags?: string[];
-	lastModified: string;
-}
-
-export interface RemctlListRow {
+export interface ReminderListRow {
 	id: string;
 	name: string;
+	color?: string;
+	isDefault?: boolean;
 }
 
+/** @deprecated Use ReminderListRow */
+export type RemctlListRow = ReminderListRow;
+
 export interface ProjectListMap {
-	byId: Map<string, RemctlListRow>;
-	byName: Map<string, RemctlListRow>;
+	byId: Map<string, ReminderListRow>;
+	byName: Map<string, ReminderListRow>;
 	projectPathToListId: Map<string, string>;
 }
 
@@ -40,6 +35,22 @@ export interface CreateReminderOptions {
 	due?: string | null;
 	notes?: string;
 	tags?: string[];
+}
+
+export interface UpdateReminderOptions {
+	title?: string;
+	due?: string | null;
+	notes?: string;
+	completed?: boolean;
+	listId?: string;
+	listName?: string;
+}
+
+export interface RemindersSyncFingerprint {
+	title: string;
+	due: string | null;
+	completed: boolean;
+	listId: string | null;
 }
 
 export interface BridgeCalendarRow {

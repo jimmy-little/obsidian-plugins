@@ -1,13 +1,19 @@
 import {Platform, Setting} from "obsidian";
 import type FulcrumPlugin from "../main";
+import {RemindersSyncService} from "./syncService";
 
-export type ConduitActionId = "doctor" | "test-bridge";
+export type ConduitActionId = "doctor" | "sync-now";
 
 export const CONDUIT_ACTIONS: {id: ConduitActionId; commandName: string; icon: string}[] = [
 	{
 		id: "doctor",
-		commandName: "Test Reminders bridge",
+		commandName: "Test bridge",
 		icon: "heart-pulse",
+	},
+	{
+		id: "sync-now",
+		commandName: "Sync now",
+		icon: "refresh-cw",
 	},
 ];
 
@@ -20,6 +26,9 @@ export function runConduitAction(plugin: FulcrumPlugin, id: ConduitActionId): vo
 	if (id === "doctor") {
 		void plugin.conduitRunDoctor();
 	}
+	if (id === "sync-now") {
+		void plugin.remindersSyncNow();
+	}
 }
 
 export function registerConduitCommands(plugin: FulcrumPlugin): void {
@@ -29,6 +38,9 @@ export function registerConduitCommands(plugin: FulcrumPlugin): void {
 			id: `conduit-${action.id}`,
 			name: `Reminders: ${action.commandName}`,
 			checkCallback: (checking) => {
+				if (action.id === "sync-now" && !RemindersSyncService.canRun(plugin.settings)) {
+					return false;
+				}
 				if (!conduitActionEnabled(plugin)) return false;
 				if (!checking) runConduitAction(plugin, action.id);
 				return true;
@@ -43,12 +55,23 @@ export function addConduitBridgeSettingsRow(
 ): void {
 	const row = new Setting(containerEl)
 		.setName("Bridge actions")
-		.setDesc("Test connection to remctl or the Fulcrum Bridge app.");
+		.setDesc("Test Fulcrum Bridge and run a Reminders sync pass.");
 
 	row.addButton((btn) => {
 		btn.setTooltip("Test Reminders bridge");
 		btn.setIcon("heart-pulse");
 		btn.onClick(() => runConduitAction(plugin, "doctor"));
+	});
+	row.addButton((btn) => {
+		btn.setButtonText("Sync now");
+		btn.onClick(async () => {
+			btn.setDisabled(true);
+			try {
+				await plugin.remindersSyncNow();
+			} finally {
+				btn.setDisabled(false);
+			}
+		});
 	});
 	row.controlEl.addClass("fulcrum-conduit-bridge-setting");
 }

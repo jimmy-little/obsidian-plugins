@@ -1,116 +1,43 @@
 import {requestUrl} from "obsidian";
 import type {FulcrumSettings} from "../fulcrum/settingsDefaults";
-import {RemctlClient} from "./remctlClient";
 import type {
 	BridgeCalendarEvent,
 	BridgeCalendarRow,
 	CreateReminderOptions,
 	FulcrumReminder,
-	RemctlListRow,
-	RemctlReminderRow,
+	ReminderListRow,
+	UpdateReminderOptions,
 } from "./types";
 
 export interface RemindersBridge {
-	health(): Promise<{ok: boolean; detail?: string}>;
-	lists(): Promise<RemctlListRow[]>;
+	health(): Promise<{ok: boolean; detail?: string; remindersRevision?: number}>;
+	revision(): Promise<number>;
+	lists(): Promise<ReminderListRow[]>;
 	fetchAllReminders(): Promise<FulcrumReminder[]>;
-	complete(id: number): Promise<void>;
-	reopen(id: number): Promise<void>;
-	create(opts: CreateReminderOptions): Promise<number>;
-	deleteReminder(id: number): Promise<void>;
-	editReminder?(
-		id: number,
-		patch: {notes?: string; tags?: string[]},
-	): Promise<void>;
+	fetchReminders(opts?: {listIds?: string[]; inbox?: boolean}): Promise<FulcrumReminder[]>;
+	get(id: string): Promise<FulcrumReminder>;
+	complete(id: string): Promise<void>;
+	reopen(id: string): Promise<void>;
+	create(opts: CreateReminderOptions): Promise<string>;
+	update(id: string, patch: UpdateReminderOptions): Promise<void>;
+	deleteReminder(id: string): Promise<void>;
+	editReminder(id: string, patch: UpdateReminderOptions): Promise<void>;
 	listCreate(name: string, color?: {color: string; usePrivate: boolean}): Promise<string>;
 	listEdit(listId: string, opts: {color?: string; usePrivate?: boolean}): Promise<void>;
-	calendars?(): Promise<BridgeCalendarRow[]>;
-	events?(fromIso: string, toIso: string, calendarIds: string[]): Promise<BridgeCalendarEvent[]>;
+	calendars(): Promise<BridgeCalendarRow[]>;
+	events(fromIso: string, toIso: string, calendarIds: string[]): Promise<BridgeCalendarEvent[]>;
 }
 
-export function rowToFulcrumReminder(row: RemctlReminderRow): FulcrumReminder {
-	return {
-		id: row.numericId,
-		title: row.title,
-		completed: row.completed,
-		dueDate: row.dueDate,
-		notes: row.notes,
-		listId: row.listId,
-		listName: row.listName,
-		tags: row.tags ?? [],
-		lastModified: row.lastModified,
-	};
-}
-
-class RemctlBridge implements RemindersBridge {
-	constructor(private readonly client: RemctlClient) {}
-
-	async health(): Promise<{ok: boolean; detail?: string}> {
-		const {ok} = await this.client.doctorForAgent();
-		return {ok, detail: ok ? "remctl" : "remctl doctor failed"};
-	}
-
-	lists(): Promise<RemctlListRow[]> {
-		return this.client.lists();
-	}
-
-	async fetchAllReminders(): Promise<FulcrumReminder[]> {
-		const lists = await this.client.lists();
-		const out: FulcrumReminder[] = [];
-		for (const list of lists) {
-			try {
-				const rows = await this.client.showList({listId: list.id});
-				for (const row of rows) {
-					out.push(rowToFulcrumReminder(row));
-				}
-			} catch (e) {
-				console.warn("Reminders bridge: show list failed", list.name, e);
-			}
-		}
-		return out;
-	}
-
-	complete(id: number): Promise<void> {
-		return this.client.setDone(id, true);
-	}
-
-	reopen(id: number): Promise<void> {
-		return this.client.setDone(id, false);
-	}
-
-	create(opts: CreateReminderOptions): Promise<number> {
-		return this.client.add({
-			title: opts.title,
-			listId: opts.listId,
-			listName: opts.listName,
-			due: opts.due ?? undefined,
-			notes: opts.notes,
-			tags: opts.tags,
-		});
-	}
-
-	deleteReminder(id: number): Promise<void> {
-		return this.client.deleteReminder(id);
-	}
-
-	editReminder(id: number, patch: {notes?: string; tags?: string[]}): Promise<void> {
-		return this.client.edit(id, patch);
-	}
-
-	listCreate(name: string, color?: {color: string; usePrivate: boolean}): Promise<string> {
-		return this.client.listCreate(name, color);
-	}
-
-	listEdit(listId: string, opts: {color?: string; usePrivate?: boolean}): Promise<void> {
-		return this.client.listEdit(listId, opts);
-	}
-}
-
-class HttpRemindersBridge implements RemindersBridge {
+export class HttpRemindersBridge implements RemindersBridge {
 	constructor(
 		private readonly baseUrl: string,
 		private readonly token: string,
 	) {}
+
+	static fromSettings(settings: FulcrumSettings): HttpRemindersBridge {
+		const url = settings.remindersBridgeUrl.trim() || "http://127.0.0.1:9247";
+		return new HttpRemindersBridge(url, settings.remindersBridgeToken);
+	}
 
 	private url(path: string): string {
 		return `${this.baseUrl.replace(/\/+$/, "")}${path}`;
@@ -130,6 +57,9 @@ class HttpRemindersBridge implements RemindersBridge {
 			body: init?.body,
 			throw: false,
 		});
+		if (res.status === 404) {
+			throw new Error(`Reminder not found (${path}).`);
+		}
 		if (res.status < 200 || res.status >= 300) {
 			throw new Error(`Bridge ${path}: ${res.status} ${res.text}`.trim());
 		}
@@ -151,22 +81,38 @@ class HttpRemindersBridge implements RemindersBridge {
 		}
 	}
 
-	async health(): Promise<{ok: boolean; detail?: string}> {
+	async health(): Promise<{ok: boolean; detail?: string; remindersRevision?: number}> {
 		try {
-			const raw = await this.request<{ok?: boolean; status?: string}>(
-				"/health",
-				{method: "GET"},
-			);
+			const raw = await this.request<{
+				ok?: boolean;
+				status?: string;
+				remindersRevision?: number;
+			}>("/health", {method: "GET"});
 			const ok = raw?.ok === true || raw?.status === "ok";
-			return {ok, detail: "http"};
+			return {
+				ok,
+				detail: ok ? "http" : raw?.status ?? "bridge unhealthy",
+				remindersRevision: raw?.remindersRevision,
+			};
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			return {ok: false, detail: msg};
 		}
 	}
 
-	async lists(): Promise<RemctlListRow[]> {
-		const raw = await this.request<{lists?: RemctlListRow[]} | RemctlListRow[]>(
+	async revision(): Promise<number> {
+		try {
+			const raw = await this.request<{revision?: number}>("/reminders/revision");
+			if (typeof raw.revision === "number") return raw.revision;
+		} catch {
+			/* fall through to /health */
+		}
+		const health = await this.health();
+		return health.remindersRevision ?? 0;
+	}
+
+	async lists(): Promise<ReminderListRow[]> {
+		const raw = await this.request<{lists?: ReminderListRow[]} | ReminderListRow[]>(
 			"/lists",
 			{method: "GET"},
 		);
@@ -174,39 +120,58 @@ class HttpRemindersBridge implements RemindersBridge {
 		return raw.lists ?? [];
 	}
 
-	async fetchAllReminders(): Promise<FulcrumReminder[]> {
-		const raw = await this.request<{reminders?: FulcrumReminder[]} | FulcrumReminder[]>(
-			"/reminders",
+	fetchAllReminders(): Promise<FulcrumReminder[]> {
+		return this.fetchReminders();
+	}
+
+	async fetchReminders(opts?: {listIds?: string[]; inbox?: boolean}): Promise<FulcrumReminder[]> {
+		const q = new URLSearchParams();
+		if (opts?.listIds?.length) q.set("listIds", opts.listIds.join(","));
+		if (opts?.inbox) q.set("inbox", "true");
+		const qs = q.toString();
+		const raw = await this.request<{reminders?: unknown[]} | unknown[]>(
+			`/reminders${qs ? `?${qs}` : ""}`,
 			{method: "GET"},
 		);
 		const rows = Array.isArray(raw) ? raw : (raw.reminders ?? []);
-		return rows.map(normalizeHttpReminder);
+		return rows.map(normalizeHttpReminder).filter((r): r is FulcrumReminder => r != null);
 	}
 
-	complete(id: number): Promise<void> {
-		return this.request(`/reminders/${id}/complete`, {method: "POST"});
+	async get(id: string): Promise<FulcrumReminder> {
+		const raw = await this.request<unknown>(`/reminders/${encodeURIComponent(id)}`);
+		const rem = normalizeHttpReminder(raw);
+		if (!rem) throw new Error(`Reminder not found: ${id}`);
+		return rem;
 	}
 
-	reopen(id: number): Promise<void> {
-		return this.request(`/reminders/${id}/reopen`, {method: "POST"});
+	complete(id: string): Promise<void> {
+		return this.request(`/reminders/${encodeURIComponent(id)}/complete`, {method: "POST"});
 	}
 
-	async create(opts: CreateReminderOptions): Promise<number> {
-		const raw = await this.request<{id?: number; numericId?: number}>(
+	reopen(id: string): Promise<void> {
+		return this.request(`/reminders/${encodeURIComponent(id)}/reopen`, {method: "POST"});
+	}
+
+	async create(opts: CreateReminderOptions): Promise<string> {
+		const raw = await this.request<{id?: string}>(
 			"/reminders",
 			{method: "POST", body: JSON.stringify(opts)},
 		);
-		const id = raw.numericId ?? raw.id;
-		if (id == null || !Number.isFinite(id)) throw new Error("Bridge did not return reminder id");
-		return Math.round(id);
+		const id = typeof raw.id === "string" ? raw.id.trim() : "";
+		if (!id) throw new Error("Bridge did not return reminder id");
+		return id;
 	}
 
-	deleteReminder(id: number): Promise<void> {
-		return this.request(`/reminders/${id}`, {method: "DELETE"});
+	update(id: string, patch: UpdateReminderOptions): Promise<void> {
+		return this.editReminder(id, patch);
 	}
 
-	editReminder(id: number, patch: {notes?: string; tags?: string[]}): Promise<void> {
-		return this.request(`/reminders/${id}`, {
+	deleteReminder(id: string): Promise<void> {
+		return this.request(`/reminders/${encodeURIComponent(id)}`, {method: "DELETE"});
+	}
+
+	editReminder(id: string, patch: UpdateReminderOptions): Promise<void> {
+		return this.request(`/reminders/${encodeURIComponent(id)}`, {
 			method: "PATCH",
 			body: JSON.stringify(patch),
 		});
@@ -215,7 +180,13 @@ class HttpRemindersBridge implements RemindersBridge {
 	async listCreate(name: string, color?: {color: string; usePrivate: boolean}): Promise<string> {
 		const raw = await this.request<{listId?: string; id?: string}>(
 			"/lists",
-			{method: "POST", body: JSON.stringify({name, color})},
+			{
+				method: "POST",
+				body: JSON.stringify({
+					name,
+					color: color?.color,
+				}),
+			},
 		);
 		const id = raw.listId ?? raw.id;
 		if (!id?.trim()) throw new Error("Bridge did not return list id");
@@ -225,7 +196,7 @@ class HttpRemindersBridge implements RemindersBridge {
 	listEdit(listId: string, opts: {color?: string; usePrivate?: boolean}): Promise<void> {
 		return this.request(`/lists/${encodeURIComponent(listId)}`, {
 			method: "PATCH",
-			body: JSON.stringify(opts),
+			body: JSON.stringify({color: opts.color}),
 		});
 	}
 
@@ -252,29 +223,37 @@ class HttpRemindersBridge implements RemindersBridge {
 	}
 }
 
-function normalizeHttpReminder(row: FulcrumReminder & {numericId?: number}): FulcrumReminder {
+function asNonEmptyString(value: unknown): string | null {
+	if (typeof value === "string" && value.trim()) return value.trim();
+	if (typeof value === "number" && Number.isFinite(value)) return String(value);
+	return null;
+}
+
+export function normalizeHttpReminder(row: unknown): FulcrumReminder | null {
+	if (!row || typeof row !== "object") return null;
+	const r = row as Record<string, unknown>;
+	const id = asNonEmptyString(r.id) ?? asNonEmptyString(r.numericId);
+	if (!id) return null;
 	return {
-		id: row.id ?? row.numericId ?? 0,
-		title: row.title,
-		completed: row.completed,
-		dueDate: row.dueDate ?? null,
-		notes: row.notes ?? "",
-		listId: row.listId,
-		listName: row.listName,
-		tags: row.tags ?? [],
-		lastModified: row.lastModified,
+		id,
+		title: typeof r.title === "string" ? r.title : "",
+		completed: !!r.completed,
+		dueDate: typeof r.dueDate === "string" ? r.dueDate : null,
+		notes: typeof r.notes === "string" ? r.notes : "",
+		listId: asNonEmptyString(r.listId) ?? undefined,
+		listName: typeof r.listName === "string" ? r.listName : undefined,
+		tags: Array.isArray(r.tags) ? r.tags.filter((t): t is string => typeof t === "string") : [],
+		lastModified: typeof r.lastModified === "string" ? r.lastModified : undefined,
+		externalId: asNonEmptyString(r.externalId) ?? undefined,
+		recurring: !!r.recurring,
 	};
 }
 
 export async function createRemindersBridge(settings: FulcrumSettings): Promise<RemindersBridge> {
-	const url = settings.remindersBridgeUrl.trim();
-	if (url) {
-		const http = new HttpRemindersBridge(url, settings.remindersBridgeToken);
-		if (await http.ping()) return http;
+	const url = settings.remindersBridgeUrl.trim() || "http://127.0.0.1:9247";
+	const http = new HttpRemindersBridge(url, settings.remindersBridgeToken);
+	if (!(await http.ping())) {
+		throw new Error("Fulcrum Bridge is not reachable. Start Fulcrum Bridge, then try again.");
 	}
-	return createRemctlBridge(settings);
-}
-
-export function createRemctlBridge(settings: FulcrumSettings): RemindersBridge {
-	return new RemctlBridge(new RemctlClient(settings.conduitRemctlPath));
+	return http;
 }

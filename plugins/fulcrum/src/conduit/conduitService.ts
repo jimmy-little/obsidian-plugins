@@ -1,13 +1,12 @@
 import {Notice, Platform} from "obsidian";
 import type FulcrumPlugin from "../main";
-import type {RemctlListRow} from "./types";
-import {findRemctlBinary} from "./remctlPath";
+import type {ReminderListRow} from "./types";
 import {createRemindersBridge, type RemindersBridge} from "./remindersBridge";
 import {readProjectListId} from "./mapping";
 import {findProjectByPath} from "./mappingRegistry";
 
 export class ConduitService {
-	private cachedLists: RemctlListRow[] = [];
+	private cachedLists: ReminderListRow[] = [];
 	private bridge: RemindersBridge | null = null;
 
 	constructor(private readonly plugin: FulcrumPlugin) {}
@@ -18,16 +17,11 @@ export class ConduitService {
 
 	async start(): Promise<void> {
 		if (!ConduitService.canRun(this.plugin.settings)) return;
-		this.ensureRemctlPathConfigured();
 		void this.refreshRemindersListCache().catch(() => undefined);
 	}
 
 	async getBridge(): Promise<RemindersBridge> {
-		const url = this.plugin.settings.remindersBridgeUrl.trim();
-		if (this.bridge) {
-			// Retry HTTP when a bridge URL is set but we previously fell back to remctl.
-			if (!url || this.bridge.calendars) return this.bridge;
-		}
+		if (this.bridge) return this.bridge;
 		this.bridge = await createRemindersBridge(this.plugin.settings);
 		return this.bridge;
 	}
@@ -36,30 +30,21 @@ export class ConduitService {
 		this.bridge = null;
 	}
 
-	async refreshRemindersListCache(): Promise<RemctlListRow[]> {
+	async refreshRemindersListCache(): Promise<ReminderListRow[]> {
 		const bridge = await this.getBridge();
 		this.cachedLists = await bridge.lists();
 		return this.cachedLists;
 	}
 
-	getCachedRemindersLists(): RemctlListRow[] {
+	getCachedRemindersLists(): ReminderListRow[] {
 		return this.cachedLists;
 	}
 
 	isProjectConnected(projectPath: string): boolean {
+		if (this.plugin.remindersSync?.isProjectLinked(projectPath)) return true;
 		const project = findProjectByPath(this.plugin.vaultIndex.getSnapshot().projects, projectPath);
 		if (!project) return false;
 		return !!readProjectListId(this.plugin.app, project, this.plugin.settings);
-	}
-
-	/** Obsidian GUI apps often lack ~/.local/bin on PATH — persist a discovered full path once. */
-	private ensureRemctlPathConfigured(): void {
-		const current = this.plugin.settings.conduitRemctlPath.trim();
-		if (current && current !== "remctl") return;
-		const found = findRemctlBinary();
-		if (!found) return;
-		this.plugin.settings.conduitRemctlPath = found;
-		void this.plugin.saveSettings();
 	}
 
 	stop(): void {
@@ -68,7 +53,7 @@ export class ConduitService {
 
 	async runDoctor(): Promise<void> {
 		if (!Platform.isMacOS) {
-			new Notice("Reminders bridge requires macOS.");
+			new Notice("Reminders sync requires macOS.");
 			return;
 		}
 		try {

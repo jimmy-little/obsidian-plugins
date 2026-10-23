@@ -73,6 +73,39 @@ export function hourInTimeZone(now: Date, timeZone: string | null): number {
 	}
 }
 
+/** Minutes from local midnight in the given zone (0–1439). */
+export function minutesInTimeZone(now: Date, timeZone: string | null): number {
+	if (!timeZone) return now.getHours() * 60 + now.getMinutes();
+	try {
+		const parts = new Intl.DateTimeFormat("en-US", {
+			timeZone,
+			hour: "numeric",
+			minute: "2-digit",
+			hourCycle: "h23",
+		}).formatToParts(now);
+		const hour = Number.parseInt(parts.find((p) => p.type === "hour")?.value ?? "", 10);
+		const minute = Number.parseInt(parts.find((p) => p.type === "minute")?.value ?? "", 10);
+		if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+			return now.getHours() * 60 + now.getMinutes();
+		}
+		return hour * 60 + minute;
+	} catch {
+		return now.getHours() * 60 + now.getMinutes();
+	}
+}
+
+/** Earliest local clock time first; stable by label. */
+export function sortWorldClocksByLocalTime<T extends {label: string; timeZone: string | null}>(
+	clocks: T[],
+	now: Date,
+): T[] {
+	return [...clocks].sort((a, b) => {
+		const diff = minutesInTimeZone(now, a.timeZone) - minutesInTimeZone(now, b.timeZone);
+		if (diff !== 0) return diff;
+		return a.label.localeCompare(b.label);
+	});
+}
+
 export function isDaytimeInTimeZone(
 	now: Date,
 	timeZone: string | null,

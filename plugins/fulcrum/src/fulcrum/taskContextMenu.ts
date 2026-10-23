@@ -431,6 +431,21 @@ function addNoteActionsSubmenu(
 				});
 			});
 			if (Platform.isMacOS && host.conduitCanSync()) {
+				const linked = !!(task.projectFile && host.conduitIsProjectConnected(task.projectFile.path));
+				if (!linked) {
+					sub.addItem((row) => {
+						row.setTitle("Convert to Reminder");
+						row.setIcon("bell");
+						row.onClick(() => {
+							void host.convertTaskToReminder(task).catch(handleMenuError);
+						});
+					});
+				}
+			}
+		}
+		if (task.source === "taskNote" && Platform.isMacOS && host.conduitCanSync()) {
+			const linked = !!(task.projectFile && host.conduitIsProjectConnected(task.projectFile.path));
+			if (!linked) {
 				sub.addItem((row) => {
 					row.setTitle("Convert to Reminder");
 					row.setIcon("bell");
@@ -439,15 +454,6 @@ function addNoteActionsSubmenu(
 					});
 				});
 			}
-		}
-		if (task.source === "taskNote" && Platform.isMacOS && host.conduitCanSync()) {
-			sub.addItem((row) => {
-				row.setTitle("Convert to Reminder");
-				row.setIcon("bell");
-				row.onClick(() => {
-					void host.convertTaskToReminder(task).catch(handleMenuError);
-				});
-			});
 		}
 		showCopyPathMenuItem(sub, task);
 		showCopyObsidianLinkMenuItem(sub, host.app, host.settings, task);

@@ -7,10 +7,10 @@ import {
 	createReminderListForProject,
 } from "./mappingRegistry";
 import {indexLists} from "./projectListSync";
-import type {RemctlListRow} from "./types";
+import type {ReminderListRow} from "./types";
 
 type ConnectListChoice =
-	| {kind: "list"; row: RemctlListRow}
+	| {kind: "list"; row: ReminderListRow}
 	| {kind: "create"};
 
 export class ConnectRemindersListModal extends FuzzySuggestModal<ConnectListChoice> {
@@ -20,7 +20,7 @@ export class ConnectRemindersListModal extends FuzzySuggestModal<ConnectListChoi
 		app: App,
 		private readonly host: FulcrumHost,
 		private readonly project: IndexedProject,
-		lists: RemctlListRow[],
+		lists: ReminderListRow[],
 	) {
 		super(app);
 		this.choices = [
@@ -50,8 +50,9 @@ export class ConnectRemindersListModal extends FuzzySuggestModal<ConnectListChoi
 			const bridge = await this.host.getRemindersBridge();
 			const lists = await bridge.lists();
 			const listIndex = indexLists(lists);
+			let listId: string;
 			if (item.kind === "create") {
-				await createReminderListForProject(
+				listId = await createReminderListForProject(
 					this.app,
 					bridge,
 					this.project,
@@ -59,17 +60,22 @@ export class ConnectRemindersListModal extends FuzzySuggestModal<ConnectListChoi
 					listIndex,
 				);
 			} else {
+				listId = item.row.id;
 				await connectProjectToReminderList(
 					this.app,
 					bridge,
 					this.project,
-					item.row.id,
+					listId,
 					this.host.settings,
 					listIndex,
 				);
 			}
 			await this.host.vaultIndex.rebuild();
 			new Notice(`Reminders list set for "${this.project.name}".`);
+			await this.host.remindersSyncNow({
+				projectPath: this.project.file.path,
+				listId,
+			});
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			new Notice(`Could not set Reminders list: ${msg}`);
@@ -80,7 +86,7 @@ export class ConnectRemindersListModal extends FuzzySuggestModal<ConnectListChoi
 export function openConnectRemindersListModal(
 	host: FulcrumHost,
 	project: IndexedProject,
-	lists: RemctlListRow[],
+	lists: ReminderListRow[],
 ): void {
 	new ConnectRemindersListModal(host.app, host, project, lists).open();
 }

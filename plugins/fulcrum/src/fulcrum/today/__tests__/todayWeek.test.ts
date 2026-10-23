@@ -2,10 +2,11 @@ import {describe, expect, it} from "vitest";
 import {buildTodayWeekDays, formatTodayMasthead, shiftIsoWeek} from "../todayWeek";
 
 describe("formatTodayMasthead", () => {
-	it("formats day number and month weekday", () => {
+	it("formats day number, month, and weekday on separate fields", () => {
 		const mast = formatTodayMasthead("2026-09-04");
 		expect(mast.dayNum).toBe("4");
-		expect(mast.monthWeekday).toBe("SEPTEMBER FRIDAY");
+		expect(mast.month).toBe("September");
+		expect(mast.weekday).toBe("Friday");
 	});
 });
 

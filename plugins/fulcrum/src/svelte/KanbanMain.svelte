@@ -12,7 +12,7 @@
 		resolveIndexedAreaLifeMode,
 	} from "../fulcrum/utils/areaFocusFilter";
 	import {projectMatchesViewProjectFilter} from "../fulcrum/utils/viewProjectFilter";
-	import {collectOpenTasks} from "../fulcrum/tasks/horizonTasks";
+	import {collectHorizonTasks} from "../fulcrum/tasks/horizonTasks";
 	import {buildProjectSidebarCounts} from "../fulcrum/utils/projectSidebarCounts";
 	import {buildKanbanBoard, allColumnDefsForView} from "../fulcrum/kanban/buildBoard";
 	import {applyKanbanDrop, applyKanbanSidebarDrop} from "../fulcrum/kanban/applyDrop";
@@ -83,8 +83,9 @@
 		filterProjectsByAreaFocus(projectCandidates, areaFilter, lifeModeMap),
 		(columnBy === "area" || swimlaneBy === "area") ? projectCandidates : [],
 	);
-	$: openTasks = collectOpenTasks(
+	$: openTasks = collectHorizonTasks(
 		snapshot,
+		plugin.settings,
 		areaFilter,
 		lifeModeMap,
 		doneTask,

@@ -33,6 +33,11 @@ export interface FulcrumHost {
 	stopTimerInNote(notePath: string): Promise<void>;
 	refreshIndex(): Promise<void>;
 	appendProjectLogEntry(projectPath: string, text: string, themeId?: string): Promise<boolean>;
+	/**
+	 * Quick-note Track Time: create a timer session note, start Active Timer,
+	 * append a linked Fulcrum log line. Does not open the session note.
+	 */
+	startQuickNoteTimer(projectPath: string, title: string): Promise<boolean>;
 	/** Opens modal: optional review note, updates review dates, appends Fulcrum log line. */
 	openMarkReviewedModal(
 		projectPath: string,
@@ -115,7 +120,7 @@ export interface FulcrumHost {
 		targetEl: HTMLElement,
 		path: string,
 	): void;
-	/** Apple Reminders on macOS (live views + convert). */
+	/** Apple Reminders two-way sync on macOS. */
 	notifyConduitProjectCompleted(projectPath: string): Promise<void>;
 	conduitCanSync(): boolean;
 	getRemindersBridge(): Promise<import("../conduit/remindersBridge").RemindersBridge>;
@@ -130,6 +135,7 @@ export interface FulcrumHost {
 	omnifocusClearProject(projectPath: string): Promise<void>;
 	omnifocusSyncNow(opts?: {projectPath?: string; projectOmniId?: string}): Promise<void>;
 	omnifocusRunDoctor(): Promise<void>;
+	remindersSyncNow(opts?: {projectPath?: string; listId?: string}): Promise<void>;
 	/** Tabled: native widget bridge — see timer/WidgetBridge.ts */
 	// scheduleWidgetBridgeSync?(): void;
 	/** Renders markdown into a host element (e.g. activity note preview). */

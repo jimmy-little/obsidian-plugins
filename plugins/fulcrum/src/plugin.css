@@ -2830,15 +2830,16 @@ button.fulcrum-task-card__note-type:focus-visible {
 	min-width: 0;
 	overflow: hidden;
 	box-sizing: border-box;
+	/* Status bar paints over the bottom of the leaf; keep the area row above it. */
+	padding-bottom: var(--fulcrum-app-status-bar, 28px);
 }
 
 .fulcrum-pm {
 	--fulcrum-pm-left-w: 22rem;
 	--fulcrum-pm-split-w: 5px;
 	display: grid;
-	/* Three tracks only: no fourth “right rail” child is mounted, so a 4th column was dead space. */
 	grid-template-columns: var(--fulcrum-pm-left-w) var(--fulcrum-pm-split-w) minmax(0, 1fr);
-	grid-template-rows: minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr) auto;
 	width: 100%;
 	height: 100%;
 	min-height: 0;
@@ -2848,8 +2849,15 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 .fulcrum-pm > .fulcrum-pm__sidebar,
-.fulcrum-pm > .fulcrum-pm__main {
+.fulcrum-pm > .fulcrum-pm__main,
+.fulcrum-pm > .fulcrum-pm__split {
 	min-height: 0;
+	grid-row: 1;
+}
+
+.fulcrum-pm > .fulcrum-pm__area-bar {
+	grid-column: 1 / -1;
+	grid-row: 2;
 }
 
 .fulcrum-pm.fulcrum-pm-left-collapsed {
@@ -3174,6 +3182,17 @@ button.fulcrum-task-card__note-type:focus-visible {
 	min-width: 0;
 }
 
+.fulcrum-pm__area-bar {
+	flex-shrink: 0;
+	min-width: 0;
+	border-top: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	z-index: 2;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: thin;
+}
+
 .fulcrum-pm-left-collapsed .fulcrum-pm__left-footer {
 	display: none;
 }
@@ -3260,41 +3279,11 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-area-filter {
 	width: 100%;
 	box-sizing: border-box;
-	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
-	margin-bottom: 0.5rem;
 }
 
-.fulcrum-area-filter__toggle {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	width: 100%;
-	box-sizing: border-box;
+.fulcrum-area-filter--bar {
 	margin: 0;
-	padding: 0.4rem 0.5rem;
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-muted);
-	background: color-mix(in srgb, var(--background-secondary) 65%, var(--background-primary));
 	border: none;
-	cursor: pointer;
-	text-align: left;
-}
-
-.fulcrum-area-filter__toggle:hover {
-	background: var(--background-modifier-hover);
-}
-
-.fulcrum-area-filter__chevron {
-	flex: 0 0 auto;
-	font-size: var(--font-ui-small);
-	transition: transform 0.12s ease;
-}
-
-.fulcrum-area-filter__chevron--collapsed {
-	transform: rotate(-90deg);
 }
 
 .fulcrum-area-filter__body {
@@ -3304,38 +3293,25 @@ button.fulcrum-task-card__note-type:focus-visible {
 	padding: 0.4rem 0.5rem 0.55rem;
 }
 
-.fulcrum-area-filter__group-divider {
-	flex-shrink: 0;
-	margin: 0.15rem 0;
-	border: none;
-	border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
-	height: 0;
-}
-
-.fulcrum-area-filter--sidebar-footer {
-	border-bottom: none;
-	margin-bottom: 0;
-	border-top: none;
-}
-
-.fulcrum-area-filter--sidebar-footer .fulcrum-area-filter__body {
-	max-height: min(40vh, 280px);
-	overflow: auto;
-}
-
-.fulcrum-area-filter__badge {
-	display: inline-flex;
+.fulcrum-area-filter__body--bar {
+	flex-direction: row;
+	flex-wrap: nowrap;
 	align-items: center;
-	justify-content: center;
-	min-width: 1.1rem;
-	margin-left: 0.35rem;
-	padding: 0 0.3rem;
-	font-size: var(--font-ui-smaller);
-	font-weight: 700;
-	line-height: 1.2;
-	border-radius: 999px;
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
+	gap: 0.2rem 0.45rem;
+	padding: 0.12rem 0.65rem;
+	max-height: none;
+	width: max-content;
+	min-width: 100%;
+	box-sizing: border-box;
+}
+
+.fulcrum-area-filter__group-gap {
+	flex: 0 0 1px;
+	align-self: stretch;
+	width: 1px;
+	min-height: 1.1rem;
+	margin: 0 0.15rem;
+	background: color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
 }
 
 .fulcrum-standalone-with-filter {
@@ -3360,6 +3336,11 @@ button.fulcrum-task-card__note-type:focus-visible {
 	flex-shrink: 0;
 	border-top: 1px solid var(--background-modifier-border);
 	background: var(--background-secondary);
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: thin;
+	padding-bottom: var(--fulcrum-app-status-bar, 28px);
+	box-sizing: border-box;
 }
 
 .fulcrum-dashboard-meetings-nav__toolbar {
@@ -3380,24 +3361,26 @@ button.fulcrum-task-card__note-type:focus-visible {
 
 .fulcrum-area-filter__row {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: center;
-	gap: 0.2rem 0.25rem;
+	gap: 0.15rem 0.2rem;
+	flex: 0 0 auto;
+	min-width: max-content;
 }
 
 .fulcrum-area-filter__section-btn {
 	flex: 0 0 auto;
 	margin: 0;
-	padding: 0.08rem 0.42rem;
-	font-size: calc(var(--font-ui-smaller) * 0.92);
+	padding: 0.12rem 0.38rem;
+	font-size: calc(var(--font-ui-smaller) * 0.88);
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.03em;
-	line-height: 1.2;
-	border-radius: 999px;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-secondary);
-	color: var(--text-normal);
+	line-height: 1;
+	border-radius: 4px;
+	border: none;
+	background: color-mix(in srgb, var(--text-muted) 12%, var(--background-primary));
+	color: var(--text-muted);
 	cursor: pointer;
 }
 
@@ -3412,17 +3395,18 @@ button.fulcrum-task-card__note-type:focus-visible {
 .fulcrum-area-filter__area-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.12rem;
+	flex-shrink: 0;
+	gap: 0.1rem;
 	max-width: 100%;
 	margin: 0;
-	padding: 0.04rem 0.28rem;
-	font-size: calc(var(--font-ui-smaller) * 0.9);
-	font-weight: 400;
-	line-height: 1.15;
-	min-height: 1.15em;
-	border-radius: 999px;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-secondary);
+	padding: 0.12rem 0.32rem;
+	font-size: calc(var(--font-ui-smaller) * 0.88);
+	font-weight: 500;
+	line-height: 1;
+	min-height: 0;
+	border-radius: 4px;
+	border: none;
+	background: var(--background-modifier-hover);
 	color: var(--text-muted);
 	cursor: pointer;
 	vertical-align: middle;
@@ -3430,7 +3414,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 }
 
 .fulcrum-area-filter__area-btn:hover {
-	filter: brightness(1.05);
+	filter: brightness(1.06);
 }
 
 .fulcrum-area-filter__area-btn--off {
@@ -3448,7 +3432,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	max-width: 9rem;
+	max-width: 8.5rem;
 }
 
 /* —— Horizon view (tasks) —— */
@@ -4123,6 +4107,21 @@ button.fulcrum-task-card__note-type:focus-visible {
 	width: 100%;
 	max-width: 100%;
 	min-width: 0;
+}
+
+.fulcrum-today-active-timers-section {
+	margin-bottom: 0.75rem;
+}
+
+.fulcrum-today-active-timers .fulcrum-active-timers {
+	padding: 0;
+	min-height: 0;
+}
+
+.fulcrum-today-active-timers .fulcrum-active-timers__list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
 }
 
 /* Project banner: inline running timer(s) */
@@ -9874,11 +9873,40 @@ button.orbit-heatmap-day-modal__link:hover {
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
-	gap: 0.75rem;
+	gap: 0.75rem 1rem;
 	flex-shrink: 0;
+	flex-wrap: wrap;
+	padding-bottom: 0.55rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.fulcrum-today__head-left {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.85rem 1.1rem;
+	min-width: 0;
+	flex: 1 1 18rem;
+}
+
+.fulcrum-today__head-right {
+	display: flex;
+	align-items: flex-start;
+	justify-content: flex-end;
+	gap: 0.75rem;
+	margin-left: auto;
+	flex: 0 1 auto;
+	min-width: 0;
 }
 
 .fulcrum-today__masthead {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.12rem;
+	min-width: 0;
+}
+
+.fulcrum-today__mast-line {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: baseline;
@@ -9894,20 +9922,19 @@ button.orbit-heatmap-day-modal__link:hover {
 	letter-spacing: -0.03em;
 }
 
-.fulcrum-today__mast-rest {
+.fulcrum-today__mast-month {
 	font-size: 1.35rem;
 	font-weight: 600;
-	letter-spacing: 0.04em;
+	letter-spacing: -0.01em;
 	color: var(--text-normal);
 }
 
-.fulcrum-today__jump-today {
-	border: none;
-	background: transparent;
-	color: var(--interactive-accent);
-	font-size: var(--font-ui-small);
-	cursor: pointer;
-	padding: 0.15rem 0.35rem;
+.fulcrum-today__mast-weekday {
+	font-size: 1.05rem;
+	font-weight: 550;
+	letter-spacing: -0.01em;
+	color: var(--text-muted);
+	padding-left: 0.1rem;
 }
 
 .fulcrum-today__columns {
@@ -9930,6 +9957,10 @@ button.orbit-heatmap-day-modal__link:hover {
 		overflow: hidden;
 	}
 
+	.fulcrum-today__columns--agenda-only {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
 	.fulcrum-today__rule {
 		display: block;
 		background: var(--background-modifier-border);
@@ -9945,33 +9976,258 @@ button.orbit-heatmap-day-modal__link:hover {
 }
 
 .fulcrum-today__clocks {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.85rem 1.35rem;
-	margin-bottom: 1.1rem;
-}
-
-.fulcrum-today__clock {
-	display: flex;
-	flex-direction: column;
-	gap: 0.1rem;
-}
-
-.fulcrum-today__clock-time {
-	font-size: 1.05rem;
-	font-weight: 600;
-	font-variant-numeric: tabular-nums;
-}
-
-.fulcrum-today__clock-label {
-	font-size: 0.72rem;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	color: var(--text-muted);
+	padding: 0 0 0.85rem;
+	margin-bottom: 0.35rem;
 }
 
 .fulcrum-today__block {
 	margin-bottom: 1.15rem;
+}
+
+.fulcrum-today__feed {
+	list-style: none;
+	margin: 0;
+	padding: 0.15rem 0 0.35rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.55rem;
+}
+
+.fulcrum-today__feed > li {
+	margin: 0;
+	padding: 0;
+	min-width: 0;
+	overflow: visible;
+}
+
+.fulcrum-today__feed-row {
+	--fulcrum-today-icon: 18px;
+	display: grid;
+	grid-template-columns: 3.85rem var(--fulcrum-today-icon) minmax(0, 1fr) auto;
+	column-gap: 0.55rem;
+	align-items: center;
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0.4rem 0.45rem;
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	text-align: left;
+	cursor: default;
+	font: inherit;
+	color: inherit;
+	line-height: 1.35;
+	height: auto;
+	min-height: 0;
+	max-height: none;
+	overflow: visible;
+	white-space: normal;
+}
+
+.fulcrum-today__feed-row--clockless {
+	grid-template-columns: var(--fulcrum-today-icon) minmax(0, 1fr) auto;
+}
+
+.fulcrum-today__feed-row:hover,
+.fulcrum-today__feed-row:focus-visible {
+	background: var(--background-modifier-hover);
+	outline: none;
+}
+
+.fulcrum-today__feed-time {
+	font-size: 0.78rem;
+	line-height: 1.35;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.fulcrum-today__feed-icon,
+.fulcrum-today__feed-status {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	justify-self: center;
+	width: var(--fulcrum-today-icon);
+	height: var(--fulcrum-today-icon);
+	margin: 0;
+	flex-shrink: 0;
+	color: var(--fulcrum-today-accent, var(--text-muted));
+}
+
+.fulcrum-today__feed-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.fulcrum-today__feed-status {
+	box-sizing: border-box;
+	padding: 0;
+	min-width: var(--fulcrum-today-icon);
+	min-height: var(--fulcrum-today-icon);
+	max-width: var(--fulcrum-today-icon);
+	max-height: var(--fulcrum-today-icon);
+	border-radius: 50%;
+	border: 2px solid var(--fulcrum-today-accent, var(--text-muted));
+	background: transparent;
+	box-shadow: none;
+	cursor: pointer;
+	line-height: 0;
+	font-size: 0;
+	appearance: none;
+	color: #fff;
+}
+
+.fulcrum-today__feed-status:hover,
+.fulcrum-today__feed-status:focus-visible {
+	filter: brightness(1.05);
+}
+
+.fulcrum-today__feed-status--done {
+	background: var(--fulcrum-today-accent, #27ae60);
+	border-color: var(--fulcrum-today-accent, #27ae60);
+}
+
+.fulcrum-today__feed-status--in-progress {
+	border-color: var(--fulcrum-today-accent, var(--interactive-accent));
+	color: var(--fulcrum-today-accent, var(--interactive-accent));
+	background: color-mix(in srgb, var(--fulcrum-today-accent, var(--interactive-accent)) 12%, transparent);
+}
+
+.fulcrum-today__feed-check {
+	font-size: 11px;
+	line-height: 1;
+	font-weight: 700;
+	color: #fff;
+}
+
+.fulcrum-today__feed-progress {
+	display: inline-flex;
+	width: 12px;
+	height: 12px;
+}
+
+.fulcrum-today__feed-progress svg {
+	width: 12px;
+	height: 12px;
+}
+
+.fulcrum-today__feed-body {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-start;
+	justify-self: stretch;
+	gap: 0.2rem;
+	width: 100%;
+	min-width: 0;
+	overflow: visible;
+	margin: 0;
+	padding: 0.02rem 0;
+	border: none;
+	background: transparent;
+	box-shadow: none;
+	font: inherit;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.fulcrum-today__feed-title {
+	display: block;
+	width: 100%;
+	font-size: var(--font-ui-small);
+	font-weight: 550;
+	line-height: 1.35;
+	color: var(--text-normal);
+	text-align: left;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-today__feed-title--done {
+	text-decoration: line-through;
+	color: var(--text-faint);
+}
+
+.fulcrum-today__feed-sub {
+	display: block;
+	width: 100%;
+	font-size: 0.75rem;
+	line-height: 1.35;
+	color: var(--text-muted);
+	text-align: left;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fulcrum-today__feed-body--static {
+	cursor: default;
+}
+
+button.fulcrum-today__feed-body {
+	align-items: stretch;
+	justify-content: flex-start;
+	width: 100%;
+	text-align: left;
+}
+
+button.fulcrum-today__feed-body:hover,
+button.fulcrum-today__feed-body:focus-visible {
+	background: transparent;
+	box-shadow: none;
+	color: inherit;
+}
+
+.fulcrum-today__feed-body:focus-visible {
+	outline: none;
+}
+
+.fulcrum-today__feed-row:focus-within {
+	background: var(--background-modifier-hover);
+}
+
+.fulcrum-today__feed-meta {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-end;
+	justify-self: end;
+	gap: 0.35rem;
+	margin-left: auto;
+	min-width: 0;
+	color: var(--text-muted);
+	font-size: 0.75rem;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.fulcrum-today__feed-duration {
+	color: var(--text-muted);
+}
+
+.fulcrum-today__feed-play {
+	flex-shrink: 0;
+}
+
+.fulcrum-today__feed-meta .fulcrum-task-card__timer--row {
+	margin: 0;
+	align-self: center;
+}
+
+.fulcrum-today__feed-row--done .fulcrum-today__feed-sub {
+	color: var(--text-faint);
+}
+
+.fulcrum-today__feed-row--ghost {
+	opacity: 0.72;
+}
+
+.fulcrum-today__feed-row--ghost .fulcrum-today__feed-title {
+	font-style: italic;
 }
 
 .fulcrum-today__block-head {
@@ -10008,68 +10264,6 @@ button.orbit-heatmap-day-modal__link:hover {
 	filter: brightness(1.08);
 }
 
-.fulcrum-today__feed {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-}
-
-.fulcrum-today__feed-row {
-	display: grid;
-	grid-template-columns: 3.6rem 1.2rem minmax(0, 1fr);
-	gap: 0.4rem 0.45rem;
-	align-items: start;
-	width: 100%;
-	margin: 0;
-	padding: 0.38rem 0.2rem;
-	border: none;
-	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 45%, transparent);
-	background: transparent;
-	text-align: left;
-	cursor: pointer;
-}
-
-.fulcrum-today__feed-row:hover {
-	background: var(--background-modifier-hover);
-}
-
-.fulcrum-today__feed-time {
-	font-size: 0.78rem;
-	color: var(--text-muted);
-	font-variant-numeric: tabular-nums;
-	padding-top: 0.12rem;
-}
-
-.fulcrum-today__feed-icon {
-	display: inline-flex;
-	width: 1.1rem;
-	height: 1.1rem;
-	color: var(--text-muted);
-	margin-top: 0.1rem;
-}
-
-.fulcrum-today__feed-icon svg {
-	width: 1.1rem;
-	height: 1.1rem;
-}
-
-.fulcrum-today__feed-body {
-	display: flex;
-	flex-direction: column;
-	gap: 0.08rem;
-	min-width: 0;
-}
-
-.fulcrum-today__feed-title {
-	font-size: var(--font-ui-small);
-	font-weight: 550;
-}
-
-.fulcrum-today__feed-sub {
-	font-size: 0.75rem;
-	color: var(--text-muted);
-}
-
 .fulcrum-today__empty,
 .fulcrum-today__weather-empty {
 	margin: 0.35rem 0 0.85rem;
@@ -10080,11 +10274,24 @@ button.orbit-heatmap-day-modal__link:hover {
 	margin-bottom: 1.2rem;
 }
 
+.fulcrum-today__weather--header {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.85rem;
+	margin: 0;
+	min-width: 0;
+}
+
 .fulcrum-today__weather-now {
 	display: flex;
 	align-items: center;
 	gap: 0.45rem;
 	margin-bottom: 0.55rem;
+	flex-shrink: 0;
+}
+
+.fulcrum-today__weather--header .fulcrum-today__weather-now {
+	margin-bottom: 0;
 }
 
 .fulcrum-today__weather-icon {
@@ -10107,22 +10314,32 @@ button.orbit-heatmap-day-modal__link:hover {
 
 .fulcrum-today__weather-days {
 	display: flex;
-	gap: 0.45rem;
+	gap: 0.2rem;
 	overflow-x: auto;
-	padding-bottom: 0.15rem;
+	padding-bottom: 0;
+}
+
+.fulcrum-today__weather--header .fulcrum-today__weather-days {
+	flex-shrink: 1;
+	min-width: 0;
 }
 
 .fulcrum-today__weather-day {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 0.15rem;
-	min-width: 2.4rem;
+	gap: 0.1rem;
+	min-width: 2.35rem;
+	padding: 0.18rem 0.12rem 0.1rem;
+	box-sizing: border-box;
 }
 
-.fulcrum-today__weather-wd {
-	font-size: 0.68rem;
+.fulcrum-today__weather-wd,
+.fulcrum-today-week__wd {
+	font-size: 0.65rem;
+	font-weight: 600;
 	letter-spacing: 0.04em;
+	line-height: 1.1;
 	text-transform: uppercase;
 	color: var(--text-muted);
 }
@@ -10139,18 +10356,19 @@ button.orbit-heatmap-day-modal__link:hover {
 	font-variant-numeric: tabular-nums;
 }
 
-.fulcrum-today__checklist .fulcrum-tasks-row {
-	padding-left: 0;
-	padding-right: 0.15rem;
+.fulcrum-today__checklist {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
 }
 
 .fulcrum-today-week {
 	display: flex;
-	align-items: flex-end;
+	align-items: flex-start;
 	justify-content: center;
-	gap: 0.35rem;
+	gap: 0.2rem;
 	flex-shrink: 0;
-	padding: 0.35rem 0 0.15rem;
+	padding: 0;
 }
 
 .fulcrum-today-week__days {
@@ -10162,7 +10380,20 @@ button.orbit-heatmap-day-modal__link:hover {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 0.15rem;
+	gap: 0.1rem;
+	min-width: 2.35rem;
+	padding: 0.18rem 0.12rem 0.22rem;
+	box-sizing: border-box;
+	border: 1px solid transparent;
+	border-radius: 6px;
+}
+
+.fulcrum-today-week__cell--today {
+	color: var(--text-normal);
+}
+
+.fulcrum-today-week__cell--focal {
+	border-color: var(--interactive-accent);
 }
 
 .fulcrum-today-week__day {
@@ -10170,44 +10401,36 @@ button.orbit-heatmap-day-modal__link:hover {
 	flex-direction: column;
 	align-items: center;
 	gap: 0.1rem;
-	min-width: 2.55rem;
-	padding: 0.35rem 0.3rem 0.4rem;
-	border: 1px solid transparent;
-	border-radius: 999px;
+	width: 100%;
+	min-width: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
 	background: transparent;
 	cursor: pointer;
-	color: var(--text-muted);
+	color: inherit;
 }
 
-.fulcrum-today-week__day--today {
-	color: var(--text-normal);
-	font-weight: 600;
-}
-
-.fulcrum-today-week__day--focal {
-	border-color: var(--interactive-accent);
+.fulcrum-today-week__cell--today .fulcrum-today-week__day,
+.fulcrum-today-week__cell--focal .fulcrum-today-week__day {
 	color: var(--interactive-accent);
-}
-
-.fulcrum-today-week__wd {
-	font-size: 0.65rem;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
+	font-weight: 600;
 }
 
 .fulcrum-today-week__num {
 	font-size: 0.92rem;
 	font-variant-numeric: tabular-nums;
+	line-height: 1.15;
 }
 
 .fulcrum-today-week__add {
-	width: 1.15rem;
-	height: 1.15rem;
+	width: 1rem;
+	height: 1rem;
 	border: none;
-	border-radius: 999px;
+	border-radius: 4px;
 	background: color-mix(in srgb, var(--interactive-accent) 85%, transparent);
 	color: var(--text-on-accent);
-	font-size: 0.85rem;
+	font-size: 0.75rem;
 	line-height: 1;
 	cursor: pointer;
 	padding: 0;
@@ -10217,9 +10440,10 @@ button.orbit-heatmap-day-modal__link:hover {
 	border: none;
 	background: transparent;
 	color: var(--text-muted);
-	font-size: 1.25rem;
+	font-size: 1.1rem;
 	cursor: pointer;
-	padding: 0.2rem 0.35rem;
+	padding: 0.18rem 0.2rem;
+	line-height: 1;
 }
 
 .fulcrum-today-week__nav:hover,

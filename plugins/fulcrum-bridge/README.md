@@ -149,7 +149,7 @@ Cursor agents should use the bundled MCP (`plugins/fulcrum-bridge/mcp/omnifocus-
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | `{ ok, status, authorization, calendarCount, omnifocus }` |
+| GET | `/health` | `{ ok, status, authorization, calendarCount, remindersRevision, omnifocus }` |
 | GET | `/omnifocus/health` | OmniFocus installed/running/OmniJS probe |
 | GET | `/omnifocus/projects` | `{ "projects": [{ "id", "name", "status", "folder", "sequential" }] }` |
 | POST | `/omnifocus/projects` | Create project `{ "name" }` → `{ "id" }` |
@@ -159,15 +159,17 @@ Cursor agents should use the bundled MCP (`plugins/fulcrum-bridge/mcp/omnifocus-
 | POST | `/omnifocus/tasks/:id/complete` | Mark complete |
 | POST | `/omnifocus/tasks/:id/reopen` | Mark incomplete |
 | POST | `/omnifocus/sync` | JXA `Application("OmniFocus").synchronize()` |
-| GET | `/lists` | `{ "lists": [{ "id", "name" }] }` |
-| POST | `/lists` | Create list `{ "name": "..." }` → `{ "listId" }` |
-| GET | `/reminders` | `{ "reminders": [...] }` |
-| POST | `/reminders` | Create reminder (JSON body) |
-| POST | `/reminders/:id/complete` | Mark done |
-| POST | `/reminders/:id/reopen` | Mark incomplete |
-| PATCH | `/reminders/:id` | Edit notes (JSON body) |
-| DELETE | `/reminders/:id` | Delete reminder |
+| GET | `/lists` | `{ "lists": [{ "id", "name", "color", "isDefault" }] }` |
+| POST | `/lists` | Create list `{ "name", "color" }` → `{ "listId" }` |
+| PATCH | `/lists/:id` | Update list color `{ "color": "#RRGGBB" }` |
+| GET | `/reminders/revision` | `{ "revision": n }` — increments on `EKEventStoreChanged` |
+| GET | `/reminders/:id` | One reminder by EventKit id (404 if missing) |
+| POST | `/reminders` | Create reminder (JSON body) → `{ "id" }` |
+| POST | `/reminders/:id/complete` | Mark done (404 if missing) |
+| POST | `/reminders/:id/reopen` | Mark incomplete (404 if missing) |
+| PATCH | `/reminders/:id` | Update title/due/completed/notes/listId (404 if missing) |
+| DELETE | `/reminders/:id` | Delete reminder (404 if missing) |
 | GET | `/calendars` | `{ "calendars": [...] }` |
 | GET | `/events?from=&to=&calendarId=` | Calendar events in range |
 
-Fulcrum falls back to **remctl** for Reminders when the HTTP bridge is unreachable.
+Reminders IDs are stable EventKit `calendarItemIdentifier` strings. Fulcrum does **not** fall back to remctl.

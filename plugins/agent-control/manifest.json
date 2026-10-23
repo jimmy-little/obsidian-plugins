@@ -1,0 +1,11 @@
+{
+	"id": "agent-control",
+	"name": "Agent Control Center",
+	"version": "0.1.0",
+	"minAppVersion": "1.4.0",
+	"description": "Dashboard for launching agent skills from the skills repo, inside Obsidian.",
+	"author": "Jimmy Little",
+	"authorUrl": "https://github.com/jimmylittle",
+	"isDesktopOnly": true,
+	"styles": ["styles.css"]
+}

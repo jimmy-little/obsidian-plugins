@@ -8,45 +8,76 @@
 		areaFilterState,
 		indexRevision,
 		settingsRevision,
+		viewProjectFilterPaths,
 	} from "../fulcrum/stores";
 	import {
 		buildAreaLifeModeMap,
 		isAreaFilterWideOpen,
 		meetingPassesAreaFilter,
 		projectPassesAreaFilter,
+		taskPassesAreaFilter,
 	} from "../fulcrum/utils/areaFocusFilter";
 	import {parseDoneStatusSet} from "../fulcrum/settingsDefaults";
 	import {addDaysIso, todayLocalISODate} from "../fulcrum/utils/dates";
 	import {fetchForecastCalendarRows} from "../fulcrum/tasks/forecastCalendar";
 	import {fetchBridgeCalendarEvents} from "../conduit/bridgeCalendar";
-	import {formatMinutesLabel, type ForecastCalendarRow} from "../fulcrum/tasks/tasksViewModel";
+	import {
+		filterOpenTasksForTasksView,
+		type ForecastCalendarRow,
+	} from "../fulcrum/tasks/tasksViewModel";
 	import {collectHorizonTasks} from "../fulcrum/tasks/horizonTasks";
-	import {collectTodayChecklist} from "../fulcrum/today/todayTasks";
-	import {buildTodayFeed, type TodayFeedItem} from "../fulcrum/today/todayFeed";
+	import {
+		collectFocalDoneDayEntries,
+		collectTodayChecklist,
+		mergeTodayDayEntries,
+	} from "../fulcrum/today/todayTasks";
+	import {buildTodayFeed, todayTaskFeedItem} from "../fulcrum/today/todayFeed";
+	import {taskMatchesViewProjectFilter} from "../fulcrum/utils/viewProjectFilter";
+	import {projectColorMap} from "../fulcrum/utils/calendarEvents";
 	import {formatTodayMasthead, shiftIsoWeek} from "../fulcrum/today/todayWeek";
 	import {parseWorldClocks, formatWorldClockTime} from "../fulcrum/today/worldClocks";
+	import {
+		isDaytimeInTimeZone,
+		sortWorldClocksByLocalTime,
+	} from "../fulcrum/utils/worldClocks";
+	import {
+		filterForecastCalendarsAgainstMeetings,
+		filterForecastCalendarsAgainstNotes,
+		filterMeetingsAgainstNotes,
+	} from "../fulcrum/utils/calendarOccurrenceDedupe";
 	import {fetchOpenMeteoWeather, type WeatherForecast} from "../fulcrum/today/weather";
 	import {weatherLucideIcon} from "../fulcrum/today/weatherParse";
 	import {getDailyNoteForIso} from "../fulcrum/today/dailyQuickNote";
 	import {showTodayAddMenu} from "../fulcrum/today/todayAddMenu";
-	import TasksListRow from "./TasksListRow.svelte";
+	import TodayFeedRow from "./TodayFeedRow.svelte";
 	import TodayWeekStrip from "./TodayWeekStrip.svelte";
+	import TodayActiveTimers from "./TodayActiveTimers.svelte";
 	import FulcrumLeafToolbar from "./FulcrumLeafToolbar.svelte";
 
 	export let plugin: FulcrumHost;
 	export let hoverParentLeaf: WorkspaceLeaf | undefined = undefined;
 
-	const CHECKLIST_COLUMNS = ["title", "project", "tags"] as const;
-
 	let focalDateIso = todayLocalISODate();
 	let nowTick = 0;
 	let weather: WeatherForecast | null = null;
-	let weatherError = false;
 	let weatherLoadId = 0;
 	let forecastCalendarRows: ForecastCalendarRow[] = [];
 	let calendarLoadId = 0;
 	let atomicNotes: {projectPath: string; note: AtomicNoteRow}[] = [];
 	let notesLoadId = 0;
+
+	function takeCalendarLoadId(): number {
+		calendarLoadId += 1;
+		return calendarLoadId;
+	}
+	function takeNotesLoadId(): number {
+		notesLoadId += 1;
+		return notesLoadId;
+	}
+	function takeWeatherLoadId(): number {
+		weatherLoadId += 1;
+		return weatherLoadId;
+	}
 
 	$: snapshot = (void $indexRevision, plugin.vaultIndex.getSnapshot());
 	$: sRev = $settingsRevision;
@@ -60,24 +91,46 @@
 		settings: plugin.settings,
 	});
 	$: clocks = (void sRev, parseWorldClocks(plugin.settings.todayWorldClocks));
-	$: clockTimes = (void nowTick,
-		clocks.map((c) => ({
-			...c,
-			time: formatWorldClockTime(new Date(), c.timeZone),
-		})));
+	$: clockTimes = (void nowTick, (() => {
+		const now = new Date();
+		return sortWorldClocksByLocalTime(
+			clocks.map((c) => ({
+				label: c.label,
+				timeZone: c.timeZone as string | null,
+				time: formatWorldClockTime(now, c.timeZone),
+				daytime: isDaytimeInTimeZone(now, c.timeZone),
+			})),
+			now,
+		);
+	})());
 
 	$: masthead = formatTodayMasthead(focalDateIso);
 	$: todayIso = todayLocalISODate();
-	$: isFocalToday = focalDateIso === todayIso;
 
+	$: selectedProjectPaths = $viewProjectFilterPaths;
 	$: filteredTasks = collectHorizonTasks(
 		snapshot,
 		plugin.settings,
 		areaFilter,
 		lifeModeMap,
 		doneTask,
+		selectedProjectPaths,
 	);
 	$: checklist = collectTodayChecklist(filteredTasks, focalDateIso, todayIso);
+	$: colorByProject = projectColorMap(snapshot.projects);
+	$: focalDoneEntries = (void sRev, collectFocalDoneDayEntries(
+		filterOpenTasksForTasksView(
+			snapshot.tasks.filter(
+				(t) =>
+					taskPassesAreaFilter(t, snapshot, areaFilter, lifeModeMap, {includeUnlinked: true}) &&
+					taskMatchesViewProjectFilter(t, selectedProjectPaths),
+			),
+			{...plugin.settings, taskSidebarFilterUncheckedStatus: []},
+		),
+		focalDateIso,
+		doneTask,
+	));
+	$: dayEntries = mergeTodayDayEntries(checklist.day, focalDoneEntries);
 
 	$: filteredMeetings = snapshot.meetings.filter((m) =>
 		meetingPassesAreaFilter(m, snapshot, areaFilter, lifeModeMap),
@@ -89,6 +142,11 @@
 			return proj != null && projectPassesAreaFilter(proj, areaFilter, lifeModeMap);
 		})
 		.map((x) => x.note);
+	$: feedMeetings = filterMeetingsAgainstNotes(filteredMeetings, filteredNotes);
+	$: feedCalendarEvents = filterForecastCalendarsAgainstNotes(
+		filterForecastCalendarsAgainstMeetings(forecastCalendarRows, feedMeetings),
+		filteredNotes,
+	);
 	$: filteredPlanner = (snapshot.plannerEvents ?? []).filter((ev) => {
 		if (ev.dateIso !== focalDateIso) return false;
 		if (isAreaFilterWideOpen(areaFilter) || !ev.projectFile) return true;
@@ -98,10 +156,12 @@
 	$: dailyFile = (void $indexRevision, getDailyNoteForIso(focalDateIso));
 	$: feedSections = buildTodayFeed({
 		dateIso: focalDateIso,
-		meetings: filteredMeetings,
+		meetings: feedMeetings,
 		notes: filteredNotes,
-		calendarEvents: forecastCalendarRows,
+		calendarEvents: feedCalendarEvents,
 		plannerEvents: filteredPlanner,
+		dayTasks: dayEntries,
+		doneStatuses: doneTask,
 		dailyNoteTitle: dailyFile?.basename.replace(/\.md$/i, "") ?? null,
 		dailyNotePath: dailyFile?.path ?? null,
 	});
@@ -114,7 +174,7 @@
 		void plugin.settings.conduitEnabled;
 		void focalDateIso;
 		void refreshForecast();
-		void refreshNotes();
+		if (snapshot.rebuiltAt > 0) void refreshNotes();
 	}
 
 	$: {
@@ -125,7 +185,7 @@
 	}
 
 	async function refreshForecast(): Promise<void> {
-		const id = ++calendarLoadId;
+		const id = takeCalendarLoadId();
 		const from = focalDateIso;
 		const to = addDaysIso(focalDateIso, 1);
 		try {
@@ -148,6 +208,8 @@
 					dateIso: ev.dateIso,
 					startMinutes: ev.startMinutes,
 					durationMinutes: ev.durationMinutes,
+					location: ev.location,
+					calendarColor: ev.calendarColor,
 				});
 			}
 			forecastCalendarRows = [...forecast, ...extra];
@@ -158,7 +220,7 @@
 	}
 
 	async function refreshNotes(): Promise<void> {
-		const id = ++notesLoadId;
+		const id = takeNotesLoadId();
 		try {
 			const rows = await plugin.vaultIndex.listAtomicNotes();
 			if (id === notesLoadId) atomicNotes = rows;
@@ -172,20 +234,17 @@
 		const q = plugin.settings.todayWeatherLocation.trim();
 		if (!q) {
 			weather = null;
-			weatherError = false;
 			return;
 		}
-		const id = ++weatherLoadId;
+		const id = takeWeatherLoadId();
 		try {
 			const next = await fetchOpenMeteoWeather(q, plugin.settings.todayWeatherUnits);
 			if (id !== weatherLoadId) return;
 			weather = next;
-			weatherError = next == null;
 		} catch (e) {
 			console.error(e);
 			if (id !== weatherLoadId) return;
 			weather = null;
-			weatherError = true;
 		}
 	}
 
@@ -205,41 +264,8 @@
 		showTodayAddMenu(plugin, iso, ev, hoverParentLeaf);
 	}
 
-	function goToday(): void {
-		focalDateIso = todayLocalISODate();
-	}
-
 	function shiftWeek(weeks: number): void {
 		focalDateIso = shiftIsoWeek(focalDateIso, weeks);
-	}
-
-	function feedIconName(item: TodayFeedItem): string {
-		switch (item.kind) {
-			case "meeting":
-				return "users";
-			case "calendar":
-				return "calendar";
-			case "note":
-				return "sticky-note";
-			case "planner":
-				return "clock";
-			case "daily":
-				return "book-open";
-			default:
-				return "dot";
-		}
-	}
-
-	function bindFeedIcon(node: HTMLElement, item: TodayFeedItem) {
-		setIcon(node, feedIconName(item));
-		return {
-			update(next: TodayFeedItem) {
-				setIcon(node, feedIconName(next));
-			},
-			destroy() {
-				node.empty();
-			},
-		};
 	}
 
 	function bindWeatherIcon(node: HTMLElement, code: number) {
@@ -254,37 +280,64 @@
 		};
 	}
 
-	function openFeedItem(item: TodayFeedItem): void {
-		if (item.kind === "planner" && item.planner) {
-			plugin.openPlannerEvent(item.planner, hoverParentLeaf);
-			return;
-		}
-		if (item.filePath) {
-			plugin.openLinkedNoteFromFulcrum(item.filePath, hoverParentLeaf);
-		}
-	}
 </script>
 
 <div class="fulcrum-today">
 	<header class="fulcrum-today__head">
-		<div class="fulcrum-today__masthead">
-			<span class="fulcrum-today__day-num">{masthead.dayNum}</span>
-			<span class="fulcrum-today__mast-rest">{masthead.monthWeekday}</span>
-			{#if !isFocalToday}
-				<button type="button" class="fulcrum-today__jump-today" on:click={goToday}>Today</button>
-			{/if}
+		<div class="fulcrum-today__head-left">
+			<div class="fulcrum-today__masthead">
+				<div class="fulcrum-today__mast-line">
+					<span class="fulcrum-today__day-num">{masthead.dayNum}</span>
+					<span class="fulcrum-today__mast-month">{masthead.month}</span>
+				</div>
+				<span class="fulcrum-today__mast-weekday">{masthead.weekday}</span>
+			</div>
+			<TodayWeekStrip
+				{plugin}
+				{focalDateIso}
+				compact
+				onPickDay={onPickDay}
+				onAddDay={onAddDay}
+				onPrevWeek={() => shiftWeek(-1)}
+				onNextWeek={() => shiftWeek(1)}
+			/>
 		</div>
-		<FulcrumLeafToolbar {plugin} />
+		<div class="fulcrum-today__head-right">
+			{#if plugin.settings.todayWeatherLocation.trim() && weather}
+				<div class="fulcrum-today__weather fulcrum-today__weather--header">
+					<div class="fulcrum-today__weather-days">
+						{#each weather.days as day (day.iso)}
+							<div class="fulcrum-today__weather-day">
+								<span class="fulcrum-today__weather-wd">{day.weekday}</span>
+								<span class="fulcrum-today__weather-dicon" use:bindWeatherIcon={day.code}></span>
+								<span class="fulcrum-today__weather-hi">{day.high}°</span>
+							</div>
+						{/each}
+					</div>
+					<div class="fulcrum-today__weather-now">
+						<span class="fulcrum-today__weather-icon" use:bindWeatherIcon={weather.currentCode}></span>
+						<span class="fulcrum-today__weather-temp">{weather.currentTemp}°</span>
+						<span class="fulcrum-today__weather-place">{weather.locationLabel}</span>
+					</div>
+				</div>
+			{/if}
+			<FulcrumLeafToolbar {plugin} />
+		</div>
 	</header>
 
 	<div class="fulcrum-today__columns">
 		<section class="fulcrum-today__col fulcrum-today__col--left" aria-label="Schedule">
 			{#if clockTimes.length > 0}
-				<div class="fulcrum-today__clocks" role="group" aria-label="World time">
-					{#each clockTimes as clock (clock.label + clock.timeZone)}
-						<div class="fulcrum-today__clock">
-							<span class="fulcrum-today__clock-time">{clock.time}</span>
-							<span class="fulcrum-today__clock-label">{clock.label}</span>
+				<div class="fulcrum-world-clocks fulcrum-today__clocks" role="group" aria-label="World time">
+					{#each clockTimes as clock (clock.label + (clock.timeZone ?? ""))}
+						<div class="fulcrum-world-clock">
+							<span
+								class="fulcrum-world-clock__glyph"
+								title={clock.daytime ? "Daytime (7am–7pm)" : "Nighttime"}
+								aria-label={clock.daytime ? "Sun" : "Moon"}
+							>{clock.daytime ? "☀" : "☾"}</span>
+							<span class="fulcrum-world-clock__time">{clock.time}</span>
+							<span class="fulcrum-world-clock__label">{clock.label}</span>
 						</div>
 					{/each}
 				</div>
@@ -309,23 +362,7 @@
 						<ul class="fulcrum-today__feed">
 							{#each section.items as item (item.key)}
 								<li>
-									<button
-										type="button"
-										class="fulcrum-today__feed-row"
-										on:click={() => openFeedItem(item)}
-									>
-										<span class="fulcrum-today__feed-time">
-											{item.startMinutes != null ? formatMinutesLabel(item.startMinutes) : ""}
-										</span>
-										<span class="fulcrum-today__feed-icon" use:bindFeedIcon={item} aria-hidden="true"
-										></span>
-										<span class="fulcrum-today__feed-body">
-											<span class="fulcrum-today__feed-title">{item.title}</span>
-											{#if item.subtitle}
-												<span class="fulcrum-today__feed-sub">{item.subtitle}</span>
-											{/if}
-										</span>
-									</button>
+									<TodayFeedRow {plugin} {item} {hoverParentLeaf} {colorByProject} />
 								</li>
 							{/each}
 						</ul>
@@ -337,50 +374,7 @@
 		<div class="fulcrum-today__rule" aria-hidden="true"></div>
 
 		<section class="fulcrum-today__col fulcrum-today__col--right" aria-label="Tasks">
-			<div class="fulcrum-today__weather">
-				{#if !plugin.settings.todayWeatherLocation.trim()}
-					<p class="fulcrum-muted fulcrum-today__weather-empty">
-						Set a weather location in Fulcrum settings → Views.
-					</p>
-				{:else if weatherError}
-					<p class="fulcrum-muted fulcrum-today__weather-empty">Weather unavailable.</p>
-				{:else if weather}
-					<div class="fulcrum-today__weather-now">
-						<span class="fulcrum-today__weather-icon" use:bindWeatherIcon={weather.currentCode}></span>
-						<span class="fulcrum-today__weather-temp">{weather.currentTemp}°</span>
-						<span class="fulcrum-today__weather-place">{weather.locationLabel}</span>
-					</div>
-					<div class="fulcrum-today__weather-days">
-						{#each weather.days as day (day.iso)}
-							<div class="fulcrum-today__weather-day">
-								<span class="fulcrum-today__weather-wd">{day.weekday}</span>
-								<span class="fulcrum-today__weather-dicon" use:bindWeatherIcon={day.code}></span>
-								<span class="fulcrum-today__weather-hi">{day.high}°</span>
-							</div>
-						{/each}
-					</div>
-				{:else}
-					<p class="fulcrum-muted fulcrum-today__weather-empty">Loading weather…</p>
-				{/if}
-			</div>
-
-			{#if checklist.outstanding.length > 0}
-				<div class="fulcrum-today__block">
-					<h2 class="fulcrum-today__block-title">Outstanding</h2>
-					<div class="fulcrum-today__checklist">
-						{#each checklist.outstanding as task (task.file.path + (task.line ?? ""))}
-							<TasksListRow
-								{plugin}
-								{task}
-								columns={[...CHECKLIST_COLUMNS]}
-								{doneTask}
-								{hoverParentLeaf}
-							/>
-						{/each}
-					</div>
-				</div>
-			{/if}
-
+			<TodayActiveTimers {plugin} />
 			<div class="fulcrum-today__block">
 				<div class="fulcrum-today__block-head">
 					<h2 class="fulcrum-today__block-title">Tasks</h2>
@@ -398,28 +392,51 @@
 				{:else}
 					<div class="fulcrum-today__checklist">
 						{#each checklist.day as entry (entry.task.file.path + (entry.occurrenceDateIso ?? "") + (entry.task.line ?? ""))}
-							<TasksListRow
+							<TodayFeedRow
 								{plugin}
-								task={entry.task}
-								columns={[...CHECKLIST_COLUMNS]}
-								{doneTask}
+								item={todayTaskFeedItem(entry, doneTask)}
 								{hoverParentLeaf}
-								occurrenceDateIso={entry.occurrenceDateIso}
-								isGhostOccurrence={entry.isGhostOccurrence === true}
+								{colorByProject}
+								showClock={false}
 							/>
 						{/each}
 					</div>
 				{/if}
 			</div>
+
+			{#if checklist.outstanding.length > 0}
+				<div class="fulcrum-today__block">
+					<h2 class="fulcrum-today__block-title">Past due</h2>
+					<div class="fulcrum-today__checklist">
+						{#each checklist.outstanding as task (task.file.path + (task.line ?? ""))}
+							<TodayFeedRow
+								{plugin}
+								item={todayTaskFeedItem({task}, doneTask)}
+								{hoverParentLeaf}
+								{colorByProject}
+								showClock={false}
+							/>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
+			{#if checklist.unscheduled.length > 0}
+				<div class="fulcrum-today__block">
+					<h2 class="fulcrum-today__block-title">Unscheduled</h2>
+					<div class="fulcrum-today__checklist">
+						{#each checklist.unscheduled as task (task.file.path + (task.line ?? ""))}
+							<TodayFeedRow
+								{plugin}
+								item={todayTaskFeedItem({task}, doneTask)}
+								{hoverParentLeaf}
+								{colorByProject}
+								showClock={false}
+							/>
+						{/each}
+					</div>
+				</div>
+			{/if}
 		</section>
 	</div>
-
-	<TodayWeekStrip
-		{plugin}
-		{focalDateIso}
-		onPickDay={onPickDay}
-		onAddDay={onAddDay}
-		onPrevWeek={() => shiftWeek(-1)}
-		onNextWeek={() => shiftWeek(1)}
-	/>
 </div>

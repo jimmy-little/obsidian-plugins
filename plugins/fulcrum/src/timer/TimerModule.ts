@@ -48,6 +48,11 @@ import type {
 } from "./types";
 import {FULCRUM_PLANNED_DRAG_MIME} from "./types";
 import {ActiveTimersPanel} from "./ActiveTimersPanel";
+import {
+	formatLongRunningNotice,
+	longRunningReminderKey,
+	shouldNotifyLongRunning,
+} from "./longRunningReminder";
 import {applyTaskStatusChange} from "../fulcrum/kanban/taskFieldUpdate";
 import {taskIsDone} from "../fulcrum/taskCardInteractions";
 import {normalizeStatusKey} from "../fulcrum/settingsDefaults";
@@ -143,6 +148,8 @@ export class TimerModule {
 	cacheSaveTimeout: number | null = null; // Debounce cache saves
 	statusBarItem: HTMLElement | null = null; // Status bar element
 	statusBarUpdateInterval: number | null = null; // Interval for updating status bar
+	private longRunningReminderInterval: number | null = null;
+	private longRunningLastNotified = new Map<string, number>();
 	pendingSaves: Promise<void>[] = []; // Track pending save operations
 	/** Suppress metadata-cache reload while timer frontmatter (or related note YAML) is being written. */
 	private frontmatterReloadSuppressCounts = new Map<string, number>();
@@ -170,6 +177,7 @@ export class TimerModule {
 	dashboardActiveTimersPanel: ActiveTimersPanel | null = null;
 	projectActiveTimersPanel: ActiveTimersPanel | null = null;
 	projectActiveTimersPath: string | null = null;
+	todayActiveTimersPanel: ActiveTimersPanel | null = null;
 	floatingQuickStartPanel: TimerQuickStartView | null = null;
 
 	async loadTimerCache(): Promise<void> {
@@ -282,6 +290,27 @@ export class TimerModule {
 		this.projectActiveTimersPath = null;
 	}
 
+	async mountTodayActiveTimers(container: HTMLElement): Promise<void> {
+		if (!this.todayActiveTimersPanel) {
+			this.todayActiveTimersPanel = new ActiveTimersPanel(this);
+		}
+		await this.todayActiveTimersPanel.render(container, {
+			showHeader: false,
+			listLayout: "stack",
+		});
+	}
+
+	async refreshTodayActiveTimers(): Promise<void> {
+		await this.todayActiveTimersPanel?.refresh();
+	}
+
+	unmountTodayActiveTimers(): void {
+		this.todayActiveTimersPanel?.unmount();
+		if (this.todayActiveTimersPanel) {
+			this.todayActiveTimersPanel = null;
+		}
+	}
+
 	async mountFloatingTimersHud(root: HTMLElement): Promise<void> {
 		root.empty();
 		root.addClass("fulcrum-floating-timers");
@@ -316,6 +345,7 @@ export class TimerModule {
 		void this.floatingActiveTimersPanel?.refresh();
 		void this.dashboardActiveTimersPanel?.refresh();
 		void this.projectActiveTimersPanel?.refresh();
+		void this.todayActiveTimersPanel?.refresh();
 		this.host.bumpTimerRevision?.();
 		// Native widget bridge (tabled): this.host.scheduleWidgetBridgeSync?.();
 	}
@@ -418,9 +448,10 @@ export class TimerModule {
 	async onload() {
 		const pluginStartTime = Date.now();
 		await this.loadTimerCache();
-		// Warm the candidate index in the background so the first Active Timers
-		// render doesn't pay for a full vault scan.
-		void this.ensureTimerCandidateIndex();
+		const warmIndex = window.setTimeout(() => {
+			void this.ensureTimerCandidateIndex();
+		}, 3000);
+		this.register(() => window.clearTimeout(warmIndex));
 
 		console.log(`Fulcrum timer: Plugin loading... (${Date.now() - pluginStartTime}ms)`);
 
@@ -449,7 +480,9 @@ export class TimerModule {
 					return;
 				}
 				// Active editor notes update metadata on every keystroke — reload on save instead.
-				if (this.isFileOpenInMarkdownEditor(file.path)) return;
+				if (this.app.workspace.getActiveFile()?.path === file.path && this.isFileOpenInMarkdownEditor(file.path)) {
+					return;
+				}
 				this.scheduleTimerEntryReload(file.path);
 			}),
 		);
@@ -459,7 +492,9 @@ export class TimerModule {
 				if (!(file instanceof TFile) || file.extension !== 'md') return;
 				if (this.isFrontmatterReloadSuppressed(file.path)) return;
 				// Active editor notes save on every keystroke — reload on close/save via metadata instead.
-				if (this.isFileOpenInMarkdownEditor(file.path)) return;
+				if (this.app.workspace.getActiveFile()?.path === file.path && this.isFileOpenInMarkdownEditor(file.path)) {
+					return;
+				}
 				const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as
 					| Record<string, unknown>
 					| undefined;
@@ -701,6 +736,9 @@ export class TimerModule {
 				this.updateStatusBar();
 			}, 1000);
 		}
+
+		this.syncLongRunningReminder();
+		this.register(() => this.stopLongRunningReminder());
 
 		const totalLoadTime = Date.now() - pluginStartTime;
 		console.log(`Fulcrum timer: Plugin loaded in ${totalLoadTime}ms`);
@@ -1037,22 +1075,31 @@ export class TimerModule {
 			for (const active of activeInMemory) {
 				if (active.startTime == null) continue;
 				// Frontmatter never round-trips entry ids or millisecond precision, so
-				// match by id first, then by second-precision startTime.
-				const matchIdx = active.id
+				// match by id first, then by second-precision startTime, then the single
+				// running session on each side (±5 changes startTime and regenerates id).
+				let idx = active.id
 					? entries.findIndex((e) => e.id === active.id)
 					: -1;
-				const idx =
-					matchIdx >= 0
-						? matchIdx
-						: entries.findIndex((e) =>
-								sameEntryTimestamp(e.startTime, active.startTime),
-							);
+				if (idx < 0) {
+					idx = entries.findIndex(
+						(e) =>
+							e.endTime == null &&
+							sameEntryTimestamp(e.startTime, active.startTime),
+					);
+				}
+				if (idx < 0 && activeInMemory.length === 1) {
+					const runningFm = entries.filter((e) => e.endTime == null);
+					if (runningFm.length === 1) {
+						idx = entries.indexOf(runningFm[0]!);
+					}
+				}
 				if (idx >= 0) {
 					const fmEntry = entries[idx]!;
 					if (fmEntry.endTime == null) {
 						// In-memory running entry wins over metadata cache (± adjustments, cache lag).
 						entries[idx] = {
 							...fmEntry,
+							id: active.id || fmEntry.id,
 							startTime: active.startTime,
 							duration: active.duration,
 							isPaused: active.isPaused,
@@ -1959,7 +2006,6 @@ export class TimerModule {
 				stop(ev);
 				await this.adjustActiveTimerStart(filePath, offsetMinutes);
 				updateDisplays();
-				this.refreshActivityPanel();
 			};
 		};
 		const adjustMinutes = Math.max(1, Number(this.settings.timeAdjustMinutes) || 5);
@@ -3764,12 +3810,47 @@ export class TimerModule {
 		};
 		pageData.entries.push(entry);
 		await this.runWithFrontmatterReloadSuppressed(file.path, async () => {
+			if (project.trim()) {
+				await this.mergeProjectIntoFrontmatter(file.path, project);
+			}
 			await this.updateFrontmatter(file.path);
 			await this.addDefaultTagToNote(file.path);
 			await this.ensureFulcrumTimerCodeBlockInNote(file.path);
 		});
 		this.refreshActivityPanel();
 		this.updateStatusBar();
+	}
+
+	/**
+	 * Quick-note Track Time: create a session note, start a running timer, do not open the note.
+	 * Reuses the Quick Start path/template; entry label is always the typed title.
+	 */
+	async createAndStartQuickNoteTimer(params: {
+		projectName: string;
+		projectForFrontmatter: string;
+		title: string;
+	}): Promise<TFile> {
+		const now = new Date();
+		const title = params.title.trim();
+		const projectName = params.projectName.trim() || title;
+		const projectFm = params.projectForFrontmatter.trim() || projectName;
+		const body = await this.readAndApplyDefaultTimerTemplate({
+			project: projectFm,
+			title,
+			date: now,
+		});
+		const rel = this.buildTimerNoteRelativePath(now, {project: projectName, title});
+		const file = await this.createTimerNoteFromContent(rel, body);
+		const usesBlankMinimalNote = !this.settings.defaultTimerTemplate?.trim();
+		if (usesBlankMinimalNote) {
+			await this.seedRunningTimerAndSave(file, title, projectFm);
+		} else {
+			await this.startTimerInNote(file.path, {
+				projectName: projectFm,
+				noteTitle: title,
+			});
+		}
+		return file;
 	}
 
 	async createQuickStartFromProject(project: string, projectSourcePath: string | null): Promise<void> {
@@ -4281,7 +4362,7 @@ export class TimerModule {
 					this.timerFrontmatterCandidates.add(file.path);
 				}
 				scanned += 1;
-				if (scanned % 200 === 0) {
+				if (scanned % 32 === 0) {
 					await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 				}
 			}
@@ -4412,9 +4493,6 @@ export class TimerModule {
 		await this.updateFrontmatter(dataPath);
 		this.refreshTimerWidgetsForFile(dataPath);
 		if (dataPath !== filePath) this.refreshTimerWidgetsForFile(filePath);
-		this.refreshActivityPanel();
-		this.host.bumpTimerRevision?.();
-		this.updateStatusBar();
 		return true;
 	}
 
@@ -4524,6 +4602,61 @@ export class TimerModule {
 		return false;
 	}
 
+	syncLongRunningReminder(): void {
+		this.stopLongRunningReminder();
+		const minutes = Math.max(0, Number(this.settings.longRunningReminderMinutes) || 0);
+		if (minutes <= 0) return;
+		void this.tickLongRunningReminders();
+		this.longRunningReminderInterval = window.setInterval(() => {
+			void this.tickLongRunningReminders();
+		}, 60_000);
+	}
+
+	private stopLongRunningReminder(): void {
+		if (this.longRunningReminderInterval != null) {
+			window.clearInterval(this.longRunningReminderInterval);
+			this.longRunningReminderInterval = null;
+		}
+	}
+
+	private async tickLongRunningReminders(): Promise<void> {
+		const intervalMinutes = Math.max(0, Number(this.settings.longRunningReminderMinutes) || 0);
+		if (intervalMinutes <= 0) return;
+
+		const rows = await this.getActiveTimers();
+		const liveKeys = new Set<string>();
+		for (const {filePath, entry} of rows) {
+			const start = parseTimerTimestampMs(entry.startTime);
+			if (start == null) continue;
+			const key = longRunningReminderKey(filePath, start);
+			liveKeys.add(key);
+			const elapsed = this.getActiveEntryElapsedMs(entry);
+			const bucket = shouldNotifyLongRunning(
+				this.longRunningLastNotified.get(key),
+				elapsed,
+				intervalMinutes,
+			);
+			if (bucket == null) continue;
+			this.longRunningLastNotified.set(key, bucket);
+			const project = await this.resolveProjectLink(filePath);
+			const noteName = this.removeTimestampFromFileName(
+				filePath.split("/").pop()?.replace(/\.md$/i, "") ?? filePath,
+			);
+			const label = entry.label?.trim() || noteName;
+			new Notice(
+				formatLongRunningNotice({
+					label,
+					project: project?.displayName ?? null,
+					elapsed: this.formatTimeForTimerDisplay(elapsed),
+				}),
+				0,
+			);
+		}
+		for (const key of [...this.longRunningLastNotified.keys()]) {
+			if (!liveKeys.has(key)) this.longRunningLastNotified.delete(key);
+		}
+	}
+
 	async onunload() {
 
 		// Clean up status bar interval
@@ -4531,6 +4664,7 @@ export class TimerModule {
 			window.clearInterval(this.statusBarUpdateInterval);
 			this.statusBarUpdateInterval = null;
 		}
+		this.stopLongRunningReminder();
 
 		for (const id of this.timerEntryReloadHandles.values()) {
 			window.clearTimeout(id);

@@ -11,7 +11,8 @@
 		"plugins/repose",
 		"plugins/chisel",
 		"plugins/quill",
-		"plugins/trace"
+		"plugins/trace",
+		"plugins/agent-control-center"
 	],
 	"scripts": {
 		"install:all": "node tooling/install-all-to-vault.mjs",
@@ -22,7 +23,8 @@
 		"build:fulcrum:install": "npm run build:install -w obsidian-plugin-fulcrum",
 		"build:repose": "npm run build -w obsidian-plugin-repose",
 		"build:chisel": "npm run build -w obsidian-plugin-chisel",
-		"build:trace": "npm run build -w obsidian-plugin-trace"
+		"build:trace": "npm run build -w obsidian-plugin-trace",
+		"build:agent-control-center": "npm run build:install -w obsidian-plugin-agent-control-center"
 	},
 	"engines": {
 		"node": ">=18"

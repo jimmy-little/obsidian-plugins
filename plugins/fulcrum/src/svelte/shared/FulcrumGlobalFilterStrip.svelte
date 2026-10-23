@@ -6,5 +6,5 @@
 </script>
 
 <aside class="fulcrum-global-filter-strip" aria-label="Global area filter">
-	<AreaFilterPanel {plugin} variant="sidebar-footer" />
+	<AreaFilterPanel {plugin} variant="bottom-bar" />
 </aside>

@@ -132,6 +132,23 @@ export function displayTimerSettings(containerEl: HTMLElement, plugin: FulcrumPl
 		);
 
 	new Setting(containerEl)
+		.setName("Long-running reminder")
+		.setDesc(
+			"Show a notice every N minutes while a timer is still running (0 to disable). Default is 60.",
+		)
+		.addText((text) =>
+			text
+				.setPlaceholder("60")
+				.setValue(String(timer.longRunningReminderMinutes ?? 60))
+				.onChange(async (value) => {
+					const parsed = Number(value);
+					const minutes = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 60;
+					await saveTimer(plugin, {longRunningReminderMinutes: minutes});
+					plugin.timer.syncLongRunningReminder();
+				}),
+		);
+
+	new Setting(containerEl)
 		.setName("Hide timestamps in views")
 		.setDesc("Strip date/time prefixes from note titles in timer views (display only).")
 		.addToggle((toggle) =>

@@ -37,6 +37,7 @@ export function padBridgeCalendarQuery(
 export function bridgeEventToForecastRow(
 	row: BridgeCalendarEvent,
 	calendarTitle?: string,
+	calendarColor?: string,
 ): ForecastCalendarRow {
 	const timed = row.allDay
 		? {dateIso: localDateAndStartMinutes(row.startIso).dateIso, startMinutes: null}
@@ -58,6 +59,7 @@ export function bridgeEventToForecastRow(
 		durationMinutes,
 		calendarTitle,
 		location,
+		calendarColor: calendarColor?.trim() || undefined,
 	};
 }
 
@@ -71,21 +73,24 @@ export async function fetchForecastCalendarRows(
 		return [];
 	}
 	const bridge = await createRemindersBridge(settings);
-	if (!bridge.events) return [];
 	const titleById = new Map<string, string>();
-	if (bridge.calendars) {
-		try {
-			const cals = await bridge.calendars();
-			for (const c of cals) titleById.set(c.id, c.title);
-		} catch {
-			/* optional */
+	const colorById = new Map<string, string>();
+	try {
+		const cals = await bridge.calendars();
+		for (const c of cals) {
+			titleById.set(c.id, c.title);
+			if (c.color?.trim()) colorById.set(c.id, c.color.trim());
 		}
+	} catch {
+		/* titles optional */
 	}
 	const {queryFrom, queryTo} = padBridgeCalendarQuery(fromIso, toIso);
 	const rows = await bridge.events(queryFrom, queryTo, ids);
 	const allowed = new Set(ids);
 	return rows
 		.filter((r) => allowed.has(r.calendarId))
-		.map((r) => bridgeEventToForecastRow(r, titleById.get(r.calendarId)))
+		.map((r) =>
+			bridgeEventToForecastRow(r, titleById.get(r.calendarId), colorById.get(r.calendarId)),
+		)
 		.filter((r) => r.dateIso >= fromIso && r.dateIso <= toIso);
 }

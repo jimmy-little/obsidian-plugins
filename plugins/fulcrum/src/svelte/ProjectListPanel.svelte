@@ -16,8 +16,10 @@
 	import {buildAreaLifeModeMap, filterProjectsByAreaFocus} from "../fulcrum/utils/areaFocusFilter";
 	import {parseDoneStatusSet, isProjectDone, isProjectActive, parseList} from "../fulcrum/settingsDefaults";
 	import type {IndexedArea, IndexedProject} from "../fulcrum/types";
+	import {collectOpenTasks} from "../fulcrum/tasks/horizonTasks";
 	import {buildProjectSidebarCounts} from "../fulcrum/utils/projectSidebarCounts";
 	import {sortIndexedProjects} from "../fulcrum/utils/projectListSort";
+	import {includeProjectsReferencedByOpenTasks} from "../fulcrum/utils/viewProjectFilter";
 	import {daysUntilCalendar} from "../fulcrum/utils/dates";
 	import ProjectListRow from "./ProjectListRow.svelte";
 	import FulcrumFacetPanel from "./shared/FulcrumFacetPanel.svelte";
@@ -96,13 +98,21 @@
 
 	/** Per-project counts for sidebar notifications. */
 	$: projectCounts = buildProjectSidebarCounts(snapshot, doneTask);
-	$: activeProjectRaw = (void sRev, filterProjectsByAreaFocus(
-		snapshot.projects.filter((p) =>
-			projectFilterMode ? isProjectActive(p, plugin.settings) : !isProjectDone(p, plugin.settings),
-		),
-		areaFilter,
-		lifeModeMap,
-	));
+	$: activeProjectRaw = (void sRev, (() => {
+		const listed = filterProjectsByAreaFocus(
+			snapshot.projects.filter((p) =>
+				projectFilterMode ? isProjectActive(p, plugin.settings) : !isProjectDone(p, plugin.settings),
+			),
+			areaFilter,
+			lifeModeMap,
+		);
+		if (!projectFilterMode) return listed;
+		return includeProjectsReferencedByOpenTasks(
+			listed,
+			snapshot.projects,
+			collectOpenTasks(snapshot, areaFilter, lifeModeMap, doneTask),
+		);
+	})());
 	/** Applied filter (from settings) - used for displayed list. Re-read when settings change. */
 	$: uncheckedStatus = (void sRev, new Set(plugin.settings.projectSidebarFilterUncheckedStatus ?? []));
 

@@ -1,6 +1,7 @@
 import {setIcon, TFile} from "obsidian";
 import type {TimeEntry} from "./types";
 import type {TimerModule} from "./TimerModule";
+import {activeTimerDisplayKeys, activeTimerSetChanged} from "./activeTimerSet";
 
 type ActiveTimerRow = {filePath: string; entry: TimeEntry};
 
@@ -22,6 +23,8 @@ export class ActiveTimersPanel {
 	private rendering = false;
 	private lastRenderOptions: ActiveTimersRenderOptions = {};
 	private renderInFlight: Promise<void> | null = null;
+	private queuedRender: {container: HTMLElement; options: ActiveTimersRenderOptions} | null =
+		null;
 
 	constructor(plugin: TimerModule) {
 		this.plugin = plugin;
@@ -41,6 +44,7 @@ export class ActiveTimersPanel {
 		this.container = null;
 		this.tickCount = 0;
 		this.renderInFlight = null;
+		this.queuedRender = null;
 	}
 
 	async refresh(): Promise<void> {
@@ -51,14 +55,26 @@ export class ActiveTimersPanel {
 		container: HTMLElement,
 		options: ActiveTimersRenderOptions = {},
 	): Promise<void> {
-		if (this.renderInFlight) {
-			await this.renderInFlight;
+		this.queuedRender = {container, options};
+		while (this.queuedRender || this.renderInFlight) {
+			if (this.renderInFlight) {
+				await this.renderInFlight;
+				continue;
+			}
+			this.renderInFlight = this.drainRenderQueue();
+			try {
+				await this.renderInFlight;
+			} finally {
+				this.renderInFlight = null;
+			}
 		}
-		this.renderInFlight = this.renderInner(container, options);
-		try {
-			await this.renderInFlight;
-		} finally {
-			this.renderInFlight = null;
+	}
+
+	private async drainRenderQueue(): Promise<void> {
+		while (this.queuedRender) {
+			const next = this.queuedRender;
+			this.queuedRender = null;
+			await this.renderInner(next.container, next.options);
 		}
 	}
 
@@ -82,6 +98,23 @@ export class ActiveTimersPanel {
 		const showHeader = options.showHeader ?? true;
 		const listLayout = options.listLayout ?? "stack";
 		this.container = container;
+		container.addClass("fulcrum-active-timers");
+
+		const activeTimers = options.filterProjectPath
+			? await this.plugin.getActiveTimersForProject(options.filterProjectPath)
+			: await this.plugin.getActiveTimers();
+
+		const prepared: Array<{
+			row: ActiveTimerRow;
+			accentCss: string;
+			projectLink: {displayName: string; projectPath: string} | null;
+		}> = [];
+		for (const row of activeTimers) {
+			const accentCss = await this.resolveAccentForFile(row.filePath);
+			const projectLink = await this.plugin.resolveProjectLink(row.filePath);
+			prepared.push({row, accentCss, projectLink});
+		}
+
 		this.timeDisplays.clear();
 		container.empty();
 		container.addClass("fulcrum-active-timers");
@@ -99,10 +132,7 @@ export class ActiveTimersPanel {
 			};
 		}
 
-		const activeTimers = options.filterProjectPath
-			? await this.plugin.getActiveTimersForProject(options.filterProjectPath)
-			: await this.plugin.getActiveTimers();
-		if (activeTimers.length === 0) {
+		if (prepared.length === 0) {
 			container.createEl("p", {
 				text: "No active timers",
 				cls: "fulcrum-active-timers__empty",
@@ -114,29 +144,44 @@ export class ActiveTimersPanel {
 						? "fulcrum-active-timers__list fulcrum-active-timers__list--grid"
 						: "fulcrum-active-timers__list",
 			});
-			for (const row of activeTimers) {
-				const accentCss = await this.resolveAccentForFile(row.filePath);
-				await this.renderRow(list, row, accentCss);
+			for (const item of prepared) {
+				this.renderRow(list, item.row, item.accentCss, item.projectLink);
 			}
 		}
 
-		if (this.refreshInterval !== null) {
-			clearInterval(this.refreshInterval);
-		}
+		this.ensureTickInterval();
+	}
+
+	private ensureTickInterval(): void {
+		if (this.refreshInterval !== null) return;
 		this.refreshInterval = window.setInterval(() => {
 			void this.tick();
 		}, 1000);
 	}
 
 	private collectActiveTimersFromMemory(): ActiveTimerRow[] {
-		return this.plugin.listActiveTimersInMemory();
+		const project = this.lastRenderOptions.filterProjectPath;
+		return project
+			? this.plugin.listActiveTimersForProjectInMemory(project)
+			: this.plugin.listActiveTimersInMemory();
 	}
 
-	private async renderRow(
+	private async collectActiveTimersForTick(rescan: boolean): Promise<ActiveTimerRow[]> {
+		const project = this.lastRenderOptions.filterProjectPath;
+		if (rescan) {
+			return project
+				? await this.plugin.getActiveTimersForProject(project)
+				: await this.plugin.getActiveTimers();
+		}
+		return this.collectActiveTimersFromMemory();
+	}
+
+	private renderRow(
 		list: HTMLElement,
 		{filePath, entry}: ActiveTimerRow,
 		accentCss: string = "var(--interactive-accent)",
-	): Promise<void> {
+		projectLink: {displayName: string; projectPath: string} | null = null,
+	): void {
 		const card = list.createDiv({cls: "fulcrum-active-timers__row"});
 		this.plugin.applyProjectAccent(card, accentCss);
 
@@ -147,7 +192,7 @@ export class ActiveTimersPanel {
 			text: this.plugin.formatTimeAsHHMMSS(elapsed),
 			cls: "fulcrum-timer-timer-display",
 		});
-		this.timeDisplays.set(entry.id, timeEl);
+		this.timeDisplays.set(filePath, timeEl);
 
 		const adjustMinutes = Math.max(1, Number(this.plugin.settings.timeAdjustMinutes) || 5);
 		const adjustRow = timerCol.createDiv({cls: "fulcrum-timer-adjust-buttons"});
@@ -170,7 +215,6 @@ export class ActiveTimersPanel {
 		}
 
 		const info = card.createDiv({cls: "fulcrum-active-timers__info"});
-		const projectLink = await this.plugin.resolveProjectLink(filePath);
 		const entryLabel = entry.label?.trim();
 		const noteName = this.noteLabel(filePath);
 
@@ -211,7 +255,7 @@ export class ActiveTimersPanel {
 		setIcon(stopBtn, "square");
 		stopBtn.onclick = (ev) => {
 			ev.stopPropagation();
-			void this.stopTimer(filePath, entry.id);
+			void this.stopTimer(filePath);
 		};
 	}
 
@@ -231,18 +275,20 @@ export class ActiveTimersPanel {
 		return "var(--interactive-accent)";
 	}
 
-	private async adjustStartTime(filePath: string, entry: TimeEntry, offsetMinutes: number): Promise<void> {
+	private async adjustStartTime(
+		filePath: string,
+		entry: TimeEntry,
+		offsetMinutes: number,
+	): Promise<void> {
 		const ok = await this.plugin.adjustActiveTimerStart(filePath, offsetMinutes, entry.id);
 		if (!ok) return;
 
 		const live = this.plugin.findActiveEntryForFile(filePath) ?? entry;
-		const timeEl = this.timeDisplays.get(live.id) ?? this.timeDisplays.get(entry.id);
+		const timeEl = this.timeDisplays.get(filePath);
 		if (timeEl && live) {
 			const elapsed = this.plugin.getActiveEntryElapsedMs(live);
 			timeEl.setText(this.plugin.formatTimeAsHHMMSS(elapsed));
 		}
-
-		this.plugin.refreshActivityPanel();
 	}
 
 	private noteLabel(filePath: string): string {
@@ -265,42 +311,26 @@ export class ActiveTimersPanel {
 		await this.plugin.host.openProjectSummary(projectPath);
 	}
 
-	private async stopTimer(filePath: string, _entryId: string): Promise<void> {
+	private async stopTimer(filePath: string): Promise<void> {
 		await this.plugin.stopAllActiveEntriesInFile(filePath);
-		if (this.container) await this.render(this.container, this.lastRenderOptions);
-		this.plugin.refreshActivityPanel();
 	}
 
 	private async tick(): Promise<void> {
-		if (!this.container || this.rendering) return;
+		if (!this.container || this.rendering || this.renderInFlight) return;
 
 		this.tickCount++;
 		const shouldRescan = this.tickCount % 30 === 0;
-		const activeTimers = shouldRescan
-			? await this.plugin.getActiveTimers()
-			: this.collectActiveTimersFromMemory();
+		const activeTimers = await this.collectActiveTimersForTick(shouldRescan);
+		const nextKeys = activeTimerDisplayKeys(activeTimers);
 
-		const activeById = new Map(activeTimers.map((row) => [row.entry.id, row]));
-		let prunedStale = false;
-		for (const id of [...this.timeDisplays.keys()]) {
-			if (!activeById.has(id)) {
-				this.timeDisplays.delete(id);
-				prunedStale = true;
-			}
-		}
-
-		const needsFullRefresh =
-			prunedStale ||
-			activeTimers.length !== this.timeDisplays.size ||
-			activeTimers.some(({entry}) => !this.timeDisplays.has(entry.id));
-
-		if (needsFullRefresh) {
+		if (activeTimerSetChanged(this.timeDisplays.keys(), nextKeys)) {
 			await this.render(this.container, this.lastRenderOptions);
 			return;
 		}
 
-		for (const [entryId, timeEl] of this.timeDisplays) {
-			const row = activeById.get(entryId);
+		const activeByPath = new Map(activeTimers.map((row) => [row.filePath, row]));
+		for (const [filePath, timeEl] of this.timeDisplays) {
+			const row = activeByPath.get(filePath);
 			if (!row?.entry.startTime) continue;
 			const elapsed = this.plugin.getActiveEntryElapsedMs(row.entry);
 			timeEl.setText(this.plugin.formatTimeAsHHMMSS(elapsed));

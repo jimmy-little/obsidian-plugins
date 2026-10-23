@@ -10,24 +10,26 @@
 	export let onAddDay: (ev: MouseEvent, iso: string) => void;
 	export let onPrevWeek: () => void;
 	export let onNextWeek: () => void;
+	export let compact = false;
 
 	$: sRev = $settingsRevision;
 	$: weekStart = (void sRev, plugin.settings.calendarFirstDayOfWeek);
 	$: days = buildTodayWeekDays(focalDateIso, weekStart, todayLocalISODate());
 </script>
 
-<nav class="fulcrum-today-week" aria-label="Week">
+<nav class="fulcrum-today-week" class:fulcrum-today-week--compact={compact} aria-label="Week">
 	<button type="button" class="fulcrum-today-week__nav" aria-label="Previous week" on:click={onPrevWeek}>
 		‹
 	</button>
 	<div class="fulcrum-today-week__days">
 		{#each days as day (day.iso)}
-			<div class="fulcrum-today-week__cell">
+			<div class="fulcrum-today-week__cell"
+				class:fulcrum-today-week__cell--today={day.isToday}
+				class:fulcrum-today-week__cell--focal={day.isFocal}
+			>
 				<button
 					type="button"
 					class="fulcrum-today-week__day"
-					class:fulcrum-today-week__day--today={day.isToday}
-					class:fulcrum-today-week__day--focal={day.isFocal}
 					aria-current={day.isFocal ? "date" : undefined}
 					aria-label={day.iso}
 					on:click={() => onPickDay(day.iso)}

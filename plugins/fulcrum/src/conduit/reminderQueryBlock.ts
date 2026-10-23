@@ -5,7 +5,7 @@ import {
 	parseReminderQueryConfig,
 	summarizeReminderQuery,
 } from "./reminderFilter";
-import {createTaskNoteFromReminder} from "./reminderToTaskNote";
+import {createTaskNoteFromReminder, findProjectByReminderList} from "./reminderToTaskNote";
 import type {FulcrumReminder} from "./types";
 import type {RemindersBridge} from "./remindersBridge";
 
@@ -36,6 +36,7 @@ function renderReminderRow(
 			try {
 				if (checkbox.checked) await bridge.complete(reminder.id);
 				else await bridge.reopen(reminder.id);
+				void plugin.remindersSync?.tick();
 				await reload();
 			} catch (e) {
 				checkbox.checked = !checkbox.checked;
@@ -57,18 +58,26 @@ function renderReminderRow(
 		textWrap.createDiv({cls: "fulcrum-reminder-row__meta", text: metaParts.join(" · ")});
 	}
 
-	row.addEventListener("contextmenu", (ev) => {
-		ev.preventDefault();
-		const menu = new Menu();
-		menu.addItem((item) => {
-			item.setTitle("Create task note");
-			item.setIcon("file-plus");
-			item.onClick(() => {
-				void createTaskNoteFromReminder(plugin, bridge, reminder).then(() => reload());
+	const linked = !!findProjectByReminderList(
+		plugin.app,
+		plugin.vaultIndex.getSnapshot().projects,
+		plugin.settings,
+		reminder,
+	);
+	if (!linked) {
+		row.addEventListener("contextmenu", (ev) => {
+			ev.preventDefault();
+			const menu = new Menu();
+			menu.addItem((item) => {
+				item.setTitle("Create task note");
+				item.setIcon("file-plus");
+				item.onClick(() => {
+					void createTaskNoteFromReminder(plugin, bridge, reminder).then(() => reload());
+				});
 			});
+			menu.showAtMouseEvent(ev);
 		});
-		menu.showAtMouseEvent(ev);
-	});
+	}
 }
 
 export function registerReminderQueryBlock(plugin: FulcrumPlugin): void {
@@ -95,7 +104,7 @@ async function renderReminderQueryBlock(
 	if (!plugin.settings.conduitEnabled) {
 		el.createDiv({
 			cls: "fulcrum-reminder-query-error",
-			text: "Enable the Reminders bridge in Fulcrum settings.",
+			text: "Enable Reminders sync in Fulcrum settings.",
 		});
 		return;
 	}
