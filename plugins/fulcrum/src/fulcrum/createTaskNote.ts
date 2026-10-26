@@ -5,6 +5,7 @@ import type {FulcrumSettings} from "./settingsDefaults";
 import {parseList} from "./settingsDefaults";
 import {expandDateTokensInString, slugifyForFilename} from "./projectNewNoteFromTemplate";
 import {parseFolderPathList} from "./utils/folderScopes";
+import {jiraBrowseUrl} from "./jira/jiraFormat";
 import type {IndexedTask, RecurrenceAnchorMode, TaskReminderSpec} from "./types";
 
 export interface CreateTaskNoteOptions {
@@ -19,6 +20,8 @@ export interface CreateTaskNoteOptions {
 	parentTaskLink?: string | null;
 	tags?: string[];
 	areaLink?: string | null;
+	/** Jira issue key for a one-way "Create task note" import; stored as a browse URL, never synced back. */
+	jiraKey?: string | null;
 	/** Apple Reminders numeric id (legacy Conduit import — no longer written). */
 	reminderId?: number;
 	recurrence?: string | null;
@@ -113,6 +116,7 @@ export async function createTaskNoteFile(
 	if (opts.dueDate) fm[settings.taskDueDateField] = opts.dueDate;
 	if (opts.scheduledDate) fm[settings.taskScheduledDateField] = opts.scheduledDate;
 	if (opts.areaLink) fm[settings.areaLinkField] = opts.areaLink;
+	if (opts.jiraKey?.trim()) fm[settings.taskJiraField] = jiraBrowseUrl(opts.jiraKey.trim());
 	if (opts.recurrence?.trim()) {
 		fm[settings.taskRecurrenceField.trim() || "recurrence"] = opts.recurrence.trim();
 		if (opts.recurrenceAnchor) {

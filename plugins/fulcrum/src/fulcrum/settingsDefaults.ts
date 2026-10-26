@@ -88,6 +88,8 @@ export interface FulcrumSettings {
 	taskCompletedDateField: string;
 	taskTrackedMinutesField: string;
 	taskTitleField: string;
+	/** External link field on task notes (e.g. a Jira ticket imported one-way via "Create task note"). */
+	taskJiraField: string;
 	taskNoteYamlStatusOpen: string;
 	taskNoteYamlStatusDone: string;
 	/** TaskNotes-compatible extended fields (property key remapping). */
@@ -410,6 +412,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	taskCompletedDateField: "completedDate",
 	taskTrackedMinutesField: "totalTimeTracked",
 	taskTitleField: "title",
+	taskJiraField: "jira",
 	taskNoteYamlStatusOpen: "NONE",
 	taskNoteYamlStatusDone: "DONE",
 	taskRecurrenceField: "recurrence",

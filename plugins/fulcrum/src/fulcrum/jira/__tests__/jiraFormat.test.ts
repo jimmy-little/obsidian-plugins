@@ -9,6 +9,7 @@ import {
 	jiraBrowseUrl,
 	jiraCommentUrl,
 	jiraErrorDetail,
+	jiraFieldMatchesIssueKey,
 	jiraMentionScanJql,
 	sortJiraActivityNewestFirst,
 } from "../jiraFormat";
@@ -174,6 +175,33 @@ describe("jiraErrorDetail", () => {
 		expect(jiraErrorDetail({})).toBeNull();
 		expect(jiraErrorDetail("plain string")).toBeNull();
 		expect(jiraErrorDetail({errorMessages: []})).toBeNull();
+	});
+});
+
+describe("jiraFieldMatchesIssueKey", () => {
+	it("matches a bare key, case-insensitively", () => {
+		expect(jiraFieldMatchesIssueKey("TAXONOMY-1234", "taxonomy-1234")).toBe(true);
+		expect(jiraFieldMatchesIssueKey("taxonomy-1234", "TAXONOMY-1234")).toBe(true);
+	});
+
+	it("matches a full browse URL ending in the issue key", () => {
+		expect(
+			jiraFieldMatchesIssueKey("https://deept.atlassian.net/browse/TAXONOMY-1234", "TAXONOMY-1234"),
+		).toBe(true);
+	});
+
+	it("does not match a different issue, or a key that's only a suffix of another key", () => {
+		expect(jiraFieldMatchesIssueKey("TAXONOMY-1234", "TAXONOMY-123")).toBe(false);
+		expect(
+			jiraFieldMatchesIssueKey("https://deept.atlassian.net/browse/TAXONOMY-1234", "AXONOMY-1234"),
+		).toBe(false);
+	});
+
+	it("is false for empty, missing, or blank values", () => {
+		expect(jiraFieldMatchesIssueKey(null, "TAXONOMY-1234")).toBe(false);
+		expect(jiraFieldMatchesIssueKey(undefined, "TAXONOMY-1234")).toBe(false);
+		expect(jiraFieldMatchesIssueKey("   ", "TAXONOMY-1234")).toBe(false);
+		expect(jiraFieldMatchesIssueKey("TAXONOMY-1234", "")).toBe(false);
 	});
 });
 

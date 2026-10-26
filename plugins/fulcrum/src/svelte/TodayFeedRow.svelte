@@ -12,6 +12,7 @@
 		openTaskNoteFromCard,
 	} from "../fulcrum/taskCardInteractions";
 	import {showFulcrumTaskContextMenu} from "../fulcrum/taskContextMenu";
+	import {showJiraRowContextMenu} from "../fulcrum/jira/jiraContextMenu";
 	import {setCalendarTaskDragActive, timerRevision} from "../fulcrum/stores";
 	import {
 		FULCRUM_CALENDAR_TASK_MIME,
@@ -179,8 +180,13 @@
 	}
 
 	function onContextMenu(ev: MouseEvent): void {
-		if (item.kind !== "task" || !item.task) return;
-		showFulcrumTaskContextMenu(ev, plugin, item.task, hoverParentLeaf);
+		if (item.kind === "task" && item.task) {
+			showFulcrumTaskContextMenu(ev, plugin, item.task, hoverParentLeaf);
+			return;
+		}
+		if ((item.kind === "jiraTicket" || item.kind === "jiraComment") && item.issueKey) {
+			showJiraRowContextMenu(ev, plugin, item.issueKey, item.externalUrl, hoverParentLeaf);
+		}
 	}
 
 	function onDragStart(ev: DragEvent): void {

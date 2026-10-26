@@ -6,7 +6,7 @@ vi.mock("obsidian", () => ({
 
 import {requestUrl} from "obsidian";
 import type {RequestUrlParam} from "obsidian";
-import {clearJiraCache, fetchJiraTodayActivity, testJiraConnection} from "../jiraClient";
+import {clearJiraCache, fetchJiraIssueDetail, fetchJiraTodayActivity, testJiraConnection} from "../jiraClient";
 
 const mockedRequestUrl = vi.mocked(requestUrl);
 
@@ -318,5 +318,74 @@ describe("fetchJiraTodayActivity", () => {
 		clearJiraCache();
 		await fetchJiraTodayActivity(EMAIL, TOKEN);
 		expect(mockedRequestUrl.mock.calls.length).toBe(callsAfterFirst * 2);
+	});
+});
+
+describe("fetchJiraIssueDetail", () => {
+	it("refuses to call Jira with no email or token", async () => {
+		const result = await fetchJiraIssueDetail("", "", "TAXONOMY-1234");
+		expect(result.issue).toBeNull();
+		expect(mockedRequestUrl).not.toHaveBeenCalled();
+	});
+
+	it("fetches summary + description (flattened from ADF) and builds the browse URL", async () => {
+		mockedRequestUrl.mockImplementation((request) => {
+			const params = request as RequestUrlParam;
+			expect(params.url).toBe(
+				`https://deept.atlassian.net/rest/api/3/issue/TAXONOMY-1234?fields=summary,description`,
+			);
+			expect(params.method).toBe("GET");
+			const headers = params.headers as Record<string, string>;
+			expect(headers.Authorization).toBe(`Basic ${btoa(`${EMAIL}:${TOKEN}`)}`);
+			return jsonResponse(200, {
+				key: "TAXONOMY-1234",
+				fields: {
+					summary: "Fix the thing",
+					description: {
+						type: "doc",
+						content: [{type: "paragraph", content: [{type: "text", text: "Steps to reproduce."}]}],
+					},
+				},
+			});
+		});
+
+		const result = await fetchJiraIssueDetail(EMAIL, TOKEN, "TAXONOMY-1234");
+		expect(result.error).toBeUndefined();
+		expect(result.issue).toEqual({
+			issueKey: "TAXONOMY-1234",
+			title: "Fix the thing",
+			descriptionText: "Steps to reproduce.",
+			url: "https://deept.atlassian.net/browse/TAXONOMY-1234",
+		});
+	});
+
+	it("falls back to the issue key as the title when summary is missing", async () => {
+		mockedRequestUrl.mockResolvedValue(jsonResponse(200, {key: "TAXONOMY-1234", fields: {}}));
+		const result = await fetchJiraIssueDetail(EMAIL, TOKEN, "TAXONOMY-1234");
+		expect(result.issue?.title).toBe("TAXONOMY-1234");
+		expect(result.issue?.descriptionText).toBe("");
+	});
+
+	it("surfaces a non-2xx status with Jira's error detail", async () => {
+		mockedRequestUrl.mockResolvedValue(jsonResponse(404, {errorMessages: ["Issue does not exist."]}));
+		const result = await fetchJiraIssueDetail(EMAIL, TOKEN, "TAXONOMY-9999");
+		expect(result.issue).toBeNull();
+		expect(result.error).toContain("404");
+		expect(result.error).toContain("Issue does not exist.");
+	});
+
+	it("surfaces a plain-text rejection without crashing on JSON.parse", async () => {
+		mockedRequestUrl.mockResolvedValue(textResponse(403, "XSRF check failed"));
+		const result = await fetchJiraIssueDetail(EMAIL, TOKEN, "TAXONOMY-1234");
+		expect(result.issue).toBeNull();
+		expect(result.error).toContain("XSRF check failed");
+		expect(result.error).not.toContain("Unexpected token");
+	});
+
+	it("surfaces a network failure", async () => {
+		mockedRequestUrl.mockRejectedValue(new Error("getaddrinfo ENOTFOUND"));
+		const result = await fetchJiraIssueDetail(EMAIL, TOKEN, "TAXONOMY-1234");
+		expect(result.issue).toBeNull();
+		expect(result.error).toContain("ENOTFOUND");
 	});
 });

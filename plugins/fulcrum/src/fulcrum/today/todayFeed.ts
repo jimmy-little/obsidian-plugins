@@ -56,6 +56,8 @@ export type TodayFeedItem = {
 	externalUrl?: string;
 	/** Jira comment rows: render `subtitle` as a wrapped, clamped quote instead of one ellipsized line. */
 	subtitleMultiline?: boolean;
+	/** Jira rows only: the bare issue key (e.g. `TAXONOMY-1234`), for the "Create task note" quick action. */
+	issueKey?: string;
 };
 
 export type TodayFeedSection = {
@@ -216,6 +218,7 @@ export function jiraActivityFeedItem(item: JiraActivityItem): TodayFeedItem {
 		subtitle: isComment && item.commentExcerpt ? `"${item.commentExcerpt}"` : undefined,
 		subtitleMultiline: isComment,
 		externalUrl: item.url,
+		issueKey: item.issueKey,
 	};
 }
 

@@ -129,6 +129,18 @@ interface JiraIssueJson {
 	fields?: {summary?: string; updated?: string};
 }
 
+export interface JiraIssueDetail {
+	issueKey: string;
+	title: string;
+	descriptionText: string;
+	url: string;
+}
+
+export interface JiraIssueDetailResult {
+	issue: JiraIssueDetail | null;
+	error?: string;
+}
+
 interface JiraSearchResponseJson {
 	issues?: JiraIssueJson[];
 }
@@ -204,6 +216,55 @@ async function fetchRecentComments(creds: JiraCredentials, issueKey: string): Pr
 	}
 	const json = (safeJson(res) ?? {}) as JiraCommentsResponseJson;
 	return json.comments ?? [];
+}
+
+interface JiraIssueDetailJson {
+	key: string;
+	fields?: {summary?: string; description?: unknown};
+}
+
+/**
+ * Single-issue fetch for the "Create task note" quick action: title + description only (no status,
+ * type, priority, or labels — the import is intentionally minimal and one-way, never written back
+ * to Jira).
+ */
+export async function fetchJiraIssueDetail(
+	email: string,
+	apiToken: string,
+	issueKey: string,
+): Promise<JiraIssueDetailResult> {
+	const creds = trimCredentials({email, apiToken});
+	const key = issueKey.trim();
+	if (!hasCredentials(creds) || !key) {
+		return {issue: null, error: "Add your Jira email and API token first."};
+	}
+	try {
+		const res = await requestUrl({
+			url: `${JIRA_SITE_BASE}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description`,
+			method: "GET",
+			headers: authHeaders(creds),
+			throw: false,
+		});
+		if (res.status < 200 || res.status >= 300) {
+			const detail = jiraFailureDetail(res);
+			return {
+				issue: null,
+				error: `Could not fetch ${key} from Jira (HTTP ${res.status})${detail ? ` — ${detail}` : "."}`,
+			};
+		}
+		const json = (safeJson(res) ?? {}) as JiraIssueDetailJson;
+		const resolvedKey = json.key || key;
+		return {
+			issue: {
+				issueKey: resolvedKey,
+				title: json.fields?.summary?.trim() || resolvedKey,
+				descriptionText: adfToPlainText(json.fields?.description),
+				url: jiraBrowseUrl(resolvedKey),
+			},
+		};
+	} catch (e) {
+		return {issue: null, error: e instanceof Error ? e.message : "Could not reach Jira."};
+	}
 }
 
 /**

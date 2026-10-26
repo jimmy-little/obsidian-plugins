@@ -285,6 +285,7 @@ describe("buildTodayFeed", () => {
 			title: "TAXONOMY-1 | Fix the sync job",
 			startMinutes: 9 * 60 + 15,
 			externalUrl: "https://deept.atlassian.net/browse/TAXONOMY-1",
+			issueKey: "TAXONOMY-1",
 		});
 		expect(afternoon.items).toHaveLength(1);
 		expect(afternoon.items[0]).toMatchObject({
@@ -293,6 +294,7 @@ describe("buildTodayFeed", () => {
 			subtitle: '"Can you take a look at this?"',
 			subtitleMultiline: true,
 			externalUrl: "https://deept.atlassian.net/browse/TAXONOMY-2?focusedCommentId=c1",
+			issueKey: "TAXONOMY-2",
 		});
 		expect(sections.flatMap((s) => s.items).some((i) => i.title.includes("Not today"))).toBe(false);
 	});
@@ -314,6 +316,7 @@ describe("jiraActivityFeedItem", () => {
 			subtitle: undefined,
 			subtitleMultiline: false,
 			externalUrl: "https://deept.atlassian.net/browse/TAXONOMY-9",
+			issueKey: "TAXONOMY-9",
 		});
 	});
 

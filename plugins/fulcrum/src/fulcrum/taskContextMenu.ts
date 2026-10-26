@@ -59,6 +59,14 @@ function createSubmenu(item: unknown): Menu {
 	return (item as {setSubmenu: () => Menu}).setSubmenu();
 }
 
+/** The task's external link field (e.g. a Jira ticket pulled in via "Create task note"), if set. */
+function taskExternalLinkHref(host: FulcrumHost, task: IndexedTask): string | null {
+	const raw = host.app.metadataCache.getFileCache(task.file)?.frontmatter?.[host.settings.taskJiraField];
+	if (typeof raw !== "string" || !raw.trim()) return null;
+	const t = raw.trim();
+	return /^https?:\/\//i.test(t) ? t : null;
+}
+
 function formatStatusLabel(statusId: string): string {
 	return statusId.trim();
 }
@@ -417,6 +425,16 @@ function addNoteActionsSubmenu(
 			row.setIcon("lucide-external-link");
 			row.onClick(() => openTaskNote(host.app, task, undefined, undefined, true));
 		});
+		const externalLink = taskExternalLinkHref(host, task);
+		if (externalLink) {
+			sub.addItem((row) => {
+				row.setTitle("External link");
+				row.setIcon("external-link");
+				row.onClick(() => {
+					window.open(externalLink, "_blank", "noopener,noreferrer");
+				});
+			});
+		}
 		if (task.source === "inline") {
 			sub.addItem((row) => {
 				row.setTitle("Open source note");

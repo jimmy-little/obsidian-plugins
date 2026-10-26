@@ -41,6 +41,7 @@ export function renderMetadataTab(ctx: SettingsContext): void {
 		textSetting(sub, "taskCompletedDateField", "Task completed date field");
 		textSetting(sub, "taskTrackedMinutesField", "Task tracked minutes field");
 		textSetting(sub, "taskTitleField", "Task title field");
+		textSetting(sub, "taskJiraField", "External link field (e.g. Jira)");
 		textSetting(sub, "taskNoteYamlStatusOpen", "Task note status when open (vault fallback)");
 		textSetting(sub, "taskNoteYamlStatusDone", "Task note status when done (vault fallback)");
 	});

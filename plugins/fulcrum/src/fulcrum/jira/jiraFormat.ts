@@ -80,6 +80,20 @@ export function clampExcerpt(text: string, maxLines = 3, maxChars = 220): string
 	return truncatedByLines ? `${out}…` : out;
 }
 
+/**
+ * True when a task note's external-link frontmatter value (a bare key or a full browse URL, same
+ * convention as `projectJiraField`) refers to this Jira issue. Used for "Create task note"
+ * duplicate detection, so re-running the action on the same ticket reopens the existing note.
+ */
+export function jiraFieldMatchesIssueKey(fieldValue: string | null | undefined, issueKey: string): boolean {
+	const key = issueKey.trim().toLowerCase();
+	if (!key) return false;
+	const value = fieldValue?.trim().toLowerCase();
+	if (!value) return false;
+	if (value === key) return true;
+	return value.endsWith(`/browse/${key}`);
+}
+
 /** Newest-first by timestamp — the order for the standing Today sidebar list. */
 export function sortJiraActivityNewestFirst<T extends {timestampIso: string}>(items: T[]): T[] {
 	return [...items].sort((a, b) => (Date.parse(b.timestampIso) || 0) - (Date.parse(a.timestampIso) || 0));
