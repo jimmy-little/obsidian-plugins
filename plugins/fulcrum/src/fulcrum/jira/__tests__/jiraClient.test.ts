@@ -201,6 +201,8 @@ describe("fetchJiraTodayActivity", () => {
 						],
 					});
 				}
+				expect(jql).toContain("comment ~ currentUser()");
+				expect(jql).not.toContain("project = TAXONOMY");
 				return jsonResponse(200, {
 					issues: [{key: "TAXONOMY-2", fields: {summary: "Ticket two", updated: oldIso}}],
 				});

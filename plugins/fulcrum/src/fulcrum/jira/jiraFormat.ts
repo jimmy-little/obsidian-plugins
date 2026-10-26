@@ -12,9 +12,14 @@ export function jiraAssignedJql(): string {
 	return `assignee = currentUser() AND ${JIRA_SCOPE_JQL} AND statusCategory != Done ORDER BY updated DESC`;
 }
 
-/** Candidate issues to scan for recent mention comments (done issues included). */
+/**
+ * Issues whose comments @mention the token's account, updated within the lookback window.
+ * Not limited to {@link JIRA_SCOPE_JQL}: a mention on any project on this site (DTM, TAXONOMY, …)
+ * should show up. `comment ~ currentUser()` matches the account id stored in the mention token.
+ * Done issues are included. Comment creation time is filtered later — JQL `updated` is the issue.
+ */
 export function jiraMentionScanJql(days: number = JIRA_MENTION_LOOKBACK_DAYS): string {
-	return `${JIRA_SCOPE_JQL} AND updated >= -${days}d ORDER BY updated DESC`;
+	return `comment ~ currentUser() AND updated >= -${days}d ORDER BY updated DESC`;
 }
 
 export function jiraBrowseUrl(issueKey: string): string {

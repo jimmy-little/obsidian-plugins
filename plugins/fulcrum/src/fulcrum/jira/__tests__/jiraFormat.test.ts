@@ -25,10 +25,11 @@ describe("jiraAssignedJql", () => {
 });
 
 describe("jiraMentionScanJql", () => {
-	it("scopes to the same projects within the lookback window, including Done issues", () => {
+	it("finds @mentions on any project within the lookback window, including Done issues", () => {
 		const jql = jiraMentionScanJql(14);
-		expect(jql).toContain(JIRA_SCOPE_JQL);
+		expect(jql).toContain("comment ~ currentUser()");
 		expect(jql).toContain("updated >= -14d");
+		expect(jql).not.toContain(JIRA_SCOPE_JQL);
 		expect(jql).not.toContain("statusCategory");
 	});
 

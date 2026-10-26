@@ -2,7 +2,8 @@ export type JiraActivityKind = "ticket" | "comment";
 
 /**
  * One row of Jira activity for the Today view: either a ticket assigned to the configured
- * account, or a comment mentioning it. Read-only — never written back to Jira.
+ * account (TAXONOMY and UCP/Core Library), or a comment @mentioning it on any project.
+ * Read-only — never written back to Jira.
  */
 export interface JiraActivityItem {
 	/** Unique key for list rendering / dedupe. */

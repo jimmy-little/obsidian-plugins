@@ -107,8 +107,9 @@ export function renderIntegrationsTab(ctx: SettingsContext): void {
 	settingsLead(
 		containerEl,
 		`Read-only — Fulcrum never creates, edits, or comments on Jira issues. Site is fixed to ${JIRA_SITE_BASE}. ` +
-			`Scope: the TAXONOMY project, plus UCP issues in the Core Library component. Shows open tickets assigned ` +
-			`to this account, and comments mentioning it from the last 14 days. Jira Cloud authenticates with your ` +
+			`Open tickets assigned to this account are limited to the TAXONOMY project, plus UCP issues in the ` +
+			`Core Library component. Comments that @mention this account are included from any project on this site, ` +
+			`from the last 14 days. Jira Cloud authenticates with your ` +
 			`account email plus an API token (not a bearer PAT — that's the jira.disney.com / Data Center pattern). ` +
 			`Create a token at id.atlassian.com/manage-profile/security/api-tokens.`,
 	);

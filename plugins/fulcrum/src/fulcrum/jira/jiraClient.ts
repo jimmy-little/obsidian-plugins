@@ -268,8 +268,9 @@ export async function fetchJiraIssueDetail(
 }
 
 /**
- * Read-only Jira activity for the Today view: open tickets assigned to the token's account, plus
- * comments mentioning it in the last {@link JIRA_MENTION_LOOKBACK_DAYS} days. Never writes to Jira.
+ * Read-only Jira activity for the Today view: open tickets assigned to the token's account
+ * (TAXONOMY and UCP/Core Library), plus comments @mentioning it on any project in the last
+ * {@link JIRA_MENTION_LOOKBACK_DAYS} days. Never writes to Jira.
  * Cached in memory for a few minutes so switching the focal day doesn't refetch.
  */
 export async function fetchJiraTodayActivity(email: string, apiToken: string): Promise<JiraActivityResult> {
