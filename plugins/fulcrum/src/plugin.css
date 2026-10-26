@@ -10169,6 +10169,16 @@ button.orbit-heatmap-day-modal__link:hover {
 	cursor: default;
 }
 
+.fulcrum-today__feed-sub--quote {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	white-space: normal;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-style: italic;
+}
+
 button.fulcrum-today__feed-body {
 	align-items: stretch;
 	justify-content: flex-start;

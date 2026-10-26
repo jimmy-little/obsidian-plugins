@@ -144,6 +144,14 @@ export interface FulcrumSettings {
 	taskNotesHttpApiBaseUrl: string;
 	taskNotesHttpApiToken: string;
 
+	/**
+	 * Jira Cloud credentials (Basic auth: email + API token — Cloud does not accept a bare Bearer
+	 * token). Site is fixed to https://deept.atlassian.net (see `jira/jiraFormat.ts`). Read-only:
+	 * tickets assigned to the account and comments mentioning it, scoped to TAXONOMY and UCP/Core Library.
+	 */
+	jiraEmail: string;
+	jiraApiToken: string;
+
 	taskTag: string;
 	taskStatuses: string;
 	projectStatuses: string;
@@ -446,6 +454,9 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	taskNotesHttpApiEnabled: false,
 	taskNotesHttpApiBaseUrl: "http://localhost:8080",
 	taskNotesHttpApiToken: "",
+
+	jiraEmail: "",
+	jiraApiToken: "",
 
 	taskTag: "task",
 	taskStatuses: "todo, in-progress, done, cancelled",

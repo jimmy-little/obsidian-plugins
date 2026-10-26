@@ -31,7 +31,10 @@
 		collectTodayChecklist,
 		mergeTodayDayEntries,
 	} from "../fulcrum/today/todayTasks";
-	import {buildTodayFeed, todayTaskFeedItem} from "../fulcrum/today/todayFeed";
+	import {buildTodayFeed, jiraActivityFeedItem, todayTaskFeedItem} from "../fulcrum/today/todayFeed";
+	import {fetchJiraTodayActivity} from "../fulcrum/jira/jiraClient";
+	import {sortJiraActivityNewestFirst} from "../fulcrum/jira/jiraFormat";
+	import type {JiraActivityItem} from "../fulcrum/jira/jiraTypes";
 	import {taskMatchesViewProjectFilter} from "../fulcrum/utils/viewProjectFilter";
 	import {projectColorMap} from "../fulcrum/utils/calendarEvents";
 	import {formatTodayMasthead, shiftIsoWeek} from "../fulcrum/today/todayWeek";
@@ -65,6 +68,9 @@
 	let calendarLoadId = 0;
 	let atomicNotes: {projectPath: string; note: AtomicNoteRow}[] = [];
 	let notesLoadId = 0;
+	let jiraItems: JiraActivityItem[] = [];
+	let jiraError: string | null = null;
+	let jiraLoadId = 0;
 
 	function takeCalendarLoadId(): number {
 		calendarLoadId += 1;
@@ -73,6 +79,10 @@
 	function takeNotesLoadId(): number {
 		notesLoadId += 1;
 		return notesLoadId;
+	}
+	function takeJiraLoadId(): number {
+		jiraLoadId += 1;
+		return jiraLoadId;
 	}
 	function takeWeatherLoadId(): number {
 		weatherLoadId += 1;
@@ -164,7 +174,10 @@
 		doneStatuses: doneTask,
 		dailyNoteTitle: dailyFile?.basename.replace(/\.md$/i, "") ?? null,
 		dailyNotePath: dailyFile?.path ?? null,
+		jiraItems,
 	});
+	/** Standing sidebar list: every fetched row, newest first — not limited to the focal day. */
+	$: jiraSidebarRows = sortJiraActivityNewestFirst(jiraItems).map(jiraActivityFeedItem);
 
 	$: {
 		void $indexRevision;
@@ -182,6 +195,13 @@
 		void plugin.settings.todayWeatherLocation;
 		void plugin.settings.todayWeatherUnits;
 		void refreshWeather();
+	}
+
+	$: {
+		void sRev;
+		void plugin.settings.jiraEmail;
+		void plugin.settings.jiraApiToken;
+		void refreshJira();
 	}
 
 	async function refreshForecast(): Promise<void> {
@@ -227,6 +247,27 @@
 		} catch (e) {
 			console.error(e);
 			if (id === notesLoadId) atomicNotes = [];
+		}
+	}
+
+	async function refreshJira(): Promise<void> {
+		const email = plugin.settings.jiraEmail?.trim() ?? "";
+		const token = plugin.settings.jiraApiToken?.trim() ?? "";
+		if (!email || !token) {
+			jiraItems = [];
+			jiraError = null;
+			return;
+		}
+		const id = takeJiraLoadId();
+		try {
+			const res = await fetchJiraTodayActivity(email, token);
+			if (id !== jiraLoadId) return;
+			jiraItems = res.items;
+			jiraError = res.error ?? null;
+		} catch (e) {
+			if (id !== jiraLoadId) return;
+			jiraItems = [];
+			jiraError = e instanceof Error ? e.message : "Could not load Jira activity.";
 		}
 	}
 
@@ -435,6 +476,25 @@
 							/>
 						{/each}
 					</div>
+				</div>
+			{/if}
+
+			{#if plugin.settings.jiraEmail.trim() && plugin.settings.jiraApiToken.trim()}
+				<div class="fulcrum-today__block">
+					<h2 class="fulcrum-today__block-title">Jira</h2>
+					{#if jiraError}
+						<p class="fulcrum-muted fulcrum-today__empty">{jiraError}</p>
+					{:else if jiraSidebarRows.length === 0}
+						<p class="fulcrum-muted fulcrum-today__empty">No assigned tickets or mentions.</p>
+					{:else}
+						<ul class="fulcrum-today__feed">
+							{#each jiraSidebarRows as item (item.key)}
+								<li>
+									<TodayFeedRow {plugin} {item} {hoverParentLeaf} {colorByProject} showClock={false} />
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				</div>
 			{/if}
 		</section>

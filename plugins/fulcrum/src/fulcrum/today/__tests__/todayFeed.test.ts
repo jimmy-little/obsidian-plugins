@@ -6,7 +6,8 @@ vi.mock("obsidian", () => ({
 	TFile: class TFile {},
 }));
 import type {AtomicNoteRow, IndexedMeeting, IndexedPlannerEvent} from "../../types";
-import {buildTodayFeed, todayFeedTimeLabel} from "../todayFeed";
+import type {JiraActivityItem} from "../../jira/jiraTypes";
+import {buildTodayFeed, jiraActivityFeedItem, todayFeedTimeLabel} from "../todayFeed";
 
 function meeting(partial: Partial<IndexedMeeting> & {date: string; title: string}): IndexedMeeting {
 	return {
@@ -237,5 +238,96 @@ describe("buildTodayFeed", () => {
 			explicitDurationMinutes: 20,
 		});
 		expect(todayFeedTimeLabel(afternoon!.items[0]!)).toBe("20min");
+	});
+
+	it("places Jira rows by local time on the matching day and excludes other days", () => {
+		const ticket: JiraActivityItem = {
+			key: "jira-ticket:TAXONOMY-1",
+			kind: "ticket",
+			issueKey: "TAXONOMY-1",
+			issueTitle: "Fix the sync job",
+			timestampIso: `${dateIso}T09:15:00`,
+			url: "https://deept.atlassian.net/browse/TAXONOMY-1",
+		};
+		const comment: JiraActivityItem = {
+			key: "jira-comment:TAXONOMY-2:c1",
+			kind: "comment",
+			issueKey: "TAXONOMY-2",
+			issueTitle: "Core Library cleanup",
+			timestampIso: `${dateIso}T16:30:00`,
+			url: "https://deept.atlassian.net/browse/TAXONOMY-2?focusedCommentId=c1",
+			commentExcerpt: "Can you take a look at this?",
+		};
+		const otherDay: JiraActivityItem = {
+			key: "jira-ticket:TAXONOMY-3",
+			kind: "ticket",
+			issueKey: "TAXONOMY-3",
+			issueTitle: "Not today",
+			timestampIso: "2026-09-05T09:00:00",
+			url: "https://deept.atlassian.net/browse/TAXONOMY-3",
+		};
+
+		const sections = buildTodayFeed({
+			dateIso,
+			meetings: [],
+			notes: [],
+			calendarEvents: [],
+			plannerEvents: [],
+			jiraItems: [ticket, comment, otherDay],
+		});
+
+		expect(sections.map((s) => s.key)).toEqual(["morning", "afternoon"]);
+		const morning = sections.find((s) => s.key === "morning")!;
+		const afternoon = sections.find((s) => s.key === "afternoon")!;
+		expect(morning.items).toHaveLength(1);
+		expect(morning.items[0]).toMatchObject({
+			kind: "jiraTicket",
+			title: "TAXONOMY-1 | Fix the sync job",
+			startMinutes: 9 * 60 + 15,
+			externalUrl: "https://deept.atlassian.net/browse/TAXONOMY-1",
+		});
+		expect(afternoon.items).toHaveLength(1);
+		expect(afternoon.items[0]).toMatchObject({
+			kind: "jiraComment",
+			title: "TAXONOMY-2 | Core Library cleanup",
+			subtitle: '"Can you take a look at this?"',
+			subtitleMultiline: true,
+			externalUrl: "https://deept.atlassian.net/browse/TAXONOMY-2?focusedCommentId=c1",
+		});
+		expect(sections.flatMap((s) => s.items).some((i) => i.title.includes("Not today"))).toBe(false);
+	});
+});
+
+describe("jiraActivityFeedItem", () => {
+	it("formats a ticket row with no subtitle", () => {
+		const item = jiraActivityFeedItem({
+			key: "jira-ticket:TAXONOMY-9",
+			kind: "ticket",
+			issueKey: "TAXONOMY-9",
+			issueTitle: "Ship the thing",
+			timestampIso: "2026-09-04T11:00:00",
+			url: "https://deept.atlassian.net/browse/TAXONOMY-9",
+		});
+		expect(item).toMatchObject({
+			kind: "jiraTicket",
+			title: "TAXONOMY-9 | Ship the thing",
+			subtitle: undefined,
+			subtitleMultiline: false,
+			externalUrl: "https://deept.atlassian.net/browse/TAXONOMY-9",
+		});
+	});
+
+	it("quotes the comment excerpt and flags it as multiline", () => {
+		const item = jiraActivityFeedItem({
+			key: "jira-comment:TAXONOMY-9:c1",
+			kind: "comment",
+			issueKey: "TAXONOMY-9",
+			issueTitle: "Ship the thing",
+			timestampIso: "2026-09-04T11:00:00",
+			url: "https://deept.atlassian.net/browse/TAXONOMY-9?focusedCommentId=c1",
+			commentExcerpt: "Here's the comment",
+		});
+		expect(item.subtitle).toBe('"Here\'s the comment"');
+		expect(item.subtitleMultiline).toBe(true);
 	});
 });

@@ -10,11 +10,20 @@ import {isoDateOnly} from "../recurrence/recurrenceEngine";
 import {taskDisplayTitle} from "../utils/inlineTasks";
 import {parseDateTime} from "../utils/dateTimeParse";
 import {meetingEffectiveMinutes} from "../utils/meetingEffectiveMinutes";
+import type {JiraActivityItem} from "../jira/jiraTypes";
 
 const MORNING_END = 12 * 60;
 const DEFAULT_DURATION = 30;
 
-export type TodayFeedKind = "meeting" | "calendar" | "note" | "planner" | "daily" | "task";
+export type TodayFeedKind =
+	| "meeting"
+	| "calendar"
+	| "note"
+	| "planner"
+	| "daily"
+	| "task"
+	| "jiraTicket"
+	| "jiraComment";
 
 export type TodayFeedItem = {
 	key: string;
@@ -43,6 +52,10 @@ export type TodayFeedItem = {
 	calendarColor?: string;
 	/** Task is done, or this recurring occurrence is in complete_instances. */
 	done?: boolean;
+	/** Jira rows open this external URL instead of a vault file (ticket browse link or comment deep link). */
+	externalUrl?: string;
+	/** Jira comment rows: render `subtitle` as a wrapped, clamped quote instead of one ellipsized line. */
+	subtitleMultiline?: boolean;
 };
 
 export type TodayFeedSection = {
@@ -190,6 +203,26 @@ export function todayTaskFeedItem(
 	};
 }
 
+/** Jira ticket/comment → a timeline row, placed by the local time of `timestampIso`. */
+export function jiraActivityFeedItem(item: JiraActivityItem): TodayFeedItem {
+	const timing = parseDateTime(item.timestampIso);
+	const isComment = item.kind === "comment";
+	return {
+		key: item.key,
+		kind: isComment ? "jiraComment" : "jiraTicket",
+		title: `${item.issueKey} | ${item.issueTitle}`,
+		startMinutes: timing?.minutesFromMidnight ?? null,
+		durationMinutes: null,
+		subtitle: isComment && item.commentExcerpt ? `"${item.commentExcerpt}"` : undefined,
+		subtitleMultiline: isComment,
+		externalUrl: item.url,
+	};
+}
+
+function jiraActivityDateIso(item: JiraActivityItem): string | null {
+	return parseDateTime(item.timestampIso)?.dateIso ?? null;
+}
+
 function compareFeedItems(a: TodayFeedItem, b: TodayFeedItem): number {
 	if (a.startMinutes == null && b.startMinutes == null) return a.title.localeCompare(b.title);
 	if (a.startMinutes == null) return -1;
@@ -213,6 +246,8 @@ export function buildTodayFeed(params: {
 	dailyNoteTitle?: string | null;
 	dailyNotePath?: string | null;
 	doneStatuses?: Set<string>;
+	/** Full fetched list (not pre-filtered); only rows whose local timestamp falls on `dateIso` are shown. */
+	jiraItems?: JiraActivityItem[];
 }): TodayFeedSection[] {
 	const {dateIso} = params;
 	const items: TodayFeedItem[] = [];
@@ -301,6 +336,11 @@ export function buildTodayFeed(params: {
 
 	for (const entry of params.dayTasks ?? []) {
 		items.push(todayTaskFeedItem(entry, params.doneStatuses));
+	}
+
+	for (const j of params.jiraItems ?? []) {
+		if (jiraActivityDateIso(j) !== dateIso) continue;
+		items.push(jiraActivityFeedItem(j));
 	}
 
 	items.sort(compareFeedItems);

@@ -3,6 +3,9 @@ import {getTaskNotesHealth} from "../../fulcrum/taskNotesApi";
 import {displayConduitSettings} from "../../conduit/settingsTab";
 import {displayOmniFocusSettings} from "../../omnifocus/settingsTab";
 import {renderCalendarIntegrationSection} from "./calendarIntegration";
+import {clearJiraCache, testJiraConnection} from "../../fulcrum/jira/jiraClient";
+import {JIRA_SITE_BASE} from "../../fulcrum/jira/jiraFormat";
+import {bumpSettingsRevision} from "../../fulcrum/stores";
 import type {SettingsContext} from "../settingsContext";
 import {heading, metadataGroup, settingsLead, textSetting} from "../settingsHelpers";
 
@@ -95,6 +98,49 @@ export function renderIntegrationsTab(ctx: SettingsContext): void {
 				new Notice(r.ok ? "TaskNotes API reachable." : (r.error ?? "TaskNotes API check failed."));
 			} finally {
 				window.clearTimeout(to);
+				b.setDisabled(false);
+			}
+		}),
+	);
+
+	heading(containerEl, "Jira");
+	settingsLead(
+		containerEl,
+		`Read-only — Fulcrum never creates, edits, or comments on Jira issues. Site is fixed to ${JIRA_SITE_BASE}. ` +
+			`Scope: the TAXONOMY project, plus UCP issues in the Core Library component. Shows open tickets assigned ` +
+			`to this account, and comments mentioning it from the last 14 days. Jira Cloud authenticates with your ` +
+			`account email plus an API token (not a bearer PAT — that's the jira.disney.com / Data Center pattern). ` +
+			`Create a token at id.atlassian.com/manage-profile/security/api-tokens.`,
+	);
+	new Setting(containerEl).setName("Jira email").addText((tx) =>
+		tx
+			.setPlaceholder("you@disney.com")
+			.setValue(plugin.settings.jiraEmail)
+			.onChange(async (v) => {
+				plugin.settings.jiraEmail = v;
+				await plugin.saveSettings();
+				clearJiraCache();
+				bumpSettingsRevision();
+			}),
+	);
+	const jiraTokenRow = new Setting(containerEl).setName("Jira API token");
+	jiraTokenRow.addText((tx) => {
+		tx.inputEl.type = "password";
+		tx.setPlaceholder("API token").setValue(plugin.settings.jiraApiToken);
+		tx.onChange(async (v) => {
+			plugin.settings.jiraApiToken = v;
+			await plugin.saveSettings();
+			clearJiraCache();
+			bumpSettingsRevision();
+		});
+	});
+	jiraTokenRow.addButton((b) =>
+		b.setButtonText("Test connection").onClick(async () => {
+			b.setDisabled(true);
+			try {
+				const result = await testJiraConnection(plugin.settings.jiraEmail, plugin.settings.jiraApiToken);
+				new Notice(result.message);
+			} finally {
 				b.setDisabled(false);
 			}
 		}),

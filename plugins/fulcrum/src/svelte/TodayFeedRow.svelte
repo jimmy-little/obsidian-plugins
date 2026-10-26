@@ -38,7 +38,10 @@
 		(void $timerRevision,
 		plugin.timer.listActiveTimersInMemory().some((row) => row.filePath === trackablePath));
 	$: canOpen =
-		item.kind === "task" || item.kind === "planner" || (item.filePath != null && item.filePath.length > 0);
+		item.kind === "task" ||
+		item.kind === "planner" ||
+		item.externalUrl != null ||
+		(item.filePath != null && item.filePath.length > 0);
 	$: canToggleStatus = Platform.isDesktop && item.kind === "task" && item.task != null;
 
 	function feedAccent(row: TodayFeedItem, colors: Map<string, string>): string | null {
@@ -70,6 +73,10 @@
 				return "clock";
 			case "daily":
 				return "book-open";
+			case "jiraTicket":
+				return "ticket";
+			case "jiraComment":
+				return "message-square";
 			default:
 				return "dot";
 		}
@@ -107,6 +114,10 @@
 	}
 
 	function openItem(): void {
+		if (item.externalUrl) {
+			window.open(item.externalUrl, "_blank", "noopener,noreferrer");
+			return;
+		}
 		if (item.kind === "task" && item.task) {
 			openTaskNoteFromCard(plugin, item.task, hoverParentLeaf);
 			return;
@@ -225,14 +236,18 @@
 		<button type="button" class="fulcrum-today__feed-body" on:click={onBodyClick}>
 			<span class="fulcrum-today__feed-title" class:fulcrum-today__feed-title--done={done}>{item.title}</span>
 			{#if item.subtitle}
-				<span class="fulcrum-today__feed-sub">{item.subtitle}</span>
+				<span class="fulcrum-today__feed-sub" class:fulcrum-today__feed-sub--quote={item.subtitleMultiline}
+					>{item.subtitle}</span
+				>
 			{/if}
 		</button>
 	{:else}
 		<div class="fulcrum-today__feed-body fulcrum-today__feed-body--static">
 			<span class="fulcrum-today__feed-title" class:fulcrum-today__feed-title--done={done}>{item.title}</span>
 			{#if item.subtitle}
-				<span class="fulcrum-today__feed-sub">{item.subtitle}</span>
+				<span class="fulcrum-today__feed-sub" class:fulcrum-today__feed-sub--quote={item.subtitleMultiline}
+					>{item.subtitle}</span
+				>
 			{/if}
 		</div>
 	{/if}
