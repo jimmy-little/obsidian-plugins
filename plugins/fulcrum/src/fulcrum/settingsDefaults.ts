@@ -149,7 +149,7 @@ export interface FulcrumSettings {
 	/**
 	 * Jira Cloud credentials (Basic auth: email + API token — Cloud does not accept a bare Bearer
 	 * token). Site is fixed to https://deept.atlassian.net (see `jira/jiraFormat.ts`). Read-only:
-	 * tickets assigned to the account and comments mentioning it, scoped to TAXONOMY and UCP/Core Library.
+	 * tickets assigned to the account (TAXONOMY and UCP/Core Library) and comments @mentioning it on any project.
 	 */
 	jiraEmail: string;
 	jiraApiToken: string;
@@ -159,6 +159,8 @@ export interface FulcrumSettings {
 	projectStatuses: string;
 	priorities: string;
 	taskDoneStatuses: string;
+	/** Status values rendered with a "blocked" icon (circle-alert) on task cards / rows. */
+	taskBlockedStatuses: string;
 	projectActiveStatuses: string;
 	projectDoneStatuses: string;
 
@@ -466,6 +468,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 	projectStatuses: "planning, active, on-hold, completed, archived",
 	priorities: "high, medium, low",
 	taskDoneStatuses: "done, completed",
+	taskBlockedStatuses: "blocked",
 	projectActiveStatuses: "intake, in progress, ongoing, simmering",
 	projectDoneStatuses: "completed, archived, done",
 
@@ -620,6 +623,11 @@ export function parseDoneStatusSet(statusesCsv: string): Set<string> {
 
 export function isDoneStatus(status: string, doneSet: Set<string>): boolean {
 	return doneSet.has(normalizeStatusKey(status));
+}
+
+/** Case-insensitive "blocked" task statuses from settings CSV. */
+export function parseBlockedStatusSet(statusesCsv: string): Set<string> {
+	return parseDoneStatusSet(statusesCsv);
 }
 
 /** Case-insensitive done/inactive project statuses from settings CSV. */

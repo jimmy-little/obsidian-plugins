@@ -19,7 +19,7 @@
 	} from "../fulcrum/calendar/calendarTaskSchedule";
 	import {setCalendarTaskDragActive} from "../fulcrum/stores";
 	import {taskDisplayTitle} from "../fulcrum/utils/inlineTasks";
-	import {taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
+	import {taskIsBlocked, taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
 	import {handleTaskStatusClick, openTaskNoteFromCard} from "../fulcrum/taskCardInteractions";
 	import {showFulcrumTaskContextMenu} from "../fulcrum/taskContextMenu";
 	import {showFulcrumProjectCardContextMenu} from "../fulcrum/projectCardContextMenu";
@@ -89,15 +89,25 @@
 		showFulcrumProjectCardContextMenu(ev, plugin, p, hoverParentLeaf);
 	}
 
-	function bindInProgressIcon(node: HTMLElement) {
-		setIcon(node, "circle-arrow-right");
-		return { destroy() { node.empty(); } };
+	/** Open = circle, In progress = circle-arrow-right, Blocked = circle-alert. Coloring unchanged. */
+	function bindStatusIcon(node: HTMLElement, iconName: string) {
+		setIcon(node, iconName);
+		return {
+			update(next: string) {
+				node.empty();
+				setIcon(node, next);
+			},
+			destroy() {
+				node.empty();
+			},
+		};
 	}
 
 	$: rowGridStyle = `grid-template-columns: ${gridTemplateForColumns(columns)}`;
 	$: statusRingStyle = taskStatusRingCss(task, doneTask);
 	$: done = isDoneStatus(task.status, doneTask);
 	$: inProgress = !done && taskIsInProgress(task, plugin.settings);
+	$: blocked = !done && !inProgress && taskIsBlocked(task, plugin.settings);
 	$: displayScheduled = occurrenceDateIso
 		? occurrenceScheduledIso(task, occurrenceDateIso)
 		: task.scheduledDate;
@@ -125,6 +135,7 @@
 	<span
 		class="fulcrum-tasks-row__status"
 		class:fulcrum-tasks-row__status--in-progress={inProgress}
+		class:fulcrum-tasks-row__status--blocked={blocked}
 		role="button"
 		tabindex="0"
 		title="Status"
@@ -133,7 +144,13 @@
 		on:keydown={onStatusKeydown}
 	>
 		{#if inProgress}
-			<span class="fulcrum-tasks-row__in-progress-icon" use:bindInProgressIcon aria-hidden="true"></span>
+			<span class="fulcrum-tasks-row__in-progress-icon" use:bindStatusIcon={"circle-arrow-right"} aria-hidden="true"
+			></span>
+		{:else if blocked}
+			<span class="fulcrum-tasks-row__in-progress-icon" use:bindStatusIcon={"circle-alert"} aria-hidden="true"
+			></span>
+		{:else if !done}
+			<span class="fulcrum-tasks-row__in-progress-icon" use:bindStatusIcon={"circle"} aria-hidden="true"></span>
 		{/if}
 	</span>
 	{#each columns as col (col)}

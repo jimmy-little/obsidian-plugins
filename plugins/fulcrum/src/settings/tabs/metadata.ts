@@ -135,6 +135,7 @@ export function renderMetadataTab(ctx: SettingsContext): void {
 	textSetting(ctx, "projectStatuses", "Project statuses (comma-separated)");
 	textSetting(ctx, "priorities", "Priorities (comma-separated)");
 	textSetting(ctx, "taskDoneStatuses", "Task done statuses (comma-separated)");
+	textSetting(ctx, "taskBlockedStatuses", "Task blocked statuses (comma-separated)");
 	textSetting(ctx, "projectActiveStatuses", "Project active statuses (comma-separated)");
 	textSetting(ctx, "projectDoneStatuses", "Project done / inactive statuses (comma-separated)");
 }

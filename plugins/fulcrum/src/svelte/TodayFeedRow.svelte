@@ -5,7 +5,7 @@
 	import {formatMinutesLabel} from "../fulcrum/tasks/tasksViewModel";
 	import {todayFeedTimeLabel} from "../fulcrum/today/todayFeed";
 	import {resolveProjectAccentCss} from "../fulcrum/utils/projectVisual";
-	import {taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
+	import {taskIsBlocked, taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
 	import {
 		handleTaskStatusClick,
 		handleTaskTimerToggleClick,
@@ -18,6 +18,14 @@
 		FULCRUM_CALENDAR_TASK_MIME,
 		calendarTaskDragKey,
 	} from "../fulcrum/calendar/calendarTaskSchedule";
+	import {
+		acceptsTodayTimeDrop,
+		FULCRUM_JIRA_DRAG_MIME,
+		FULCRUM_NOTE_DRAG_MIME,
+		handleTodayTimeDrop,
+		jiraDragKey,
+		noteDragKey,
+	} from "../fulcrum/today/todayDragDrop";
 	import TaskCardTimerSlot from "./TaskCardTimerSlot.svelte";
 
 	export let plugin: FulcrumHost;
@@ -26,10 +34,14 @@
 	export let colorByProject: Map<string, string> = new Map();
 	/** Timeline rows keep the clock column so icons share one vertical line. */
 	export let showClock = true;
+	/** Focal day — required to resolve a drop onto this row into an exact datetime. */
+	export let dateIso: string | undefined = undefined;
 
 	$: done = item.done === true;
 	$: inProgress =
 		item.kind === "task" && item.task != null && !done && taskIsInProgress(item.task, plugin.settings);
+	$: blocked =
+		item.kind === "task" && item.task != null && !done && !inProgress && taskIsBlocked(item.task, plugin.settings);
 	$: timeLabel = item.startMinutes != null ? formatMinutesLabel(item.startMinutes) : "";
 	$: timeMeta = todayFeedTimeLabel(item);
 	$: accent = feedAccent(item, colorByProject);
@@ -105,9 +117,14 @@
 		};
 	}
 
-	function bindInProgressIcon(node: HTMLElement) {
-		setIcon(node, "circle-arrow-right");
+	/** Open = circle, In progress = circle-arrow-right, Blocked = circle-alert. Coloring unchanged. */
+	function bindStatusIcon(node: HTMLElement, iconName: string) {
+		setIcon(node, iconName);
 		return {
+			update(next: string) {
+				node.empty();
+				setIcon(node, next);
+			},
 			destroy() {
 				node.empty();
 			},
@@ -189,16 +206,53 @@
 		}
 	}
 
+	$: draggableKind =
+		(item.kind === "task" && item.task != null) ||
+		(item.kind === "note" && item.note != null) ||
+		((item.kind === "jiraTicket" || item.kind === "jiraComment") && item.issueKey != null);
+
 	function onDragStart(ev: DragEvent): void {
-		if (item.kind !== "task" || !item.task) return;
-		const key = calendarTaskDragKey(item.task);
-		ev.dataTransfer?.setData(FULCRUM_CALENDAR_TASK_MIME, key);
-		if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
-		setCalendarTaskDragActive(true);
+		if (item.kind === "task" && item.task) {
+			const key = calendarTaskDragKey(item.task);
+			ev.dataTransfer?.setData(FULCRUM_CALENDAR_TASK_MIME, key);
+			if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+			setCalendarTaskDragActive(true);
+			return;
+		}
+		if (item.kind === "note" && item.note) {
+			ev.dataTransfer?.setData(FULCRUM_NOTE_DRAG_MIME, noteDragKey(item.note));
+			if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+			return;
+		}
+		if ((item.kind === "jiraTicket" || item.kind === "jiraComment") && item.issueKey) {
+			ev.dataTransfer?.setData(FULCRUM_JIRA_DRAG_MIME, jiraDragKey(item.issueKey));
+			if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+		}
 	}
 
 	function onDragEnd(): void {
 		setCalendarTaskDragActive(false);
+	}
+
+	/** Every row in the timeline (a real item or an hourly filler) is a drop target for an exact time. */
+	let dropHover = false;
+
+	function onTimeDragOver(ev: DragEvent): void {
+		if (item.startMinutes == null || dateIso == null || !acceptsTodayTimeDrop(ev.dataTransfer?.types)) return;
+		ev.preventDefault();
+		if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+		dropHover = true;
+	}
+
+	function onTimeDragLeave(): void {
+		dropHover = false;
+	}
+
+	async function onTimeDrop(ev: DragEvent): Promise<void> {
+		dropHover = false;
+		if (item.startMinutes == null || dateIso == null || !acceptsTodayTimeDrop(ev.dataTransfer?.types)) return;
+		ev.preventDefault();
+		await handleTodayTimeDrop(ev, plugin, dateIso, item.startMinutes, hoverParentLeaf);
 	}
 </script>
 
@@ -207,80 +261,93 @@
 	class:fulcrum-today__feed-row--clockless={!showClock}
 	class:fulcrum-today__feed-row--done={done}
 	class:fulcrum-today__feed-row--ghost={item.isGhostOccurrence === true}
+	class:fulcrum-today__feed-row--marker={item.kind === "hourMarker"}
+	class:fulcrum-today__feed-row--drop={dropHover}
 	style={accent ? `--fulcrum-today-accent: ${accent}` : undefined}
 	role="group"
-	aria-label={item.title}
-	draggable={item.kind === "task" ? "true" : "false"}
+	aria-label={item.kind === "hourMarker" ? timeLabel : item.title}
+	draggable={draggableKind ? "true" : "false"}
 	on:dragstart={onDragStart}
 	on:dragend={onDragEnd}
+	on:dragover={onTimeDragOver}
+	on:dragleave={onTimeDragLeave}
+	on:drop={onTimeDrop}
 	on:contextmenu={onContextMenu}
 >
 	{#if showClock}
 		<span class="fulcrum-today__feed-time">{timeLabel}</span>
 	{/if}
-	{#if item.kind === "task"}
-		<button
-			type="button"
-			class="fulcrum-today__feed-status"
-			class:fulcrum-today__feed-status--done={done}
-			class:fulcrum-today__feed-status--in-progress={inProgress}
-			aria-label={done ? "Completed" : "Change status"}
-			title={canToggleStatus ? "Change status" : "Status"}
-			on:click={onStatusClick}
-			on:keydown={onStatusKeydown}
-		>
-			{#if done}
-				<span class="fulcrum-today__feed-check" aria-hidden="true">✓</span>
-			{:else if inProgress}
-				<span class="fulcrum-today__feed-progress" use:bindInProgressIcon aria-hidden="true"></span>
-			{/if}
-		</button>
-	{:else}
-		<span class="fulcrum-today__feed-icon" use:bindFeedIcon={item} aria-hidden="true"></span>
-	{/if}
-	{#if canOpen}
-		<button type="button" class="fulcrum-today__feed-body" on:click={onBodyClick}>
-			<span class="fulcrum-today__feed-title" class:fulcrum-today__feed-title--done={done}>{item.title}</span>
-			{#if item.subtitle}
-				<span class="fulcrum-today__feed-sub" class:fulcrum-today__feed-sub--quote={item.subtitleMultiline}
-					>{item.subtitle}</span
-				>
-			{/if}
-		</button>
-	{:else}
-		<div class="fulcrum-today__feed-body fulcrum-today__feed-body--static">
-			<span class="fulcrum-today__feed-title" class:fulcrum-today__feed-title--done={done}>{item.title}</span>
-			{#if item.subtitle}
-				<span class="fulcrum-today__feed-sub" class:fulcrum-today__feed-sub--quote={item.subtitleMultiline}
-					>{item.subtitle}</span
-				>
-			{/if}
-		</div>
-	{/if}
-	<span class="fulcrum-today__feed-meta">
-		{#if timeMeta}
-			<span class="fulcrum-today__feed-duration">{timeMeta}</span>
-		{/if}
-		{#if timerActive && trackablePath}
-			<TaskCardTimerSlot {plugin} filePath={trackablePath} placement="row" />
-		{/if}
-		{#if trackablePath}
-			<span
-				role="button"
-				tabindex="0"
-				class="fulcrum-task-card__start-timer fulcrum-today__feed-play"
-				class:fulcrum-task-card__start-timer--active={timerActive}
-				title={timerActive ? "Stop timer" : "Start timer"}
-				aria-label={timerActive ? "Stop timer" : "Start timer"}
-				on:click={onTimerToggle}
-				on:keydown={onTimerKeydown}
+	{#if item.kind !== "hourMarker"}
+		{#if item.kind === "task"}
+			<button
+				type="button"
+				class="fulcrum-today__feed-status"
+				class:fulcrum-today__feed-status--done={done}
+				class:fulcrum-today__feed-status--in-progress={inProgress}
+				class:fulcrum-today__feed-status--blocked={blocked}
+				aria-label={done ? "Completed" : "Change status"}
+				title={canToggleStatus ? "Change status" : "Status"}
+				on:click={onStatusClick}
+				on:keydown={onStatusKeydown}
 			>
-				<span
-					class="fulcrum-task-card__start-timer-icon"
-					use:bindPlayStopIcon={timerActive}
-					aria-hidden="true"
-				></span>
-			</span>
+				{#if done}
+					<span class="fulcrum-today__feed-check" aria-hidden="true">✓</span>
+				{:else if inProgress}
+					<span class="fulcrum-today__feed-progress" use:bindStatusIcon={"circle-arrow-right"} aria-hidden="true"
+					></span>
+				{:else if blocked}
+					<span class="fulcrum-today__feed-progress" use:bindStatusIcon={"circle-alert"} aria-hidden="true"></span>
+				{:else}
+					<span class="fulcrum-today__feed-progress" use:bindStatusIcon={"circle"} aria-hidden="true"></span>
+				{/if}
+			</button>
+		{:else}
+			<span class="fulcrum-today__feed-icon" use:bindFeedIcon={item} aria-hidden="true"></span>
 		{/if}
-	</span>
+		{#if canOpen}
+			<button type="button" class="fulcrum-today__feed-body" on:click={onBodyClick}>
+				<span class="fulcrum-today__feed-title" class:fulcrum-today__feed-title--done={done}>{item.title}</span>
+				{#if item.subtitle}
+					<span class="fulcrum-today__feed-sub" class:fulcrum-today__feed-sub--quote={item.subtitleMultiline}
+						>{item.subtitle}</span
+					>
+				{/if}
+			</button>
+		{:else}
+			<div class="fulcrum-today__feed-body fulcrum-today__feed-body--static">
+				<span class="fulcrum-today__feed-title" class:fulcrum-today__feed-title--done={done}>{item.title}</span>
+				{#if item.subtitle}
+					<span class="fulcrum-today__feed-sub" class:fulcrum-today__feed-sub--quote={item.subtitleMultiline}
+						>{item.subtitle}</span
+					>
+				{/if}
+			</div>
+		{/if}
+		<span class="fulcrum-today__feed-meta">
+			{#if timeMeta}
+				<span class="fulcrum-today__feed-duration">{timeMeta}</span>
+			{/if}
+			{#if timerActive && trackablePath}
+				<TaskCardTimerSlot {plugin} filePath={trackablePath} placement="row" />
+			{/if}
+			{#if trackablePath}
+				<span
+					role="button"
+					tabindex="0"
+					class="fulcrum-task-card__start-timer fulcrum-today__feed-play"
+					class:fulcrum-task-card__start-timer--active={timerActive}
+					title={timerActive ? "Stop timer" : "Start timer"}
+					aria-label={timerActive ? "Stop timer" : "Start timer"}
+					on:click={onTimerToggle}
+					on:keydown={onTimerKeydown}
+				>
+					<span
+						class="fulcrum-task-card__start-timer-icon"
+						use:bindPlayStopIcon={timerActive}
+						aria-hidden="true"
+					></span>
+				</span>
+			{/if}
+		</span>
+	{/if}
 </div>

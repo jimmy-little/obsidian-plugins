@@ -1,5 +1,10 @@
 import type {FulcrumSettings} from "../settingsDefaults";
-import {isDoneStatus, normalizeStatusKey, parseTaskStatusChoices} from "../settingsDefaults";
+import {
+	isDoneStatus,
+	normalizeStatusKey,
+	parseBlockedStatusSet,
+	parseTaskStatusChoices,
+} from "../settingsDefaults";
 import type {IndexedTask} from "../types";
 
 /** Resolved in-progress status id from settings (defaults to `in-progress`). */
@@ -19,6 +24,13 @@ export function taskIsInProgress(task: IndexedTask, settings: FulcrumSettings): 
 	const target = resolveInProgressStatus(settings);
 	if (!target) return false;
 	return normalizeStatusKey(task.status ?? "") === normalizeStatusKey(target);
+}
+
+/** True when the task's status is in `taskBlockedStatuses` (e.g. "blocked"). */
+export function taskIsBlocked(task: IndexedTask, settings: FulcrumSettings): boolean {
+	const blockedSet = parseBlockedStatusSet(settings.taskBlockedStatuses);
+	if (blockedSet.size === 0) return false;
+	return blockedSet.has(normalizeStatusKey(task.status ?? ""));
 }
 
 export function taskIsOpenForTimerStart(

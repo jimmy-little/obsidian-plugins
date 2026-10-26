@@ -20,7 +20,7 @@
 		stopChipClick,
 	} from "../fulcrum/taskCardInteractions";
 	import {taskDisplayTitle} from "../fulcrum/utils/inlineTasks";
-	import {taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
+	import {taskIsBlocked, taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
 	import {settingsRevision, timerRevision, setCalendarTaskDragActive} from "../fulcrum/stores";
 	import {
 		FULCRUM_CALENDAR_TASK_MIME,
@@ -38,9 +38,14 @@
 		};
 	}
 
-	function bindInProgressIcon(node: HTMLElement) {
-		setIcon(node, "circle-arrow-right");
+	/** Open = circle, In progress = circle-arrow-right, Blocked = circle-alert. Coloring unchanged. */
+	function bindStatusIcon(node: HTMLElement, iconName: string) {
+		setIcon(node, iconName);
 		return {
+			update(next: string) {
+				node.empty();
+				setIcon(node, next);
+			},
 			destroy() {
 				node.empty();
 			},
@@ -86,6 +91,7 @@
 	$: void $timerRevision;
 	$: timerActive = taskCardTimerActive(plugin, task);
 	$: inProgress = !done && taskIsInProgress(task, s);
+	$: blocked = !done && !inProgress && taskIsBlocked(task, s);
 
 	$: rowClass = [
 		"fulcrum-task-card",
@@ -191,6 +197,7 @@
 			class="fulcrum-task-card__status-dot"
 			class:fulcrum-task-card__status-dot--done={done}
 			class:fulcrum-task-card__status-dot--in-progress={inProgress}
+			class:fulcrum-task-card__status-dot--blocked={blocked}
 			class:fulcrum-task-card__status-dot--readonly={!canToggle}
 			style={done || inProgress ? undefined : `border-color: ${borderPri}`}
 			title={canToggle ? "Change status" : "Open the note to edit (mobile)"}
@@ -202,7 +209,19 @@
 			{:else if inProgress}
 				<span
 					class="fulcrum-task-card__in-progress-icon"
-					use:bindInProgressIcon
+					use:bindStatusIcon={"circle-arrow-right"}
+					aria-hidden="true"
+				></span>
+			{:else if blocked}
+				<span
+					class="fulcrum-task-card__in-progress-icon"
+					use:bindStatusIcon={"circle-alert"}
+					aria-hidden="true"
+				></span>
+			{:else}
+				<span
+					class="fulcrum-task-card__in-progress-icon"
+					use:bindStatusIcon={"circle"}
 					aria-hidden="true"
 				></span>
 			{/if}
@@ -228,13 +247,19 @@
 				<div class="fulcrum-task-card__metadata-chips">
 					<span
 						class="fulcrum-task-card__source-kind"
-						title={inProgress ? "In progress" : sourceKindTitle}
-						aria-label={inProgress ? "In progress" : sourceKindTitle}
+						title={inProgress ? "In progress" : blocked ? "Blocked" : sourceKindTitle}
+						aria-label={inProgress ? "In progress" : blocked ? "Blocked" : sourceKindTitle}
 					>
 						{#if inProgress}
 							<span
 								class="fulcrum-task-card__source-kind-icon"
-								use:bindInProgressIcon
+								use:bindStatusIcon={"circle-arrow-right"}
+								aria-hidden="true"
+							></span>
+						{:else if blocked}
+							<span
+								class="fulcrum-task-card__source-kind-icon"
+								use:bindStatusIcon={"circle-alert"}
 								aria-hidden="true"
 							></span>
 						{:else}

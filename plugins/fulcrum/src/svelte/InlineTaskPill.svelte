@@ -27,7 +27,7 @@
 		parseDoneStatusSet,
 		parseTaskStatusChoices,
 	} from "../fulcrum/settingsDefaults";
-	import {taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
+	import {taskIsBlocked, taskIsInProgress} from "../fulcrum/utils/taskStatusDisplay";
 
 	export let plugin: FulcrumHost;
 	export let task: IndexedTask;
@@ -56,6 +56,7 @@
 	$: tags = displayTagsForTask(task, s);
 	$: canToggle = Platform.isDesktop;
 	$: inProgress = !done && taskIsInProgress(task, s);
+	$: blocked = !done && !inProgress && taskIsBlocked(task, s);
 	$: canConvertToNote =
 		task.source === "inline" && task.line != null && variant !== "row";
 
@@ -179,9 +180,14 @@
 		};
 	}
 
-	function bindInProgressIcon(node: HTMLElement) {
-		setIcon(node, "circle-arrow-right");
+	/** Open = circle, In progress = circle-arrow-right, Blocked = circle-alert. Coloring unchanged. */
+	function bindStatusIcon(node: HTMLElement, iconName: string) {
+		setIcon(node, iconName);
 		return {
+			update(next: string) {
+				node.empty();
+				setIcon(node, next);
+			},
 			destroy() {
 				node.empty();
 			},
@@ -204,13 +210,26 @@
 		class="fulcrum-task-inline-pill__status"
 		class:fulcrum-task-inline-pill__status--done={done}
 		class:fulcrum-task-inline-pill__status--in-progress={inProgress}
+		class:fulcrum-task-inline-pill__status--blocked={blocked}
 		class:fulcrum-task-inline-pill__status--readonly={!canToggle}
 		style={done || inProgress ? undefined : `border-color: ${statusRingCss}`}
 		title={canToggle ? "Change status" : "Open the note to edit (mobile)"}
 		on:click|stopPropagation={onStatusClick}
 		on:keydown|stopPropagation={onStatusKeydown}
 	>
-		{#if done}✓{:else if inProgress}<span class="fulcrum-task-inline-pill__in-progress-icon" use:bindInProgressIcon aria-hidden="true"></span>{/if}
+		{#if done}✓{:else if inProgress}<span
+				class="fulcrum-task-inline-pill__in-progress-icon"
+				use:bindStatusIcon={"circle-arrow-right"}
+				aria-hidden="true"
+			></span>{:else if blocked}<span
+				class="fulcrum-task-inline-pill__in-progress-icon"
+				use:bindStatusIcon={"circle-alert"}
+				aria-hidden="true"
+			></span>{:else}<span
+				class="fulcrum-task-inline-pill__in-progress-icon"
+				use:bindStatusIcon={"circle"}
+				aria-hidden="true"
+			></span>{/if}
 	</div>
 
 	<button

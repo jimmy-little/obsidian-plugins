@@ -403,7 +403,7 @@
 						<ul class="fulcrum-today__feed">
 							{#each section.items as item (item.key)}
 								<li>
-									<TodayFeedRow {plugin} {item} {hoverParentLeaf} {colorByProject} />
+									<TodayFeedRow {plugin} {item} {hoverParentLeaf} {colorByProject} dateIso={focalDateIso} />
 								</li>
 							{/each}
 						</ul>

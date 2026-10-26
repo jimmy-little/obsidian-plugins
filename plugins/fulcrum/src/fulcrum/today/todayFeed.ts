@@ -23,7 +23,8 @@ export type TodayFeedKind =
 	| "daily"
 	| "task"
 	| "jiraTicket"
-	| "jiraComment";
+	| "jiraComment"
+	| "hourMarker";
 
 export type TodayFeedItem = {
 	key: string;
@@ -239,6 +240,48 @@ function sectionForStart(startMinutes: number | null): TodayFeedSection["key"] {
 	return startMinutes < MORNING_END ? "morning" : "afternoon";
 }
 
+/** Always-visible hourly skeleton for Morning/Afternoon: default 6 AM–9 PM, widened (never shrunk)
+ *  to cover any item scheduled outside that window. Every rendered row — marker or real item — is a
+ *  drop target in {@link TodayFeedRow} that sets the dropped time exactly. */
+const DEFAULT_TIMELINE_START_HOUR = 6;
+const DEFAULT_TIMELINE_END_HOUR = 21;
+
+function buildHourMarkers(sectionKey: "morning" | "afternoon", sectionItems: TodayFeedItem[]): TodayFeedItem[] {
+	const hours = sectionItems
+		.map((i) => (i.startMinutes != null ? Math.floor(i.startMinutes / 60) : null))
+		.filter((h): h is number => h != null);
+
+	let startHour: number;
+	let endHour: number;
+	if (sectionKey === "morning") {
+		startHour = Math.min(DEFAULT_TIMELINE_START_HOUR, ...(hours.length ? hours : [DEFAULT_TIMELINE_START_HOUR]));
+		endHour = 11;
+	} else {
+		startHour = 12;
+		endHour = Math.max(DEFAULT_TIMELINE_END_HOUR, ...(hours.length ? hours : [DEFAULT_TIMELINE_END_HOUR]));
+	}
+
+	// An item already sitting exactly on the hour serves as that hour's row — no duplicate blank marker.
+	const onHour = new Set(
+		sectionItems
+			.filter((i) => i.startMinutes != null && i.startMinutes % 60 === 0)
+			.map((i) => Math.floor(i.startMinutes! / 60)),
+	);
+
+	const markers: TodayFeedItem[] = [];
+	for (let h = startHour; h <= endHour; h++) {
+		if (onHour.has(h)) continue;
+		markers.push({
+			key: `hour:${sectionKey}:${h}`,
+			kind: "hourMarker",
+			title: "",
+			startMinutes: h * 60,
+			durationMinutes: null,
+		});
+	}
+	return markers;
+}
+
 export function buildTodayFeed(params: {
 	dateIso: string;
 	meetings: IndexedMeeting[];
@@ -355,6 +398,10 @@ export function buildTodayFeed(params: {
 	};
 	for (const item of items) {
 		buckets[sectionForStart(item.startMinutes)].push(item);
+	}
+
+	for (const key of ["morning", "afternoon"] as const) {
+		buckets[key] = [...buckets[key], ...buildHourMarkers(key, buckets[key])].sort(compareFeedItems);
 	}
 
 	const sections: TodayFeedSection[] = [];

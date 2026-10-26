@@ -7,7 +7,14 @@ vi.mock("obsidian", () => ({
 }));
 import type {AtomicNoteRow, IndexedMeeting, IndexedPlannerEvent} from "../../types";
 import type {JiraActivityItem} from "../../jira/jiraTypes";
+import type {TodayFeedItem} from "../todayFeed";
 import {buildTodayFeed, jiraActivityFeedItem, todayFeedTimeLabel} from "../todayFeed";
+
+/** Hourly filler rows (6 AM–9 PM default window) are always present in morning/afternoon now;
+ *  strip them out when a test wants to assert on the "real" scheduled items only. */
+function realItems(items: TodayFeedItem[]): TodayFeedItem[] {
+	return items.filter((i) => i.kind !== "hourMarker");
+}
 
 function meeting(partial: Partial<IndexedMeeting> & {date: string; title: string}): IndexedMeeting {
 	return {
@@ -68,8 +75,8 @@ describe("buildTodayFeed", () => {
 		});
 		expect(sections.map((s) => s.key)).toEqual(["allDay", "morning", "afternoon"]);
 		expect(sections[0]?.items.map((i) => i.kind).sort()).toEqual(["calendar", "daily", "meeting"]);
-		expect(sections[1]?.items.map((i) => i.title)).toEqual(["Journal", "Standup"]);
-		expect(sections[2]?.items.map((i) => i.title)).toEqual(["Deep work", "Wrap"]);
+		expect(realItems(sections[1]?.items ?? []).map((i) => i.title)).toEqual(["Journal", "Standup"]);
+		expect(realItems(sections[2]?.items ?? []).map((i) => i.title)).toEqual(["Deep work", "Wrap"]);
 	});
 
 	it("ignores items on other days", () => {
@@ -80,7 +87,10 @@ describe("buildTodayFeed", () => {
 			calendarEvents: [{eventId: "x", title: "X", dateIso: "2026-09-06", startMinutes: 0, durationMinutes: 30}],
 			plannerEvents: [planner({dateIso: "2026-09-01", title: "Old"})],
 		});
-		expect(sections).toEqual([]);
+		// Only the always-present hourly skeleton remains — no real item from another day leaks in.
+		expect(sections.map((s) => s.key)).toEqual(["morning", "afternoon"]);
+		expect(sections.flatMap((s) => realItems(s.items))).toEqual([]);
+		expect(sections.flatMap((s) => s.items).every((i) => i.kind === "hourMarker")).toBe(true);
 	});
 
 	it("places due-today tasks in the agenda; timed tasks go on the timeline", () => {
@@ -121,13 +131,16 @@ describe("buildTodayFeed", () => {
 				},
 			],
 		});
-		expect(sections.map((s) => s.key)).toEqual(["allDay", "afternoon"]);
+		expect(sections.map((s) => s.key)).toEqual(["allDay", "morning", "afternoon"]);
 		expect(sections[0]?.items.map((i) => i.title)).toEqual(["Inbox"]);
-		expect(sections[1]?.items[0]).toMatchObject({
-			kind: "task",
-			title: "Call",
-			startMinutes: 15 * 60 + 30,
-		});
+		const afternoon = sections.find((s) => s.key === "afternoon");
+		expect(realItems(afternoon?.items ?? [])).toMatchObject([
+			{
+				kind: "task",
+				title: "Call",
+				startMinutes: 15 * 60 + 30,
+			},
+		]);
 	});
 
 	it("puts project under notes and strips wiki brackets from type", () => {
@@ -230,14 +243,15 @@ describe("buildTodayFeed", () => {
 		expect(capture?.trackedMinutes).toBe(45);
 		expect(todayFeedTimeLabel(capture!)).toBe("45min");
 		const afternoon = sections.find((s) => s.key === "afternoon");
-		expect(afternoon?.items[0]).toMatchObject({
+		const pickup = afternoon?.items.find((i) => i.kind === "calendar");
+		expect(pickup).toMatchObject({
 			kind: "calendar",
 			subtitle: "THOMAS EDISON ELEMENTARY, 2110 W CHESTNUT ST",
 			location: "THOMAS EDISON ELEMENTARY, 2110 W CHESTNUT ST",
 			calendarColor: "#3366cc",
 			explicitDurationMinutes: 20,
 		});
-		expect(todayFeedTimeLabel(afternoon!.items[0]!)).toBe("20min");
+		expect(todayFeedTimeLabel(pickup!)).toBe("20min");
 	});
 
 	it("places Jira rows by local time on the matching day and excludes other days", () => {
@@ -279,16 +293,18 @@ describe("buildTodayFeed", () => {
 		expect(sections.map((s) => s.key)).toEqual(["morning", "afternoon"]);
 		const morning = sections.find((s) => s.key === "morning")!;
 		const afternoon = sections.find((s) => s.key === "afternoon")!;
-		expect(morning.items).toHaveLength(1);
-		expect(morning.items[0]).toMatchObject({
+		const morningReal = realItems(morning.items);
+		const afternoonReal = realItems(afternoon.items);
+		expect(morningReal).toHaveLength(1);
+		expect(morningReal[0]).toMatchObject({
 			kind: "jiraTicket",
 			title: "TAXONOMY-1 | Fix the sync job",
 			startMinutes: 9 * 60 + 15,
 			externalUrl: "https://deept.atlassian.net/browse/TAXONOMY-1",
 			issueKey: "TAXONOMY-1",
 		});
-		expect(afternoon.items).toHaveLength(1);
-		expect(afternoon.items[0]).toMatchObject({
+		expect(afternoonReal).toHaveLength(1);
+		expect(afternoonReal[0]).toMatchObject({
 			kind: "jiraComment",
 			title: "TAXONOMY-2 | Core Library cleanup",
 			subtitle: '"Can you take a look at this?"',
@@ -297,6 +313,53 @@ describe("buildTodayFeed", () => {
 			issueKey: "TAXONOMY-2",
 		});
 		expect(sections.flatMap((s) => s.items).some((i) => i.title.includes("Not today"))).toBe(false);
+	});
+
+	it("fills whole-hour gaps, skips hours that already have an item, and widens past the default window", () => {
+		const sections = buildTodayFeed({
+			dateIso,
+			meetings: [meeting({date: `${dateIso}T09:00:00`, title: "Some Meeting"})],
+			notes: [],
+			calendarEvents: [],
+			plannerEvents: [],
+			dayTasks: [
+				{
+					task: {
+						file: {path: "t.md", basename: "t.md"},
+						title: "Some Task",
+						status: "todo",
+						projectFile: null,
+						areaFile: null,
+						tags: [],
+						createdAtMs: 0,
+						source: "taskNote",
+						trackedMinutes: 0,
+						dueDate: `${dateIso}T22:30:00`,
+					} as never,
+				},
+			],
+		});
+		const morning = sections.find((s) => s.key === "morning")!;
+		const afternoon = sections.find((s) => s.key === "afternoon")!;
+
+		// 9 AM has a real meeting — no duplicate blank marker at hour 9.
+		expect(morning.items.filter((i) => i.startMinutes === 9 * 60)).toHaveLength(1);
+		expect(morning.items.find((i) => i.startMinutes === 9 * 60)).toMatchObject({kind: "meeting"});
+		// 10 AM (and other empty hours down to the 6 AM default start) get a blank filler row.
+		expect(morning.items.find((i) => i.startMinutes === 10 * 60)).toMatchObject({kind: "hourMarker", title: ""});
+		expect(morning.items.find((i) => i.startMinutes === 6 * 60)).toMatchObject({kind: "hourMarker"});
+		expect(morning.items.every((i) => i.startMinutes! >= 6 * 60)).toBe(true);
+
+		// A real item after the default 9 PM end widens the afternoon window to cover it.
+		expect(afternoon.items.find((i) => i.startMinutes === 22 * 60 + 30)).toMatchObject({
+			kind: "task",
+			title: "Some Task",
+		});
+		expect(afternoon.items.find((i) => i.startMinutes === 21 * 60)).toMatchObject({kind: "hourMarker"});
+		expect(afternoon.items.find((i) => i.startMinutes === 22 * 60)).toMatchObject({kind: "hourMarker"});
+		// Rows stay chronologically sorted once markers are merged in.
+		const starts = afternoon.items.map((i) => i.startMinutes);
+		expect(starts).toEqual([...starts].sort((a, b) => a! - b!));
 	});
 });
 
