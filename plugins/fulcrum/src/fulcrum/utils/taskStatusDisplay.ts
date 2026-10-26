@@ -7,17 +7,15 @@ import {
 } from "../settingsDefaults";
 import type {IndexedTask} from "../types";
 
+/** Collapses spaces/hyphens/underscores so "IN PROGRESS", "in-progress", "in_progress", and
+ *  "inprogress" are all treated as the same configured status token. */
+function collapseSeparators(status: string): string {
+	return normalizeStatusKey(status).replace(/[-_\s]+/g, "");
+}
+
 /** Resolved in-progress status id from settings (defaults to `in-progress`). */
 export function resolveInProgressStatus(settings: FulcrumSettings): string | null {
-	for (const st of parseTaskStatusChoices(settings)) {
-		const k = normalizeStatusKey(st);
-		if (k === "in-progress" || k === "inprogress" || k === "in_progress") {
-			return st;
-		}
-	}
-	return parseTaskStatusChoices(settings).find(
-		(st) => normalizeStatusKey(st) === "in-progress",
-	) ?? null;
+	return parseTaskStatusChoices(settings).find((st) => collapseSeparators(st) === "inprogress") ?? null;
 }
 
 export function taskIsInProgress(task: IndexedTask, settings: FulcrumSettings): boolean {
