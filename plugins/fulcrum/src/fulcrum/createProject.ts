@@ -21,7 +21,8 @@ export function resolveNewProjectPaths(
 	if (!root) return null;
 
 	const activeStatuses = parseList(settings.projectActiveStatuses);
-	const initialStatus = (activeStatuses[0] ?? "planning").trim().toLowerCase();
+	// Preserve the configured casing (e.g. "ONGOING") — folder lookup below is case-insensitive.
+	const initialStatus = (activeStatuses[0] ?? "planning").trim();
 	const statusFolder = resolveStatusFolderName(vault, root, initialStatus);
 	const statusParentDir = normalizePath(`${root}/${statusFolder}`);
 	const projectFolderPath = uniqueFolderPathInParent(vault, statusParentDir, projectName);

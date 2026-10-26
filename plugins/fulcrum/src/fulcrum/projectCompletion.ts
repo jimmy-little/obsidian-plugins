@@ -85,7 +85,8 @@ export async function markProjectCompleteAndMove(
 
 	const statusKey = s.projectStatusField.trim().replace(/:+$/u, "") || "status";
 	const doneStatuses = parseList(s.projectDoneStatuses);
-	const statusValue = (doneStatuses[0] ?? "completed").trim().toLowerCase();
+	// Preserve the configured casing (e.g. "DONE") instead of forcing lowercase.
+	const statusValue = (doneStatuses[0] ?? "completed").trim();
 
 	await app.fileManager.processFrontMatter(projectFile, (fm) => {
 		(fm as Record<string, unknown>)[statusKey] = statusValue;

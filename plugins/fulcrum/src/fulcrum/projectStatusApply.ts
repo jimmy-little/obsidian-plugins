@@ -51,7 +51,8 @@ export async function applyProjectStatusChange(
 
 	if (options.setFrontmatter) {
 		const statusKey = host.settings.projectStatusField.trim().replace(/:+$/u, "") || "status";
-		const statusValue = selectedStatus.trim().toLowerCase();
+		// Preserve the configured casing (e.g. "ONGOING") instead of forcing lowercase.
+		const statusValue = selectedStatus.trim();
 		await app.fileManager.processFrontMatter(f, (fm) => {
 			(fm as Record<string, unknown>)[statusKey] = statusValue;
 		});
