@@ -212,7 +212,7 @@
 		class:fulcrum-task-inline-pill__status--in-progress={inProgress}
 		class:fulcrum-task-inline-pill__status--blocked={blocked}
 		class:fulcrum-task-inline-pill__status--readonly={!canToggle}
-		style={done || inProgress ? undefined : `border-color: ${statusRingCss}`}
+		style={done || inProgress ? undefined : `color: ${statusRingCss}`}
 		title={canToggle ? "Change status" : "Open the note to edit (mobile)"}
 		on:click|stopPropagation={onStatusClick}
 		on:keydown|stopPropagation={onStatusKeydown}

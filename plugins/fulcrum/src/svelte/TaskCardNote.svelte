@@ -199,7 +199,7 @@
 			class:fulcrum-task-card__status-dot--in-progress={inProgress}
 			class:fulcrum-task-card__status-dot--blocked={blocked}
 			class:fulcrum-task-card__status-dot--readonly={!canToggle}
-			style={done || inProgress ? undefined : `border-color: ${borderPri}`}
+			style={done || inProgress ? undefined : `color: ${borderPri}`}
 			title={canToggle ? "Change status" : "Open the note to edit (mobile)"}
 			on:click|stopPropagation={onStatusClick}
 			on:keydown|stopPropagation={onStatusKeydown}

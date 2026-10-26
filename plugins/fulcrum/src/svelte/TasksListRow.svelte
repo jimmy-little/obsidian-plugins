@@ -104,8 +104,8 @@
 	}
 
 	$: rowGridStyle = `grid-template-columns: ${gridTemplateForColumns(columns)}`;
-	$: statusRingStyle = taskStatusRingCss(task, doneTask);
 	$: done = isDoneStatus(task.status, doneTask);
+	$: statusRingStyle = taskStatusRingCss(task, done);
 	$: inProgress = !done && taskIsInProgress(task, plugin.settings);
 	$: blocked = !done && !inProgress && taskIsBlocked(task, plugin.settings);
 	$: displayScheduled = occurrenceDateIso
@@ -134,22 +134,26 @@
 >
 	<span
 		class="fulcrum-tasks-row__status"
+		class:fulcrum-tasks-row__status--done={done}
 		class:fulcrum-tasks-row__status--in-progress={inProgress}
 		class:fulcrum-tasks-row__status--blocked={blocked}
 		role="button"
 		tabindex="0"
 		title="Status"
-		style={inProgress ? undefined : statusRingStyle}
+		style={done || inProgress ? undefined : `color: ${statusRingStyle}`}
 		on:click={onStatusClick}
 		on:keydown={onStatusKeydown}
 	>
-		{#if inProgress}
+		{#if done}
+			<span class="fulcrum-tasks-row__in-progress-icon" use:bindStatusIcon={"circle-check"} aria-hidden="true"
+			></span>
+		{:else if inProgress}
 			<span class="fulcrum-tasks-row__in-progress-icon" use:bindStatusIcon={"circle-arrow-right"} aria-hidden="true"
 			></span>
 		{:else if blocked}
 			<span class="fulcrum-tasks-row__in-progress-icon" use:bindStatusIcon={"circle-alert"} aria-hidden="true"
 			></span>
-		{:else if !done}
+		{:else}
 			<span class="fulcrum-tasks-row__in-progress-icon" use:bindStatusIcon={"circle"} aria-hidden="true"></span>
 		{/if}
 	</span>

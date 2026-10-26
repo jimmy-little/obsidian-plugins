@@ -4618,7 +4618,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	padding: 0;
 	margin-top: 0.15rem;
 	border-radius: 50%;
-	border: 2px solid var(--text-muted);
+	border: none;
 	background: transparent;
 	cursor: pointer;
 	display: inline-flex;
@@ -4629,6 +4629,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	appearance: none;
 	outline: none;
 	box-sizing: border-box;
+	color: var(--text-muted);
 }
 
 .fulcrum-task-card__status-dot:focus-visible {
@@ -4638,27 +4639,25 @@ button.fulcrum-task-card__note-type:focus-visible {
 
 .fulcrum-task-card__status-dot--done {
 	background-color: #27ae60;
-	border-color: #27ae60;
+	color: #fff;
 }
 
 .fulcrum-task-card__status-dot--in-progress {
-	border-color: var(--interactive-accent);
 	color: var(--interactive-accent);
-	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
 }
 
 .fulcrum-task-card__in-progress-icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 12px;
-	height: 12px;
+	width: 100%;
+	height: 100%;
 	line-height: 0;
 }
 
 .fulcrum-task-card__in-progress-icon svg {
-	width: 12px;
-	height: 12px;
+	width: 100%;
+	height: 100%;
 }
 
 .fulcrum-task-card__timer--adjust {
@@ -5041,7 +5040,7 @@ button.fulcrum-task-card__note-type:focus-visible {
 	min-height: 1em;
 	margin: 0;
 	padding: 0;
-	border: 2px solid var(--text-muted);
+	border: none;
 	border-radius: 50%;
 	background: transparent;
 	cursor: pointer;
@@ -5050,30 +5049,28 @@ button.fulcrum-task-card__note-type:focus-visible {
 	justify-content: center;
 	font-size: 0.65em;
 	line-height: 1;
-	color: white;
+	color: var(--text-muted);
 }
 
 .fulcrum-task-inline-pill__status--done {
 	background: #27ae60;
-	border-color: #27ae60;
+	color: white;
 }
 
 .fulcrum-task-inline-pill__status--in-progress {
-	border-color: var(--interactive-accent);
 	color: var(--interactive-accent);
-	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
 }
 
 .fulcrum-task-inline-pill__in-progress-icon {
 	display: inline-flex;
-	width: 0.65rem;
-	height: 0.65rem;
+	width: 100%;
+	height: 100%;
 	line-height: 0;
 }
 
 .fulcrum-task-inline-pill__in-progress-icon svg {
-	width: 0.65rem;
-	height: 0.65rem;
+	width: 100%;
+	height: 100%;
 }
 
 .fulcrum-task-inline-pill__status--readonly {
@@ -9006,29 +9003,32 @@ button.fulcrum-time-insight__value:hover {
 	width: 0.85rem;
 	height: 0.85rem;
 	border-radius: 50%;
-	border: 2px solid var(--text-muted);
+	border: none;
 	flex-shrink: 0;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	color: var(--text-muted);
+}
+
+.fulcrum-tasks-row__status--done {
+	color: #27ae60;
 }
 
 .fulcrum-tasks-row__status--in-progress {
-	border-color: var(--interactive-accent);
 	color: var(--interactive-accent);
-	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
 }
 
 .fulcrum-tasks-row__in-progress-icon {
 	display: inline-flex;
-	width: 0.65rem;
-	height: 0.65rem;
+	width: 100%;
+	height: 100%;
 	line-height: 0;
 }
 
 .fulcrum-tasks-row__in-progress-icon svg {
-	width: 0.65rem;
-	height: 0.65rem;
+	width: 100%;
+	height: 100%;
 }
 
 .fulcrum-tasks-row__title {
@@ -10070,14 +10070,14 @@ button.orbit-heatmap-day-modal__link:hover {
 	max-width: var(--fulcrum-today-icon);
 	max-height: var(--fulcrum-today-icon);
 	border-radius: 50%;
-	border: 2px solid var(--fulcrum-today-accent, var(--text-muted));
+	border: none;
 	background: transparent;
 	box-shadow: none;
 	cursor: pointer;
 	line-height: 0;
 	font-size: 0;
 	appearance: none;
-	color: #fff;
+	color: var(--fulcrum-today-accent, var(--text-muted));
 }
 
 .fulcrum-today__feed-status:hover,
@@ -10087,13 +10087,11 @@ button.orbit-heatmap-day-modal__link:hover {
 
 .fulcrum-today__feed-status--done {
 	background: var(--fulcrum-today-accent, #27ae60);
-	border-color: var(--fulcrum-today-accent, #27ae60);
+	color: #fff;
 }
 
 .fulcrum-today__feed-status--in-progress {
-	border-color: var(--fulcrum-today-accent, var(--interactive-accent));
 	color: var(--fulcrum-today-accent, var(--interactive-accent));
-	background: color-mix(in srgb, var(--fulcrum-today-accent, var(--interactive-accent)) 12%, transparent);
 }
 
 .fulcrum-today__feed-check {
@@ -10105,13 +10103,13 @@ button.orbit-heatmap-day-modal__link:hover {
 
 .fulcrum-today__feed-progress {
 	display: inline-flex;
-	width: 12px;
-	height: 12px;
+	width: var(--fulcrum-today-icon);
+	height: var(--fulcrum-today-icon);
 }
 
 .fulcrum-today__feed-progress svg {
-	width: 12px;
-	height: 12px;
+	width: var(--fulcrum-today-icon);
+	height: var(--fulcrum-today-icon);
 }
 
 .fulcrum-today__feed-body {
