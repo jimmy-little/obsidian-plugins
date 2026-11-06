@@ -14,6 +14,8 @@
 	export let compact = false;
 	/** Enable HTML5 drag for calendar / week-grid drops (due date). */
 	export let enableDrag = false;
+	/** Task-note page header: the chrome mounts the full timer widget instead of the play chip. */
+	export let pageHeader = false;
 </script>
 
-<TaskCardNote {plugin} {task} {done} {anchorLeaf} {showInlineTimer} {compact} {enableDrag} />
+<TaskCardNote {plugin} {task} {done} {anchorLeaf} {showInlineTimer} {compact} {enableDrag} {pageHeader} />

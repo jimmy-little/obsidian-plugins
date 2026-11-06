@@ -69,6 +69,8 @@
 	export let showInlineTimer = false;
 	export let compact = false;
 	export let enableDrag = false;
+	/** Page header: timer lives in the note chrome, not on this bar. */
+	export let pageHeader = false;
 
 	$: s = plugin.settings;
 	$: isInline = task.source === "inline";
@@ -366,26 +368,28 @@
 								</span>
 							{/if}
 						{/if}
-					<span
-						role="button"
-						tabindex="0"
-						class="fulcrum-task-card__meta-chip fulcrum-task-card__start-timer"
-						class:fulcrum-task-card__start-timer--active={timerActive}
-						title={timerActive ? "Stop timer" : "Start timer"}
-						aria-label={timerActive ? "Stop timer" : "Start timer"}
-						on:click|stopPropagation={onTimerClick}
-						on:keydown|stopPropagation={onTimerKeydown}
-					>
+					{#if !pageHeader}
 						<span
-							class="fulcrum-task-card__start-timer-icon"
-							use:bindPlayStopIcon={timerActive}
-							aria-hidden="true"
-						></span>
-					</span>
+							role="button"
+							tabindex="0"
+							class="fulcrum-task-card__meta-chip fulcrum-task-card__start-timer"
+							class:fulcrum-task-card__start-timer--active={timerActive}
+							title={timerActive ? "Stop timer" : "Start timer"}
+							aria-label={timerActive ? "Stop timer" : "Start timer"}
+							on:click|stopPropagation={onTimerClick}
+							on:keydown|stopPropagation={onTimerKeydown}
+						>
+							<span
+								class="fulcrum-task-card__start-timer-icon"
+								use:bindPlayStopIcon={timerActive}
+								aria-hidden="true"
+							></span>
+						</span>
+					{/if}
 				</div>
 			</div>
 		</div>
-		{#if timerActive}
+		{#if timerActive && !pageHeader}
 			<TaskCardTimerSlot
 				{plugin}
 				filePath={task.file.path}

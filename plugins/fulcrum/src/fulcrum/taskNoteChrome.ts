@@ -10,6 +10,9 @@ import TaskCard from "../svelte/TaskCard.svelte";
 type MountState = {
 	component: SvelteComponent | null;
 	filePath: string | null;
+	timerDestroy: (() => void) | null;
+	timerPath: string | null;
+	timerGen: number;
 };
 
 const mounts = new WeakMap<MarkdownView, MountState>();
@@ -54,9 +57,57 @@ function unmountChrome(view: MarkdownView): void {
 	view.contentEl.classList.remove("fulcrum-task-note-doc");
 	const hostEl = view.contentEl.querySelector(":scope > .fulcrum-task-note-chrome");
 	const state = mounts.get(view);
-	state?.component?.$destroy();
-	mounts.set(view, {component: null, filePath: null});
+	if (state) {
+		state.timerGen += 1;
+		state.timerDestroy?.();
+		state.timerDestroy = null;
+		state.timerPath = null;
+		state.component?.$destroy();
+		state.component = null;
+		state.filePath = null;
+	}
 	hostEl?.remove();
+}
+
+function ensureTaskHeaderTimer(
+	host: FulcrumHost,
+	chromeHost: HTMLElement,
+	state: MountState,
+	filePath: string,
+): void {
+	const existingSlot = chromeHost.querySelector(":scope > .fulcrum-task-note-chrome__timer");
+	const slot =
+		existingSlot instanceof HTMLElement
+			? existingSlot
+			: chromeHost.createDiv({cls: "fulcrum-task-note-chrome__timer"});
+	chromeHost.append(slot);
+	if (state.timerPath === filePath && state.timerDestroy) return;
+	void mountTaskHeaderTimer(host, state, filePath, slot);
+}
+
+async function mountTaskHeaderTimer(
+	host: FulcrumHost,
+	state: MountState,
+	filePath: string,
+	slot: HTMLElement,
+): Promise<void> {
+	const gen = ++state.timerGen;
+	state.timerDestroy?.();
+	state.timerDestroy = null;
+	state.timerPath = filePath;
+	slot.replaceChildren();
+	let destroy: () => void;
+	try {
+		destroy = await host.timer.mountNoteTimerWidget(slot, filePath, {embedded: true});
+	} catch (err) {
+		console.error("Fulcrum: could not mount task header timer", err);
+		return;
+	}
+	if (gen !== state.timerGen || !slot.isConnected) {
+		destroy();
+		return;
+	}
+	state.timerDestroy = destroy;
 }
 
 function syncTaskNoteChrome(host: FulcrumHost, view: MarkdownView): void {
@@ -82,7 +133,7 @@ function syncTaskNoteChrome(host: FulcrumHost, view: MarkdownView): void {
 	const done = taskIsDone(task, host.settings);
 	let state = mounts.get(view);
 	if (!state) {
-		state = {component: null, filePath: null};
+		state = {component: null, filePath: null, timerDestroy: null, timerPath: null, timerGen: 0};
 		mounts.set(view, state);
 	}
 
@@ -97,10 +148,15 @@ function syncTaskNoteChrome(host: FulcrumHost, view: MarkdownView): void {
 	view.contentEl.classList.add("fulcrum-task-note-doc");
 
 	if (state.component && state.filePath === file.path) {
-		state.component.$set({task, done});
+		state.component.$set({task, done, pageHeader: true});
+		ensureTaskHeaderTimer(host, chromeHost, state, file.path);
 		return;
 	}
 
+	state.timerGen += 1;
+	state.timerDestroy?.();
+	state.timerDestroy = null;
+	state.timerPath = null;
 	state.component?.$destroy();
 	state.component = new TaskCard({
 		target: chromeHost,
@@ -108,10 +164,12 @@ function syncTaskNoteChrome(host: FulcrumHost, view: MarkdownView): void {
 			plugin: host,
 			task,
 			done,
+			pageHeader: true,
 			anchorLeaf: view.leaf,
 		},
 	});
 	state.filePath = file.path;
+	ensureTaskHeaderTimer(host, chromeHost, state, file.path);
 }
 
 function syncAllMarkdownViews(host: FulcrumHost): void {
@@ -121,7 +179,9 @@ function syncAllMarkdownViews(host: FulcrumHost): void {
 	}
 }
 
-export function registerTaskNoteChrome(host: FulcrumHost & Pick<Plugin, "registerEvent">): void {
+export function registerTaskNoteChrome(
+	host: FulcrumHost & Pick<Plugin, "register" | "registerEvent">,
+): void {
 	let timer: number | undefined;
 
 	function schedule(): void {
@@ -145,6 +205,13 @@ export function registerTaskNoteChrome(host: FulcrumHost & Pick<Plugin, "registe
 			}
 		}),
 	);
+
+	host.register(() => {
+		for (const leaf of host.app.workspace.getLeavesOfType("markdown")) {
+			const view = leaf.view;
+			if (view instanceof MarkdownView) unmountChrome(view);
+		}
+	});
 
 	schedule();
 }

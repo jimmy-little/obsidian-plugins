@@ -5357,6 +5357,31 @@ li.task-list-item.fulcrum-task-inline-pill--live a.tag {
 	background: var(--background-secondary);
 }
 
+.fulcrum-task-note-chrome__timer {
+	margin-top: 0.65rem;
+	padding-top: 0.65rem;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.fulcrum-companion-note-timer {
+	margin-top: 0.85rem;
+	padding-top: 0.85rem;
+	border-top: 1px solid
+		color-mix(
+			in srgb,
+			var(--fulcrum-companion-accent, var(--interactive-accent)) 35%,
+			var(--background-modifier-border)
+		);
+}
+
+.fulcrum-task-note-chrome__timer .fulcrum-timer-container--embedded,
+.fulcrum-companion-note-timer .fulcrum-timer-container--embedded {
+	margin: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+}
+
 .fulcrum-task-note-doc .fulcrum-task-note-chrome + .markdown-source-view,
 .fulcrum-task-note-doc .fulcrum-task-note-chrome + .markdown-reading-view {
 	margin-top: 0;

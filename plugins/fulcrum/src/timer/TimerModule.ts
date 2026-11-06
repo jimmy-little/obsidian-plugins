@@ -944,32 +944,21 @@ export class TimerModule {
 		}
 	}
 
-	private registerTimerWidgetRefresh(
-		filePath: string,
-		callback: () => void,
-		ctx: MarkdownPostProcessorContext,
-		containerEl: HTMLElement,
-	): void {
+	private registerTimerWidgetRefresh(filePath: string, callback: () => void): () => void {
 		let callbacks = this.timerWidgetRefreshCallbacks.get(filePath);
 		if (!callbacks) {
 			callbacks = new Set();
 			this.timerWidgetRefreshCallbacks.set(filePath, callbacks);
 		}
-		callbacks.add(callback);
+		const bucket = callbacks;
+		bucket.add(callback);
 		const registry = this.timerWidgetRefreshCallbacks;
-		ctx.addChild(
-			new (class extends MarkdownRenderChild {
-				constructor(el: HTMLElement) {
-					super(el);
-				}
-				onunload(): void {
-					callbacks!.delete(callback);
-					if (callbacks!.size === 0) {
-						registry.delete(filePath);
-					}
-				}
-			})(containerEl),
-		);
+		return () => {
+			bucket.delete(callback);
+			if (bucket.size === 0) {
+				registry.delete(filePath);
+			}
+		};
 	}
 
 	private refreshTimerWidgetsForFile(filePath: string): void {
@@ -1843,7 +1832,30 @@ export class TimerModule {
 	}
 
 	async processTimerCodeBlock(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) {
-		const filePath = ctx.sourcePath;
+		const destroy = await this.mountNoteTimerWidget(el, ctx.sourcePath);
+		if (!el.isConnected) {
+			destroy();
+			return;
+		}
+		ctx.addChild(
+			new (class extends MarkdownRenderChild {
+				onunload(): void {
+					destroy();
+				}
+			})(el),
+		);
+	}
+
+	/**
+	 * Full timer widget (elapsed display, ± adjust, play/stop, label, and the
+	 * entries panel) for a note. Used by the code block and by page headers.
+	 * `embedded` drops the standalone card frame so it can sit in a header.
+	 */
+	async mountNoteTimerWidget(
+		el: HTMLElement,
+		filePath: string,
+		options?: {embedded?: boolean},
+	): Promise<() => void> {
 
 		// Load existing entries from frontmatter
 		await this.loadEntriesFromFrontmatter(filePath);
@@ -1859,8 +1871,11 @@ export class TimerModule {
 		let pageData = this.timeData.get(filePath)!;
 		const activeTimer = pageData.entries.find(e => e.startTime !== null && e.endTime === null);
 
-		// Build the container
-		const container = el.createDiv({ cls: 'fulcrum-timer-container' });
+		const container = el.createDiv({
+			cls: options?.embedded
+				? "fulcrum-timer-container fulcrum-timer-container--embedded"
+				: "fulcrum-timer-container",
+		});
 		
 		// Main layout wrapper with two columns
 		const mainLayout = container.createDiv({ cls: 'fulcrum-timer-main-layout' });
@@ -2246,18 +2261,14 @@ export class TimerModule {
 			}
 		};
 
-		this.registerTimerWidgetRefresh(filePath, syncWidgetFromPageData, ctx, el);
-
-		ctx.addChild(
-			new (class extends MarkdownRenderChild {
-				onunload(): void {
-					if (updateInterval != null) {
-						window.clearInterval(updateInterval);
-						updateInterval = null;
-					}
-				}
-			})(el),
-		);
+		const unregisterRefresh = this.registerTimerWidgetRefresh(filePath, syncWidgetFromPageData);
+		return () => {
+			unregisterRefresh();
+			if (updateInterval != null) {
+				window.clearInterval(updateInterval);
+				updateInterval = null;
+			}
+		};
 	}
 
 

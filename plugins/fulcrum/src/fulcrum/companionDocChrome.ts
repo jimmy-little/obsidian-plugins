@@ -16,11 +16,17 @@ import {isTaskNoteFile} from "./utils/taskNoteFile";
 import {formatTrackedMinutesShort} from "./utils/dates";
 import {leafIsInWorkspace, type FulcrumCompanionLeaf} from "./openBesideFulcrum";
 import {leadingTimelineEmojiFromNoteType} from "./utils/projectActivity";
+import {isUnderFolder} from "./utils/paths";
 
 export type CompanionChromeTimerApi = {
 	findActiveEntryForFile(filePath: string): TimeEntry | null;
 	getActiveEntryElapsedMs(entry: TimeEntry): number;
 	formatTimeAsHHMMSS(ms: number): string;
+	mountNoteTimerWidget(
+		el: HTMLElement,
+		filePath: string,
+		options?: {embedded?: boolean},
+	): Promise<() => void>;
 };
 
 export type CompanionChromeHost = {
@@ -268,6 +274,70 @@ function entryTitle(file: TFile, fm: Record<string, unknown>, entryKey: string):
 	return file.basename.replace(/\.md$/i, "");
 }
 
+const COMPANION_PATH_ATTR = "data-fulcrum-companion-path";
+
+type CompanionTimerMount = {
+	path: string;
+	destroy: (() => void) | null;
+	gen: number;
+};
+
+const companionTimers = new WeakMap<HTMLElement, CompanionTimerMount>();
+
+function isMeetingNoteFile(file: TFile, settings: FulcrumSettings): boolean {
+	const folder = settings.meetingsFolder?.trim();
+	if (!folder) return false;
+	return isUnderFolder(file.path, folder);
+}
+
+function destroyCompanionTimer(chromeHost: HTMLElement): void {
+	const state = companionTimers.get(chromeHost);
+	if (!state) return;
+	state.gen += 1;
+	state.destroy?.();
+	state.destroy = null;
+	companionTimers.delete(chromeHost);
+}
+
+async function ensureCompanionTimer(
+	hostCtx: CompanionChromeHost,
+	chromeHost: HTMLElement,
+	file: TFile,
+): Promise<void> {
+	const mount = hostCtx.timer?.mountNoteTimerWidget;
+	if (!mount) return;
+	const surface = chromeHost.querySelector(":scope > .fulcrum-companion-chrome-surface");
+	if (!(surface instanceof HTMLElement)) return;
+	const existingSlot = surface.querySelector(":scope > .fulcrum-companion-note-timer");
+	const slot =
+		existingSlot instanceof HTMLElement
+			? existingSlot
+			: el("div", "fulcrum-companion-note-timer");
+	if (!(existingSlot instanceof HTMLElement)) {
+		surface.append(slot);
+	}
+	const existing = companionTimers.get(chromeHost);
+	if (existing?.path === file.path && existing.destroy) return;
+	const gen = (existing?.gen ?? 0) + 1;
+	existing?.destroy?.();
+	const next: CompanionTimerMount = {path: file.path, destroy: null, gen};
+	companionTimers.set(chromeHost, next);
+	slot.replaceChildren();
+	let destroy: () => void;
+	try {
+		destroy = await mount(slot, file.path, {embedded: true});
+	} catch (err) {
+		console.error("Fulcrum: could not mount meeting header timer", err);
+		return;
+	}
+	const current = companionTimers.get(chromeHost);
+	if (!current || current.gen !== gen || !slot.isConnected) {
+		destroy();
+		return;
+	}
+	current.destroy = destroy;
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(
 	tag: K,
 	cls: string,
@@ -283,6 +353,8 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 	const app = hostCtx.app;
 	const s = hostCtx.getSettings();
 	const host = el("div", "fulcrum-companion-chrome-host");
+	const meeting = isMeetingNoteFile(file, s);
+	host.setAttribute(COMPANION_PATH_ATTR, file.path);
 
 	const accentCss = resolveBannerAccentCss(app, file.path, fm, s);
 	host.style.setProperty("--fulcrum-companion-accent", accentCss);
@@ -348,41 +420,54 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 		dates.append(row);
 	}
 
-	const actionsRow = el("div", "fulcrum-companion-banner__actions");
-	if (typeof hostCtx.startTimerInOpenNote === "function") {
-		const timerBtn = el("button", "fulcrum-companion-timer-btn");
-		timerBtn.type = "button";
-		timerBtn.title = "Start a timer in this note";
-		timerBtn.setAttribute("aria-label", "Start a timer in this note");
-		setIcon(timerBtn, "play");
-		timerBtn.addEventListener("click", (ev) => {
-			ev.preventDefault();
-			ev.stopPropagation();
-			void hostCtx.startTimerInOpenNote?.(file, {
-				projectLabel: projLabel,
-				entryTitle: titleBase,
+	if (!meeting) {
+		const actionsRow = el("div", "fulcrum-companion-banner__actions");
+		if (typeof hostCtx.startTimerInOpenNote === "function") {
+			const timerBtn = el("button", "fulcrum-companion-timer-btn");
+			timerBtn.type = "button";
+			timerBtn.title = "Start a timer in this note";
+			timerBtn.setAttribute("aria-label", "Start a timer in this note");
+			setIcon(timerBtn, "play");
+			timerBtn.addEventListener("click", (ev) => {
+				ev.preventDefault();
+				ev.stopPropagation();
+				void hostCtx.startTimerInOpenNote?.(file, {
+					projectLabel: projLabel,
+					entryTitle: titleBase,
+				});
 			});
-		});
-		actionsRow.append(timerBtn);
-	}
+			actionsRow.append(timerBtn);
+		}
 
-	const tracked = readTrackedMinutesFromFm(fm, s.taskTrackedMinutesField);
-	const timeCard = el(
-		"div",
-		"fulcrum-companion-time-card fulcrum-companion-time-card--banner fulcrum-person-card",
-	);
-	const timeVal = el("div", "fulcrum-companion-time-card__value", tracked > 0 ? formatTrackedMinutesShort(tracked) : "—");
-	const timeLbl = el("div", "fulcrum-companion-time-card__label", "Tracked");
-	timeCard.append(timeVal, timeLbl);
-	actionsRow.append(timeCard);
-	mountTrackedTimeTicker(host, hostCtx, file, timeVal);
+		const tracked = readTrackedMinutesFromFm(fm, s.taskTrackedMinutesField);
+		const timeCard = el(
+			"div",
+			"fulcrum-companion-time-card fulcrum-companion-time-card--banner fulcrum-person-card",
+		);
+		const timeVal = el(
+			"div",
+			"fulcrum-companion-time-card__value",
+			tracked > 0 ? formatTrackedMinutesShort(tracked) : "—",
+		);
+		const timeLbl = el("div", "fulcrum-companion-time-card__label", "Tracked");
+		timeCard.append(timeVal, timeLbl);
+		actionsRow.append(timeCard);
+		mountTrackedTimeTicker(host, hostCtx, file, timeVal);
 
-	if (actionsRow.childNodes.length > 0) {
-		dates.append(actionsRow);
+		if (actionsRow.childNodes.length > 0) {
+			dates.append(actionsRow);
+		}
 	}
-	top.append(main, dates);
+	if (dates.childNodes.length > 0) {
+		top.append(main, dates);
+	} else {
+		top.append(main);
+	}
 
 	surface.append(top);
+	if (meeting) {
+		surface.append(el("div", "fulcrum-companion-note-timer"));
+	}
 	host.append(surface);
 
 	return host;
@@ -390,7 +475,11 @@ function buildChromeDom(hostCtx: CompanionChromeHost, file: TFile, fm: Record<st
 
 function clearCompanionChrome(view: MarkdownView): void {
 	view.contentEl.classList.remove("fulcrum-companion-doc");
-	view.contentEl.querySelector(":scope > .fulcrum-companion-chrome-host")?.remove();
+	const hostEl = view.contentEl.querySelector(":scope > .fulcrum-companion-chrome-host");
+	if (!(hostEl instanceof HTMLElement)) return;
+	destroyCompanionTimer(hostEl);
+	clearTrackedTicker(hostEl);
+	hostEl.remove();
 }
 
 function syncCompanionChrome(host: CompanionChromeHost, companion: FulcrumCompanionLeaf): void {
@@ -416,13 +505,24 @@ function syncCompanionChrome(host: CompanionChromeHost, companion: FulcrumCompan
 	}
 
 	view.contentEl.classList.add("fulcrum-companion-doc");
+	const meeting = isMeetingNoteFile(file, host.getSettings());
 	const prev = view.contentEl.querySelector(":scope > .fulcrum-companion-chrome-host");
-	if (prev instanceof HTMLElement) {
-		if (syncCompanionPeopleRow(host, file, fm, prev)) return;
-		clearTrackedTicker(prev);
+	if (
+		prev instanceof HTMLElement &&
+		prev.getAttribute(COMPANION_PATH_ATTR) === file.path &&
+		syncCompanionPeopleRow(host, file, fm, prev)
+	) {
+		if (meeting) void ensureCompanionTimer(host, prev, file);
+		return;
 	}
-	prev?.remove();
-	view.contentEl.prepend(buildChromeDom(host, file, fm));
+	if (prev instanceof HTMLElement) {
+		destroyCompanionTimer(prev);
+		clearTrackedTicker(prev);
+		prev.remove();
+	}
+	const dom = buildChromeDom(host, file, fm);
+	view.contentEl.prepend(dom);
+	if (meeting) void ensureCompanionTimer(host, dom, file);
 }
 
 function companionFileForSync(
@@ -488,6 +588,11 @@ export function registerCompanionDocChrome(
 	);
 	host.registerCleanup?.(() => {
 		window.clearTimeout(peopleTimer);
+		const leaf = companion.current;
+		const view = leaf?.view;
+		if (!(view instanceof MarkdownView)) return;
+		const chromeHost = view.contentEl.querySelector(":scope > .fulcrum-companion-chrome-host");
+		if (chromeHost instanceof HTMLElement) destroyCompanionTimer(chromeHost);
 	});
 	host.registerEvent(
 		host.app.vault.on("modify", (f) => {

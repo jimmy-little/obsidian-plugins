@@ -271,6 +271,8 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 					findActiveEntryForFile: (filePath) => this.timer.findActiveEntryForFile(filePath),
 					getActiveEntryElapsedMs: (entry) => this.timer.getActiveEntryElapsedMs(entry),
 					formatTimeAsHHMMSS: (ms) => this.timer.formatTimeAsHHMMSS(ms),
+					mountNoteTimerWidget: (el, filePath, options) =>
+						this.timer.mountNoteTimerWidget(el, filePath, options),
 				},
 				startTimerInOpenNote: (file, meta) =>
 					this.startTimerInNote(file.path, {
