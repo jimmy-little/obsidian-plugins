@@ -153,6 +153,13 @@ export interface FulcrumSettings {
 	 */
 	jiraEmail: string;
 	jiraApiToken: string;
+	/**
+	 * Jira Today rows the user has dismissed: `JiraActivityItem.key` → the item's `timestampIso`
+	 * snapshot at dismiss time. A row stays hidden only while the live item's timestamp still
+	 * matches the snapshot — if the ticket is updated again (or re-mentions the user), it
+	 * reappears automatically. Purely local; nothing is ever written back to Jira.
+	 */
+	jiraDismissedItems: Record<string, string>;
 
 	taskTag: string;
 	taskStatuses: string;
@@ -462,6 +469,7 @@ export const DEFAULT_SETTINGS: FulcrumSettings = {
 
 	jiraEmail: "",
 	jiraApiToken: "",
+	jiraDismissedItems: {},
 
 	taskTag: "task",
 	taskStatuses: "todo, in-progress, done, cancelled",

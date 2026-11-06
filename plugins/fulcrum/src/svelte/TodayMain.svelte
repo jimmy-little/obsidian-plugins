@@ -35,6 +35,7 @@
 	import {fetchJiraTodayActivity} from "../fulcrum/jira/jiraClient";
 	import {sortJiraActivityNewestFirst} from "../fulcrum/jira/jiraFormat";
 	import type {JiraActivityItem} from "../fulcrum/jira/jiraTypes";
+	import {partitionJiraItems} from "../fulcrum/jira/jiraDismiss";
 	import {taskMatchesViewProjectFilter} from "../fulcrum/utils/viewProjectFilter";
 	import {projectColorMap} from "../fulcrum/utils/calendarEvents";
 	import {formatTodayMasthead, shiftIsoWeek} from "../fulcrum/today/todayWeek";
@@ -71,6 +72,7 @@
 	let jiraItems: JiraActivityItem[] = [];
 	let jiraError: string | null = null;
 	let jiraLoadId = 0;
+	let showDismissedJira = false;
 
 	function takeCalendarLoadId(): number {
 		calendarLoadId += 1;
@@ -164,6 +166,10 @@
 		return proj != null && projectPassesAreaFilter(proj, areaFilter, lifeModeMap);
 	});
 	$: dailyFile = (void $indexRevision, getDailyNoteForIso(focalDateIso));
+	/** Dismissed rows snapshot a timestamp at dismiss time, so a ticket/comment that changes again
+	 *  (new `updated`/`created`) automatically falls back out of the dismissed set. */
+	$: jiraDismissedMap = (void sRev, plugin.settings.jiraDismissedItems ?? {});
+	$: jiraPartition = partitionJiraItems(jiraItems, jiraDismissedMap);
 	$: feedSections = buildTodayFeed({
 		dateIso: focalDateIso,
 		meetings: feedMeetings,
@@ -174,10 +180,11 @@
 		doneStatuses: doneTask,
 		dailyNoteTitle: dailyFile?.basename.replace(/\.md$/i, "") ?? null,
 		dailyNotePath: dailyFile?.path ?? null,
-		jiraItems,
+		jiraItems: jiraPartition.visible,
 	});
 	/** Standing sidebar list: every fetched row, newest first — not limited to the focal day. */
-	$: jiraSidebarRows = sortJiraActivityNewestFirst(jiraItems).map(jiraActivityFeedItem);
+	$: jiraSidebarRows = sortJiraActivityNewestFirst(jiraPartition.visible).map(jiraActivityFeedItem);
+	$: jiraDismissedRows = sortJiraActivityNewestFirst(jiraPartition.dismissed).map(jiraActivityFeedItem);
 
 	$: {
 		void $indexRevision;
@@ -481,10 +488,22 @@
 
 			{#if plugin.settings.jiraEmail.trim() && plugin.settings.jiraApiToken.trim()}
 				<div class="fulcrum-today__block">
-					<h2 class="fulcrum-today__block-title">Jira</h2>
+					<div class="fulcrum-today__block-head">
+						<h2 class="fulcrum-today__block-title">Jira</h2>
+						{#if jiraDismissedRows.length > 0}
+							<button
+								type="button"
+								class="fulcrum-today__jira-dismiss-toggle"
+								class:fulcrum-today__jira-dismiss-toggle--on={showDismissedJira}
+								on:click={() => (showDismissedJira = !showDismissedJira)}
+							>
+								{showDismissedJira ? "Hide dismissed" : `Show dismissed (${jiraDismissedRows.length})`}
+							</button>
+						{/if}
+					</div>
 					{#if jiraError}
 						<p class="fulcrum-muted fulcrum-today__empty">{jiraError}</p>
-					{:else if jiraSidebarRows.length === 0}
+					{:else if jiraSidebarRows.length === 0 && !(showDismissedJira && jiraDismissedRows.length > 0)}
 						<p class="fulcrum-muted fulcrum-today__empty">No assigned tickets or mentions.</p>
 					{:else}
 						<ul class="fulcrum-today__feed">
@@ -493,6 +512,20 @@
 									<TodayFeedRow {plugin} {item} {hoverParentLeaf} {colorByProject} showClock={false} />
 								</li>
 							{/each}
+							{#if showDismissedJira}
+								{#each jiraDismissedRows as item (item.key)}
+									<li>
+										<TodayFeedRow
+											{plugin}
+											{item}
+											{hoverParentLeaf}
+											{colorByProject}
+											showClock={false}
+											dimmed
+										/>
+									</li>
+								{/each}
+							{/if}
 						</ul>
 					{/if}
 				</div>

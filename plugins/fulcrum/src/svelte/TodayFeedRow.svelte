@@ -36,6 +36,8 @@
 	export let showClock = true;
 	/** Focal day — required to resolve a drop onto this row into an exact datetime. */
 	export let dateIso: string | undefined = undefined;
+	/** Jira "Show dismissed" list: renders muted, with no special treatment otherwise. */
+	export let dimmed = false;
 
 	$: done = item.done === true;
 	$: inProgress =
@@ -202,7 +204,8 @@
 			return;
 		}
 		if ((item.kind === "jiraTicket" || item.kind === "jiraComment") && item.issueKey) {
-			showJiraRowContextMenu(ev, plugin, item.issueKey, item.externalUrl, hoverParentLeaf);
+			const dismissInfo = item.timestampIso ? {key: item.key, timestampIso: item.timestampIso} : undefined;
+			showJiraRowContextMenu(ev, plugin, item.issueKey, item.externalUrl, hoverParentLeaf, dismissInfo);
 		}
 	}
 
@@ -259,6 +262,7 @@
 <div
 	class="fulcrum-today__feed-row"
 	class:fulcrum-today__feed-row--clockless={!showClock}
+	class:fulcrum-today__feed-row--dismissed={dimmed}
 	class:fulcrum-today__feed-row--done={done}
 	class:fulcrum-today__feed-row--ghost={item.isGhostOccurrence === true}
 	class:fulcrum-today__feed-row--marker={item.kind === "hourMarker"}

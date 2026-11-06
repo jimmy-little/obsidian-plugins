@@ -10294,6 +10294,27 @@ button.fulcrum-today__feed-body:focus-visible {
 	padding: 0;
 }
 
+.fulcrum-today__jira-dismiss-toggle {
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	border-radius: 999px;
+	padding: 0.1rem 0.55rem;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.fulcrum-today__jira-dismiss-toggle--on {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.fulcrum-today__feed-row--dismissed {
+	opacity: 0.55;
+}
+
 .fulcrum-today__add:hover {
 	filter: brightness(1.08);
 }

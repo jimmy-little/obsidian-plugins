@@ -59,6 +59,8 @@ export type TodayFeedItem = {
 	subtitleMultiline?: boolean;
 	/** Jira rows only: the bare issue key (e.g. `TAXONOMY-1234`), for the "Create task note" quick action. */
 	issueKey?: string;
+	/** Jira rows only: raw `JiraActivityItem.timestampIso`, for dismiss/restore snapshot comparisons. */
+	timestampIso?: string;
 };
 
 export type TodayFeedSection = {
@@ -220,6 +222,7 @@ export function jiraActivityFeedItem(item: JiraActivityItem): TodayFeedItem {
 		subtitleMultiline: isComment,
 		externalUrl: item.url,
 		issueKey: item.issueKey,
+		timestampIso: item.timestampIso,
 	};
 }
 
