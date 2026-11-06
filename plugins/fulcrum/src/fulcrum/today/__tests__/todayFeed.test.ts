@@ -307,7 +307,8 @@ describe("buildTodayFeed", () => {
 		expect(afternoonReal[0]).toMatchObject({
 			kind: "jiraComment",
 			title: "TAXONOMY-2 | Core Library cleanup",
-			subtitle: '"Can you take a look at this?"',
+			issueTitle: "Core Library cleanup",
+			subtitle: "Can you take a look at this?",
 			subtitleMultiline: true,
 			externalUrl: "https://deept.atlassian.net/browse/TAXONOMY-2?focusedCommentId=c1",
 			issueKey: "TAXONOMY-2",
@@ -383,7 +384,7 @@ describe("jiraActivityFeedItem", () => {
 		});
 	});
 
-	it("quotes the comment excerpt and flags it as multiline", () => {
+	it("puts the comment excerpt under the issue key and title", () => {
 		const item = jiraActivityFeedItem({
 			key: "jira-comment:TAXONOMY-9:c1",
 			kind: "comment",
@@ -393,7 +394,8 @@ describe("jiraActivityFeedItem", () => {
 			url: "https://deept.atlassian.net/browse/TAXONOMY-9?focusedCommentId=c1",
 			commentExcerpt: "Here's the comment",
 		});
-		expect(item.subtitle).toBe('"Here\'s the comment"');
+		expect(item.issueTitle).toBe("Ship the thing");
+		expect(item.subtitle).toBe("Here's the comment");
 		expect(item.subtitleMultiline).toBe(true);
 	});
 });

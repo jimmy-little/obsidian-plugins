@@ -140,6 +140,10 @@ describe("clampExcerpt", () => {
 	it("returns empty string for blank input", () => {
 		expect(clampExcerpt("   \n  ")).toBe("");
 	});
+
+	it("collapses non-breaking spaces so a comment preview can wrap", () => {
+		expect(clampExcerpt("hi\u00a0@Jimmy\u00a0Little the\u00a0mapping")).toBe("hi @Jimmy Little the mapping");
+	});
 });
 
 describe("jiraBasicAuthHeader", () => {

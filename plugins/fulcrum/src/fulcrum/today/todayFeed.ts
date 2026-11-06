@@ -59,6 +59,8 @@ export type TodayFeedItem = {
 	subtitleMultiline?: boolean;
 	/** Jira rows only: the bare issue key (e.g. `TAXONOMY-1234`), for the "Create task note" quick action. */
 	issueKey?: string;
+	/** Jira rows only: issue summary, rendered beside the key so a long title can ellipsize on its own. */
+	issueTitle?: string;
 	/** Jira rows only: raw `JiraActivityItem.timestampIso`, for dismiss/restore snapshot comparisons. */
 	timestampIso?: string;
 };
@@ -218,10 +220,11 @@ export function jiraActivityFeedItem(item: JiraActivityItem): TodayFeedItem {
 		title: `${item.issueKey} | ${item.issueTitle}`,
 		startMinutes: timing?.minutesFromMidnight ?? null,
 		durationMinutes: null,
-		subtitle: isComment && item.commentExcerpt ? `"${item.commentExcerpt}"` : undefined,
-		subtitleMultiline: isComment,
+		subtitle: isComment && item.commentExcerpt ? item.commentExcerpt : undefined,
+		subtitleMultiline: isComment && Boolean(item.commentExcerpt),
 		externalUrl: item.url,
 		issueKey: item.issueKey,
+		issueTitle: item.issueTitle,
 		timestampIso: item.timestampIso,
 	};
 }

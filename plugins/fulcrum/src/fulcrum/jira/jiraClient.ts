@@ -333,7 +333,7 @@ export async function fetchJiraTodayActivity(email: string, apiToken: string): P
 					issueTitle: issue.title,
 					timestampIso: comment.created,
 					url: jiraCommentUrl(issue.key, comment.id),
-					commentExcerpt: clampExcerpt(adfToPlainText(comment.body)),
+					commentExcerpt: clampExcerpt(adfToPlainText(comment.body), 1, 180),
 				});
 			}
 		}

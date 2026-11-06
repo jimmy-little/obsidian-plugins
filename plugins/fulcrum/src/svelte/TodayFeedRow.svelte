@@ -262,6 +262,7 @@
 <div
 	class="fulcrum-today__feed-row"
 	class:fulcrum-today__feed-row--clockless={!showClock}
+	class:fulcrum-today__feed-row--multiline={item.subtitleMultiline === true}
 	class:fulcrum-today__feed-row--dismissed={dimmed}
 	class:fulcrum-today__feed-row--done={done}
 	class:fulcrum-today__feed-row--ghost={item.isGhostOccurrence === true}
@@ -310,7 +311,16 @@
 		{/if}
 		{#if canOpen}
 			<button type="button" class="fulcrum-today__feed-body" on:click={onBodyClick}>
-				<span class="fulcrum-today__feed-title" class:fulcrum-today__feed-title--done={done}>{item.title}</span>
+				{#if item.kind === "jiraComment" && item.issueKey}
+					<span class="fulcrum-today__feed-title fulcrum-today__feed-title--split">
+						<span class="fulcrum-today__feed-key">{item.issueKey}</span>
+						{#if item.issueTitle}
+							<span class="fulcrum-today__feed-issue">{item.issueTitle}</span>
+						{/if}
+					</span>
+				{:else}
+					<span class="fulcrum-today__feed-title" class:fulcrum-today__feed-title--done={done}>{item.title}</span>
+				{/if}
 				{#if item.subtitle}
 					<span class="fulcrum-today__feed-sub" class:fulcrum-today__feed-sub--quote={item.subtitleMultiline}
 						>{item.subtitle}</span
@@ -319,7 +329,16 @@
 			</button>
 		{:else}
 			<div class="fulcrum-today__feed-body fulcrum-today__feed-body--static">
-				<span class="fulcrum-today__feed-title" class:fulcrum-today__feed-title--done={done}>{item.title}</span>
+				{#if item.kind === "jiraComment" && item.issueKey}
+					<span class="fulcrum-today__feed-title fulcrum-today__feed-title--split">
+						<span class="fulcrum-today__feed-key">{item.issueKey}</span>
+						{#if item.issueTitle}
+							<span class="fulcrum-today__feed-issue">{item.issueTitle}</span>
+						{/if}
+					</span>
+				{:else}
+					<span class="fulcrum-today__feed-title" class:fulcrum-today__feed-title--done={done}>{item.title}</span>
+				{/if}
 				{#if item.subtitle}
 					<span class="fulcrum-today__feed-sub" class:fulcrum-today__feed-sub--quote={item.subtitleMultiline}
 						>{item.subtitle}</span

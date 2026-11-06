@@ -75,7 +75,11 @@ function walkAdfToText(node: AdfNode | null): string {
 
 /** Clamp a comment excerpt to a few non-empty lines for the Today row. */
 export function clampExcerpt(text: string, maxLines = 3, maxChars = 220): string {
-	const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+	const lines = text
+		.replace(/\u00a0/g, " ")
+		.split("\n")
+		.map((l) => l.replace(/[ \t]+/g, " ").trim())
+		.filter(Boolean);
 	if (lines.length === 0) return "";
 	const truncatedByLines = lines.length > maxLines;
 	let out = lines.slice(0, maxLines).join("\n");

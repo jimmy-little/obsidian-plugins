@@ -10030,6 +10030,14 @@ button.orbit-heatmap-day-modal__link:hover {
 	grid-template-columns: var(--fulcrum-today-icon) minmax(0, 1fr) auto;
 }
 
+.fulcrum-today__feed-row--multiline {
+	align-items: start;
+}
+
+.fulcrum-today__feed-row--multiline .fulcrum-today__feed-icon {
+	margin-top: 0.15rem;
+}
+
 .fulcrum-today__feed-row:hover,
 .fulcrum-today__feed-row:focus-visible {
 	background: var(--background-modifier-hover);
@@ -10151,6 +10159,28 @@ button.orbit-heatmap-day-modal__link:hover {
 	color: var(--text-faint);
 }
 
+.fulcrum-today__feed-title--split {
+	display: flex;
+	align-items: baseline;
+	gap: 0.4rem;
+	min-width: 0;
+}
+
+.fulcrum-today__feed-key {
+	flex: 0 0 auto;
+	font-weight: 650;
+}
+
+.fulcrum-today__feed-issue {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 450;
+	color: var(--text-muted);
+}
+
 .fulcrum-today__feed-sub {
 	display: block;
 	width: 100%;
@@ -10170,17 +10200,25 @@ button.orbit-heatmap-day-modal__link:hover {
 .fulcrum-today__feed-sub--quote {
 	display: -webkit-box;
 	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 3;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
 	white-space: normal;
 	overflow: hidden;
+	overflow-wrap: break-word;
 	text-overflow: ellipsis;
 	font-style: italic;
 }
 
-button.fulcrum-today__feed-body {
+.fulcrum-today__feed-row button.fulcrum-today__feed-body,
+.fulcrum-today__feed-row .fulcrum-today__feed-body--static {
+	display: flex;
+	flex-direction: column;
 	align-items: stretch;
 	justify-content: flex-start;
 	width: 100%;
+	min-width: 0;
+	height: auto;
+	white-space: normal;
 	text-align: left;
 }
 
