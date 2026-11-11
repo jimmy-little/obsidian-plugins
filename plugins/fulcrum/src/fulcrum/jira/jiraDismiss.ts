@@ -7,10 +7,10 @@ export interface JiraDismissRef {
 }
 
 /**
- * True when `item` is currently hidden: its key has a dismissed snapshot timestamp that still
- * matches the live item's timestamp. If the ticket/comment changes (new `updated`/`created`), the
- * snapshot goes stale and the item is treated as visible again — "dismiss" means "nothing's changed
- * since I looked at this," not "hide forever."
+ * True when `item` is out of the Jira inbox: its key has a dismissed snapshot timestamp that still
+ * matches the live item's timestamp. The day timeline still shows it. If the ticket/comment changes
+ * (new `updated`/`created`), the snapshot goes stale and the item returns to the inbox — "dismiss"
+ * means "nothing's changed since I looked at this," not "hide forever."
  */
 export function isJiraItemDismissed(item: JiraDismissRef, dismissed: Record<string, string>): boolean {
 	const snapshot = dismissed[item.key];

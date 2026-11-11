@@ -345,6 +345,17 @@
 	}
 
 	let snapshotBusy = false;
+	let rostrBusy = false;
+	async function updateFromRostr(): Promise<void> {
+		if (!personFile || rostrBusy) return;
+		rostrBusy = true;
+		try {
+			await plugin.updatePersonFromRostr(personFile);
+		} finally {
+			rostrBusy = false;
+		}
+	}
+
 	async function captureSnapshot(): Promise<void> {
 		if (!personFile || snapshotBusy) return;
 		snapshotBusy = true;
@@ -496,6 +507,16 @@
 							on:click={() => void captureSnapshot()}
 						>
 							<span class="orbit-banner-btn__icon" use:orbitBannerIcon={"camera"} aria-hidden="true"></span>
+						</button>
+						<button
+							type="button"
+							class="orbit-banner-btn orbit-banner-btn--icon-only"
+							disabled={rostrBusy}
+							aria-label="Update from Rostr"
+							title="Update from Rostr"
+							on:click={() => void updateFromRostr()}
+						>
+							<span class="orbit-banner-btn__icon" use:orbitBannerIcon={"refresh-cw"} aria-hidden="true"></span>
 						</button>
 					</div>
 					<div class="orbit-banner-btn-row">
