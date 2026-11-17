@@ -167,7 +167,8 @@
 	});
 	$: dailyFile = (void $indexRevision, getDailyNoteForIso(focalDateIso));
 	/** Dismissed rows snapshot a timestamp at dismiss time, so a ticket/comment that changes again
-	 *  (new `updated`/`created`) automatically falls back out of the dismissed set. */
+	 *  (new `updated`/`created`) returns to the inbox. Dismissal only filters that list — the
+	 *  timeline still shows every item on the focal day, including dismissed comments. */
 	$: jiraDismissedMap = (void sRev, plugin.settings.jiraDismissedItems ?? {});
 	$: jiraPartition = partitionJiraItems(jiraItems, jiraDismissedMap);
 	$: feedSections = buildTodayFeed({
@@ -180,7 +181,7 @@
 		doneStatuses: doneTask,
 		dailyNoteTitle: dailyFile?.basename.replace(/\.md$/i, "") ?? null,
 		dailyNotePath: dailyFile?.path ?? null,
-		jiraItems: jiraPartition.visible,
+		jiraItems,
 	});
 	/** Standing sidebar list: every fetched row, newest first — not limited to the focal day. */
 	$: jiraSidebarRows = sortJiraActivityNewestFirst(jiraPartition.visible).map(jiraActivityFeedItem);

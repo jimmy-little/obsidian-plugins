@@ -164,6 +164,7 @@ import {
 	registerOrbitViews,
 	renderOrbitActivityPreview as renderOrbitActivityPreviewImpl,
 } from "./orbit/registerOrbit";
+import {openPersonRostrUpdate, RostrBridge} from "./orbit/orbit/rostrBridge";
 
 export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	settings: FulcrumSettings = DEFAULT_SETTINGS;
@@ -174,6 +175,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	omnifocus: OmniFocusSyncService | null = null;
 	conduitConvertNoticeShown = false;
 	orbitHost!: OrbitHost;
+	/** Shared secret for the local Rostr update listener. Persisted beside settings. */
+	rostrBridgeToken = "";
+	rostrBridge: import("./orbit/orbit/rostrBridge").RostrBridge | null = null;
 	/** Paths opened via Orbit "Open note" — skip auto profile routing until reopened. */
 	readonly personMarkdownPreferred = new Set<string>();
 	/** Reused markdown leaf for “open beside” from project / linked surfaces. */
@@ -184,6 +188,11 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 		await this.loadSettings();
 		initOrbitHost(this);
+		this.rostrBridge = new RostrBridge(this);
+		this.register(() => this.rostrBridge?.stop());
+		void this.rostrBridge.start().catch((err) => {
+			console.error("Fulcrum Rostr bridge failed to start", err);
+		});
 		this.vaultIndex = new VaultIndex(this.app, () => this.settings);
 		this.timer = new TimerModule(this);
 		const data = (await this.loadData()) as Record<string, unknown> | null;
@@ -468,6 +477,7 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 	}
 
 	onunload(): void {
+		this.rostrBridge?.stop();
 		this.vaultIndex.cancelScheduledRebuild();
 		this.conduit?.stop();
 		this.conduit = null;
@@ -1112,6 +1122,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		migrateOrbitSettings(merged as FulcrumSettings, loaded);
 		mergeStandaloneOrbitPluginData(this, merged as FulcrumSettings);
 
+		const tokenRaw = mergedRec.rostrBridgeToken;
+		this.rostrBridgeToken = typeof tokenRaw === "string" ? tokenRaw : "";
+		delete mergedRec.rostrBridgeToken;
+
 		this.settings = merged as FulcrumSettings;
 
 		const cacheInSettings = (loaded as Record<string, unknown>).timerEntryCache ??
@@ -1179,6 +1193,9 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 		);
 		if (this.conduitConvertNoticeShown) {
 			payload[CONDUIT_CONVERT_NOTICE_KEY] = true;
+		}
+		if (this.rostrBridgeToken) {
+			payload.rostrBridgeToken = this.rostrBridgeToken;
 		}
 		try {
 			await this.saveData(payload);
@@ -1465,6 +1482,10 @@ export default class FulcrumPlugin extends Plugin implements FulcrumHost {
 
 	async capturePersonSnapshot(personFile: TFile): Promise<void> {
 		await capturePersonSnapshotImpl(this, personFile);
+	}
+
+	async updatePersonFromRostr(personFile: TFile): Promise<void> {
+		await openPersonRostrUpdate(this, personFile);
 	}
 
 	async renderOrbitActivityPreview(

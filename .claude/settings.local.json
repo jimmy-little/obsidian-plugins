@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(npx vitest *)",
+      "Bash(git -C /Users/Jimmy.Little/Documents/GitHub/obsidian-plugins stash)",
+      "Bash(git -C /Users/Jimmy.Little/Documents/GitHub/obsidian-plugins stash pop)",
+      "Bash(npm run *)",
+      "Bash(echo \"build exit: $?\")",
+      "Bash(awk '{print $5, $9}')",
+      "Bash(echo \"exit: $?\")",
+      "Bash(git -C /Users/Jimmy.Little/Documents/GitHub/obsidian-plugins diff --stat plugins/fulcrum/src/timer/TimerModule.ts)"
+    ]
+  }
+}
